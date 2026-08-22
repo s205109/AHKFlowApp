@@ -119,6 +119,17 @@ try {
     Assert-True ($source -match 'Kept: the folder is still in use, and no holding process could be identified\.') `
         'The no-holder outcome must exist'
 
+    # --- the sweep's outcome vocabulary ------------------------------------
+    # One line per attempt, and the hand-over going to diagnostics rather than to the outcome log,
+    # are both proved end to end in tests/WorktreeMergedCleanup.Tests.ps1: two merged worktrees,
+    # one real sweep, two concurrent watchers, one outcome line each. What is left here is the
+    # vocabulary, which no runtime case can enumerate.
+    $sweepSource = Get-Content -Raw -LiteralPath (Join-Path $scriptsDir 'cleanup-merged-worktrees.ps1')
+    foreach ($call in [regex]::Matches($sweepSource, "(?m)^\s*Write-SweepOutcome\b[\s\S]*?-Message\s+'([^']+)'")) {
+        $text = $call.Groups[1].Value
+        Assert-True ($text -match '^(Removed\.|Kept: |Failed: )') "Sweep outcome '$text' must start with Removed., Kept: or Failed:"
+    }
+
     Write-Host 'Worktree removal log tests passed.'
 } finally {
     Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue

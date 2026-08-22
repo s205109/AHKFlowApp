@@ -379,6 +379,35 @@ function Add-TestWorktree {
     return (Resolve-Path -LiteralPath $wtPath).Path
 }
 
+# new-backlog-item.ps1 declares #Requires -Version 7.0, so a 5.1 host cannot dot-source or call it
+# in process. Run it in pwsh either way, and read the exit code: the script now fails when it
+# cannot record the item number, and a test that ignored that would prove nothing.
+function Invoke-NewBacklogItem {
+    param([string] $Title, [string] $BacklogRoot, [switch] $AllowFailure)
+
+    $script = Join-Path (Split-Path -Parent $PSScriptRoot) 'scripts\new-backlog-item.ps1'
+    $pwshPath = if ($PSVersionTable.PSVersion.Major -ge 7) {
+        [System.Diagnostics.Process]::GetCurrentProcess().Path
+    } else {
+        $found = Get-Command pwsh.exe -ErrorAction SilentlyContinue
+        if (-not $found) { throw 'pwsh.exe is required to run new-backlog-item.ps1 from this host.' }
+        $found.Source
+    }
+
+    # Start-Process joins the array with spaces and quotes nothing, so a title with a space would
+    # arrive as two positional arguments. Quote every value that reaches the child.
+    $proc = Start-Process -FilePath $pwshPath -Wait -PassThru -NoNewWindow -ArgumentList @(
+        '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$script`"",
+        '-Title', "`"$Title`"", '-BacklogRoot', "`"$BacklogRoot`"")
+
+    if (-not $AllowFailure -and $proc.ExitCode -ne 0) {
+        throw "new-backlog-item.ps1 '$Title' failed with exit code $($proc.ExitCode)."
+    }
+    # Only the caller that asked about failure gets the code; the rest must emit nothing, or the
+    # bare call sites below would write a stray 0 into the suite's output.
+    if ($AllowFailure) { return $proc.ExitCode }
+}
+
 function Remove-TempTree {
     param([string] $RepoDir)
     $root = Split-Path -Parent $RepoDir
@@ -514,6 +543,182 @@ try {
     & $setupScript -RepoRoot $wtPath -Quiet
     Assert-True (Test-FileHasBom $appSettingsPath) 'A second run must not drop an existing BOM.'
     Assert-ExactText $bomHashBefore (Get-FileByteHash $appSettingsPath) 'The BOM file must be byte-identical after a second setup run.'
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- backlog 073: the manifest records which backlog item this worktree serves ---
+# The plan guard reads this key at removal time. By then the folder may already be renamed, and
+# the slug match already misses for at least one live worktree, so the number is captured once
+# here, at creation, while both names still exist.
+$repo = New-TempMainCheckout
+try {
+    # The item number is derived by matching the worktree slug against the backlog file name.
+    Write-SeedFile (Join-Path $repo 'backlog\073-planguard-probe.md') @('# 073 - planguard probe')
+    Invoke-TestGit $repo @('add', '-A') | Out-Null
+    Invoke-TestGit $repo @('commit', '-m', 'seed backlog item') | Out-Null
+
+    $wtPath = Add-TestWorktree -RepoDir $repo -BranchName 'planguard-probe'
+    & $setupScript -RepoRoot $wtPath -Quiet
+
+    $manifestPath = Join-Path $wtPath 'scripts\.env.worktree'
+    $manifestText = Get-Content -Raw -LiteralPath $manifestPath
+    Assert-True ($manifestText -match '(?m)^AHKFLOW_BACKLOG_ITEM=') 'The manifest must carry AHKFLOW_BACKLOG_ITEM'
+    Assert-Equal '073' (Get-ManifestPort $manifestPath 'AHKFLOW_BACKLOG_ITEM') 'The manifest must record the matching item number.'
+
+    # A second run must not change the recorded number.
+    & $setupScript -RepoRoot $wtPath -Quiet
+    Assert-Equal '073' (Get-ManifestPort $manifestPath 'AHKFLOW_BACKLOG_ITEM') 'A second setup run must keep the recorded item number.'
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- backlog 073: a worktree with no matching backlog item still gets the key, left empty ---
+# An absent key and an empty key mean different things to the plan guard: empty says "nothing to
+# judge", absent would be a worktree the setup script never touched.
+$repo = New-TempMainCheckout
+try {
+    $wtPath = Add-TestWorktree -RepoDir $repo -BranchName 'no-item-here'
+    & $setupScript -RepoRoot $wtPath -Quiet
+
+    $manifestText = Get-Content -Raw -LiteralPath (Join-Path $wtPath 'scripts\.env.worktree')
+    Assert-True ($manifestText -match '(?m)^AHKFLOW_BACKLOG_ITEM=\s*$') 'A worktree with no backlog item records an empty value.'
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- backlog 073 review: filing the item after the worktree exists records its number ---
+# The documented intake order creates the worktree first and files the backlog item inside it, so
+# setup always runs before the item exists. The number therefore has to be recorded when the item
+# is filed. Without that, every normally created worktree keeps the empty value setup wrote and
+# the plan guard has nothing to judge.
+$repo = New-TempMainCheckout
+try {
+    Write-SeedFile (Join-Path $repo 'backlog\000-backlog-item-template.md') @('# 000 - template', '', '- **Stage**: 0-intake')
+    Invoke-TestGit $repo @('add', '-A') | Out-Null
+    Invoke-TestGit $repo @('commit', '-m', 'seed backlog template') | Out-Null
+
+    $wtPath = Add-TestWorktree -RepoDir $repo -BranchName 'late-item'
+    & $setupScript -RepoRoot $wtPath -Quiet
+
+    $manifestPath = Join-Path $wtPath 'scripts\.env.worktree'
+    $beforeText = Get-Content -Raw -LiteralPath $manifestPath
+    Assert-True ($beforeText -match '(?m)^AHKFLOW_BACKLOG_ITEM=\s*$') 'Before the item is filed the recorded value is empty.'
+
+    Invoke-NewBacklogItem -Title 'late item' -BacklogRoot (Join-Path $wtPath 'backlog')
+
+    $created = @(Get-ChildItem -LiteralPath (Join-Path $wtPath 'backlog') -Filter '*-late-item.md' -File)
+    Assert-Equal 1 $created.Count 'new-backlog-item.ps1 wrote exactly one item file.'
+    $expectedNumber = $created[0].BaseName.Substring(0, 3)
+    Assert-Equal $expectedNumber (Get-ManifestPort $manifestPath 'AHKFLOW_BACKLOG_ITEM') `
+        'Filing a backlog item inside a worktree records its number in the manifest.'
+
+    # Filing is the statement "this worktree serves this item", so the newest filing wins. Keeping
+    # the older value is what let a same-slug item in backlog/done bind the worktree to a plan that
+    # was never this worktree's.
+    Invoke-NewBacklogItem -Title 'second item' -BacklogRoot (Join-Path $wtPath 'backlog')
+    $second = @(Get-ChildItem -LiteralPath (Join-Path $wtPath 'backlog') -Filter '*-second-item.md' -File)
+    Assert-Equal 1 $second.Count 'The second filing wrote exactly one item file.'
+    Assert-Equal $second[0].BaseName.Substring(0, 3) (Get-ManifestPort $manifestPath 'AHKFLOW_BACKLOG_ITEM') `
+        'The most recent filing owns the recorded item number.'
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- backlog 073 review: a manifest that cannot be written fails the filing command ---
+# A warning was not enough. An empty recorded value ALLOWS removal, so a manifest another process
+# held turned a silent warning into a worktree the plan guard would never judge.
+$repo = New-TempMainCheckout
+try {
+    Write-SeedFile (Join-Path $repo 'backlog\000-backlog-item-template.md') @('# 000 - template', '', '- **Stage**: 0-intake')
+    Invoke-TestGit $repo @('add', '-A') | Out-Null
+    Invoke-TestGit $repo @('commit', '-m', 'seed backlog template') | Out-Null
+
+    $wtPath = Add-TestWorktree -RepoDir $repo -BranchName 'held-manifest'
+    & $setupScript -RepoRoot $wtPath -Quiet
+
+    $manifestPath = Join-Path $wtPath 'scripts\.env.worktree'
+    $held = [System.IO.File]::Open($manifestPath, 'Open', 'ReadWrite', 'None')
+    try {
+        $exitCode = Invoke-NewBacklogItem -Title 'held manifest' -BacklogRoot (Join-Path $wtPath 'backlog') -AllowFailure
+        Assert-True ($exitCode -ne 0) 'Filing must fail when the item number cannot be recorded.'
+    } finally {
+        $held.Dispose()
+    }
+
+    # The item file is still written. Losing the number is the failure, not losing the item.
+    Assert-Equal 1 (@(Get-ChildItem -LiteralPath (Join-Path $wtPath 'backlog') -Filter '*-held-manifest.md' -File)).Count `
+        'The backlog item file is written even when the manifest update fails.'
+
+    # Once the holder lets go, filing again records the number.
+    Invoke-NewBacklogItem -Title 'retry manifest' -BacklogRoot (Join-Path $wtPath 'backlog')
+    $retry = @(Get-ChildItem -LiteralPath (Join-Path $wtPath 'backlog') -Filter '*-retry-manifest.md' -File)
+    Assert-Equal $retry[0].BaseName.Substring(0, 3) (Get-ManifestPort $manifestPath 'AHKFLOW_BACKLOG_ITEM') `
+        'Filing records the number once the manifest can be written.'
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- backlog 073 review: a finished item with the same title must not bind the worktree ---
+# Creation-time derivation matched the folder slug against backlog/, backlog/done and
+# backlog/blocked. Reusing a title therefore recorded a completed item's number, and the guard
+# then judged that old item's plan instead of this worktree's.
+$repo = New-TempMainCheckout
+try {
+    Write-SeedFile (Join-Path $repo 'backlog\000-backlog-item-template.md') @('# 000 - template', '', '- **Stage**: 0-intake')
+    Write-SeedFile (Join-Path $repo 'backlog\done\050-late-item.md') @('# 050 - late item')
+    Invoke-TestGit $repo @('add', '-A') | Out-Null
+    Invoke-TestGit $repo @('commit', '-m', 'seed a finished item with the same title') | Out-Null
+
+    $wtPath = Add-TestWorktree -RepoDir $repo -BranchName 'late-item'
+    & $setupScript -RepoRoot $wtPath -Quiet
+
+    $manifestPath = Join-Path $wtPath 'scripts\.env.worktree'
+    Assert-True ((Get-Content -Raw -LiteralPath $manifestPath) -match '(?m)^AHKFLOW_BACKLOG_ITEM=\s*$') `
+        'A finished item with the same slug must not be recorded as this worktree''s item.'
+
+    Invoke-NewBacklogItem -Title 'late item' -BacklogRoot (Join-Path $wtPath 'backlog')
+    $created = @(Get-ChildItem -LiteralPath (Join-Path $wtPath 'backlog') -Filter '*-late-item.md' -File)
+    Assert-Equal 1 $created.Count 'The new item was filed in backlog/.'
+    $newNumber = $created[0].BaseName.Substring(0, 3)
+    Assert-True ($newNumber -ne '050') "The new item must not reuse 050, got $newNumber"
+    Assert-Equal $newNumber (Get-ManifestPort $manifestPath 'AHKFLOW_BACKLOG_ITEM') `
+        'The manifest records the number of the item actually filed here.'
+} finally {
+    Remove-TempTree $repo
+}
+
+# An open item with the same slug is a pickup, not a collision: that number is the right one.
+$repo = New-TempMainCheckout
+try {
+    Write-SeedFile (Join-Path $repo 'backlog\051-open-item.md') @('# 051 - open item')
+    Invoke-TestGit $repo @('add', '-A') | Out-Null
+    Invoke-TestGit $repo @('commit', '-m', 'seed an open item') | Out-Null
+
+    $wtPath = Add-TestWorktree -RepoDir $repo -BranchName 'open-item'
+    & $setupScript -RepoRoot $wtPath -Quiet
+    Assert-Equal '051' (Get-ManifestPort (Join-Path $wtPath 'scripts\.env.worktree') 'AHKFLOW_BACKLOG_ITEM') `
+        'Picking up an open item still records its number at creation.'
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- backlog 073 review: setup re-derives a recorded value that is still empty ---
+# Setup runs again on the reuse path. An empty value is not an answer worth keeping when the
+# backlog item has appeared in the meantime.
+$repo = New-TempMainCheckout
+try {
+    $wtPath = Add-TestWorktree -RepoDir $repo -BranchName 'planguard-late'
+    & $setupScript -RepoRoot $wtPath -Quiet
+
+    $manifestPath = Join-Path $wtPath 'scripts\.env.worktree'
+    Assert-True ((Get-Content -Raw -LiteralPath $manifestPath) -match '(?m)^AHKFLOW_BACKLOG_ITEM=\s*$') `
+        'No matching item yet, so the recorded value is empty.'
+
+    Write-SeedFile (Join-Path $repo 'backlog\074-planguard-late.md') @('# 074 - planguard late')
+    & $setupScript -RepoRoot $wtPath -Quiet
+    Assert-Equal '074' (Get-ManifestPort $manifestPath 'AHKFLOW_BACKLOG_ITEM') `
+        'A later setup run fills in a number that was empty before.'
 } finally {
     Remove-TempTree $repo
 }

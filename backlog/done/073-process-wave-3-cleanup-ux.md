@@ -6,7 +6,7 @@
 - **Type**: Process / tooling
 - **Interfaces**: none (scripts)
 - **Difficulty**: complex
-- **Stage**: 3-plan
+- **Stage**: 9-ship
 - **Depends on**: 072-process-wave-2-parity-drift-guard-templates
 
 ## Summary
@@ -22,20 +22,20 @@ that a merged branch never leaves me a popup to dismiss.
 
 ## Acceptance criteria
 
-- [ ] Worktree removal opens no terminal window when WMI startup information is available,
+- [x] Worktree removal opens no terminal window when WMI startup information is available,
       which is every removal on a healthy Windows install. The two degraded paths that can
       still flash a window each log that they took it. See "Criterion 1, and how far it
       goes" below.
-- [ ] The removal log is readable: one line per attempt, the outcome named in plain words.
+- [x] The removal log is readable: one line per attempt, the outcome named in plain words.
       Every path that decides about a worktree writes that line, including a sweep that
       refuses one without ever starting the removal script.
-- [ ] When a removal fails because a process holds the folder, the log names that process.
+- [x] When a removal fails because a process holds the folder, the log names that process.
       Both kinds of holder count: a process with the folder as its current directory, and a
       process with a file open below the folder.
-- [ ] A guard refuses to remove a worktree whose plan was never implemented, and says so.
+- [x] A guard refuses to remove a worktree whose plan was never implemented, and says so.
       A worktree created before this change records no item number, so the guard cannot
       judge it and allows the removal. That exception is named here on purpose.
-- [ ] The merged-cleanup sweep honors `git worktree lock` and skips a locked worktree. The
+- [x] The merged-cleanup sweep honors `git worktree lock` and skips a locked worktree. The
       detached watcher honors it too, including a lock added while it is already waiting.
 
 ## Out of scope

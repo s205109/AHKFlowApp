@@ -22,13 +22,13 @@ finished cleanup does not need a check I have to remember.
 ## Detail
 
 The merged-worktree sweep enumerates `git worktree list`
-(`scripts/cleanup-merged-worktrees.ps1:85`, "    $listLines = & git -C $RepoRoot worktree list --porcelain 2>$null"). A branch whose worktree
+(`scripts/cleanup-merged-worktrees.ps1:94`, "    $listLines = & git -C $RepoRoot worktree list --porcelain 2>$null"). A branch whose worktree
 is already pruned appears nowhere in that list, so the sweep cannot see it.
 
 The watcher prunes the worktree
-(`scripts/remove-worktree-local-dev.ps1:1096`, "    $pruneResult = Invoke-GitCapture @('-C', $mainCheckout, 'worktree', 'prune', '-v')") first and deletes the
-branch (`scripts/remove-worktree-local-dev.ps1:1106`, "        $branchDelete = Invoke-GitCapture @('-C', $mainCheckout, 'branch', '-d', '--', $branchName)") second,
-and logs (`scripts/remove-worktree-local-dev.ps1:1181`, "        Write-DiagnosticLog 'Watcher done (worktree removed; branch preserved).'") when
+(`scripts/remove-worktree-local-dev.ps1:1181`, "    $pruneResult = Invoke-GitCapture @('-C', $mainCheckout, 'worktree', 'prune', '-v')") first and deletes the
+branch (`scripts/remove-worktree-local-dev.ps1:1191`, "        $branchDelete = Invoke-GitCapture @('-C', $mainCheckout, 'branch', '-d', '--', $branchName)") second,
+and logs (`scripts/remove-worktree-local-dev.ps1:1266`, "        Write-DiagnosticLog 'Watcher done (worktree removed; branch preserved).'") when
 it stops in between. That is the exact partial failure the deferred cleanup route exists for, and
 the sweep is blind to it.
 
@@ -61,7 +61,7 @@ also lists every branch freshly cut from `main`.
 - Found while implementing backlog 094, which re-pointed the claim that this item's own work
   later replaced with the command reference in Stage 10
 - Backlog 073 covers cleanup experience
-  (`backlog/073-process-wave-3-cleanup-ux.md:25`, "Worktree removal opens no terminal window when WMI startup information is available,")
+  (`backlog/done/073-process-wave-3-cleanup-ux.md:25`, "Worktree removal opens no terminal window when WMI startup information is available,")
   and does not cover this
 - Spec: none — one report, no design yet
 - Plan: `docs/superpowers/plans/2026-08-19-leftover-branch-after-worktree-gone-plan-099.md`

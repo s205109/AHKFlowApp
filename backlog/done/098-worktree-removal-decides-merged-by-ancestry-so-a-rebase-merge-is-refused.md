@@ -24,11 +24,11 @@ removed, so that the folder list holds live work only.
 ## Detail
 
 The removal script runs `git merge-base --is-ancestor HEAD <base>`
-(`scripts/remove-worktree-local-dev.ps1:839`, "        if (-not (Test-WorktreeMergedIntoMain -WorktreeFull $worktreeFull -BranchName $branchName -BaseRef $baseRef -MainCheckout $mainCheckoutFromGit)) {").
+(`scripts/remove-worktree-local-dev.ps1:879`, "        if (-not (Test-WorktreeMergedIntoMain -WorktreeFull $worktreeFull -BranchName $branchName -BaseRef $baseRef -MainCheckout $mainCheckoutFromGit)) {").
 The sweep asks a different question: reachability plus a ref-log reading of the branch's own work
 (`scripts/worktree-git.common.ps1:868`, "function Test-BranchOwnWorkWasMerged {"), after a
 first filter of `git branch --merged`. That filter is gone now: the shared decision is the only
-gate (`scripts/cleanup-merged-worktrees.ps1:120`, "        if (-not (Test-BranchOwnWorkWasMerged -RepoRoot $RepoRoot -Branch $wt.Branch -MainRef $MainRef -MergedPullRequests $MergedPullRequests)) { continue }").
+gate (`scripts/cleanup-merged-worktrees.ps1:139`, "        if (-not (Test-BranchOwnWorkWasMerged -RepoRoot $RepoRoot -Branch $wt.Branch -MainRef $MainRef -MergedPullRequests $MergedPullRequests)) { continue }").
 
 **Measured, not assumed.** A scratch repository reproduced a GitHub rebase merge: the branch tip
 was replayed onto main with a new committer, so main carries a different SHA for the same patch.
@@ -45,7 +45,7 @@ So the sweep does not list a rebase-merged worktree and hand it to a removal scr
 refuses. Both keep it. The sweep's merge proof needs the branch SHA to be a non-first parent of a
 merge commit on main (`scripts/worktree-git.common.ps1:556`, "    $parentLines = & git -C $RepoRoot rev-list --min-parents=2 --format='%P' $MainRef 2>$null"),
 and a rebase merge writes no merge commit. The sweep's existing rebase case is a **local** rebase
-followed by a merge-commit merge (`tests/WorktreeMergedCleanup.Tests.ps1:472`, "Assert-True (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-rebased') 'A branch rebased before it merged must report merged own work.'").
+followed by a merge-commit merge (`tests/WorktreeMergedCleanup.Tests.ps1:478`, "Assert-True (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-rebased') 'A branch rebased before it merged must report merged own work.'").
 
 The two rules also disagree in the destructive direction. A brand-new branch points at a commit
 the base already has, so ancestry is true and the removal hook deletes a worktree nobody has

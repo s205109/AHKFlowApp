@@ -220,15 +220,25 @@ function Get-ProcessCurrentDirectory {
 # Layer 3. The current-directory holder, read out of each process's PEB. This is the one that
 # finds claude.exe.
 function Get-HolderByCurrentDirectory {
-    param([string] $Prefix)
+    param([string] $Root)
 
     if (-not (Add-HolderCwdType)) { return @() }
+
+    # The folder itself, or anything below it. Matching on the bare root would also match a
+    # sibling that starts with the same text: every worktree lives in one parent folder, so
+    # wt-feature-extra would be reported as holding wt-feature. A process's current directory
+    # may or may not carry a trailing separator, so both readings of the folder itself count.
+    $root = $Root.TrimEnd('\', '/')
+    $prefix = $root + [System.IO.Path]::DirectorySeparatorChar
 
     $found = @()
     foreach ($process in (Get-Process -ErrorAction SilentlyContinue)) {
         $currentDirectory = Get-ProcessCurrentDirectory -ProcessId $process.Id
         if (-not $currentDirectory) { continue }
-        if (-not $currentDirectory.StartsWith($Prefix, [System.StringComparison]::OrdinalIgnoreCase)) { continue }
+        $trimmed = $currentDirectory.TrimEnd('\', '/')
+        $isHolder = [string]::Equals($trimmed, $root, [System.StringComparison]::OrdinalIgnoreCase) -or
+            $currentDirectory.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)
+        if (-not $isHolder) { continue }
 
         $path = ''
         try { $path = $process.Path } catch { $path = '' }
@@ -255,7 +265,7 @@ function Get-WorktreeFolderHolder {
     foreach ($layer in @(
         { Get-HolderByExecutablePath -Prefix $prefix },
         { Get-HolderByOpenFile -Root $full },
-        { Get-HolderByCurrentDirectory -Prefix $full })) {
+        { Get-HolderByCurrentDirectory -Root $full })) {
         try {
             # Keep only real holder records: a layer that failed part-way can still emit
             # something else, and the merge below reads .ProcessId on every item.

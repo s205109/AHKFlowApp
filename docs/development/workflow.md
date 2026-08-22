@@ -602,7 +602,7 @@ Cleanup therefore ends in one of two ways, and the session says which:
    two only if something is left behind.
 
    Memory comes first because the watcher's success path removes both the worktree and the
-   branch (`scripts/remove-worktree-local-dev.ps1:1106`, "        $branchDelete = Invoke-GitCapture @('-C', $mainCheckout, 'branch', '-d', '--', $branchName)"). After a clean run there is no
+   branch (`scripts/remove-worktree-local-dev.ps1:1191`, "        $branchDelete = Invoke-GitCapture @('-C', $mainCheckout, 'branch', '-d', '--', $branchName)"). After a clean run there is no
    worktree, no branch, and no marker, so a later session has nothing to find and nothing to
    act on — which is correct, because nothing is left to do. The leftover check below exists
    for the partial-failure cases only.
@@ -611,9 +611,9 @@ Cleanup therefore ends in one of two ways, and the session says which:
    before and after the checks, and a housekeeping round has no `done/` item at all. The
    durable trigger is the leftover itself — but it must be **either** leftover, not only the
    worktree. The watcher prunes the worktree
-   (`scripts/remove-worktree-local-dev.ps1:1096`, "    $pruneResult = Invoke-GitCapture @('-C', $mainCheckout, 'worktree', 'prune', '-v')") before it deletes
+   (`scripts/remove-worktree-local-dev.ps1:1181`, "    $pruneResult = Invoke-GitCapture @('-C', $mainCheckout, 'worktree', 'prune', '-v')") before it deletes
    the branch, and has a documented outcome that stops in between, logging
-   (`scripts/remove-worktree-local-dev.ps1:1181`, "        Write-DiagnosticLog 'Watcher done (worktree removed; branch preserved).'").
+   (`scripts/remove-worktree-local-dev.ps1:1266`, "        Write-DiagnosticLog 'Watcher done (worktree removed; branch preserved).'").
    Checking the worktree alone would miss exactly that case.
 
    Two leftovers are possible, and one command reports both:
@@ -640,20 +640,20 @@ Cleanup therefore ends in one of two ways, and the session says which:
 Neither route lets a session claim success it did not observe. All three exit conditions
 are checked, never the worktree alone. The removal script has a
 documented outcome that removes the worktree and keeps the branch
-(`scripts/remove-worktree-local-dev.ps1:1181`, "        Write-DiagnosticLog 'Watcher done (worktree removed; branch preserved).'").
+(`scripts/remove-worktree-local-dev.ps1:1266`, "        Write-DiagnosticLog 'Watcher done (worktree removed; branch preserved).'").
 
 Both git checks name the main checkout with `-C`, and the branch check accepts exit code 1
 only. Cleanup deletes the worktree folder, so the session may be left in no repository at
 all. There `git show-ref` exits 128 for every ref, including refs that still exist. Exit 1
 means the branch is absent. Any other non-zero code is a failed check, not a deleted
 branch. The removal script scopes its own check the same way
-(`scripts/remove-worktree-local-dev.ps1:1106`, "        $branchDelete = Invoke-GitCapture @('-C', $mainCheckout, 'branch', '-d', '--', $branchName)").
+(`scripts/remove-worktree-local-dev.ps1:1191`, "        $branchDelete = Invoke-GitCapture @('-C', $mainCheckout, 'branch', '-d', '--', $branchName)").
 
 | Edge | Condition | Target |
 |---|---|---|
 | success | all three confirmed — `git -C <main-checkout> worktree list` shows no entry, `git -C <main-checkout> show-ref --verify --quiet refs/heads/<branch>` exits 1, memory updated | terminal |
 | failure | removal attempt failed — a holder process or a lock; name the holder, follow the removal log's manual guidance, retry | stay |
-| blocked | removal depends on something outside the repository, such as an upstream tooling bug. The work already merged, so the original item stays in `backlog/done/`. File a new item naming the merged PR, the worktree path, the blocker, and what would unblock it, and move it to `backlog/blocked/` — but **file it from the main checkout or a housekeeping round, never inside the worktree being removed**. Writing it there leaves the tree dirty, and committing it moves HEAD off `main`'s ancestry; the removal script rejects both (`scripts/remove-worktree-local-dev.ps1:839`, "        if (-not (Test-WorktreeMergedIntoMain -WorktreeFull $worktreeFull -BranchName $branchName -BaseRef $baseRef -MainCheckout $mainCheckoutFromGit)) {") and (`scripts/remove-worktree-local-dev.ps1:845`, "        if (-not (Test-WorktreeClean -WorktreeFull $worktreeFull)) {"), so filing the blocker in place would itself prevent the removal from ever succeeding | blocked/ |
+| blocked | removal depends on something outside the repository, such as an upstream tooling bug. The work already merged, so the original item stays in `backlog/done/`. File a new item naming the merged PR, the worktree path, the blocker, and what would unblock it, and move it to `backlog/blocked/` — but **file it from the main checkout or a housekeeping round, never inside the worktree being removed**. Writing it there leaves the tree dirty, and committing it moves HEAD off `main`'s ancestry; the removal script rejects both (`scripts/remove-worktree-local-dev.ps1:879`, "        if (-not (Test-WorktreeMergedIntoMain -WorktreeFull $worktreeFull -BranchName $branchName -BaseRef $baseRef -MainCheckout $mainCheckoutFromGit)) {") and (`scripts/remove-worktree-local-dev.ps1:885`, "        if (-not (Test-WorktreeClean -WorktreeFull $worktreeFull)) {"), so filing the blocker in place would itself prevent the removal from ever succeeding | blocked/ |
 | not applicable | cannot occur: Cleanup is entered only after a merge, and a round mid-flight never reaches it | none |
 | resume | re-check all three; worktree present → continue removal; worktree absent but branch still there → delete the branch; both gone but memory not written → update memory; all three done → take the success edge | stay |
 

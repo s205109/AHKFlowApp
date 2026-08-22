@@ -38,6 +38,7 @@ $ComposeProjectKey = "${EnvVarPrefix}COMPOSE_PROJECT"
 # worktree, so variants like "Docker SQL (No Auth)" stay isolated too.
 $DockerSqlStartFlag = 'AHKFLOW_START_DOCKER_SQL'
 $RootKey = "${EnvVarPrefix}ROOT"
+$BacklogItemKey = "${EnvVarPrefix}BACKLOG_ITEM"
 $BackendAppSettingsRelativePath = 'src/Backend/AHKFlowApp.API/appsettings.json'
 $FrontendAppSettingsRelativePath = 'src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/appsettings.json'
 $FrontendDevelopmentConfigRelativePath = 'src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/appsettings.Development.json'
@@ -651,6 +652,50 @@ function Write-BackendWorktreeDockerProfile {
     }
 }
 
+# The backlog item this worktree serves, found once at creation time while both names exist.
+# Returns '' when the worktree was created with -Name, or when no open item matches its slug. The
+# plan guard reads the recorded value rather than re-deriving it later: by removal time the folder
+# may be gone, and the slug match already misses for at least one live worktree.
+#
+# Only backlog/ is searched, never backlog/done or backlog/blocked. A worktree is created either to
+# pick up an open item, whose number this finds, or to file a new one, which does not exist yet and
+# whose number new-backlog-item.ps1 records instead. Reaching into done/ meant that reusing a title
+# recorded a finished item's number, and the guard then judged that old item's plan.
+function Get-WorktreeBacklogItemNumber {
+    param(
+        [Parameter(Mandatory)][string] $WorktreeRoot,
+        [Parameter(Mandatory)][string] $MainCheckoutRoot
+    )
+
+    $leaf = Split-Path -Leaf $WorktreeRoot
+    if (-not $leaf.StartsWith('wt-')) { return '' }
+    $slug = $leaf.Substring(3)
+
+    $directory = Join-Path $MainCheckoutRoot 'backlog'
+    if (-not (Test-Path -LiteralPath $directory)) { return '' }
+    $match = @(Get-ChildItem -LiteralPath $directory -Filter "*-$slug.md" -File -ErrorAction SilentlyContinue)
+    if ($match.Count -eq 1 -and $match[0].BaseName -match '^(?<num>\d{3})-') {
+        return $Matches.num
+    }
+
+    return ''
+}
+
+# Single source of truth, same shape as Resolve-WorktreeDatabaseName: reuse the recorded value;
+# otherwise derive and backfill. An empty recorded value is retried rather than kept, because the
+# usual order writes it: intake creates the worktree before it files the backlog item, so the first
+# run has nothing to match. Re-deriving costs one directory scan and picks the number up later.
+function Resolve-WorktreeBacklogItem {
+    param([string] $Root, [string] $ManifestPath, [string] $MainCheckoutRoot)
+
+    $recorded = [string] (Read-ManifestValues $ManifestPath)[$BacklogItemKey]
+    if ($recorded) { return $recorded }
+
+    $number = Get-WorktreeBacklogItemNumber -WorktreeRoot $Root -MainCheckoutRoot $MainCheckoutRoot
+    Set-ManifestValue $ManifestPath $BacklogItemKey $number
+    return $number
+}
+
 function Write-WorktreeConfig {
     param(
         [string] $Root,
@@ -687,7 +732,8 @@ function Write-Manifest {
         [int] $UiPort,
         [string] $DbName,
         [int] $SqlPort,
-        [string] $ComposeProject
+        [string] $ComposeProject,
+        [string] $BacklogItem
     )
 
     New-Item -ItemType Directory -Path (Split-Path -Parent $Path) -Force | Out-Null
@@ -702,7 +748,8 @@ function Write-Manifest {
         "$DbNameKey=$DbName",
         "$SqlPortKey=$SqlPort",
         "$ComposeProjectKey=$ComposeProject",
-        "$RootKey=$Root"
+        "$RootKey=$Root",
+        "$BacklogItemKey=$BacklogItem"
     )
 
     [System.IO.File]::WriteAllText($Path, ($content -join [Environment]::NewLine) + [Environment]::NewLine, [System.Text.Encoding]::UTF8)
@@ -726,6 +773,7 @@ if ($existingPair) {
     $dbName = Resolve-WorktreeDatabaseName $resolvedRepoRoot $manifestPath $mainCheckoutRoot
     $sqlPort = Resolve-WorktreeSqlPort $resolvedRepoRoot $manifestPath $lockPath
     $composeProject = Resolve-WorktreeComposeProject $resolvedRepoRoot $manifestPath
+    $null = Resolve-WorktreeBacklogItem $resolvedRepoRoot $manifestPath $mainCheckoutRoot
     Write-WorktreeConfig $resolvedRepoRoot ([int] $existingPair.ApiPort) ([int] $existingPair.UiPort) $dbName $mainCheckoutRoot $sqlPort $composeProject
     if (-not $Quiet) {
         Write-Host "Reused worktree ports: API $($existingPair.ApiPort), UI $($existingPair.UiPort)"
@@ -743,10 +791,12 @@ Invoke-WithFileLock $lockPath {
         $dbName = Get-WorktreeDatabaseName $resolvedRepoRoot $mainCheckoutRoot
         $sqlPort = Get-AvailableSqlPort (Get-UsedSqlPorts $resolvedRepoRoot)
         $composeProject = Get-WorktreeComposeProject $resolvedRepoRoot
-        Write-Manifest $manifestPath $resolvedRepoRoot ([int] $pair.ApiPort) ([int] $pair.UiPort) $dbName $sqlPort $composeProject
+        $backlogItem = Get-WorktreeBacklogItemNumber -WorktreeRoot $resolvedRepoRoot -MainCheckoutRoot $mainCheckoutRoot
+        Write-Manifest $manifestPath $resolvedRepoRoot ([int] $pair.ApiPort) ([int] $pair.UiPort) $dbName $sqlPort $composeProject $backlogItem
     } else {
         $dbName = Resolve-WorktreeDatabaseName $resolvedRepoRoot $manifestPath $mainCheckoutRoot
         $composeProject = Resolve-WorktreeComposeProject $resolvedRepoRoot $manifestPath
+        $null = Resolve-WorktreeBacklogItem $resolvedRepoRoot $manifestPath $mainCheckoutRoot
         $recordedSqlPort = Get-ManifestPort (Read-ManifestValues $manifestPath) $SqlPortKey
         if ($recordedSqlPort) {
             $sqlPort = [int] $recordedSqlPort

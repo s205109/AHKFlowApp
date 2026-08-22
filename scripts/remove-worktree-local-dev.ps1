@@ -124,6 +124,46 @@ if (-not (Get-Command Test-BranchOwnWorkWasMerged -ErrorAction SilentlyContinue)
     }
 }
 
+# A guard that cannot run is not a guard that passes. The watcher runs from a copy in %TEMP% where
+# the shared helper does not exist, so this keeps the worktree and says why. The one asymmetry,
+# and it is deliberate: with NO recorded item the fallback still allows. A legacy worktree must not
+# become unremovable just because the watcher lost its helper.
+if (-not (Get-Variable -Name WorktreeBacklogItemUnreadable -Scope Script -ErrorAction SilentlyContinue)) {
+    $WorktreeBacklogItemUnreadable = '<manifest-unreadable>'
+}
+
+if (-not (Get-Command Test-WorktreePlanWasImplemented -ErrorAction SilentlyContinue)) {
+    function Test-WorktreePlanWasImplemented {
+        param([string] $MainCheckout, [string] $ItemNumber, [string] $BaseRef)
+        # An unreadable manifest is checked before the empty case, so a read failure never borrows
+        # the legacy worktree's free pass.
+        if ($ItemNumber -eq $WorktreeBacklogItemUnreadable) {
+            return [pscustomobject]@{ Allow = $false; Reason = 'the worktree manifest could not be read' }
+        }
+        if ([string]::IsNullOrWhiteSpace($ItemNumber)) {
+            return [pscustomobject]@{ Allow = $true; Reason = 'no backlog item is recorded for this worktree' }
+        }
+        return [pscustomobject]@{ Allow = $false; Reason = 'the plan check could not run' }
+    }
+}
+
+if (-not (Get-Command Get-ManifestBacklogItem -ErrorAction SilentlyContinue)) {
+    function Get-ManifestBacklogItem {
+        param([Parameter(Mandatory)][string] $WorktreePath)
+        $manifest = Join-Path $WorktreePath 'scripts\.env.worktree'
+        if (-not (Test-Path -LiteralPath $manifest)) { return '' }
+        try {
+            $lines = @(Get-Content -LiteralPath $manifest -ErrorAction Stop)
+        } catch {
+            return $WorktreeBacklogItemUnreadable
+        }
+        foreach ($line in $lines) {
+            if ($line -match '^\s*AHKFLOW_BACKLOG_ITEM\s*=\s*(?<value>.*)$') { return $Matches.value.Trim() }
+        }
+        return ''
+    }
+}
+
 if (-not (Get-Command Resolve-BaseBranchName -ErrorAction SilentlyContinue)) {
     function Resolve-BaseBranchName {
         param([string] $RepoRoot, [string] $LocalRef = 'main')
@@ -846,6 +886,22 @@ function Invoke-HookMode {
             Write-UnmergedPreserveGuidance -WorktreeFull $worktreeFull -MainCheckout $mainCheckoutFromGit -BranchName $branchName -Reason 'the worktree has uncommitted changes'
             return
         }
+
+        # A merged branch does not prove the work happened: the plan lives in a second private
+        # repository the public branch never carries. Asked last, and handed $baseRef, so it reads
+        # the item from the same base the merge gate just decided against. Reading the working tree
+        # instead would refuse a branch that merged on GitHub while the local checkout is behind.
+        $planVerdict = Test-WorktreePlanWasImplemented -MainCheckout $mainCheckoutFromGit `
+            -ItemNumber (Get-ManifestBacklogItem -WorktreePath $worktreeFull) -BaseRef $baseRef
+        if (-not $planVerdict.Allow) {
+            Write-DiagnosticLog "plan gate: $($planVerdict.Reason)"
+            Write-Outcome 'Kept: the plan was never implemented.'
+            # -NoOutcome: this path already wrote its line, and two lines on one attempt is the
+            # defect this whole split exists to prevent.
+            Write-UnmergedPreserveGuidance -WorktreeFull $worktreeFull -MainCheckout $mainCheckoutFromGit `
+                -BranchName $branchName -Reason $planVerdict.Reason -NoOutcome
+            return
+        }
     }
 
     # --- snapshot watcher script + sidecar params outside the worktree ------
@@ -859,6 +915,19 @@ function Invoke-HookMode {
         Write-DiagnosticLog "Failed to snapshot watcher script: $($_.Exception.Message). Aborting (worktree left intact)."
         Write-Outcome 'Failed: the watcher could not be prepared.'
         return
+    }
+
+    # The reliable logger travels with the watcher. Without it the watcher falls back to a
+    # single-attempt append, and one sweep starts several watchers at once -- exactly the
+    # collision the retrying writer was built for. A copy that fails is not fatal: the inline
+    # fallback still writes, it just cannot retry.
+    try {
+        $logSource = Join-Path $PSScriptRoot 'worktree-log.common.ps1'
+        if (Test-Path -LiteralPath $logSource) {
+            Copy-Item -LiteralPath $logSource -Destination (Join-Path $tempDir 'worktree-log.common.ps1') -Force
+        }
+    } catch {
+        Write-DiagnosticLog "Could not copy the log helper beside the watcher: $($_.Exception.Message). The watcher will append without retrying."
     }
 
     # The holder probe travels with the watcher, so a timed-out removal can still name the
@@ -1048,18 +1117,34 @@ function Invoke-WatcherMode {
             break
         }
 
-        try {
-            [System.IO.Directory]::Move($worktreeFull, $tempName)
+        # `git worktree move`, not [System.IO.Directory]::Move. Git refuses a locked worktree as
+        # part of the operation, so there is no window between checking the lock and acting on it,
+        # and no administrative path to construct -- that name is not always the folder name. It
+        # also updates git's registry, so the later prune only has to clear the deleted entry.
+        $move = Invoke-GitCapture @('-C', $mainCheckout, 'worktree', 'move', $worktreeFull, $tempName)
+        if ($move.ExitCode -eq 0) {
             $renamed = $true
-            Write-DiagnosticLog "Atomic rename succeeded -> '$tempName'. Folder is free; proceeding to delete."
+            Write-DiagnosticLog "git worktree move succeeded -> '$tempName'. Folder is free; proceeding to delete."
             break
-        } catch {
-            $lastError = $_.Exception.Message
+        }
+
+        $lastError = ($move.Lines -join ' ').Trim()
+
+        # A lock is a decision, not a wait. Stop now rather than retrying for the whole timeout.
+        # The wording below is git's, measured on 2.55.0.windows.3, and is not ours to choose:
+        #   fatal: cannot move a locked working tree, lock reason: <reason>
+        #   fatal: cannot move a locked working tree;          (locked with no reason)
+        if ($lastError -match 'cannot move a locked working tree') {
+            $lockReason = if ($lastError -match 'lock reason:\s*(?<reason>.+?)\s+use ') { $Matches.reason } else { '' }
+            Write-DiagnosticLog "git refused the move: $lastError"
+            Write-Outcome ("Kept: the worktree is locked ($(Format-WorktreeLogReason -Text $lockReason)).")
+            Complete-WatcherPreserved -ParamFilePath $ParamFile -WatcherScriptPath $watcherScript
+            return
         }
 
         if ((Get-Date) -ge $nextStatus) {
             $elapsed = [int]((Get-Date) - $deadline.AddSeconds(-$timeout)).TotalSeconds
-            Write-DiagnosticLog "Waiting (${elapsed}s): rename blocked. LastError: $lastError"
+            Write-DiagnosticLog "Waiting (${elapsed}s): move blocked. LastError: $lastError"
             $nextStatus = (Get-Date).AddSeconds(5)
         }
 
