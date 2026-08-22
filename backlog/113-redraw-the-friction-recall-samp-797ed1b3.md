@@ -31,16 +31,29 @@ actually happened, so that the range means what a 95 percent interval means.
 - [ ] The two ranges are recomputed with `Get-RecallInterval -Correct` and republished in that
       file. The correction is valid for the new draw, because that draw is uniform.
 - [ ] The corrected figures reach `backlog/done/072-process-wave-2-parity-drift-guard-templates.md`
-      as a dated addition under `### The withdrawn figures`, never as a substitution. Its
-      `### Measured 2026-08-16` section stays readable as what was measured then.
+      as a dated addition, never as a substitution. Its `### Measured 2026-08-16` section stays
+      readable as what was measured then, and a test pins its two published rows to their exact
+      text.
+      **This criterion was rewritten on 2026-08-22, at Design.** It originally required the
+      addition "under `### The withdrawn figures`". That heading holds a table of figures that
+      were withdrawn as wrong, so a current figure placed under it would read as withdrawn too.
+      The addition goes in a new `### Measured <date>, redrawn against the 2026-08-21 transcript
+      snapshot` section immediately after `### Measured 2026-08-16`, and `### The withdrawn
+      figures` is left alone. The requirement the criterion existed for — dated, additive, never
+      a substitution — is unchanged and is now also a test.
 - [ ] The paragraph "The committed sample was drawn the old way, and its intervals are
       approximate" is removed, because after the redraw it no longer applies.
 - [ ] The window question is decided and the decision is written down: a rolling window that
       retention always covers, a longer `cleanupPeriodDays` on the measuring machine, or a
       committed artifact that survives deletion. Whichever is chosen, the reason the other two
       were not is recorded.
-- [ ] `tests/FrictionRecallSample.Tests.ps1` asserts the new published ranges, and its case that
+- [ ] `tests/FrictionRecallSample.Tests.ps1` asserts the new published ranges, computed with
+      `-Correct`, and asserts the companion Wilson value appears exactly once. Its case that
       forbids `-Correct` in `scripts/` is updated or removed with a stated reason.
+- [ ] The test also pins what the design leaves otherwise unguarded: both precision figures
+      against the manifests, the sentence attributing the ask precision change to deletion, all
+      four archived 2026-08-16 records, and `-ProjectRoot` proven end to end by running the
+      sampler as a script against a fixture transcript directory.
 
 ## Out of scope
 
