@@ -33,8 +33,11 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'worktree-log.common.ps1')
 . (Join-Path $PSScriptRoot 'worktree-powershell.common.ps1')
 
-# Parses `git worktree list --porcelain` into { Path; Branch } records. Branch is the
+# Parses `git worktree list --porcelain` into { Path; Branch; LockReason } records. Branch is the
 # short name for a normal worktree, and $null for a detached-HEAD or bare entry.
+#
+# LockReason is $null when there is no 'locked' line, '' for a bare 'locked', and the text after
+# 'locked ' otherwise. The three states are different: '' still means locked.
 function ConvertFrom-WorktreePorcelain {
     param([string[]] $Lines)
 
@@ -43,9 +46,15 @@ function ConvertFrom-WorktreePorcelain {
     foreach ($line in $Lines) {
         if ($line -like 'worktree *') {
             if ($current) { $worktrees += $current }
-            $current = [pscustomobject]@{ Path = $line.Substring('worktree '.Length); Branch = $null }
+            $current = [pscustomobject]@{
+                Path = $line.Substring('worktree '.Length); Branch = $null; LockReason = $null
+            }
         } elseif ($current -and ($line -like 'branch refs/heads/*')) {
             $current.Branch = $line.Substring('branch refs/heads/'.Length)
+        } elseif ($current -and ($line -eq 'locked')) {
+            $current.LockReason = ''
+        } elseif ($current -and ($line -like 'locked *')) {
+            $current.LockReason = $line.Substring('locked '.Length)
         }
     }
     if ($current) { $worktrees += $current }
@@ -104,6 +113,16 @@ function Get-EligibleMergedWorktrees {
             continue
         }
         if (-not $wt.Branch) { continue }
+
+        # A human locked this worktree on purpose. Nothing here overrides that, and no environment
+        # variable clears it -- git itself demands `-f -f`.
+        if ($null -ne $wt.LockReason) {
+            $lockReason = if ($wt.LockReason) { $wt.LockReason } else { 'no reason given' }
+            Write-Stderr "cleanup: skipping locked worktree '$wtFull' ($lockReason)."
+            Write-SweepOutcome -RepoRoot $RepoRoot -WorktreePath $wtFull `
+                -Message "Kept: the worktree is locked ($(Format-WorktreeLogReason -Text $lockReason))."
+            continue
+        }
         # Belt-and-suspenders: a branch is always "merged" into itself, so the main-ref
         # worktree would otherwise pass the merged check below. The repoRootFull compare
         # above only excludes it when $RepoRoot happens to resolve to that exact worktree
@@ -118,6 +137,21 @@ function Get-EligibleMergedWorktrees {
         # eligibility, ahead of every setting -- means no flag, env override, or config value can
         # remove one of those, and report-only mode never lists one either.
         if (-not (Test-BranchOwnWorkWasMerged -RepoRoot $RepoRoot -Branch $wt.Branch -MainRef $MainRef -MergedPullRequests $MergedPullRequests)) { continue }
+
+        # A merged branch does not prove the work happened. Plans live in a second private
+        # repository the public branch never carries, so a branch can merge holding only its
+        # backlog stage stamps while no code was ever written.
+        # -BaseRef is the same base the merged check just used, so the item is read from what
+        # merged rather than from whatever a local pull last left on disk.
+        $planVerdict = Test-WorktreePlanWasImplemented -MainCheckout $RepoRoot `
+            -ItemNumber (Get-ManifestBacklogItem -WorktreePath $wtFull) -BaseRef $MainRef
+        if (-not $planVerdict.Allow) {
+            Write-Stderr "cleanup: keeping '$wtFull' because $($planVerdict.Reason)."
+            # The sweep never hands this one over, so the sweep owns its outcome line.
+            Write-SweepOutcome -RepoRoot $RepoRoot -WorktreePath $wtFull `
+                -Message 'Kept: the plan was never implemented.'
+            continue
+        }
 
         $status = & git -C $wtFull status --porcelain 2>$null
         if ($LASTEXITCODE -ne 0) {
@@ -318,6 +352,21 @@ function Set-CleanupAnswer {
 # Spawns remove-worktree-local-dev.ps1 (Hook mode) for one worktree. Empty stdin is
 # piped in: that script's hook path does an unbounded [Console]::In.ReadToEnd(), which
 # would hang if THIS run's own stdin is redirected (agent/CI) and left open.
+# The sweep writes the outcome line only for a worktree it decides about itself and never hands
+# over. Once remove-worktree-local-dev.ps1 has started, that script owns the line, and a second
+# writer here would put two lines on one attempt.
+function Write-SweepOutcome {
+    param(
+        [Parameter(Mandatory)][string] $RepoRoot,
+        [Parameter(Mandatory)][string] $WorktreePath,
+        [Parameter(Mandatory)][string] $Message
+    )
+
+    $logPath = Join-Path $RepoRoot '.claude\worktrees\worktree-removal.log'
+    $leaf = Split-Path -Leaf $WorktreePath
+    Write-WorktreeLog -LogPath $logPath -Worktree $leaf -Message $Message
+}
+
 function Invoke-WorktreeRemoval {
     param(
         [Parameter(Mandatory)][string] $RepoRoot,
@@ -328,6 +377,7 @@ function Invoke-WorktreeRemoval {
     $removeScript = Join-Path $RepoRoot 'scripts\remove-worktree-local-dev.ps1'
     if (-not (Test-Path -LiteralPath $removeScript)) {
         Write-Stderr "cleanup: remove-worktree-local-dev.ps1 not found; cannot remove '$WorktreePath'."
+        Write-SweepOutcome -RepoRoot $RepoRoot -WorktreePath $WorktreePath -Message 'Failed: the removal script could not be found.'
         return
     }
 
@@ -347,7 +397,24 @@ function Invoke-WorktreeRemoval {
         }
     } catch {
         Write-Stderr "cleanup: removal of '$WorktreePath' failed: $($_.Exception.Message)"
+        Write-SweepOutcome -RepoRoot $RepoRoot -WorktreePath $WorktreePath -Message 'Failed: the removal script could not be started.'
     }
+}
+
+# The worktrees a human locked. Read on its own rather than returned by Get-EligibleMergedWorktrees,
+# because a locked worktree is by definition not eligible and that function's contract is the list
+# of worktrees the sweep may act on.
+function Get-LockedWorktrees {
+    param([Parameter(Mandatory)][string] $RepoRoot)
+
+    $listLines = & git -C $RepoRoot worktree list --porcelain 2>$null
+    if ($LASTEXITCODE -ne 0) { return , @() }
+
+    $locked = @()
+    foreach ($wt in (ConvertFrom-WorktreePorcelain $listLines)) {
+        if ($wt.Path -and $null -ne $wt.LockReason) { $locked += $wt }
+    }
+    return , $locked
 }
 
 # Drives the decision matrix through Resolve-CleanupDecision. Detection/removal failures
@@ -367,6 +434,13 @@ function Invoke-MergedWorktreeCleanup {
     $eligible = Get-EligibleMergedWorktrees -RepoRoot $RepoRoot -MainRef $MainRef -ExcludePath $ExcludePath -MergedPullRequests $MergedPullRequests
     foreach ($wt in $eligible) {
         Write-Stderr "cleanup: eligible merged worktree: $($wt.Path) [$($wt.Branch)]"
+    }
+
+    # Reported, marked, and never acted on. Hiding a locked worktree would look like the sweep
+    # never noticed it, and send a reader hunting a bug that is not there.
+    foreach ($locked in (Get-LockedWorktrees -RepoRoot $RepoRoot)) {
+        $lockReason = if ($locked.LockReason) { $locked.LockReason } else { 'no reason given' }
+        Write-Stderr "  $($locked.Path)  [locked - skipped: $lockReason]"
     }
 
     # The other leftover, reported by the same run. It comes before the early return below, because
@@ -420,10 +494,14 @@ function Invoke-MergedWorktreeCleanup {
 
     # Reached only for Clean or an accepted Prompt.
     $removalLog = Join-Path $RepoRoot '.claude\worktrees\worktree-removal.log'
+    $diagnosticsLog = Get-WorktreeDiagnosticsPath -OutcomeLogPath $removalLog
     foreach ($wt in $eligible) {
         Write-Stderr "cleanup: removing merged worktree: $($wt.Path) [$($wt.Branch)]"
+        # Diagnostics, not an outcome. The watcher this hands over to writes "Removed." or
+        # "Failed: ..." for the same attempt, and two outcome lines on one attempt is the defect
+        # the two-file split exists to prevent.
         try {
-            Write-WorktreeLog -LogPath $removalLog -Worktree (Split-Path -Leaf $wt.Path) -Message "Merged-cleanup requested removal (branch $($wt.Branch))."
+            Write-WorktreeDiagnostic -LogPath $diagnosticsLog -Worktree (Split-Path -Leaf $wt.Path) -Message "Merged-cleanup requested removal (branch $($wt.Branch))."
         } catch { }
         Invoke-WorktreeRemoval -RepoRoot $RepoRoot -WorktreePath $wt.Path -MainRef $MainRef
     }

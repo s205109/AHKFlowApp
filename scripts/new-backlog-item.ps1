@@ -24,6 +24,8 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 . (Join-Path $PSScriptRoot 'backlog.common.ps1')
+# Set-ManifestBacklogItem lives beside Get-ManifestBacklogItem, the reader the plan guard uses.
+. (Join-Path $PSScriptRoot 'worktree-git.common.ps1')
 
 $templatePath = Join-Path $BacklogRoot '000-backlog-item-template.md'
 if (-not (Test-Path -LiteralPath $templatePath)) {
@@ -45,3 +47,23 @@ $content = ($templateLines -join "`n") + "`n"
 New-BacklogFile -Path $targetPath -Content $content
 
 Write-Host "Created $targetPath"
+
+# Intake creates the worktree first and files the item inside it, so setup-worktree-local-dev.ps1
+# always ran before this file existed and could not record a number. The plan guard reads that
+# number at removal time, so it has to be written here or no normal worktree ever gets one.
+#
+# The newest filing wins. Keeping an older value is what let a finished item with the same title
+# bind this worktree to a plan that was never its own.
+$worktreeRoot = Split-Path -Parent $BacklogRoot
+if (Test-Path -LiteralPath (Join-Path $worktreeRoot 'scripts\.env.worktree')) {
+    if (Set-ManifestBacklogItem -WorktreePath $worktreeRoot -ItemNumber $number) {
+        Write-Host "Recorded backlog item $number for the worktree at $worktreeRoot"
+    } else {
+        # Not a warning. An unrecorded number reads as empty at removal time, and empty ALLOWS
+        # removal, so a silent failure here is the plan guard quietly switching itself off for
+        # this worktree. The item file above is written and kept; only the filing command fails.
+        throw ("Created $targetPath, but could not record item $number in " +
+            "$worktreeRoot\scripts\.env.worktree. Close whatever holds that file and run this again, " +
+            'or the worktree cleanup guard will never check this item''s plan.')
+    }
+}

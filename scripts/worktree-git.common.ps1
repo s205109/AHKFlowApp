@@ -943,3 +943,298 @@ function Test-BranchOwnWorkWasMerged {
 
     return (Test-StrandedWorkWasSuperseded -RepoRoot $RepoRoot -Entries $facts.Entries -Stranded $stranded)
 }
+
+# Returned when the manifest is there but cannot be read, usually because another process holds
+# it. This is NOT the same answer as empty: empty means "no item to judge" and allows removal,
+# so a read failure that returned empty would let the guard pass without ever checking a plan.
+$WorktreeBacklogItemUnreadable = '<manifest-unreadable>'
+
+# The backlog item a worktree records for itself. setup-worktree-local-dev.ps1 writes the key at
+# creation; a worktree made before that key existed has no manifest entry and reads as empty,
+# which Test-WorktreePlanWasImplemented treats as "nothing to judge".
+function Get-ManifestBacklogItem {
+    param([Parameter(Mandatory)][string] $WorktreePath)
+
+    $manifest = Join-Path $WorktreePath 'scripts\.env.worktree'
+    if (-not (Test-Path -LiteralPath $manifest)) { return '' }
+
+    try {
+        $lines = @(Get-Content -LiteralPath $manifest -ErrorAction Stop)
+    } catch {
+        return $WorktreeBacklogItemUnreadable
+    }
+
+    foreach ($line in $lines) {
+        if ($line -match '^\s*AHKFLOW_BACKLOG_ITEM\s*=\s*(?<value>.*)$') { return $Matches.value.Trim() }
+    }
+    return ''
+}
+
+$WorktreeManifestWriteAttempts = 12
+$WorktreeManifestWriteDelayMs = 250
+
+# Records which backlog item a worktree serves. Returns $true when the value is on disk.
+#
+# The read and the write happen through one exclusive handle, so a reader-then-writer pair cannot
+# lose an edit made in between, and a second writer waits instead of overwriting a stale snapshot.
+# An editor or a scanner holding the file is normal and passes, which is why this retries. It
+# returns $false rather than throwing, and the caller decides: for the plan guard, a number that
+# never reached the manifest reads as empty, and empty ALLOWS removal.
+function Set-ManifestBacklogItem {
+    param(
+        [Parameter(Mandatory)][string] $WorktreePath,
+        [Parameter(Mandatory)][string] $ItemNumber
+    )
+
+    $manifest = Join-Path $WorktreePath 'scripts\.env.worktree'
+    if (-not (Test-Path -LiteralPath $manifest)) { return $false }
+
+    $key = 'AHKFLOW_BACKLOG_ITEM'
+    $encoding = New-Object System.Text.UTF8Encoding($false)
+
+    for ($attempt = 1; $attempt -le $WorktreeManifestWriteAttempts; $attempt++) {
+        $stream = $null
+        try {
+            $stream = [System.IO.File]::Open($manifest, 'Open', 'ReadWrite', 'None')
+
+            $buffer = New-Object byte[] $stream.Length
+            $read = 0
+            while ($read -lt $buffer.Length) {
+                $got = $stream.Read($buffer, $read, $buffer.Length - $read)
+                if ($got -le 0) { break }
+                $read += $got
+            }
+            $existing = $encoding.GetString($buffer, 0, $read)
+
+            $lines = @($existing -split "`r?`n")
+            # A trailing newline leaves one empty element; dropping it keeps the file from growing
+            # a blank line on every write.
+            if ($lines.Count -gt 0 -and $lines[-1] -eq '') { $lines = $lines[0..($lines.Count - 2)] }
+
+            $updated = @()
+            $replaced = $false
+            foreach ($line in $lines) {
+                if ($line -match "^\s*$key\s*=") { $updated += "$key=$ItemNumber"; $replaced = $true }
+                else { $updated += $line }
+            }
+            if (-not $replaced) { $updated += "$key=$ItemNumber" }
+
+            $bytes = $encoding.GetBytes(($updated -join [Environment]::NewLine) + [Environment]::NewLine)
+            $stream.Position = 0
+            $stream.Write($bytes, 0, $bytes.Length)
+            $stream.SetLength($bytes.Length)
+            $stream.Flush()
+            return $true
+        } catch {
+            if ($attempt -eq $WorktreeManifestWriteAttempts) { return $false }
+            Start-Sleep -Milliseconds $WorktreeManifestWriteDelayMs
+        } finally {
+            if ($stream) { $stream.Dispose() }
+        }
+    }
+
+    return $false
+}
+
+# The plans folder is the only place a "- Plan:" bullet may point at. The pointer comes off a
+# markdown bullet that nothing validates, and the guard reads whatever it names. Almost any other
+# file holds no unticked step, which the guard would read as "implemented" and allow the removal.
+$WorktreePlansFolder = 'docs/superpowers/plans'
+
+# The path out of a "- Plan:" bullet, or '' when the bullet does not name a plan.
+# scripts/backlog.common.ps1 holds the canonical rule that CI enforces on new items; it demands
+# backticks, which older items do not all have (backlog/done/104 writes the path bare). So this
+# accepts an optional full stop and optional backticks, and is strict about everything else:
+# the folder prefix, the .md extension, one path segment, and no traversal.
+function Get-BacklogPlanRelativePath {
+    param([Parameter(Mandatory)][string] $BulletRest)
+
+    $value = $BulletRest.Trim()
+    if ($value.EndsWith('.') -and $value.Length -gt 1) { $value = $value.Substring(0, $value.Length - 1) }
+    $value = $value.Trim([char] 0x60).Trim()
+
+    if ($value -notmatch ('^' + [regex]::Escape($WorktreePlansFolder) + '/[^/\\]+\.md$')) { return '' }
+    if ($value -match '\.\.') { return '' }
+    return $value
+}
+
+# The resolved plan file, or '' when the pointer escapes the plans folder. Get-BacklogPlanRelativePath
+# already rejects traversal in the text; this re-checks after the path is resolved, because a
+# symlink or a short name can still land somewhere else.
+function Resolve-BacklogPlanPath {
+    param(
+        [Parameter(Mandatory)][string] $MainCheckout,
+        [Parameter(Mandatory)][string] $PlanRelative
+    )
+
+    $plansRoot = Join-Path $MainCheckout ($WorktreePlansFolder -replace '/', '\')
+    $candidate = Join-Path $MainCheckout ($PlanRelative -replace '/', '\')
+    if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) { return '' }
+
+    try {
+        $fullPlansRoot = (Resolve-Path -LiteralPath $plansRoot -ErrorAction Stop).Path.TrimEnd('\', '/')
+        $fullCandidate = (Resolve-Path -LiteralPath $candidate -ErrorAction Stop).Path
+    } catch {
+        return ''
+    }
+
+    $boundary = $fullPlansRoot + [System.IO.Path]::DirectorySeparatorChar
+    if (-not $fullCandidate.StartsWith($boundary, [System.StringComparison]::OrdinalIgnoreCase)) { return '' }
+    return $fullCandidate
+}
+
+# The lines of a backlog item, read from a git ref rather than from disk. The merge gate decides
+# against the resolved base, so the plan gate must read the same base: an item filed on the branch
+# and merged on GitHub lives in that ref long before a local pull puts it on disk.
+#
+# Returns Status plus Lines. 'found' means exactly one item and its content. 'absent' means the ref
+# is readable and does not carry the item. 'unusable' means the ref could not be resolved, git
+# failed, or more than one file claims the number. The caller must not treat any of the three as a
+# reason to read the working tree instead: a base was supplied because the base is the authority.
+function Get-BacklogItemLinesFromRef {
+    param(
+        [Parameter(Mandatory)][string] $MainCheckout,
+        [Parameter(Mandatory)][string] $BaseRef,
+        [Parameter(Mandatory)][string] $ItemNumber
+    )
+
+    # Pin the base to one commit first. Without this, a ref that does not exist and a ref that
+    # simply lacks the item both arrive as an empty listing, and they are not the same answer.
+    $sha = (& git -C $MainCheckout rev-parse --verify --quiet "$BaseRef^{commit}" 2>$null)
+    if ($LASTEXITCODE -ne 0 -or -not $sha) {
+        return [pscustomobject]@{ Status = 'unusable'; Lines = @(); Detail = 'could not be resolved' }
+    }
+    $sha = ([string] $sha).Trim()
+
+    $listed = & git -C $MainCheckout ls-tree -r --name-only $sha -- backlog 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        return [pscustomobject]@{ Status = 'unusable'; Lines = @(); Detail = 'could not be listed' }
+    }
+
+    $pattern = '^backlog/(done/|blocked/)?' + [regex]::Escape($ItemNumber) + '-[^/]*\.md$'
+    $matched = @(@($listed) | Where-Object { $_ -match $pattern })
+    if ($matched.Count -eq 0) {
+        return [pscustomobject]@{ Status = 'absent'; Lines = @(); Detail = 'does not carry the item' }
+    }
+    if ($matched.Count -gt 1) {
+        return [pscustomobject]@{ Status = 'unusable'; Lines = @(); Detail = "carries $($matched.Count) files for the item" }
+    }
+
+    $content = & git -C $MainCheckout show "$($sha):$($matched[0])" 2>$null
+    if ($LASTEXITCODE -ne 0 -or $null -eq $content) {
+        return [pscustomobject]@{ Status = 'unusable'; Lines = @(); Detail = 'holds an item that could not be read' }
+    }
+    return [pscustomobject]@{ Status = 'found'; Lines = @($content); Detail = '' }
+}
+
+# Answers whether a worktree's plan was ever implemented, which is a different question from
+# whether its branch merged. Plans live in docs/superpowers, a second private repository that the
+# public branch never carries, so a branch can merge holding only its backlog stage stamps while
+# the code work never happened.
+#
+# "Never implemented" is the literal reading: NO step ticked. A plan with some steps ticked and
+# some not was implemented, and this says nothing about it. Refusing on any unticked step would
+# fire on nearly every worktree, because plans routinely keep unticked steps after the work
+# merged, and a guard that always fires gets ignored.
+#
+# Everything is read from the main checkout. By the time the watcher asks, the worktree folder may
+# already be renamed or deleted.
+function Test-WorktreePlanWasImplemented {
+    param(
+        [Parameter(Mandatory)][string] $MainCheckout,
+        [string] $ItemNumber,
+        [string] $BaseRef
+    )
+
+    # A manifest that is there but could not be read is not a worktree with nothing to judge. The
+    # guard has no answer, and a guard with no answer refuses.
+    if ($ItemNumber -eq $WorktreeBacklogItemUnreadable) {
+        return [pscustomobject]@{ Allow = $false; Reason = 'the worktree manifest could not be read' }
+    }
+
+    # No recorded number means a worktree created with -Name, or one created before the manifest
+    # carried the key. Nothing can be judged, so nothing is refused.
+    if ([string]::IsNullOrWhiteSpace($ItemNumber)) {
+        return [pscustomobject]@{ Allow = $true; Reason = 'no backlog item is recorded for this worktree' }
+    }
+
+    # A supplied base is the authority, and it decides alone. Falling back to the working tree when
+    # the base cannot answer throws away the reason the base was resolved: a stale local item saying
+    # "Plan: none" would then allow the very removal this guard exists to stop. So the base answers
+    # or the worktree is kept. The working tree is read only when no base was supplied at all.
+    $itemLines = $null
+    if ($BaseRef) {
+        $fromRef = Get-BacklogItemLinesFromRef -MainCheckout $MainCheckout -BaseRef $BaseRef -ItemNumber $ItemNumber
+        if ($fromRef.Status -ne 'found') {
+            $wording = if ($fromRef.Status -eq 'absent') { "backlog item $ItemNumber is not in '$BaseRef'" }
+                       else { "the base '$BaseRef' $($fromRef.Detail)" }
+            return [pscustomobject]@{ Allow = $false; Reason = $wording }
+        }
+        $itemLines = $fromRef.Lines
+    }
+
+    if ($null -eq $itemLines) {
+        $itemPath = $null
+        foreach ($folder in @('backlog', 'backlog\done', 'backlog\blocked')) {
+            $directory = Join-Path $MainCheckout $folder
+            if (-not (Test-Path -LiteralPath $directory)) { continue }
+            $match = @(Get-ChildItem -LiteralPath $directory -Filter "$ItemNumber-*.md" -File -ErrorAction SilentlyContinue)
+            if ($match.Count -eq 1) { $itemPath = $match[0].FullName; break }
+        }
+
+        if (-not $itemPath) {
+            return [pscustomobject]@{ Allow = $false; Reason = "backlog item $ItemNumber could not be found" }
+        }
+
+        try {
+            $itemLines = @(Get-Content -LiteralPath $itemPath -ErrorAction Stop)
+        } catch {
+            return [pscustomobject]@{ Allow = $false; Reason = "backlog item $ItemNumber could not be read" }
+        }
+    }
+
+    $planBullet = $itemLines | Where-Object { $_ -match '^\s*-\s*Plan:\s*(?<rest>.+)$' } | Select-Object -First 1
+    if (-not $planBullet) {
+        return [pscustomobject]@{ Allow = $true; Reason = "backlog item $ItemNumber names no plan" }
+    }
+
+    $null = $planBullet -match '^\s*-\s*Plan:\s*(?<rest>.+)$'
+    $rest = $Matches.rest.Trim()
+    if ($rest -match '^none\b') {
+        return [pscustomobject]@{ Allow = $true; Reason = "backlog item $ItemNumber states it has no plan" }
+    }
+
+    # Both forms exist in the backlog today: with backticks and without, and with or without a
+    # closing full stop. Anything that is not a single file under the plans folder is refused
+    # rather than read, because an ordinary file has no unticked step and would read as done.
+    $planRelative = Get-BacklogPlanRelativePath -BulletRest $rest
+    if (-not $planRelative) {
+        return [pscustomobject]@{
+            Allow = $false
+            Reason = "backlog item $ItemNumber names a plan outside $WorktreePlansFolder"
+        }
+    }
+
+    $planPath = Resolve-BacklogPlanPath -MainCheckout $MainCheckout -PlanRelative $planRelative
+    if (-not $planPath) {
+        return [pscustomobject]@{ Allow = $false; Reason = "the plan for item $ItemNumber could not be read" }
+    }
+
+    try {
+        $planText = Get-Content -Raw -LiteralPath $planPath -ErrorAction Stop
+    } catch {
+        return [pscustomobject]@{ Allow = $false; Reason = "the plan for item $ItemNumber could not be read" }
+    }
+
+    $ticked = [regex]::Matches($planText, '(?m)^\s*-\s*\[x\]', 'IgnoreCase').Count
+    $unticked = [regex]::Matches($planText, '(?m)^\s*-\s*\[ \]').Count
+
+    if ($unticked -gt 0 -and $ticked -eq 0) {
+        return [pscustomobject]@{
+            Allow = $false
+            Reason = "the plan for item $ItemNumber was never implemented ($unticked steps, none ticked)"
+        }
+    }
+
+    return [pscustomobject]@{ Allow = $true; Reason = "the plan for item $ItemNumber has $ticked ticked steps" }
+}

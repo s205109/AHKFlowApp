@@ -209,6 +209,14 @@ _Avoid_: check, gate, hook, protection
 One interpretation of a command string under one shell's quoting rules. Every command has a bash Reading and a PowerShell Reading, and the Guard keeps the worst decision either one produces.
 _Avoid_: shell mode, parse, pass, interpretation
 
+**Ambiguous Reading**:
+A Reading that ended with a quote or an escape left open, or with a heredoc or here-string left incomplete, so no part of the command can be trusted. The Guard refuses the whole command.
+_Avoid_: ambiguous parse, unparseable command, bad quoting
+
+**Policy layer**:
+One of the Guard's three decision stages, in the order they are consulted: safety, location, write. Each one is consulted once per Reading, and the Guard may stop at the first layer that does not allow the command.
+_Avoid_: rule, stage, tier, pass
+
 **Check**:
 A script that compares two records which must agree, and fails a run when they do not. Each Check reports one kind of disagreement.
 _Avoid_: guard, gate, validator, linter
@@ -220,3 +228,15 @@ _Avoid_: check, guard, pipeline, CI
 **Merge proof**:
 The evidence that a branch's own work reached the base, which is what lets a worktree be removed. Local git proves it when the branch SHA is a non-first parent of a merge commit on the base. A rebase merge leaves no such commit, so the proof then comes from a merged pull request whose head SHA the branch really pointed at.
 _Avoid_: merged check, merge test, ancestry
+
+**Removal attempt**:
+One decision about one worktree, from the moment something asks for its removal to the moment the outcome is known. Each Removal attempt writes exactly one line to the removal log, whether the worktree went away or stayed.
+_Avoid_: removal run, cleanup event, removal job
+
+**Holder process**:
+A process that stops a worktree folder from being renamed, which is what a removal must do first. There are two kinds, and finding one kind never finds the other: a process with the folder as its current directory, and a process with a file open below the folder.
+_Avoid_: locking process, blocker, owner
+
+**Locked worktree**:
+A worktree a human marked with `git worktree lock`. Every removal path leaves it alone, and no environment variable clears it. This is not the folder lock a Holder process causes; that one is nobody's decision.
+_Avoid_: pinned worktree, protected worktree, held worktree

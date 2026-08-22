@@ -269,6 +269,35 @@ finally {
     Remove-Item -LiteralPath $temp -Recurse -Force -ErrorAction SilentlyContinue
 }
 
+# --- The outcome matcher accepts both log shapes --------------------------------
+# Backlog 073 split the removal log. The file now holds old-shape lines before that change and
+# new-shape lines after it, and this script has to read both.
+#
+# The check calls the measurement script's own rule instead of repeating its regexes. Two copies
+# of one rule is how this metric went wrong before.
+#
+# Dot-sourced here, after every Invoke-Suite call above, so the script-scoped state this sets
+# cannot reach a run of either script.
+. (Join-Path $repoRoot 'scripts/measure-process-friction.ps1') -AsModule
+
+function Test-CleanupOutcomeLine {
+    param([string] $Line)
+    return (@(Get-CleanupEventLine -Text $Line)).Count -eq 1
+}
+
+# Both shapes must match: the log holds old-style lines before the split and new-style after it.
+$oldLine = '2026-08-21 12:03:03  wt-probe  Watcher started. PID=3744'
+$newRemoved = '2026-08-21 12:03:03  wt-probe  Removed.'
+$newKept = '2026-08-21 12:03:03  wt-probe  Kept: the worktree is locked (held by an agent).'
+$newFailed = '2026-08-21 12:03:03  wt-probe  Failed: the main checkout could not be resolved.'
+
+foreach ($line in @($oldLine, $newRemoved, $newKept, $newFailed)) {
+    Assert-True (Test-CleanupOutcomeLine -Line $line) "Outcome matcher must accept: $line"
+}
+
+$notAnOutcome = '2026-08-21 12:03:03  wt-probe  DatabaseName=AHKFlowApp_probe'
+Assert-True (-not (Test-CleanupOutcomeLine -Line $notAnOutcome)) 'A diagnostic line is not an outcome'
+
 # --- Report ---
 
 if ($failures.Count -gt 0) {

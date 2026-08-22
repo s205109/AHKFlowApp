@@ -37,7 +37,7 @@ Each of those three words carries weight:
 
 - **Log line.** Every cleanup outcome reaches a transcript as a line written by
   `Write-WorktreeLog`, which stamps it `yyyy-MM-dd HH:mm:ss  <worktree>  <message>`
-  (`scripts/worktree-log.common.ps1:22`, "    $line = '{0}  {1}  {2}' -f $stamp, $Worktree, $Message").
+  (`scripts/worktree-log.common.ps1:92`, "    return '{0}  {1}  {2}' -f $stamp, $Worktree, $single").
   A line counts when it has that shape and its message starts with something a cleanup script
   writes. The shape rule is
   (`scripts/measure-process-friction.ps1:100`, "$script:CleanupLogLinePattern = ")
@@ -66,7 +66,7 @@ moment somebody looked. Treating one route as a real event and the other as talk
 event would draw a line where the data has none.
 
 `Get-CleanupEventLine`
-(`scripts/measure-process-friction.ps1:394`, "function Get-CleanupEventLine {")
+(`scripts/measure-process-friction.ps1:401`, "function Get-CleanupEventLine {")
 therefore counts both, and that is deliberate rather than a defect to patch.
 
 ## 3. The route label that is worth keeping
@@ -84,7 +84,7 @@ to both is a tool result:
 The precedence is
 (`scripts/label-cleanup-events.ps1:218`, "function Get-RecordRoute {"),
 and the second rule is the metric's own human-turn rule, called rather than copied
-(`scripts/measure-process-friction.ps1:174`, "function Test-HumanTurn {"),
+(`scripts/measure-process-friction.ps1:181`, "function Test-HumanTurn {"),
 so the two agree by construction. Because the rule is mechanical,
 `scripts/label-cleanup-events.ps1` computes the label instead of a person judging it.
 
@@ -93,7 +93,7 @@ unresolved row is a row nobody labelled, and `tests/CleanupEventLabels.Tests.ps1
 
 A row's `Key` is the identity the metric wrote for its record: `msg:<message.id>` when the
 record carries a message id, `uuid:<uuid>` otherwise
-(`scripts/measure-process-friction.ps1:258`, "function Get-MessageKey {").
+(`scripts/measure-process-friction.ps1:265`, "function Get-MessageKey {").
 The labeller looks up both. Its third form, `text:<text>`, names no record and cannot be
 resolved; the same test fails a ledger row that carries one.
 
@@ -152,3 +152,18 @@ over-flags nothing.
 The 201 is itself a floor for the window. The log survives back to 2026-07-26 only, and the
 window opens on 2026-07-15. The true count for those first eleven days cannot be recovered,
 and this file does not estimate it.
+
+## 6. The log shape changed on 2026-08-21
+
+Backlog 073 split the removal log in two. From that date `worktree-removal.log` carries one line
+per removal attempt and nothing else, and everything that used to sit beside the outcome moved to
+`worktree-removal-diagnostics.log`.
+
+So the file holds two shapes, and **a count that spans the change is not a like-for-like figure**.
+Before the change one removal wrote about twenty lines, of which several matched an outcome
+pattern. After it, one removal writes one. A drop in this count across that date measures the
+change in the log, not a change in cleanup friction.
+
+The frozen ledgers were measured on 2026-08-21, before the split, and are untouched. Both sets of
+patterns live in `scripts/measure-process-friction.ps1`, so a re-run still reads the historical
+part of the file correctly.
