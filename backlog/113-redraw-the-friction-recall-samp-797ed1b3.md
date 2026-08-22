@@ -6,7 +6,7 @@
 - **Type**: Process / tooling
 - **Interfaces**: none (scripts, docs)
 - **Difficulty**: complex
-- **Stage**: 2-design
+- **Stage**: 3-plan
 - **Depends on**: 102-recall-sample-was-drawn-without-equal-inclusion-probabilities
 
 ## Summary
@@ -100,4 +100,4 @@ actually happened, so that the range means what a 95 percent interval means.
   `~/AHKFlowApp-friction-snapshot-2026-08-21` was re-checked on 2026-08-22 and still holds
   106 top-level project folders.
 - Spec: `docs/superpowers/specs/2026-08-22-friction-recall-redraw-design-113.md`
-- Plan: none — the item is at Intake.
+- Plan: `docs/superpowers/plans/2026-08-22-friction-recall-redraw-plan-113.md`
