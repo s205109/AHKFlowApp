@@ -305,10 +305,30 @@ if (Test-Path -LiteralPath $docPath) {
 
     $item072Path = Join-Path $repoRoot 'backlog/done/072-process-wave-2-parity-drift-guard-templates.md'
     Assert-True (Test-Path -LiteralPath $item072Path) "Item 072 is missing: $item072Path"
-    $item072Flat = if (Test-Path -LiteralPath $item072Path) {
-        ((Get-Content -LiteralPath $item072Path -Raw) -replace '\s+', ' ')
-    }
-    else { '' }
+    $item072Raw = if (Test-Path -LiteralPath $item072Path) { (Get-Content -LiteralPath $item072Path -Raw) } else { '' }
+    $item072Flat = ($item072Raw -replace '\s+', ' ')
+
+    # The dated addition lives in its own section. Reading the whole file would match the frozen
+    # 2026-08-16 row first, and that row is the record of what was measured then.
+    #
+    # The section is cut out of the RAW text, not the flattened text, and both anchors are
+    # line-anchored. Cutting it out of the flattened text ends the body at the first '### '
+    # anywhere in it, and this section's own prose quotes `### Measured 2026-08-16` inline - so
+    # the body stopped before the table and the rows below were invisible.
+    $section072 = [regex]::Match(
+        $item072Raw,
+        '(?ms)^### Measured 2026-08-22, redrawn against the 2026-08-21 transcript snapshot$(?<body>.*?)(?=^### |\z)')
+    Assert-True $section072.Success `
+        ('Item 072 must carry a dated section for the redraw, headed ' +
+        '"### Measured 2026-08-22, redrawn against the 2026-08-21 transcript snapshot".')
+    $body072 = if ($section072.Success) { ($section072.Groups['body'].Value -replace '\s+', ' ') } else { '' }
+
+    # The frozen rows stay exactly as they were measured. A dated addition is required, never a
+    # substitution, and this is what makes that a test rather than a sentence in a plan.
+    Assert-True ($item072Flat -match '\| Blocked-agent handoffs \| \*\*179 to 533\*\* \|') `
+        'Item 072 must still carry its 2026-08-16 handoff row, **179 to 533**, unchanged.'
+    Assert-True ($item072Flat -match '\| Next-step asks \| \*\*35 to 89\*\* \|') `
+        'Item 072 must still carry its 2026-08-16 ask row, **35 to 89**, unchanged.'
 
     foreach ($spec in $specs) {
         $manifestPath = Join-Path $repoRoot "docs/development/friction-samples/$($spec.Manifest).csv"
@@ -398,14 +418,14 @@ if (Test-Path -LiteralPath $docPath) {
         }
 
         # --- Item 072 quotes the same figure, and must not drift from it ---
-        $row072 = [regex]::Match($item072Flat, $spec.Row072)
+        $row072 = [regex]::Match($body072, $spec.Row072)
         Assert-True $row072.Success `
             "Item 072 must carry a $($spec.Name) row with a published range. Pattern did not match."
         if ($row072.Success) {
             Assert-True ([int]$row072.Groups[1].Value -eq $expectedLow -and [int]$row072.Groups[2].Value -eq $expectedHigh) `
                 ("Item 072 publishes $($spec.Name) as $($row072.Groups[1].Value) to $($row072.Groups[2].Value); " +
-                "the labels give $expectedLow to $expectedHigh. A corrected figure belongs there as a dated " +
-                'addition under "The withdrawn figures", never as a silent substitution.')
+                "the labels give $expectedLow to $expectedHigh. The redrawn figure belongs in its own " +
+                'dated section, never as a substitution for the 2026-08-16 rows.')
         }
     }
 
