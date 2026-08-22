@@ -430,6 +430,99 @@ finally {
     Remove-Item -LiteralPath $fixture -Recurse -Force
 }
 
+# --- OnlyPath narrows which files are scanned ---
+
+# The plans repository is one shared working tree with a single branch, linked into every worktree.
+# So a scan of it reads plans another branch is part-way through writing, whose citations resolve
+# against that branch's files and not against these. Measured on 2026-08-21: the same plans scored
+# 82 problems from one worktree and 104 from another, and the second saw zero problems in the very
+# plan the first saw twenty in. Pre-push therefore scans only the plans this branch owns, and this
+# is the parameter that lets it (backlog 112).
+$fixture = New-FixtureRepository
+try {
+    Add-FixtureFile -Root $fixture -RelativePath 'target.txt' -Lines @('one line')
+    Add-FixtureFile -Root $fixture -RelativePath 'kept.md' -Lines @('(`target.txt:99`, "nope")')
+    Add-FixtureFile -Root $fixture -RelativePath 'skipped.md' -Lines @('(`target.txt:99`, "nope")')
+    Complete-FixtureCommit -Root $fixture
+
+    $all = @(Get-CitationProblem -ScanRoot $fixture -ResolveRoot $fixture)
+    Assert-True ($all.Count -eq 2) "No filter must read both files, got $($all.Count)"
+
+    $only = @(Get-CitationProblem -ScanRoot $fixture -ResolveRoot $fixture -OnlyPath @('kept.md'))
+    Assert-True ($only.Count -eq 1) "One path must read one file, got $($only.Count)"
+    Assert-True ($only[0] -like 'kept.md:*') "The surviving problem must be kept.md, got $($only[0])"
+
+    $absent = @(Get-CitationProblem -ScanRoot $fixture -ResolveRoot $fixture -OnlyPath @('absent.md'))
+    Assert-True ($absent.Count -eq 0) "A path matching nothing must report nothing, got $($absent.Count)"
+
+    # An empty filter must mean "no filter", not "scan nothing". A branch with no plan of its own
+    # passes an empty set, and silently scanning everything would put the whole problem back.
+    $empty = @(Get-CitationProblem -ScanRoot $fixture -ResolveRoot $fixture -OnlyPath @())
+    Assert-True ($empty.Count -eq 2) "An empty filter must mean no filter, got $($empty.Count)"
+
+    # A backslashed path must match, because a caller building paths on Windows produces them.
+    $slash = @(Get-CitationProblem -ScanRoot $fixture -ResolveRoot $fixture -OnlyPath @('KEPT.MD'))
+    Assert-True ($slash.Count -eq 1) "The filter must be case-insensitive, got $($slash.Count)"
+
+    # The filter must narrow what is scanned, never what counts as a valid citation target.
+    # target.txt is not in OnlyPath, and the citation must still resolve against it.
+    Add-FixtureFile -Root $fixture -RelativePath 'good.md' -Lines @('(`target.txt:1`, "one line")')
+    Complete-FixtureCommit -Root $fixture -Message 'good'
+    $good = @(Get-CitationProblem -ScanRoot $fixture -ResolveRoot $fixture -OnlyPath @('good.md'))
+    Assert-True ($good.Count -eq 0) "A target outside OnlyPath must still resolve, got: $($good -join ', ')"
+}
+finally {
+    Remove-Item -LiteralPath $fixture -Recurse -Force
+}
+
+# --- OnlyPathFile crosses the child-process boundary ---
+
+# The in-process cases above never touch how the hook actually calls this script. `pwsh -File`
+# cannot carry an array: two paths bind the second to the wrong parameter and drop it silently,
+# three fail with "A positional parameter cannot be found". Both were live defects, found in review
+# on 2026-08-22 and invisible to a test that calls Get-CitationProblem directly. So this case runs
+# the real runner, through a real file, with three paths (backlog 112).
+$fixture = New-FixtureRepository
+$manifest = [System.IO.Path]::GetTempFileName()
+try {
+    Add-FixtureFile -Root $fixture -RelativePath 'target.txt' -Lines @('one line')
+    Add-FixtureFile -Root $fixture -RelativePath 'a.md' -Lines @('(`target.txt:99`, "nope")')
+    Add-FixtureFile -Root $fixture -RelativePath 'b.md' -Lines @('(`target.txt:99`, "nope")')
+    Add-FixtureFile -Root $fixture -RelativePath 'c.md' -Lines @('(`target.txt:1`, "one line")')
+    Add-FixtureFile -Root $fixture -RelativePath 'd.md' -Lines @('(`target.txt:99`, "nope")')
+    Complete-FixtureCommit -Root $fixture
+
+    # Three paths. Two are broken, one is clean, and d.md is broken but left out of the manifest.
+    Set-Content -LiteralPath $manifest -Value @('a.md', 'b.md', 'c.md')
+
+    $run = Invoke-Runner -Arguments @(
+        '-ScanRoot', $fixture, '-ResolveRoot', $fixture, '-NoAdoptionTier', '-OnlyPathFile', $manifest)
+    Assert-True ($run.ExitCode -eq 1) "Three paths must reach the child process, exited $($run.ExitCode): $($run.Output)"
+    Assert-True ($run.Output -notmatch 'positional parameter') `
+        "The array must not be passed on the command line: $($run.Output)"
+    Assert-True ($run.Output -match 'a\.md' -and $run.Output -match 'b\.md') `
+        "Both broken listed files must be reported: $($run.Output)"
+    Assert-True ($run.Output -notmatch 'd\.md') `
+        "A file outside the manifest must not be scanned: $($run.Output)"
+
+    # An empty manifest must fail closed, never widen to the whole repository.
+    Set-Content -LiteralPath $manifest -Value @()
+    $run = Invoke-Runner -Arguments @(
+        '-ScanRoot', $fixture, '-ResolveRoot', $fixture, '-NoAdoptionTier', '-OnlyPathFile', $manifest)
+    Assert-True ($run.ExitCode -ne 0) "An empty manifest must fail, exited $($run.ExitCode)"
+    Assert-True ($run.Output -match 'empty') "The empty-manifest error must say so: $($run.Output)"
+
+    # A manifest path that does not exist must fail, not scan everything.
+    $run = Invoke-Runner -Arguments @(
+        '-ScanRoot', $fixture, '-ResolveRoot', $fixture, '-NoAdoptionTier',
+        '-OnlyPathFile', (Join-Path $fixture 'no-such-manifest.txt'))
+    Assert-True ($run.ExitCode -ne 0) "A missing manifest must fail, exited $($run.ExitCode)"
+}
+finally {
+    Remove-Item -LiteralPath $manifest -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $fixture -Recurse -Force
+}
+
 # --- The pre-push decision ---
 
 # Never test this by renaming docs/superpowers. Every worktree links to that folder, and the

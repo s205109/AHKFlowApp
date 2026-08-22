@@ -56,7 +56,7 @@ entry. This turns the AGENTS.md Debugging rule into a gate.
 - **Tracking current.** For tracked work: plan tasks ticked plus the progress file. For a
   housekeeping round: the commit log.
 - **Records closed.** For tracked work: boxes ticked, the item moved to `backlog/done/`,
-  the progress file deleted. For a housekeeping round: nothing extra.
+  the progress file deleted, the plan and spec frozen. For a housekeeping round: nothing extra.
 - **Terms and ADRs written.** Design pins glossary terms in `CONTEXT.md` and writes the
   ADRs the design needs. Wave 1 of the process is a bootstrap exception: those two files
   are frozen, so its terms and ADR are filed in the wave-2 backlog item instead.
@@ -80,7 +80,7 @@ through this table.
 | First push | At Pickup. It opens the draft pull request | At Execute close. It opens the round pull request |
 | Resume | Read the `Stage` field, re-run that stage's entry check | Read the round pull request body's `Stage:` line, re-run that stage's entry check. Before the pull request exists, read the round worktree's commit log |
 | Blocked | The item moves to `backlog/blocked/` with the unblock note | Two kinds. A single change that blocks is filed as its own item, leaves the round, and moves to `backlog/blocked/`; the round continues. A round-level blocker belongs to no single change: file an item naming the round pull request and the blocker, move that item to `backlog/blocked/`, and stop the round |
-| Records at Ship | Boxes ticked, item moved to `backlog/done/`, progress file deleted | Nothing extra |
+| Records at Ship | Boxes ticked, item moved to `backlog/done/`, progress file deleted, plan and spec frozen | Nothing extra |
 
 ### The housekeeping round is the stage-machine unit for trivial work
 
@@ -488,7 +488,7 @@ holds a folder, so a backlog item cannot name a personal plan.
 - **Entry** — review closed
 - **Who** — Sonnet, default effort
 - **Technique** — `gh pr ready`, then merge
-- **Action** — close the records, **push**, then flip the pull request to ready, wait for CI, merge. Tracked work: `git mv` the item to `backlog/done/`, delete `PLAN-PROGRESS.md`, set `Stage: 9-ship` — one commit, pushed before the ready flip. The boxes were ticked at Document; Ship only confirms they are, and fixes any that Review changed. A round: nothing extra to close, so nothing to push
+- **Action** — close the records, **push**, then flip the pull request to ready, wait for CI, merge. Tracked work: `git mv` the item to `backlog/done/`, delete `PLAN-PROGRESS.md`, set `Stage: 9-ship` — one commit, pushed before the ready flip. The boxes were ticked at Document; Ship only confirms they are, and fixes any that Review changed. A round: nothing extra to close, so nothing to push. Freeze the item's plan and spec in the same closure: a standalone `citation-check:ignore-file` directive at the top of each, with a second comment line saying why. A shipped plan records the tree as it was, and the citation check would otherwise re-audit it against a tree that has moved. That commit belongs to the plans repository, so it is a second commit: `git -C docs/superpowers commit`, staging the files by name. Reopening an item reverses this: delete those two lines before any other work, because a reopened plan makes live claims again
 - **Exit** — Records closed, PR ready, CI green, merged
 - **Next** — `10-cleanup`
 - **Context** — keep until the pull request description is final; safe after merge

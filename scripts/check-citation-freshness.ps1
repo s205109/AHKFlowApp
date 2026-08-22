@@ -28,6 +28,18 @@
 .PARAMETER NoAdoptionTier
     Turns tier 3 off.
 
+.PARAMETER OnlyPath
+    Scan only these paths, relative to ScanRoot. Leave it empty to scan everything. Pre-push passes
+    the plans this branch owns, because the plans repository is one shared working tree: another
+    branch's live plan cites lines that are right on that branch and wrong on this one.
+
+.PARAMETER OnlyPathFile
+    A file holding one path per line, added to OnlyPath. Use this from another process. `pwsh -File`
+    cannot carry an array: two paths silently bind the second to the wrong parameter, and three fail
+    outright with "A positional parameter cannot be found". A file has no quoting or arity failure
+    mode. An empty file throws rather than scanning everything, because a filter that silently turns
+    into "no filter" is how a narrow check becomes a whole-repository one again.
+
 .EXAMPLE
     pwsh ./scripts/check-citation-freshness.ps1
 #>
@@ -36,7 +48,9 @@ param(
     [string] $ScanRoot,
     [string] $ResolveRoot,
     [string] $BaseRef,
-    [switch] $NoAdoptionTier
+    [switch] $NoAdoptionTier,
+    [string[]] $OnlyPath,
+    [string] $OnlyPathFile
 )
 
 Set-StrictMode -Version Latest
@@ -47,6 +61,24 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 
 if (-not $ScanRoot) { $ScanRoot = $repoRoot }
 if (-not $ResolveRoot) { $ResolveRoot = $repoRoot }
+
+if ($OnlyPathFile) {
+    if (-not (Test-Path -LiteralPath $OnlyPathFile -PathType Leaf)) {
+        throw "OnlyPathFile does not exist: $OnlyPathFile"
+    }
+
+    $fromFile = @(Get-Content -LiteralPath $OnlyPathFile |
+        ForEach-Object { $_.Trim() } |
+        Where-Object { $_ })
+
+    # Fail closed. An empty manifest would leave the filter empty, which means "scan everything",
+    # and the caller asked for the opposite.
+    if ($fromFile.Count -eq 0) {
+        throw "OnlyPathFile is empty, so nothing would be filtered: $OnlyPathFile"
+    }
+
+    $OnlyPath = @($OnlyPath) + $fromFile
+}
 
 $changed = $null
 if ($NoAdoptionTier) {
@@ -66,7 +98,7 @@ if ($NoAdoptionTier) {
     }
 }
 
-$problems = @(Get-CitationProblem -ScanRoot $ScanRoot -ResolveRoot $ResolveRoot -ChangedLine $changed)
+$problems = @(Get-CitationProblem -ScanRoot $ScanRoot -ResolveRoot $ResolveRoot -ChangedLine $changed -OnlyPath $OnlyPath)
 
 if ($problems.Count -gt 0) {
     ''
