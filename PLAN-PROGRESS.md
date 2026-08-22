@@ -13,3 +13,4 @@ looks like.
 - [x] Task 5 — 192 handoff rows labelled, 9 missed of 200
 - [x] Task 6 — 154 ask rows labelled, 7 missed of 200. Second pass on 20 rows agreed 20 of 20, but see the caveat in the doc: same session, and all 20 drew negatives
 - [x] Task 7 — both ranges recomputed with -Correct and republished
+- [x] Task 8 — 072 dated section added, frozen rows pinned, full slice green (42 suites)
