@@ -189,9 +189,18 @@ function Invoke-RemoveHook {
     }
 }
 
+# The outcome log. From backlog 073 it carries one line per removal attempt and nothing else.
 function Get-RemovalLog {
     param([string] $RepoDir)
     $logPath = Join-Path $RepoDir '.claude\worktrees\worktree-removal.log'
+    if (-not (Test-Path -LiteralPath $logPath)) { return '' }
+    return (Get-Content -Raw -LiteralPath $logPath)
+}
+
+# The diagnostics log beside it. Every reason, base decision, and git result lands here.
+function Get-RemovalDiagnostics {
+    param([string] $RepoDir)
+    $logPath = Join-Path $RepoDir '.claude\worktrees\worktree-removal-diagnostics.log'
     if (-not (Test-Path -LiteralPath $logPath)) { return '' }
     return (Get-Content -Raw -LiteralPath $logPath)
 }
@@ -367,7 +376,7 @@ try {
     Assert-Contains $offline.Stderr "eligible merged worktree: $($fixture.Worktree)" 'A stale base still reports what it sees.'
     Assert-Contains $offline.Stderr 'nothing removed' 'A stale base must refuse removal and say so.'
     Assert-NotContains $offline.Stderr 'removing merged worktree' 'A stale base must not remove anything.'
-    Assert-NotContains (Get-RemovalLog $fixture.Repo) 'Merged-cleanup requested removal' 'A stale base must not ask for a removal.'
+    Assert-NotContains (Get-RemovalDiagnostics $fixture.Repo) 'Merged-cleanup requested removal' 'A stale base must not ask for a removal.'
     Assert-True (Test-Path -LiteralPath $fixture.Worktree) 'The worktree must survive an unreachable remote.'
 } finally {
     Remove-Fixture $fixture.Root
@@ -406,12 +415,15 @@ $fixture = New-RemoteFixture -Merged
 try {
     $withStaleBase = Invoke-RemoveHook -WorktreePath $fixture.Worktree -ExtraArgs @('-MainRef', 'main')
     Assert-True ($withStaleBase.ExitCode -eq 0) "The hook must exit 0, got $($withStaleBase.ExitCode)."
-    Assert-Contains (Get-RemovalLog $fixture.Repo) "is not merged into main" 'Against the stale local base the gate must preserve the worktree.'
+    # The branch and the base it was judged against are diagnostics; the outcome log carries the
+    # short Kept line only.
+    Assert-Contains (Get-RemovalDiagnostics $fixture.Repo) "is not merged into main" 'Against the stale local base the gate must preserve the worktree.'
+    Assert-Contains (Get-RemovalLog $fixture.Repo) 'Kept: the branch is not merged.' 'The outcome log must carry the one Kept line.'
     Assert-True (Test-Path -LiteralPath $fixture.Worktree) 'A preserved worktree must still exist.'
 
     $resolved = Invoke-RemoveHook -WorktreePath $fixture.Worktree
     Assert-True ($resolved.ExitCode -eq 0) "The hook must exit 0, got $($resolved.ExitCode)."
-    Assert-Contains (Get-RemovalLog $fixture.Repo) "base 'origin/main' (fetched from origin)." 'The hook must resolve and report its own base when none is passed.'
+    Assert-Contains (Get-RemovalDiagnostics $fixture.Repo) "base 'origin/main' (fetched from origin)." 'The hook must resolve and report its own base when none is passed.'
     Assert-True (Wait-ForWorktreeGone -RepoDir $fixture.Repo -WorktreePath $fixture.Worktree) `
         'With the fetched base the gate must pass and the watcher must remove the worktree.'
 } finally {
@@ -427,7 +439,8 @@ try {
 
     $offlineHook = Invoke-RemoveHook -WorktreePath $fixture.Worktree
     Assert-True ($offlineHook.ExitCode -eq 0) "The hook must exit 0, got $($offlineHook.ExitCode)."
-    Assert-Contains (Get-RemovalLog $fixture.Repo) 'may be behind the remote' 'The hook must say why it refused to decide.'
+    Assert-Contains (Get-RemovalDiagnostics $fixture.Repo) 'may be behind the remote' 'The hook must say why it refused to decide.'
+    Assert-Contains (Get-RemovalLog $fixture.Repo) 'Kept: the base branch could not be refreshed.' 'The outcome log must carry the one Kept line.'
     Assert-True (Test-Path -LiteralPath $fixture.Worktree) 'A base that could not be refreshed must preserve the worktree.'
 } finally {
     Remove-Fixture $fixture.Root

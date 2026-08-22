@@ -318,6 +318,21 @@ function Set-CleanupAnswer {
 # Spawns remove-worktree-local-dev.ps1 (Hook mode) for one worktree. Empty stdin is
 # piped in: that script's hook path does an unbounded [Console]::In.ReadToEnd(), which
 # would hang if THIS run's own stdin is redirected (agent/CI) and left open.
+# The sweep writes the outcome line only for a worktree it decides about itself and never hands
+# over. Once remove-worktree-local-dev.ps1 has started, that script owns the line, and a second
+# writer here would put two lines on one attempt.
+function Write-SweepOutcome {
+    param(
+        [Parameter(Mandatory)][string] $RepoRoot,
+        [Parameter(Mandatory)][string] $WorktreePath,
+        [Parameter(Mandatory)][string] $Message
+    )
+
+    $logPath = Join-Path $RepoRoot '.claude\worktrees\worktree-removal.log'
+    $leaf = Split-Path -Leaf $WorktreePath
+    Write-WorktreeLog -LogPath $logPath -Worktree $leaf -Message $Message
+}
+
 function Invoke-WorktreeRemoval {
     param(
         [Parameter(Mandatory)][string] $RepoRoot,
@@ -328,6 +343,7 @@ function Invoke-WorktreeRemoval {
     $removeScript = Join-Path $RepoRoot 'scripts\remove-worktree-local-dev.ps1'
     if (-not (Test-Path -LiteralPath $removeScript)) {
         Write-Stderr "cleanup: remove-worktree-local-dev.ps1 not found; cannot remove '$WorktreePath'."
+        Write-SweepOutcome -RepoRoot $RepoRoot -WorktreePath $WorktreePath -Message 'Failed: the removal script could not be found.'
         return
     }
 
@@ -347,6 +363,7 @@ function Invoke-WorktreeRemoval {
         }
     } catch {
         Write-Stderr "cleanup: removal of '$WorktreePath' failed: $($_.Exception.Message)"
+        Write-SweepOutcome -RepoRoot $RepoRoot -WorktreePath $WorktreePath -Message 'Failed: the removal script could not be started.'
     }
 }
 

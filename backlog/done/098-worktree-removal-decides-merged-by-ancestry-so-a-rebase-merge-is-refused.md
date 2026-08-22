@@ -24,7 +24,7 @@ removed, so that the folder list holds live work only.
 ## Detail
 
 The removal script runs `git merge-base --is-ancestor HEAD <base>`
-(`scripts/remove-worktree-local-dev.ps1:749`, "        if (-not (Test-WorktreeMergedIntoMain -WorktreeFull $worktreeFull -BranchName $branchName -BaseRef $baseRef -MainCheckout $mainCheckoutFromGit)) {").
+(`scripts/remove-worktree-local-dev.ps1:839`, "        if (-not (Test-WorktreeMergedIntoMain -WorktreeFull $worktreeFull -BranchName $branchName -BaseRef $baseRef -MainCheckout $mainCheckoutFromGit)) {").
 The sweep asks a different question: reachability plus a ref-log reading of the branch's own work
 (`scripts/worktree-git.common.ps1:868`, "function Test-BranchOwnWorkWasMerged {"), after a
 first filter of `git branch --merged`. That filter is gone now: the shared decision is the only
@@ -92,7 +92,7 @@ Backlog 094 fixed which base both scripts read; it left the ancestry test alone 
 - The Cleanup warning that pointed at this item is gone. Stage 10 now describes the shared rule
   instead (`docs/development/workflow.md:563`, "**Any merge button is fine.** Both scripts decide with one rule: did this branch's own work reach")
 - The shared rule lands in `scripts/worktree-git.common.ps1`, which the removal script already
-  dot-sources (`scripts/remove-worktree-local-dev.ps1:75`, "$gitHelperPath = Join-Path $PSScriptRoot 'worktree-git.common.ps1'").
+  dot-sources (`scripts/remove-worktree-local-dev.ps1:76`, "$gitHelperPath = Join-Path $PSScriptRoot 'worktree-git.common.ps1'").
   The watcher runs from a copy in `%TEMP%` where that helper is absent, so it needs a fallback
   stub in the shape the script already uses for `Resolve-MergedBaseRef`
 - Grilled 2026-08-19. Difficulty raised from moderate to complex: the fix needs a new source of

@@ -220,3 +220,15 @@ _Avoid_: check, guard, pipeline, CI
 **Merge proof**:
 The evidence that a branch's own work reached the base, which is what lets a worktree be removed. Local git proves it when the branch SHA is a non-first parent of a merge commit on the base. A rebase merge leaves no such commit, so the proof then comes from a merged pull request whose head SHA the branch really pointed at.
 _Avoid_: merged check, merge test, ancestry
+
+**Removal attempt**:
+One decision about one worktree, from the moment something asks for its removal to the moment the outcome is known. Each Removal attempt writes exactly one line to the removal log, whether the worktree went away or stayed.
+_Avoid_: removal run, cleanup event, removal job
+
+**Holder process**:
+A process that stops a worktree folder from being renamed, which is what a removal must do first. There are two kinds, and finding one kind never finds the other: a process with the folder as its current directory, and a process with a file open below the folder.
+_Avoid_: locking process, blocker, owner
+
+**Locked worktree**:
+A worktree a human marked with `git worktree lock`. Every removal path leaves it alone, and no environment variable clears it. This is not the folder lock a Holder process causes; that one is nobody's decision.
+_Avoid_: pinned worktree, protected worktree, held worktree

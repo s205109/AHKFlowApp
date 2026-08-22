@@ -173,7 +173,7 @@ unflagged messages that is **17 to 71 missed asks**.
   Not a word list. Every cleanup outcome reaches a transcript as a
   line written by `Write-WorktreeLog`, which stamps it `yyyy-MM-dd HH:mm:ss  <worktree>
   <message>`
-  (`scripts/worktree-log.common.ps1:22`, "    $line = '{0}  {1}  {2}' -f $stamp, $Worktree, $Message").
+  (`scripts/worktree-log.common.ps1:92`, "    return '{0}  {1}  {2}' -f $stamp, $Worktree, $single").
   A line counts when it has that shape **and**
   its message starts with something a cleanup script writes. Matching the wording anywhere in a
   message instead counted the script's own source, injected skill instructions, and reviews
