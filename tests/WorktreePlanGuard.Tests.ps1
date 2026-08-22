@@ -28,6 +28,24 @@ function Assert-Equal {
     }
 }
 
+# Windows PowerShell turns a native command's stderr into an error record, and the file-wide 'Stop'
+# preference makes it terminating. Git writes hints and warnings to stderr on success, so this
+# suite would fail under powershell.exe while passing under pwsh. The exit code is the real signal.
+function Invoke-QuietGit {
+    param([string] $RepoDir, [string[]] $GitArgs)
+
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $out = & git -C $RepoDir @GitArgs 2>&1
+    } finally {
+        $ErrorActionPreference = $previous
+    }
+    if ($LASTEXITCODE -ne 0) {
+        throw "git $($GitArgs -join ' ') failed: $out"
+    }
+}
+
 # A scratch main checkout, so no case reads the real backlog. The item file and the plan file are
 # both optional: which row of the table a case exercises is decided by which of them exist.
 $scenarios = @()
@@ -146,14 +164,14 @@ try {
     New-Item -ItemType Directory -Path (Join-Path $refRoot 'backlog') -Force | Out-Null
     New-Item -ItemType Directory -Path (Join-Path $refRoot 'docs\superpowers\plans') -Force | Out-Null
     Set-Content -LiteralPath (Join-Path $refRoot 'docs\superpowers\plans\probe-plan-073.md') -Value "- [ ] Step 1"
-    & git -C $refRoot init *> $null
-    & git -C $refRoot symbolic-ref HEAD refs/heads/main *> $null
-    & git -C $refRoot config user.email 'test@example.com' *> $null
-    & git -C $refRoot config user.name 'Plan Guard Test' *> $null
+    Invoke-QuietGit $refRoot @('init')
+    Invoke-QuietGit $refRoot @('symbolic-ref', 'HEAD', 'refs/heads/main')
+    Invoke-QuietGit $refRoot @('config', 'user.email', 'test@example.com')
+    Invoke-QuietGit $refRoot @('config', 'user.name', 'Plan Guard Test')
     Set-Content -LiteralPath (Join-Path $refRoot 'backlog\073-probe.md') `
         -Value "# 073 - probe`n`n- Plan: ``docs/superpowers/plans/probe-plan-073.md``"
-    & git -C $refRoot add -A *> $null
-    & git -C $refRoot commit -m 'file 073' *> $null
+    Invoke-QuietGit $refRoot @('add', '-A')
+    Invoke-QuietGit $refRoot @('commit', '-m', 'file 073')
     # The stale local checkout: the item never landed on disk.
     Remove-Item -LiteralPath (Join-Path $refRoot 'backlog\073-probe.md') -Force
 
@@ -164,6 +182,66 @@ try {
     Assert-True (-not $verdict.Allow) 'The item read from the base ref names an unimplemented plan'
     Assert-True ($verdict.Reason -match 'never implemented') `
         "The base ref must supply the item, got '$($verdict.Reason)'"
+
+    # --- a supplied base that cannot answer refuses, it does not fall back ---
+    # Falling back to the working tree throws away the reason the base was resolved. A stale
+    # local item saying "Plan: none" would then allow the very removal the guard exists to stop.
+    $staleRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("ahkflow-planguard-s-" + [Guid]::NewGuid().ToString('N').Substring(0, 8))
+    $scenarios += $staleRoot
+    New-Item -ItemType Directory -Path (Join-Path $staleRoot 'backlog') -Force | Out-Null
+    New-Item -ItemType Directory -Path (Join-Path $staleRoot 'docs\superpowers\plans') -Force | Out-Null
+    Invoke-QuietGit $staleRoot @('init')
+    Invoke-QuietGit $staleRoot @('symbolic-ref', 'HEAD', 'refs/heads/main')
+    Invoke-QuietGit $staleRoot @('config', 'user.email', 'test@example.com')
+    Invoke-QuietGit $staleRoot @('config', 'user.name', 'Plan Guard Test')
+    Set-Content -LiteralPath (Join-Path $staleRoot 'README.md') -Value 'seed'
+    Invoke-QuietGit $staleRoot @('add', '-A')
+    Invoke-QuietGit $staleRoot @('commit', '-m', 'seed')
+    # On disk only, never committed: the stale reading the guard must not trust.
+    Set-Content -LiteralPath (Join-Path $staleRoot 'backlog\073-probe.md') -Value "# 073 - probe`n`n- Plan: none - nothing to do"
+
+    $verdict = Test-WorktreePlanWasImplemented -MainCheckout $staleRoot -ItemNumber '073' -BaseRef 'main'
+    Assert-True (-not $verdict.Allow) `
+        'A base that does not carry the item must refuse, not read the working tree'
+    Assert-True ($verdict.Reason -match "not in 'main'") `
+        "The reason must name the base, got '$($verdict.Reason)'"
+
+    # A base that cannot be resolved at all is the same answer for a different reason.
+    $verdict = Test-WorktreePlanWasImplemented -MainCheckout $staleRoot -ItemNumber '073' -BaseRef 'no-such-ref'
+    Assert-True (-not $verdict.Allow) 'A base that cannot be resolved must refuse'
+    Assert-True ($verdict.Reason -match 'could not be resolved') `
+        "The reason must say the base could not be resolved, got '$($verdict.Reason)'"
+
+    # Two items sharing one number cannot be told apart, so that refuses too.
+    Set-Content -LiteralPath (Join-Path $staleRoot 'backlog\073-first.md') -Value '# 073 - first'
+    New-Item -ItemType Directory -Path (Join-Path $staleRoot 'backlog\done') -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $staleRoot 'backlog\done\073-second.md') -Value '# 073 - second'
+    Invoke-QuietGit $staleRoot @('add', '-A')
+    Invoke-QuietGit $staleRoot @('commit', '-m', 'two items share 073')
+    $verdict = Test-WorktreePlanWasImplemented -MainCheckout $staleRoot -ItemNumber '073' -BaseRef 'main'
+    Assert-True (-not $verdict.Allow) 'Two items sharing one number must refuse'
+
+    # --- a plan pointer must name a file under docs/superpowers/plans -------
+    # The pointer is read straight off a markdown bullet. Any other existing file is almost
+    # certain to hold no unticked step, which would read as "implemented" and allow removal.
+    foreach ($escape in @('README.md', '../README.md', 'docs/superpowers/plans/../../../README.md', 'docs/superpowers/specs/some-design.md')) {
+        $root = New-Scenario -ItemBody "# 073 - probe`n`n- Plan: ``$escape``" -PlanBody $null
+        Set-Content -LiteralPath (Join-Path $root 'README.md') -Value 'no checkboxes here'
+        New-Item -ItemType Directory -Path (Join-Path $root 'docs\superpowers\specs') -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $root 'docs\superpowers\specs\some-design.md') -Value 'no checkboxes here'
+        $verdict = Test-WorktreePlanWasImplemented -MainCheckout $root -ItemNumber '073'
+        Assert-True (-not $verdict.Allow) "A plan pointer of '$escape' must keep the worktree"
+    }
+
+    # The two shapes the backlog really uses still work.
+    $root = New-Scenario -ItemBody "# 073 - probe`n`n- Plan: ``docs/superpowers/plans/probe-plan-073.md``" `
+                         -PlanBody "- [x] Step 1"
+    Assert-True (Test-WorktreePlanWasImplemented -MainCheckout $root -ItemNumber '073').Allow `
+        'A backtick-quoted pointer under the plans folder still reads'
+    $root = New-Scenario -ItemBody "# 073 - probe`n`n- Plan: docs/superpowers/plans/probe-plan-073.md" `
+                         -PlanBody "- [x] Step 1"
+    Assert-True (Test-WorktreePlanWasImplemented -MainCheckout $root -ItemNumber '073').Allow `
+        'An unquoted pointer, as backlog/done/104 writes it, still reads'
 
     # --- the hook gate asks the guard only after the merge gate -------------
     # Asking first made an unmerged worktree fail with the plan guard's wording, and read the
