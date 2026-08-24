@@ -12,7 +12,8 @@ public sealed class BunitWaitTimeoutTests
     [Fact]
     public void ModuleInitializer_RaisesTheDefaultWaitTimeout()
     {
-        BunitContext.DefaultWaitTimeout.Should().Be(BunitWaitTimeout.Value);
-        BunitContext.DefaultWaitTimeout.Should().BeGreaterThan(TimeSpan.FromSeconds(1));
+        // The literal is the point. Comparing against BunitWaitTimeout.Value would pass for any
+        // value, including a drop back to one second, which is the failure this guards against.
+        BunitContext.DefaultWaitTimeout.Should().Be(TimeSpan.FromSeconds(10));
     }
 }

@@ -24,8 +24,9 @@ namespace AHKFlowApp.UI.Blazor.Tests;
 /// </remarks>
 internal static class BunitWaitTimeout
 {
-    /// <summary>The timeout every bUnit wait in this assembly uses.</summary>
-    internal static readonly TimeSpan Value = TimeSpan.FromSeconds(10);
+    // The timeout every bUnit wait in this assembly uses. BunitWaitTimeoutTests asserts the same
+    // number as a literal, so a change here fails that test until somebody changes it there too.
+    private static readonly TimeSpan Value = TimeSpan.FromSeconds(10);
 
     [ModuleInitializer]
     internal static void Apply() => BunitContext.DefaultWaitTimeout = Value;
