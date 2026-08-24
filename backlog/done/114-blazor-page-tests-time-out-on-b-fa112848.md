@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: UI
 - **Difficulty**: moderate
-- **Stage**: 0-intake
+- **Stage**: 9-ship
 
 ## Summary
 
@@ -86,17 +86,84 @@ bUnit default. The failure text is bUnit's own wording for exactly this situatio
 > If this test does not fail consistently, the reason may be that the wait timeout is too short,
 > and the runtime did not have enough time to complete the necessary number of renders.
 
+## Measurement
+
+Taken on 2026-08-24 on this branch, on a 16-core Windows machine. Every run used `-c Release` with
+`--collect:"XPlat Code Coverage" --settings coverlet.runsettings`, the same collection the
+`build-test` job uses. A temporary probe wrapped each wait in a `Stopwatch`. The probe was removed
+before the commit.
+
+Under coverage, with no extra load, the whole-test durations that already cross one second:
+
+```
+HotkeysPageTests.Grid_GlobalHotkey_ShowsNoContextIcon                              1.211 s
+HotkeysPageTests.Page_ClearFilters_ResetsSearchActionAndCategoryAndReloads         1.152 s
+HotkeysPageTests.Page_EditRow_WithModifiers_CallsUpdate_AndKeepsActionChipVisible  1.110 s
+HotkeysPageTests.Page_WhenAnyToggleIsReenabled_ClearsSpecificProfilesBeforeUpdate  1.091 s
+```
+
+The waits inside those tests, however, are short. Left column is with no extra load. Right column
+is the same run with 24 busy processes on 16 cores, where the suite still passed 954 of 954:
+
+```
+wait                                       idle ms   loaded ms
+Hotstrings.ReloadInFlight.spinnerClears      297.0       937.0
+Hotkeys.StartInlineEdit.editModeWait          78.0       224.9
+Hotstrings.ReloadInFlight.initialLoad         52.5       180.4
+Hotstrings.ReloadInFlight.spinnerAppears      21.1       178.1
+Hotkeys.EditRow_WithModifiers.commitWait      36.5         8.7
+```
+
+Ten further loaded runs of both page classes passed, 92 tests each. Across those ten, the worst
+`spinnerClears` was 509.4 ms and the worst `EditRow_WithModifiers.commitWait` was 52.2 ms.
+
+What this says:
+
+- `Page_WhileReloadIsInFlight_RendersLoadingIndicator` is the one test near the edge. Its third
+  wait reached 937 ms, which is 63 ms short of the one-second default. No other wait passed 225 ms.
+- `Page_EditRow_WithModifiers_CallsUpdate_AndKeepsActionChipVisible` is not near the edge. Its wait
+  finished in 8.7 ms to 52.2 ms in every observation. A slow wait does not explain its CI failure.
+- That same test still reached 3.248 s in total under load, while its own wait took milliseconds.
+  So the process stalls for seconds under contention, and a stall inside the one-second window
+  fails a wait however cheap the wait is.
+
+The hotkeys failure was not reproduced locally. If it returns after this change, the next step is
+instrumentation inside that test, not a larger number.
+
 ## Acceptance criteria
 
-- [ ] The repository states a wait timeout for bUnit assertions rather than relying on the
+- [x] The repository states a wait timeout for bUnit assertions rather than relying on the
       framework default, and a reader can find both the number and the reason for it
-- [ ] (`tests/AHKFlowApp.UI.Blazor.Tests/Pages/HotkeysPageTests.cs:465`, "public void Page_EditRow_WithModifiers_CallsUpdate_AndKeepsActionChipVisible()") and
+- [x] (`tests/AHKFlowApp.UI.Blazor.Tests/Pages/HotkeysPageTests.cs:465`, "public void Page_EditRow_WithModifiers_CallsUpdate_AndKeepsActionChipVisible()") and
       (`tests/AHKFlowApp.UI.Blazor.Tests/Pages/HotstringsPageTests.cs:85`, "cut.WaitForAssertion(() =>") pass under
       `pwsh ./scripts/test-fast.ps1 -Mode Coverage`
-- [ ] This item records how long those two tests' waits actually take under coverage, so the chosen
+- [x] This item records how long those two tests' waits actually take under coverage, so the chosen
       number is measured rather than guessed
-- [ ] If the fix raises a default for the whole suite, this item names which other tests were near
+- [x] If the fix raises a default for the whole suite, this item names which other tests were near
       the edge, measured, not assumed
+
+## Fix
+
+`tests/AHKFlowApp.UI.Blazor.Tests/BunitWaitTimeout.cs` sets `BunitContext.DefaultWaitTimeout` to 10
+seconds from a `[ModuleInitializer]` method. The initializer runs once, before the first test, so no
+test class has to opt in. The file's comment carries the measured numbers and the reason for 10
+seconds.
+
+The suite-wide default won over a stated timeout on each failing wait. A per-wait number claims
+"this wait is slow". For the hotkeys test that claim is false, as the measurement above shows. The
+real cause is a stall of the whole process, which can catch any wait in the suite.
+
+`AHKFlowApp.UI.Blazor.Tests` is the only project that references bunit, so one file covers every
+bUnit wait in the repository.
+
+## Verification
+
+- `tests/AHKFlowApp.UI.Blazor.Tests/BunitWaitTimeoutTests.cs` asserts that the timeout is set. It is
+  the durable artifact. Without it, a module initializer that stops running would put the suite back
+  on one second with no other signal.
+- `pwsh ./scripts/test-fast.ps1 -Mode Fast` — 955 Blazor tests passed, and the whole slice passed.
+- `pwsh ./scripts/test-fast.ps1 -Mode Coverage` — passed, all per-assembly coverage thresholds met.
+- Ten runs of both page classes with 24 busy processes on 16 cores — 92 tests passed each time.
 
 ## Out of scope
 
@@ -125,4 +192,4 @@ bUnit default. The failure text is bUnit's own wording for exactly this situatio
 - Found during backlog 112, which could not file it: an agent cannot create a worktree from inside
   a worktree
 - Spec: none — `moderate` goes straight to Plan
-- Plan: none — not yet at Plan
+- Plan: `docs/superpowers/plans/2026-08-24-blazor-bunit-wait-timeout-plan-114.md`
