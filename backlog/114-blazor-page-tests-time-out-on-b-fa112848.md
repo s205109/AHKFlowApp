@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: UI
 - **Difficulty**: moderate
-- **Stage**: 0-intake
+- **Stage**: 3-plan
 
 ## Summary
 
@@ -125,4 +125,4 @@ bUnit default. The failure text is bUnit's own wording for exactly this situatio
 - Found during backlog 112, which could not file it: an agent cannot create a worktree from inside
   a worktree
 - Spec: none — `moderate` goes straight to Plan
-- Plan: none — not yet at Plan
+- Plan: `docs/superpowers/plans/2026-08-24-blazor-bunit-wait-timeout-plan-114.md`
