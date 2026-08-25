@@ -2,7 +2,7 @@
 applyTo: "**"
 ---
 
-<!-- sync-marker body-sha256=75077b887e2def28bae0d9b88b9d98e85ee30ceb6e083c812a5081d52017e280 pasted-to-web=2026-08-13 -->
+<!-- sync-marker body-sha256=0bdc2bf5ea601dee5f2a28e0067c1ee7c6b6ff77ee0faf1d77cde1303959cdde pasted-to-web=2026-08-25 -->
 
 # Personal Defaults
 
@@ -56,12 +56,20 @@ applyTo: "**"
 
 ## Writing Style
 
-- Always write prose in ASD-STE100 (Simplified Technical English): one meaning per
-  word, one verb per action, active voice, simple tenses only, one instruction per
-  sentence, max 20 words (instructions) / 25 (explanations).
-- Follow Zinsser: clarity, simplicity, brevity, humanity. Humanity limits the rest —
-  plain and direct, not robotic. Easy to read beats short.
+- Follow Plain English. Easy to read matters more than short — when they conflict,
+  use more words.
+- One idea per sentence. Keep sentences under about 20 words.
+- Use common words: "use" not "leverage", "cannot be undone" not "irreversible",
+  "start" not "initiate".
+- No idioms, no metaphors, no culture references. Name the thing directly.
+- Active voice: "The handler saves the record", not "the record is saved by the
+  handler".
+- Keep identifiers exact — never simplify `IUseCaseHandler` or `Result.NotFound()`.
+  Explain the term once instead.
+- Quote existing error strings exactly. Apply these rules when you write a new one.
+- Do not stack clauses. Split a long sentence into two.
 - Exceptions: code, commands, file paths, identifiers, error messages, quoted text.
+  Commit messages and PR titles stay short, grammar optional.
 - Precision wins over style. Never drop a fact, condition, number, or scope
   qualifier to shorten a sentence.
 
