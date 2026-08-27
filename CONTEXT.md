@@ -214,7 +214,7 @@ A Reading that ended with a quote or an escape left open, or with a heredoc or h
 _Avoid_: ambiguous parse, unparseable command, bad quoting
 
 **Policy layer**:
-One of the Guard's three decision stages, consulted in this order: safety, location, write. Each one is consulted once per Reading. The strongest answer of the three decides the command. A `Deny` also stops the Guard early, so the layers after it are not consulted.
+One of the Guard's three decision stages, consulted in this order: safety, location, write. The Guard stops early when a layer answers `Deny`. Otherwise all three answer, and the strongest answer decides the command.
 _Avoid_: rule, stage, tier, pass
 
 **Check**:

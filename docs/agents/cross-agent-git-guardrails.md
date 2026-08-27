@@ -158,12 +158,13 @@ safety layer refuses it. The location layer refuses it. The write layer refuses 
 a managed worktree, which is the only kind of session that layer governs. Refusing it for any other
 session is the location layer's job, and that layer does it for every session.
 
-The three layers answer one command independently, and the strongest answer decides it. The
+The layers answer one command in order: safety, then location, then write. The guard stops as soon
+as a layer answers `Deny`. Otherwise all three answer, and the strongest answer decides. The
 severity order is `Deny > Ask > Warn > Allow`. When two layers answer the same, the location layer
 decides, then the write layer, then the safety layer. That is the order the guard has always
-resolved a tie in, so a command that was already answered correctly keeps the same message. A
-refusal names the layer it came from, and reports any other objection it replaced. A `Deny` stops
-the run, so the layers after it never spend the time to answer.
+resolved a tie in, so a command that was already answered correctly keeps the same action and rule.
+Its message changes: the refusal now names the layer the answer came from, and lists every other
+layer that also objected.
 
 `AHKFLOW_ALLOW_MAIN=1` does not relax this refusal at any layer.
 

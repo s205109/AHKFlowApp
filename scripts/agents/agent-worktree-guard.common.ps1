@@ -3809,7 +3809,8 @@ could approve.
 
 A tie goes to the layer with the lowest AgentGuardLayerTieRank, which reproduces what the old
 ordered short-circuit returned. So every command that is not the defect keeps today's exact
-action, rule, and message.
+action and rule. The message gains a line naming the deciding layer, and a second line when
+another layer also objected.
 
 Layers are passed in the order they ran, because that is the order the message lists them in.
 The caller may pass fewer than three when an early return already holds a Deny, because nothing

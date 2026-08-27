@@ -10,9 +10,10 @@
 
 ## Summary
 
-The Guard runs three policy layers in order and returns the first one that does not say Allow. So
-a weaker answer from an earlier layer hides a stronger answer from a later one. A command that the
-write layer denies can reach the agent as an Ask, which a human can approve.
+The Guard ran three policy layers in order and returned the first one that did not say Allow. So
+a weaker answer from an earlier layer hid a stronger answer from a later one. A command that the
+write layer denied could reach the agent as an Ask, which a human can approve. This branch makes
+the strongest of the three answers decide.
 
 ## User story
 
@@ -24,7 +25,7 @@ that an approvable prompt never stands in for a refusal.
 `Invoke-AgentGuardPolicyForReading` used to return the location decision whenever it was not
 Allow, and never reached the write layer. Fixed on this branch: the orchestrator now hands all
 three layer answers to `Resolve-AgentGuardLayerDecision`
-(`scripts/agents/agent-worktree-guard.common.ps1:3818`, "function Resolve-AgentGuardLayerDecision {"),
+(`scripts/agents/agent-worktree-guard.common.ps1:3819`, "function Resolve-AgentGuardLayerDecision {"),
 which returns the strongest one.
 
 Measured from a managed worktree, with the protected root set to the main checkout:
@@ -42,8 +43,8 @@ layer deny rather than ask. Only the Ask tier is affected.
 
 Backlog 093 added a severity order — `Deny > Ask > Warn > Allow` — and a helper that ranks two
 decisions (`scripts/agents/agent-worktree-guard.common.ps1:3775`, "function Get-AgentGuardActionSeverity {").
-That helper ranks the two Readings against each other. The three layers inside one Reading are
-still ordered by position, not by severity, which is the gap this item closes.
+That helper ranks the two Readings against each other. The three layers inside one Reading were
+still ordered by position, not by severity. Closing that gap is this item's work.
 
 ## Acceptance criteria
 

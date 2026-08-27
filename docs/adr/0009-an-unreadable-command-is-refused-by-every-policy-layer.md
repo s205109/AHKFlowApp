@@ -9,8 +9,10 @@ allowed it. The location layer refused it, with rule `ambiguous-git-command`. Th
 allowed it, while the write-target reader it calls reported the target list as incomplete and told
 its callers to fail closed.
 
-Only the order of the layers hid the disagreement. `Invoke-AgentGuardPolicyForReading` returns the
-first layer that does not say Allow, and the location layer runs before the write layer.
+Only the order of the layers hid the disagreement. At the time of this decision,
+`Invoke-AgentGuardPolicyForReading` returned the first layer that did not say Allow, and the
+location layer runs before the write layer. Backlog 111 later replaced that rule with
+strongest-of-three.
 
 **An Ambiguous Reading now refuses the command at every layer, inside the commands that layer is
 already responsible for.** One shared helper builds that decision, so the three layers cannot drift
@@ -28,7 +30,7 @@ session.
 **One hoisted check in the orchestrator was rejected.** Reading `Ambiguous` once in
 `Invoke-AgentGuardPolicyForReading`, and never inside a layer, is less code. It protects the
 orchestrator only. All three layers are public and separately tested, and backlog 111
-replaces first-non-Allow with strongest-of-three, which runs every layer on every command that no
+replaced first-non-Allow with strongest-of-three, which runs every layer on every command that no
 earlier layer denies. A layer that allows a command it could not read is wrong on its own terms,
 not only in a chain.
 
