@@ -119,10 +119,11 @@ function Invoke-CleanupScript {
     }
 }
 
-# Stages what the hook stages before it spawns a watcher: a copy of the removal script in the
-# temp folder, and a sidecar param file beside it. Watcher mode reads every value from that file,
-# so passing -WorktreePath on the command line alone would not reach it. Both leaf names have to
-# match the generated-artifact patterns, or the watcher refuses to clean them up afterwards.
+# Stages what the hook stages before it spawns a watcher: a per-attempt directory in the temp
+# folder holding a copy of the removal script and a sidecar param file. Watcher mode reads every
+# value from that file, so passing -WorktreePath on the command line alone would not reach it.
+# The directory name has to match the generated pattern, or the watcher refuses to clean it up
+# afterwards.
 function New-WatcherInvocation {
     param(
         [string] $RepoDir,
@@ -134,12 +135,15 @@ function New-WatcherInvocation {
 
     $runId = [guid]::NewGuid().ToString('N').Substring(0, 8)
     $tempDir = [System.IO.Path]::GetTempPath()
-    $watcherScript = Join-Path $tempDir "ahkflowapp-wt-remove-watcher-$runId.ps1"
-    $paramFile = Join-Path $tempDir "ahkflowapp-wt-remove-$runId.json"
+    $runDir = Join-Path $tempDir "ahkflowapp-wt-remove-$runId"
+    New-Item -ItemType Directory -Path $runDir -Force | Out-Null
+    $watcherScript = Join-Path $runDir 'watcher.ps1'
+    $paramFile = Join-Path $runDir 'params.json'
 
     Copy-Item -LiteralPath $removeScript -Destination $watcherScript -Force
     $params = [ordered]@{
         RunId          = $runId
+        TempRoot       = $tempDir
         WorktreePath   = $WorktreePath
         BranchName     = $BranchName
         MainCheckout   = $RepoDir
@@ -149,7 +153,7 @@ function New-WatcherInvocation {
     }
     Set-Content -LiteralPath $paramFile -Value ($params | ConvertTo-Json) -Encoding utf8
 
-    return [pscustomobject]@{ WatcherScript = $watcherScript; ParamFile = $paramFile }
+    return [pscustomobject]@{ WatcherScript = $watcherScript; ParamFile = $paramFile; RunDir = $runDir }
 }
 
 # Runs the watcher to completion and waits for it.
@@ -176,7 +180,9 @@ function Invoke-Watcher {
     } finally {
         $ErrorActionPreference = $previous
     }
-    Remove-Item -LiteralPath $staged.WatcherScript, $staged.ParamFile -Force -ErrorAction SilentlyContinue
+    # The watcher deletes the directory itself on every path that cleans up. This covers the paths
+    # that do not, and makes the helper safe to call when the watcher never started.
+    Remove-Item -LiteralPath $staged.RunDir -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 # Import the cleanup functions (the guard keeps the standalone entrypoint from running).
@@ -332,7 +338,7 @@ try {
         Invoke-TestGit $repo @('worktree', 'lock', '--reason', 'a human stepped in', $racedPath) | Out-Null
 
         $watcher | Wait-Process -Timeout 120
-        Remove-Item -LiteralPath $staged.WatcherScript, $staged.ParamFile -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $staged.RunDir -Recurse -Force -ErrorAction SilentlyContinue
 
         Assert-True (Test-Path -LiteralPath $racedPath) 'A worktree locked mid-wait must survive'
         $outcome = @(Get-Content -LiteralPath $raceLog)
