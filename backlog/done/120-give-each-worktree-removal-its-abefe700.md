@@ -1,4 +1,4 @@
-# 118 - Give each worktree removal its own temp directory
+# 120 - Give each worktree removal its own temp directory
 
 ## Metadata
 
@@ -87,9 +87,13 @@ cleanup. The param file now records the root the hook used, and the watcher read
 ## Notes / dependencies
 
 - GitHub issue: https://github.com/s205109/AHKFlowApp/issues/339
-- This item was filed as 117 and renumbered to 118. A local unpushed branch,
-  `fix/wt-removal-watcher-powershell-5`, already owns 117.
+- This item was filed as 117, renumbered to 118, and renumbered again to 120. Each clash was with a
+  branch this working tree could not see: `fix/wt-removal-watcher-powershell-5` owns 117, and
+  `feature/wt-pickup-enters-worktree` took 118 and merged into `main` first. 119 belongs to
+  `fix/wt-gate-runs-the-coverage-slice-on-b9c0664d`.
+- `Get-NextBacklogNumber` reads the working tree only, so two worktrees started close together pick
+  the same next number. Nothing detects that until both branches meet in `main`.
 - That branch also changes `scripts/remove-worktree-local-dev.ps1`, for GitHub issue #348. It has
   not touched the script yet, so there is no conflict today. Whichever branch merges second rebases.
 - Spec: none — the root cause and the fix are both stated in the issue, so this goes straight to Plan.
-- Plan: `docs/superpowers/plans/2026-08-27-worktree-removal-run-temp-dir-plan-118.md`
+- Plan: `docs/superpowers/plans/2026-08-27-worktree-removal-run-temp-dir-plan-120.md`
