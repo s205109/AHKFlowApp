@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: CLI
 - **Difficulty**: moderate
-- **Stage**: 1-pickup
+- **Stage**: 3-plan
 
 ## Summary
 
@@ -75,4 +75,4 @@ This touches three places: the spawn path, the cleanup path, and `Test-Generated
 - That branch also changes `scripts/remove-worktree-local-dev.ps1`, for GitHub issue #348. It has
   not touched the script yet, so there is no conflict today. Whichever branch merges second rebases.
 - Spec: none — the root cause and the fix are both stated in the issue, so this goes straight to Plan.
-- Plan: <path, or "none — reason">
+- Plan: `docs/superpowers/plans/2026-08-27-worktree-removal-run-temp-dir-plan-118.md`
