@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: UI
 - **Difficulty**: moderate
-- **Stage**: 3-plan
+- **Stage**: 9-ship
 
 ## Summary
 
@@ -81,18 +81,56 @@ resolved" if the test needs one.
 `ProfilesPageTests.Page_Delete_ConfirmCallsDeleteAsync` also carries a name that does not match what
 it does. The name says confirm calls delete. The body asserts that delete was not called.
 
+## What the work found
+
+### The three cancel tests were weaker than this item said
+
+They did not only wait pointlessly. They never ran the delete path at all.
+
+`CategoriesPageTests` and `ProfilesPageTests` render no `MudDialogProvider`, so
+`IDialogService.ShowMessageBoxAsync` never resolved. The page's delete handler stayed
+suspended at that `await` for the whole test. `DidNotReceive` was true because nothing had
+happened yet, not because the cancel path had finished and declined to delete.
+
+All three now substitute `IDialogService` and answer the confirmation with cancel, following
+the pattern already used by `HotkeysPageTests.Page_BulkDelete_CallsApiAndReloads`. The
+answered call is the signal; the `DidNotReceive` check is now a plain assertion after it.
+
+### Both new seams were proven by mutation, not assumed
+
+A green test is not evidence that a new signal works. Each was broken on purpose first.
+
+1. Removed the `generation != _generation` guard from `PreviewScheduler.RunAsync`.
+   `PreviewPanel_OutOfOrderResponses_LaterGenerationWins` failed in both dialog suites, 2 of 2.
+   That proves `await run` waits long enough to see the stale result applied.
+2. Changed the confirmation stub to answer confirm instead of cancel. All three cancel tests
+   failed, 3 of 3. That proves the stub answer is what decides the outcome.
+
+Both mutations were reverted. The suite is green with the guard and the cancel answer in place.
+
+### Two production seams were needed
+
+The item put pages and dialogs out of scope. Two acceptance criteria could not be met without
+a seam, so three were added. None changes behaviour.
+
+- `PreviewScheduler.LastRun` keeps the task `Schedule` used to discard.
+- `HotstringEditDialog.PreviewRun` and `HotkeyEditDialog.PreviewRun` expose it.
+- `HotstringEditDialog` injects `TimeProvider` and passes it to both `SafePreview` calls.
+  `TimeProvider.System` was already registered in `Program.cs`, and other components already
+  inject it.
+
 ## Acceptance criteria
 
-- [ ] No `Task.Delay` remains in `HotstringEditDialogTests.cs` or `HotkeyEditDialogTests.cs` as a
+- [x] No `Task.Delay` remains in `HotstringEditDialogTests.cs` or `HotkeyEditDialogTests.cs` as a
       way to wait for work to finish
-- [ ] `RecycleBinPageTests.cs` proves the parallel start with a mock call count, and holds no
+- [x] `RecycleBinPageTests.cs` proves the parallel start with a mock call count, and holds no
       cross-thread `bool` and no `SpinWait`
-- [ ] `StartupErrorRootTests.cs` waits on a `NavigationManager.LocationChanged` signal, not on a
+- [x] `StartupErrorRootTests.cs` waits on a `NavigationManager.LocationChanged` signal, not on a
       deadline
-- [ ] The two clock-reading tests pass with a fixed clock that is not the system clock
-- [ ] The three `DidNotReceive` waits are plain assertions, and
+- [x] The two clock-reading tests pass with a fixed clock that is not the system clock
+- [x] The three `DidNotReceive` waits are plain assertions, and
       `ProfilesPageTests.Page_Delete_ConfirmCallsDeleteAsync` carries a name that matches its body
-- [ ] `pwsh ./scripts/test-fast.ps1 -Mode Fast` passes
+- [x] `pwsh ./scripts/test-fast.ps1 -Mode Fast` passes
 
 ## Out of scope
 
