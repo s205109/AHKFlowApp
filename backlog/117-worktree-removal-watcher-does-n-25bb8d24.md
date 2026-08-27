@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: CLI
 - **Difficulty**: moderate
-- **Stage**: 1-pickup
+- **Stage**: 3-plan
 
 ## Summary
 
@@ -29,14 +29,14 @@ the full diagnostics tail and the outcome line:
     [manual-2e3c50] Watcher Watcher done (worktree + branch removed).
     [manual-2e3c50] Watcher OUTCOME Removed.
 
-So `Resolve-PowerShellExecutable` returning the current host
-(`scripts/worktree-powershell.common.ps1:5-8`) is not a defect. Issue #348's stated cause
-does not hold.
+So `Resolve-PowerShellExecutable` returning the current host is not a defect
+(`scripts/worktree-powershell.common.ps1:5`, "    $currentProcessPath = [System.Diagnostics.Process]::GetCurrentProcess().Path").
+Issue #348's stated cause does not hold.
 
 ### 2. The test harness feeds the hook a byte order mark under 5.1
 
-`tests/WorktreeRemoveHook.Tests.ps1:161` writes the hook's stdin with
-`Set-Content ... -Encoding utf8`. Under Windows PowerShell 5.1 that cmdlet emits a UTF-8 BOM.
+`tests/WorktreeRemoveHook.Tests.ps1` wrote the hook's stdin with
+`Set-Content ... -Encoding utf8` before this item's fix. <!-- citation-check:ignore records the pre-fix tree --> Under Windows PowerShell 5.1 that cmdlet emits a UTF-8 BOM.
 Under PowerShell 7 it does not. Measured bytes for the same one-line JSON:
 
     5.1:  ef bb bf 7b 22 61 22 3a 31 7d 0d 0a
@@ -44,10 +44,11 @@ Under PowerShell 7 it does not. Measured bytes for the same one-line JSON:
 
 ### 3. A BOM on stdin turns the hook into a silent no-op
 
-`Read-RawStdin` (`scripts/remove-worktree-local-dev.ps1:378-381`) returns the BOM as three
-leading characters. `ConvertFrom-Json` then fails, `$WorktreePath` stays empty, and the
-branch at `scripts/remove-worktree-local-dev.ps1:718-725` returns without calling
-`Write-Outcome`. Observed hook stderr:
+`Read-RawStdin` returned the BOM as a leading character. `ConvertFrom-Json` then failed,
+`$WorktreePath` stayed empty, and the empty-path branch of `Invoke-HookMode` returned without
+calling `Write-Outcome`. Both sites are in `scripts/remove-worktree-local-dev.ps1` and both are
+changed by this item, so the pre-fix line numbers are deliberately left out.
+Observed hook stderr:
 
     Hook stdin was not valid JSON: Invalid JSON primitive: .
     Hook No worktree_path provided; nothing to do.
@@ -90,6 +91,7 @@ hook to say what it did, so that a worktree left behind always has a log line ex
 
 - Closes GitHub issue #348. That issue's stated root cause is wrong; finding 1 above corrects it.
 - Related: issue #340 and PR #347, which raised this suite's floor to `#Requires -Version 7.0`.
-- Precedent for the raised floor: `tests/WorktreeMergedCleanup.Tests.ps1:1-7`.
+- Precedent for a raised floor elsewhere
+  (`tests/WorktreeMergedCleanup.Tests.ps1:7`, "#Requires -Version 7.0").
 - Spec: none - root cause is proven above and the change is moderate, so this item goes straight to Plan.
-- Plan: <path, or "none - reason">
+- Plan: `docs/superpowers/plans/2026-08-27-removal-hook-stdin-bom-plan-117.md`

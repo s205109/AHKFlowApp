@@ -375,9 +375,27 @@ function Resolve-MainCheckoutFromScriptRoot {
     }
 }
 
+# Reads the hook payload from stdin as UTF-8, and never through [Console]::In.
+# [Console]::InputEncoding is the console code page, IBM437 on a default Windows install. Reading
+# through it decodes every byte above 0x7F wrongly. Two things break as a result. A UTF-8 byte
+# order mark arrives as three garbage characters instead of one U+FEFF, and ConvertFrom-Json then
+# rejects the whole document -- which is how a hook call became a silent no-op. Any non-ASCII
+# character in a worktree path is mangled the same way.
+#
+# A StreamReader over the raw stdin stream fixes both. detectEncodingFromByteOrderMarks consumes
+# a leading mark instead of passing it on, and the UTF-8 fallback covers a payload written without
+# one. Windows PowerShell 5.1 writes that mark by default from Set-Content -Encoding utf8, so any
+# producer running under 5.1 sends one.
 function Read-RawStdin {
     if (-not [Console]::IsInputRedirected) { return $null }
-    try { return [Console]::In.ReadToEnd() } catch { return $null }
+
+    try {
+        $stream = [Console]::OpenStandardInput()
+        $reader = New-Object System.IO.StreamReader($stream, (New-Object System.Text.UTF8Encoding($false)), $true)
+        try { return $reader.ReadToEnd() } finally { $reader.Dispose() }
+    } catch {
+        return $null
+    }
 }
 
 # Copied verbatim from scripts/new-worktree.ps1 (Test-EnvironmentFlagEnabled) so both
@@ -722,6 +740,10 @@ function Invoke-HookMode {
         Write-DiagnosticLog "WorktreeRemove hook fired. PID=$PID ScriptPath=$PSCommandPath"
         if ($stdinError) { Write-DiagnosticLog $stdinError }
         Write-DiagnosticLog 'No worktree_path provided; nothing to do.'
+        # Every other refusal writes one outcome line, so a reader can always tell what an
+        # attempt decided. Without this the log file is never created at all, and a worktree
+        # left behind has nothing on disk explaining why.
+        Write-Outcome 'Kept: the hook received no worktree path.'
         return
     }
 
