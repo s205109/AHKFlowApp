@@ -109,5 +109,5 @@ Do not design from the YAML alone. This answer came from a real run.
 - This item was filed as 117 and renumbered to 119. `new-backlog-item.ps1` cannot see numbers on
   unmerged branches: 117 belongs to `fix/wt-removal-watcher-powershell-5` and 118 to
   `fix/wt-give-each-worktree-removal-its-abefe700`, and neither was merged when this was filed.
-- Spec: none — decide at Plan whether the design needs one.
-- Plan: none yet — this item is at Intake.
+- Spec: none — the design fits inside the plan. Decided at Plan.
+- Plan: docs/superpowers/plans/2026-08-27-gate-coverage-skip-plan-119.md
