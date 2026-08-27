@@ -24,7 +24,7 @@ removed, so that the folder list holds live work only.
 ## Detail
 
 The removal script runs `git merge-base --is-ancestor HEAD <base>`
-(`scripts/remove-worktree-local-dev.ps1:901`, "        if (-not (Test-WorktreeMergedIntoMain -WorktreeFull $worktreeFull -BranchName $branchName -BaseRef $baseRef -MainCheckout $mainCheckoutFromGit)) {").
+(`scripts/remove-worktree-local-dev.ps1:924`, "        if (-not (Test-WorktreeMergedIntoMain -WorktreeFull $worktreeFull -BranchName $branchName -BaseRef $baseRef -MainCheckout $mainCheckoutFromGit)) {").
 The sweep asks a different question: reachability plus a ref-log reading of the branch's own work
 (`scripts/worktree-git.common.ps1:868`, "function Test-BranchOwnWorkWasMerged {"), after a
 first filter of `git branch --merged`. That filter is gone now: the shared decision is the only
