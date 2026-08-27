@@ -28,19 +28,27 @@ internal static class DevConfig
         this IConfigurationBuilder builder,
         HttpClient http,
         TimeSpan? perFileTimeout = null,
+        TimeProvider? timeProvider = null,
         CancellationToken ct = default)
     {
         // The timeout rides on a token rather than HttpClient.Timeout: under WebAssembly the browser
         // HTTP handler does not enforce HttpClient.Timeout, so a stalled fetch would hang forever
         // regardless of what the client is configured with. Cancelling the token aborts the fetch.
+        //
+        // The clock is a parameter so a test can drive the give-up with a fake one. A real timer
+        // fires on the .NET thread pool, so a test that waits for it measures how busy the pool is
+        // rather than what this method does. Pass nothing and the system clock is used, which is
+        // what the app always does.
         foreach (string file in Files)
         {
-            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            timeoutCts.CancelAfter(perFileTimeout ?? DefaultPerFileTimeout);
+            using var timeoutCts = new CancellationTokenSource(
+                perFileTimeout ?? DefaultPerFileTimeout,
+                timeProvider ?? TimeProvider.System);
+            using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
 
             try
             {
-                byte[] json = await http.GetByteArrayAsync($"{file}?reloadcheck={Guid.NewGuid():N}", timeoutCts.Token);
+                byte[] json = await http.GetByteArrayAsync($"{file}?reloadcheck={Guid.NewGuid():N}", linkedCts.Token);
                 builder.AddJsonStream(new MemoryStream(json));
             }
             catch (HttpRequestException)
