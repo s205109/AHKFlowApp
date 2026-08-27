@@ -1,4 +1,4 @@
-# 117 - Give each worktree removal its own temp directory
+# 118 - Give each worktree removal its own temp directory
 
 ## Metadata
 
@@ -54,10 +54,11 @@ This touches three places: the spawn path, the cleanup path, and `Test-Generated
       named after the run id under the system temp folder.
 - [ ] The watcher deletes that whole directory when it finishes, on every exit path that cleans up
       today.
-- [ ] The deletion guard refuses a path whose parent is not the system temp folder, and refuses a
-      leaf name that does not match the generated pattern.
+- [ ] The deletion guard refuses a path whose parent is not the temp root it was given, and refuses
+      a leaf name that does not match the generated pattern.
 - [ ] The watcher's current directory is never the directory it must delete.
-- [ ] A PowerShell test proves that two removal attempts get different helper copies.
+- [ ] A PowerShell test proves that a locked copy of a helper in the bare temp folder no longer
+      makes the hook log a failed helper copy.
 - [ ] `pwsh ./scripts/run-powershell-suites.ps1` passes.
 
 ## Out of scope
@@ -69,5 +70,9 @@ This touches three places: the spawn path, the cleanup path, and `Test-Generated
 ## Notes / dependencies
 
 - GitHub issue: https://github.com/s205109/AHKFlowApp/issues/339
+- This item was filed as 117 and renumbered to 118. A local unpushed branch,
+  `fix/wt-removal-watcher-powershell-5`, already owns 117.
+- That branch also changes `scripts/remove-worktree-local-dev.ps1`, for GitHub issue #348. It has
+  not touched the script yet, so there is no conflict today. Whichever branch merges second rebases.
 - Spec: none — the root cause and the fix are both stated in the issue, so this goes straight to Plan.
 - Plan: <path, or "none — reason">
