@@ -19,7 +19,7 @@ with a filter, but the human still opens a file where nineteen lines out of twen
 for them. The criterion this serves asks for a readable log, not a filterable one.
 
 **Dropping the detail entirely was rejected.** `Write-DiagnosticLog`
-(`scripts/remove-worktree-local-dev.ps1:310`, "function Write-DiagnosticLog {") already sends
+(`scripts/remove-worktree-local-dev.ps1:337`, "function Write-DiagnosticLog {") already sends
 it to stderr, so the argument was that a file adds nothing. It does not hold. The watcher is
 a detached process that outlives the session that spawned it, so its stderr reaches nobody.
 The detail would be lost exactly when a failure needs explaining.
