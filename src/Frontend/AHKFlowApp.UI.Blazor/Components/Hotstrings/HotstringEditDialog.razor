@@ -184,7 +184,7 @@
                            UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "datetime-format-select" })">
                     @foreach ((string label, string format) in DateTimeFormatPresets)
                     {
-                        <MudSelectItem T="string" Value="@format">@($"{label} — {HotstringEditModel.SafePreview(format)}")</MudSelectItem>
+                        <MudSelectItem T="string" Value="@format">@($"{label} — {HotstringEditModel.SafePreview(format, clock: Clock)}")</MudSelectItem>
                     }
                     <MudSelectItem T="string" Value="@CustomFormatSentinel">Custom…</MudSelectItem>
                 </MudSelect>
@@ -343,6 +343,7 @@
     [Inject] private ISnackbar Snackbar { get; set; } = default!;
     [Inject] private IJSRuntime JS { get; set; } = default!;
     [Inject] private ILogger<HotstringEditDialog> Logger { get; set; } = default!;
+    [Inject] private TimeProvider Clock { get; set; } = default!;
 
     [Parameter] public HotstringEditModel Item { get; set; } = new();
     [Parameter] public IReadOnlyList<ProfileDto> Profiles { get; set; } = [];
@@ -350,6 +351,10 @@
 
     /// <summary>Debounce applied to preview refreshes after a field change. Test seam.</summary>
     internal TimeSpan PreviewDebounce { get; set; } = TimeSpan.FromMilliseconds(400);
+
+    /// <summary>Test seam: the preview run the scheduler started last. Await it instead of
+    /// sleeping when a test needs to know a response has been handled.</summary>
+    internal Task? PreviewRun => _preview.LastRun;
 
     private string? _error;
     private string? _triggerError;
@@ -702,7 +707,7 @@
     }
 
     private string PreviewWithOffset() =>
-        HotstringEditModel.SafePreview(Item.DateTimeFormat, Item.DateOffsetAmount, Item.DateOffsetUnit);
+        HotstringEditModel.SafePreview(Item.DateTimeFormat, Item.DateOffsetAmount, Item.DateOffsetUnit, Clock);
 
     private void OnContextSwitchChanged(bool isOn)
     {
