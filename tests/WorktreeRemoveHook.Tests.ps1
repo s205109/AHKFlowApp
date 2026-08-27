@@ -1,13 +1,15 @@
-# 7.0, not 5.1. Two separate defects put this suite out of reach of Windows PowerShell.
-# First, Invoke-TestGit below runs `& git ... 2>&1`, and under Windows PowerShell a native
-# command's stderr becomes an error record that this file's 'Stop' preference turns terminating --
-# so `git worktree add`, which reports progress on stderr, ends the suite.
-# Second, the watcher this suite drives is spawned with the current host, so under powershell.exe
-# remove-worktree-local-dev.ps1 runs in Watcher mode under 5.1 and never removes the worktree.
-# The second one is the real bug and is tracked separately; until it is fixed the floor here says
-# what it really is. scripts/run-powershell-suites.ps1 runs every suite under pwsh, so nothing
-# changes in CI.
-#Requires -Version 7.0
+# 5.1, and it means it. This suite passes under powershell.exe and under pwsh.
+# Two Windows PowerShell traps used to put it out of reach, and both are handled below.
+# First, Invoke-TestGit runs `& git ... 2>&1`, and under Windows PowerShell a native command's
+# stderr becomes an error record that this file's 'Stop' preference turns terminating -- so
+# `git worktree add`, which reports progress on stderr, ended the suite. That helper now sets
+# 'Continue' around the call and restores the preference afterwards.
+# Second, Invoke-RemoveHook wrote the hook's stdin with Set-Content -Encoding utf8, which adds a
+# byte order mark under 5.1 and none under 7.x. The hook then rejected its own payload and did
+# nothing. That write is now byte-exact, and backlog 117 made the hook read stdin as UTF-8
+# instead of through the console code page.
+# The watcher itself was never host-dependent; issue #348 said otherwise and was wrong.
+#Requires -Version 5.1
 
 [CmdletBinding()]
 param()
@@ -45,7 +47,18 @@ function Assert-Equal {
 
 function Invoke-TestGit {
     param([string] $RepoDir, [string[]] $GitArgs)
-    $out = & git -C $RepoDir @GitArgs 2>&1
+
+    # Under Windows PowerShell a native command's stderr becomes an error record, and this file's
+    # 'Stop' preference turns it terminating. git reports worktree progress on stderr, so without
+    # this guard `git worktree add` ends the suite. The exit code below is the real check.
+    $previousPreference = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        $out = & git -C $RepoDir @GitArgs 2>&1
+    } finally {
+        $ErrorActionPreference = $previousPreference
+    }
+
     if ($LASTEXITCODE -ne 0) {
         throw "git $($GitArgs -join ' ') failed: $out"
     }
@@ -150,15 +163,36 @@ function Get-RemovalDiagnosticsPath {
 function Invoke-RemoveHook {
     param(
         [string] $WorktreePath,
-        [hashtable] $EnvOverrides
+        [hashtable] $EnvOverrides,
+
+        # Sends the payload with a leading UTF-8 byte order mark. That is what Set-Content
+        # -Encoding utf8 produces under Windows PowerShell 5.1, and it used to make the hook
+        # reject its own stdin. Backlog 117 made Read-RawStdin decode stdin as UTF-8, which
+        # consumes the mark.
+        [switch] $WithByteOrderMark,
+
+        # Sends this JSON instead of a worktree_path payload. Used to drive the empty-path branch.
+        [string] $RawPayload,
+
+        # Uses a copy of the hook from a fixture worktree. This checks how the real hook resolves
+        # the main checkout when the payload supplies no path.
+        [string] $HookScriptPath = $removeScript
     )
 
     $stdinFile = [System.IO.Path]::GetTempFileName()
     $stdoutFile = [System.IO.Path]::GetTempFileName()
     $stderrFile = [System.IO.Path]::GetTempFileName()
     try {
-        $payload = (@{ worktree_path = $WorktreePath } | ConvertTo-Json -Compress)
-        Set-Content -LiteralPath $stdinFile -Value $payload -Encoding utf8
+        $payload = if ($PSBoundParameters.ContainsKey('RawPayload')) {
+            $RawPayload
+        } else {
+            (@{ worktree_path = $WorktreePath } | ConvertTo-Json -Compress)
+        }
+
+        # WriteAllText, not Set-Content: -Encoding utf8 adds a byte order mark under 5.1 and none
+        # under 7.x, so the same suite would send different bytes on the two hosts.
+        [System.IO.File]::WriteAllText($stdinFile, $payload,
+            (New-Object System.Text.UTF8Encoding($WithByteOrderMark.IsPresent)))
 
         $previousValues = @{}
         if ($EnvOverrides) {
@@ -169,9 +203,11 @@ function Invoke-RemoveHook {
         }
 
         try {
+            $hookArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $HookScriptPath, '-Mode', 'Hook')
+
             $psExe = [System.Diagnostics.Process]::GetCurrentProcess().Path
             $proc = Start-Process -FilePath $psExe `
-                -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $removeScript, '-Mode', 'Hook') `
+                -ArgumentList $hookArgs `
                 -WorkingDirectory $suiteRoot `
                 -RedirectStandardInput $stdinFile `
                 -RedirectStandardOutput $stdoutFile `
@@ -258,6 +294,78 @@ try {
 
     $removed = Wait-ForCondition { -not (Test-Path -LiteralPath $wtPath) }
     Assert-True $removed "Merged + clean worktree should be removed by the watcher. Log: $(Get-Content -Raw -LiteralPath (Get-RemovalLogPath $repo) -ErrorAction SilentlyContinue)"
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- Test: non-ASCII worktree path -> still removed ----------------------------
+# This payload has no byte order mark. The old console-code-page reader changed the UTF-8 path
+# bytes before JSON conversion, so the hook looked for a different folder and kept the real one.
+$repo = New-TempGitRepo
+try {
+    $branchName = 'feat-unicode-' + [char]0x00E9
+    $wtPath = Add-TestWorktree -RepoDir $repo -BranchName $branchName
+
+    $result = Invoke-RemoveHook -WorktreePath $wtPath
+    Assert-Equal 0 $result.ExitCode "Hook should exit 0. Stderr: $($result.Stderr)"
+
+    $removed = Wait-ForCondition { -not (Test-Path -LiteralPath $wtPath) }
+    Assert-True $removed "A non-ASCII worktree path must survive UTF-8 stdin decoding. Stderr: $($result.Stderr)"
+
+    $outcomeLines = @(Wait-ForOutcomeLine -RepoDir $repo)
+    Assert-Equal 1 $outcomeLines.Count "A non-ASCII path removal writes exactly one outcome line, got $($outcomeLines.Count)"
+    Assert-True ($outcomeLines[0] -match 'Removed\.$') "Expected the removed line, got '$($outcomeLines[0])'"
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- Test: BOM on stdin -> still removed --------------------------------------
+# Windows PowerShell 5.1 writes a UTF-8 byte order mark from Set-Content -Encoding utf8. Read
+# through [Console]::In those three bytes arrive as three characters from the console code page,
+# not as one U+FEFF, so ConvertFrom-Json rejects the document. Before backlog 117 the hook then
+# exited 0 with the worktree untouched and no log file at all, and issue #348 read that silence
+# as a broken watcher. Read-RawStdin decodes stdin as UTF-8 now, which consumes the mark.
+$repo = New-TempGitRepo
+try {
+    $wtPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-bom-stdin'
+
+    $result = Invoke-RemoveHook -WorktreePath $wtPath -WithByteOrderMark
+    Assert-Equal 0 $result.ExitCode "Hook should exit 0. Stderr: $($result.Stderr)"
+
+    $removed = Wait-ForCondition { -not (Test-Path -LiteralPath $wtPath) }
+    Assert-True $removed "A byte order mark on stdin must not stop the removal. Stderr: $($result.Stderr)"
+
+    $outcomeLines = @(Wait-ForOutcomeLine -RepoDir $repo)
+    Assert-Equal 1 $outcomeLines.Count "A BOM-prefixed removal writes exactly one outcome line, got $($outcomeLines.Count)"
+    Assert-True ($outcomeLines[0] -match 'Removed\.$') "Expected the removed line, got '$($outcomeLines[0])'"
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- Test: no worktree_path -> one central outcome line, not silence -----------
+# Every other refusal writes one line. This branch used to return without one, so the log file
+# was never created and a worktree left behind had nothing on disk explaining why. The real hook
+# runs the script copy inside the linked worktree, but the outcome belongs in the main checkout.
+$repo = New-TempGitRepo
+try {
+    $wtPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-no-path'
+    $hookScriptsDir = Join-Path $wtPath 'scripts'
+    New-Item -ItemType Directory -Path $hookScriptsDir -Force | Out-Null
+    $fixtureRemoveScript = Join-Path $hookScriptsDir 'remove-worktree-local-dev.ps1'
+    Copy-Item -LiteralPath $removeScript -Destination $fixtureRemoveScript
+    Copy-Item -LiteralPath (Join-Path $scriptsDir 'worktree-log.common.ps1') -Destination $hookScriptsDir
+
+    $result = Invoke-RemoveHook -RawPayload '{}' -HookScriptPath $fixtureRemoveScript
+    Assert-Equal 0 $result.ExitCode "Hook should exit 0. Stderr: $($result.Stderr)"
+
+    Assert-True (Test-Path -LiteralPath $wtPath) 'A payload with no worktree_path must touch nothing.'
+
+    $outcomeLines = @(Wait-ForOutcomeLine -RepoDir $repo)
+    Assert-Equal 1 $outcomeLines.Count "A no-path hook writes exactly one outcome line, got $($outcomeLines.Count)"
+    Assert-True ($outcomeLines[0] -match 'Kept: the hook received no worktree path\.$') `
+        "Expected the no-path line, got '$($outcomeLines[0])'"
+    Assert-True (-not (Test-Path -LiteralPath (Get-RemovalLogPath $wtPath))) `
+        'A no-path hook must not leave the outcome in the linked worktree copy.'
 } finally {
     Remove-TempTree $repo
 }

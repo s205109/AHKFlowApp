@@ -369,15 +369,47 @@ function Resolve-MainCheckoutFromScriptRoot {
     }
 
     try {
-        return (Resolve-Path -LiteralPath (Join-Path $scriptRoot '..') -ErrorAction Stop).Path
+        $scriptCheckout = (Resolve-Path -LiteralPath (Join-Path $scriptRoot '..') -ErrorAction Stop).Path
     } catch {
         return $null
     }
+
+    # A linked worktree's script root belongs to that worktree. Git's common directory still
+    # points at the main checkout, where the one removal log lives.
+    $commonResult = Invoke-GitCapture @('-C', $scriptCheckout, 'rev-parse', '--path-format=absolute', '--git-common-dir')
+    if ($commonResult.ExitCode -eq 0 -and $commonResult.Lines.Count -gt 0) {
+        $gitCommonDir = ($commonResult.Lines[0]).Trim()
+        try {
+            if ((Split-Path -Leaf $gitCommonDir) -ieq '.git') {
+                return (Resolve-Path -LiteralPath (Split-Path -Parent $gitCommonDir) -ErrorAction Stop).Path
+            }
+        } catch { }
+    }
+
+    return $scriptCheckout
 }
 
+# Reads the hook payload from stdin as UTF-8, and never through [Console]::In.
+# [Console]::InputEncoding is the console code page, IBM437 on a default Windows install. Reading
+# through it decodes every byte above 0x7F wrongly. Two things break as a result. A UTF-8 byte
+# order mark arrives as three garbage characters instead of one U+FEFF, and ConvertFrom-Json then
+# rejects the whole document -- which is how a hook call became a silent no-op. Any non-ASCII
+# character in a worktree path is mangled the same way.
+#
+# A StreamReader over the raw stdin stream fixes both. detectEncodingFromByteOrderMarks consumes
+# a leading mark instead of passing it on, and the UTF-8 fallback covers a payload written without
+# one. Windows PowerShell 5.1 writes that mark by default from Set-Content -Encoding utf8, so any
+# producer running under 5.1 sends one.
 function Read-RawStdin {
     if (-not [Console]::IsInputRedirected) { return $null }
-    try { return [Console]::In.ReadToEnd() } catch { return $null }
+
+    try {
+        $stream = [Console]::OpenStandardInput()
+        $reader = New-Object System.IO.StreamReader($stream, (New-Object System.Text.UTF8Encoding($false)), $true)
+        try { return $reader.ReadToEnd() } finally { $reader.Dispose() }
+    } catch {
+        return $null
+    }
 }
 
 # Copied verbatim from scripts/new-worktree.ps1 (Test-EnvironmentFlagEnabled) so both
@@ -397,8 +429,17 @@ function Test-EnvironmentFlagEnabled {
 function Invoke-GitCapture {
     param([string[]] $GitArgs)
 
-    $merged = & git @GitArgs 2>&1
-    $code = $LASTEXITCODE
+    # Git emits UTF-8 paths. A detached Windows process can retain an OEM console output encoding,
+    # which makes PowerShell replace non-ASCII path bytes before this function can compare them.
+    $previousOutputEncoding = [Console]::OutputEncoding
+    [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
+    try {
+        $merged = & git @GitArgs 2>&1
+        $code = $LASTEXITCODE
+    } finally {
+        [Console]::OutputEncoding = $previousOutputEncoding
+    }
+
     $lines = @()
     foreach ($item in $merged) { $lines += [string] $item }
     return [pscustomobject]@{ ExitCode = $code; Lines = $lines }
@@ -722,6 +763,10 @@ function Invoke-HookMode {
         Write-DiagnosticLog "WorktreeRemove hook fired. PID=$PID ScriptPath=$PSCommandPath"
         if ($stdinError) { Write-DiagnosticLog $stdinError }
         Write-DiagnosticLog 'No worktree_path provided; nothing to do.'
+        # Every other refusal writes one outcome line, so a reader can always tell what an
+        # attempt decided. Without this the log file is never created at all, and a worktree
+        # left behind has nothing on disk explaining why.
+        Write-Outcome 'Kept: the hook received no worktree path.'
         return
     }
 
