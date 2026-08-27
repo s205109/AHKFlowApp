@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: UI
 - **Difficulty**: moderate
-- **Stage**: 0-intake
+- **Stage**: 3-plan
 
 ## Summary
 
@@ -106,4 +106,4 @@ it does. The name says confirm calls delete. The body asserts that delete was no
 - Precedent: `backlog/done/089-flaky-e2e-template-warning-test-times-out-in-ci.md` fixed the same
   class of problem in the E2E suite by finding the real signal
 - Spec: none — `moderate` goes straight to Plan
-- Plan: none — not yet at Plan
+- Plan: `docs/superpowers/plans/2026-08-27-blazor-tests-wait-on-signals-plan-116.md`
