@@ -106,7 +106,9 @@ hook to say what it did, so that a worktree left behind always has a log line ex
   decode to `U+2229 U+2557 U+2510` and never to one `U+FEFF`. Trimming a single character does
   not work; the reader has to bypass `[Console]::In`. Recorded in the plan's Task 1.
 - Follow-up, not fixed here: `Get-HookInput` in `scripts/new-worktree.ps1` reads its hook stdin
-  through `[Console]::In.ReadToEnd()` and carries the same code-page defect.
+  through `[Console]::In` and carries the same code-page defect. Filed as GitHub issue #356.
+  Low priority: that script fails loudly instead of silently, and its name filter hides the
+  non-ASCII case.
 - Scope grew after the plan was written. Fixing the input side exposed two more faults on the
   same silent-no-op path: the hook resolved the wrong checkout for its log when run from a
   worktree copy, and git's UTF-8 output was decoded through the console code page. Both are
