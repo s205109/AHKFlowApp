@@ -55,6 +55,11 @@ public sealed class DevConfigTests
 
         await builder.AddCacheBustedDevConfigAsync(http, PerFileTimeout, clock).WaitAsync(HangGuard);
 
+        // Moving the supplied clock is what ended every fetch. Without this the test still passes
+        // when the code ignores the clock and arms a real 150 ms timer: the give-up happens anyway,
+        // for the wrong reason, well inside HangGuard. Asserting completion alone cannot see that.
+        handler.TokenCancelledOnArrival.Should().NotBeEmpty();
+        handler.TokenCancelledOnArrival.Should().OnlyContain(cancelled => cancelled);
         builder.Sources.Should().BeEmpty();
     }
 
@@ -116,9 +121,19 @@ public sealed class DevConfigTests
     private sealed class NeverCompletingHandler(FakeTimeProvider? clock = null, TimeSpan advanceBy = default)
         : HttpMessageHandler
     {
+        /// <summary>
+        /// One entry per request: was the caller's token already cancelled the instant the fake
+        /// clock moved? True only when the give-up timer is running on the clock the test supplied.
+        /// Recorded here and asserted in the test body rather than thrown here, because
+        /// <see cref="DevConfig"/> catches <see cref="HttpRequestException"/>, and an assertion
+        /// thrown inside a handler can reach the caller wrapped in one and be swallowed.
+        /// </summary>
+        public List<bool> TokenCancelledOnArrival { get; } = [];
+
         protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
             clock?.Advance(advanceBy);
+            TokenCancelledOnArrival.Add(ct.IsCancellationRequested);
             await Task.Delay(Timeout.Infinite, ct);
             throw new UnreachableException();
         }
