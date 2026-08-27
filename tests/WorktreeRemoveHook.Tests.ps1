@@ -6,7 +6,8 @@
 # 'Continue' around the call and restores the preference afterwards.
 # Second, Invoke-RemoveHook wrote the hook's stdin with Set-Content -Encoding utf8, which adds a
 # byte order mark under 5.1 and none under 7.x. The hook then rejected its own payload and did
-# nothing. That write is now byte-exact, and backlog 117 made the hook trim the mark as well.
+# nothing. That write is now byte-exact, and backlog 117 made the hook read stdin as UTF-8
+# instead of through the console code page.
 # The watcher itself was never host-dependent; issue #348 said otherwise and was wrong.
 #Requires -Version 5.1
 
@@ -166,7 +167,8 @@ function Invoke-RemoveHook {
 
         # Sends the payload with a leading UTF-8 byte order mark. That is what Set-Content
         # -Encoding utf8 produces under Windows PowerShell 5.1, and it used to make the hook
-        # reject its own stdin. Backlog 117 made Read-RawStdin trim the mark.
+        # reject its own stdin. Backlog 117 made Read-RawStdin decode stdin as UTF-8, which
+        # consumes the mark.
         [switch] $WithByteOrderMark,
 
         # Sends this JSON instead of a worktree_path payload. Used to drive the empty-path branch.
@@ -299,10 +301,11 @@ try {
 }
 
 # --- Test: BOM on stdin -> still removed --------------------------------------
-# Windows PowerShell 5.1 writes a UTF-8 byte order mark from Set-Content -Encoding utf8. Those
-# three bytes reach the hook as one U+FEFF character, ConvertFrom-Json rejects the document, and
-# before backlog 117 the hook exited 0 with the worktree untouched and no log file at all. Issue
-# #348 read that silence as a broken watcher. Read-RawStdin trims the mark now.
+# Windows PowerShell 5.1 writes a UTF-8 byte order mark from Set-Content -Encoding utf8. Read
+# through [Console]::In those three bytes arrive as three characters from the console code page,
+# not as one U+FEFF, so ConvertFrom-Json rejects the document. Before backlog 117 the hook then
+# exited 0 with the worktree untouched and no log file at all, and issue #348 read that silence
+# as a broken watcher. Read-RawStdin decodes stdin as UTF-8 now, which consumes the mark.
 $repo = New-TempGitRepo
 try {
     $wtPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-bom-stdin'
