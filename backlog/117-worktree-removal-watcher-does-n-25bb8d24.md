@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: CLI
 - **Difficulty**: moderate
-- **Stage**: 3-plan
+- **Stage**: 4-execute
 
 ## Summary
 
@@ -71,8 +71,9 @@ hook to say what it did, so that a worktree left behind always has a log line ex
 
 ## Acceptance criteria
 
-- [ ] `Read-RawStdin` in `scripts/remove-worktree-local-dev.ps1` strips a leading UTF-8 byte
-      order mark before the caller parses the JSON.
+- [ ] `Read-RawStdin` in `scripts/remove-worktree-local-dev.ps1` decodes stdin as UTF-8 through
+      a `StreamReader` over the raw stream, not through `[Console]::In`, so a leading byte order
+      mark is consumed and a non-ASCII worktree path survives.
 - [ ] The hook writes exactly one outcome line to `worktree-removal.log` when it finds no
       `worktree_path`, so no removal attempt ends with an empty log.
 - [ ] `tests/WorktreeRemoveHook.Tests.ps1` declares `#Requires -Version 5.1` and passes under
@@ -93,5 +94,10 @@ hook to say what it did, so that a worktree left behind always has a log line ex
 - Related: issue #340 and PR #347, which raised this suite's floor to `#Requires -Version 7.0`.
 - Precedent for a raised floor elsewhere
   (`tests/WorktreeMergedCleanup.Tests.ps1:7`, "#Requires -Version 7.0").
+- `[Console]::InputEncoding` is `ibm437` on this machine under both hosts, so the BOM bytes
+  decode to `U+2229 U+2557 U+2510` and never to one `U+FEFF`. Trimming a single character does
+  not work; the reader has to bypass `[Console]::In`. Recorded in the plan's Task 1.
+- Follow-up, not fixed here: `Get-HookInput` in `scripts/new-worktree.ps1` reads its hook stdin
+  through `[Console]::In.ReadToEnd()` and carries the same code-page defect.
 - Spec: none - root cause is proven above and the change is moderate, so this item goes straight to Plan.
 - Plan: `docs/superpowers/plans/2026-08-27-removal-hook-stdin-bom-plan-117.md`
