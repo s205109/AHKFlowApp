@@ -342,9 +342,13 @@ public sealed class HotstringEditModelTests
     [Fact]
     public void SafePreview_SingleCharFormat_UsesCustomSpecifier_NotStandardSpecifier()
     {
-        string preview = HotstringEditModel.SafePreview("d");
+        // Day 23 is not a valid month number, so a regression that read "d" as the standard
+        // short-date specifier could not produce "23" by accident.
+        FakeTimeProvider clock = new(new DateTimeOffset(2031, 7, 23, 12, 0, 0, TimeSpan.Zero));
 
-        preview.Should().Be(DateTime.Now.ToString("%d"));
+        string preview = HotstringEditModel.SafePreview("d", clock: clock);
+
+        preview.Should().Be("23");
         preview.Should().NotContain("/");
     }
 

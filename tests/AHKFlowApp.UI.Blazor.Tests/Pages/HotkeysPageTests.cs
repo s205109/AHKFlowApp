@@ -582,13 +582,25 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
         _api.DeleteAsync(dto.Id, Arg.Any<CancellationToken>())
             .Returns(ApiResult.Ok());
 
+        // The stub answers the confirmation with "cancel". Without it the message box stays open
+        // and the delete handler stays suspended, so the test would prove nothing.
+        IDialogService dialogService = Substitute.For<IDialogService>();
+        dialogService.ShowMessageBoxAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(),
+            Arg.Any<DialogOptions>())
+            .Returns(Task.FromResult<bool?>(false));
+        Services.AddSingleton(dialogService);
+
         IRenderedComponent<Hotkeys> cut = RenderPage();
         cut.WaitForAssertion(() => cut.Find("button.delete"));
         cut.Find("button.delete").Click();
 
-        // ShowMessageBoxAsync renders via JS interop; confirm is not callable in bUnit.
-        // JS is loose so the dialog resolves as null (cancel) — DeleteAsync NOT called.
-        cut.WaitForAssertion(() => _api.DidNotReceive().DeleteAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()));
+        // The answered confirmation is the signal that the cancel path ran.
+        cut.WaitForAssertion(() => dialogService.Received(1).ShowMessageBoxAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(),
+            Arg.Any<DialogOptions>()));
+
+        _ = _api.DidNotReceive().DeleteAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
         return Task.CompletedTask;
     }
 

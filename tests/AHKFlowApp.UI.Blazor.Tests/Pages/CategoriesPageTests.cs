@@ -121,11 +121,25 @@ public sealed class CategoriesPageTests : BunitContext, IAsyncLifetime
         CategoryDto dto = MakeCategory("ToDelete");
         StubList(dto);
 
+        // The stub answers the confirmation with "cancel". Without it the message box never
+        // resolves in bUnit, and the delete handler would stay suspended, proving nothing.
+        IDialogService dialogService = Substitute.For<IDialogService>();
+        dialogService.ShowMessageBoxAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(),
+            Arg.Any<DialogOptions>())
+            .Returns(Task.FromResult<bool?>(false));
+        Services.AddSingleton(dialogService);
+
         IRenderedComponent<Categories> cut = RenderPage();
         cut.WaitForState(() => cut.Markup.Contains("ToDelete"));
         cut.Find("button.delete").Click();
 
-        cut.WaitForAssertion(() => _api.DidNotReceive().DeleteAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()));
+        // The answered confirmation is the signal that the cancel path ran.
+        cut.WaitForAssertion(() => dialogService.Received(1).ShowMessageBoxAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(),
+            Arg.Any<DialogOptions>()));
+
+        _ = _api.DidNotReceive().DeleteAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
     }
 
     [Fact]

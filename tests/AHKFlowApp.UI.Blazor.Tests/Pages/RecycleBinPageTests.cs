@@ -83,22 +83,20 @@ public sealed class RecycleBinPageTests : BunitContext, IAsyncLifetime
     {
         TaskCompletionSource<ApiResult<DeletedHotstringDto[]>> hotstringsResult = new(
             TaskCreationOptions.RunContinuationsAsynchronously);
-        bool hotkeysStarted = false;
         _hotstrings.ListDeletedAsync(Arg.Any<CancellationToken>())
             .Returns(_ => hotstringsResult.Task);
         _hotkeys.ListDeletedAsync(Arg.Any<CancellationToken>())
-            .Returns(_ =>
-            {
-                hotkeysStarted = true;
-                return Task.FromResult(ApiResult<DeletedHotkeyDto[]>.Ok([]));
-            });
+            .Returns(ApiResult<DeletedHotkeyDto[]>.Ok([]));
 
         IRenderedComponent<RecycleBin> cut = RenderPage();
-        bool startedInParallel = SpinWait.SpinUntil(() => hotkeysStarted, TimeSpan.FromMilliseconds(250));
+
+        // The hotkeys call is the signal. It happens while the hotstrings call is still pending,
+        // which a page that awaited the two in turn could never reach.
+        cut.WaitForAssertion(() => _hotkeys.Received(1).ListDeletedAsync(Arg.Any<CancellationToken>()));
+
         hotstringsResult.SetResult(ApiResult<DeletedHotstringDto[]>.Ok([]));
 
         cut.WaitForAssertion(() => cut.Markup.Should().Contain("No deleted items."));
-        startedInParallel.Should().BeTrue();
     }
 
     [Fact]

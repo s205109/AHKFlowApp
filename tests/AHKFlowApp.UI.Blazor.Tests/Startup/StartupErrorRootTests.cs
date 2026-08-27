@@ -46,17 +46,23 @@ public sealed class StartupErrorRootTests : BunitContext
         // restoring appsettings.Development.json while the error screen is shown.
         UseConfigHandler(devAvailable: false, devAvailableFromCall: 2);
 
+        // Subscribe before rendering, so a reload that happens at once is not missed.
+        // BunitNavigationManager pushes the history entry before it raises this event.
+        var nav = (BunitNavigationManager)Services.GetRequiredService<NavigationManager>();
+        TaskCompletionSource forced = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        nav.LocationChanged += (_, _) =>
+        {
+            if (nav.History.Any(h => h.Options.ForceLoad))
+                forced.TrySetResult();
+        };
+
         Render<StartupErrorRoot>(ps => ps
             .Add(p => p.PollInterval, TimeSpan.FromMilliseconds(10))
             .Add(p => p.ReloadDelay, TimeSpan.Zero)
             .Add(p => p.MaxAttempts, 50));
 
-        var nav = (BunitNavigationManager)Services.GetRequiredService<NavigationManager>();
-        DateTime deadline = DateTime.UtcNow.AddSeconds(5);
-        while (DateTime.UtcNow < deadline && !nav.History.Any(h => h.Options.ForceLoad))
-        {
-            await Task.Delay(20);
-        }
+        // No deadline here on purpose. A deadline is what made this test unreliable.
+        await forced.Task;
 
         nav.History.Should().Contain(h => h.Options.ForceLoad);
     }
