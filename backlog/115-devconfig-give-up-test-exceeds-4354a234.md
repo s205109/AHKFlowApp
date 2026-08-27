@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: UI
 - **Difficulty**: moderate
-- **Stage**: 0-intake
+- **Stage**: 3-plan
 
 ## Summary
 
@@ -91,4 +91,4 @@ Decide between three outcomes, with a measurement behind the choice:
 - Found during backlog 112, in the same run as backlog 114. Backlog 112 could not file either one:
   an agent cannot create a worktree from inside a worktree
 - Spec: none — `moderate` goes straight to Plan
-- Plan: none — not yet at Plan
+- Plan: `docs/superpowers/plans/2026-08-27-devconfig-give-up-test-budget-plan-115.md`
