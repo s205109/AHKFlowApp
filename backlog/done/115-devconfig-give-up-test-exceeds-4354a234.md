@@ -54,7 +54,7 @@ deliberately.
 
 ### The question to answer first
 
-Read (`tests/AHKFlowApp.UI.Blazor.Tests/Startup/DevConfigTests.cs:42`, "await act.Should().CompleteWithinAsync(TimeSpan.FromSeconds(5));") together with the give-up
+Read (`tests/AHKFlowApp.UI.Blazor.Tests/Startup/DevConfigTests.cs:42`, "await act.Should().CompleteWithinAsync(TimeSpan.FromSeconds(5));") together with the give-up <!-- citation-check:ignore â€” historical: this records the file as it stood when the item was filed. The fix deleted that assertion, so line 42 now holds something else. See the Evidence section below. -->
 timeout in the production code it exercises. If the code's own budget is at or near five seconds,
 the assertion has no headroom at all, and any scheduling delay under load pushes it over. That
 would make the test's budget wrong rather than the code slow.
@@ -76,7 +76,7 @@ All measurements from branch `fix/wt-devconfig-give-up-test-exceeds-4354a234` on
 ### The production give-up budget is 300 ms, not 5 s
 
 The test overrides the production default with 150 ms per file, and `DevConfig` reads two files.
-So the budget the test exercises is **300 ms**, against an assertion that allowed **5000 ms** —
+So the budget the test exercises is **300 ms**, against an assertion that allowed **5000 ms** â€”
 about 16 times the budget. Outcome 1 in the list above is ruled out: there was plenty of headroom
 on paper.
 
@@ -123,15 +123,15 @@ After the change, under the same 64 blocked threads:
 | System clock (`WithNoClockGiven_StillGivesUpOnTheSystemClock`) | 309, 311, 312 ms | 1516, 1525, 1531 ms |
 
 A first attempt advanced the clock from the test body, waiting for each request in a loop. Every
-`await` in that loop needs a pool thread, and it measured 31.6 to 33.7 seconds under 64 blockers —
+`await` in that loop needs a pool thread, and it measured 31.6 to 33.7 seconds under 64 blockers â€”
 worse than the assertion it replaced. The probe caught it before commit.
 
 ### Verification runs
 
-- `pwsh ./scripts/test-fast.ps1 -Mode Fast` — passed, nothing failed
-- `pwsh ./scripts/test-fast.ps1 -Mode Coverage` — passed, nothing failed
-- Twenty consecutive runs of `DevConfigTests` — 20 of 20 passed
-- `dotnet format AHKFlowApp.slnx --verify-no-changes` — exit 0
+- `pwsh ./scripts/test-fast.ps1 -Mode Fast` â€” passed, nothing failed
+- `pwsh ./scripts/test-fast.ps1 -Mode Coverage` â€” passed, nothing failed
+- Twenty consecutive runs of `DevConfigTests` â€” 20 of 20 passed
+- `dotnet format AHKFlowApp.slnx --verify-no-changes` â€” exit 0
 
 ## Acceptance criteria
 
