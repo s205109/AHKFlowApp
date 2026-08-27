@@ -48,30 +48,48 @@ seconds: `WorktreeMergedCleanup` 118.6 s, `AgentWorktreeGuard` 111.7 s, `Citatio
 `AgentPreCommitHook` 37 s. They are slow because each creates real git repositories and worktrees
 on disk, and `run-powershell-suites.ps1` runs every suite as its own process, one after another.
 
-## What CI already does, and the open question
+## What CI does — measured, not read from the YAML
 
 `ci.yml` skips every .NET step when its `code` filter is false
 (`.github/workflows/ci.yml:35`, "        if: steps.filter.outputs.code == 'false'").
 The filter is three negative patterns under `predicate-quantifier: 'every'`
 (`.github/workflows/ci.yml:28`, "          predicate-quantifier: 'every'").
 
-**Measure this before designing anything.** With `every` and three negative patterns, `code` may
-be false for a *mixed* pull request — one that changes a `.ps1` file and a `.md` file together —
-because the `.md` file fails `!**/*.md`. If that reading is right, CI already skips the .NET
-pipeline on branches like item 118's, and the local Gate is the only place paying the cost. If it
-is wrong, CI pays it too and the fix belongs in both places.
+Reading that config, it looked possible that `code` would be false for a *mixed* pull request —
+one changing a `.ps1` file and a `.md` file together — because the `.md` file fails `!**/*.md`.
 
-Read the actual run for pull request #353 to settle it. Do not design from the YAML alone.
+**That reading is wrong.** Pull request #353 changed `scripts/`, `tests/*.ps1`, `backlog/*.md`, and
+`docs/`. Its `build-test` job, run 33078712913, reports:
+
+```
+success   Detect non-docs changes
+skipped   Skip notice (docs-only PR)
+success   Run dotnet restore
+success   Run dotnet build --configuration Release --no-restore
+success   Test with coverage
+success   Merge coverage reports
+```
+
+The skip notice was skipped, so `code` was `true`, and the full .NET pipeline ran — including
+coverage — for a branch that compiled no C#.
+
+So CI pays this cost as well as the local Gate. Any fix has to cover both, and the two must agree
+on the condition, or a branch will be skipped in one place and measured in the other.
+
+Do not design from the YAML alone. This answer came from a real run.
 
 ## Acceptance criteria
 
-- [ ] A written statement of what `ci.yml`'s `code` filter evaluates to for a mixed pull request,
-      backed by a real workflow run, not by reading the YAML.
+- [x] A written statement of what `ci.yml`'s `code` filter evaluates to for a mixed pull request,
+      backed by a real workflow run, not by reading the YAML. Answered at Intake from run
+      33078712913: `code` was `true` and the full .NET pipeline ran. See the section above.
 - [ ] The Gate documentation names the condition under which the coverage slice may be skipped, in
       terms a reader can check against their own diff.
 - [ ] Running the Gate on a branch that changed no compiled file completes without starting a SQL
       Server container.
 - [ ] Running the Gate on a branch that changed one `.cs` file still runs the coverage slice.
+- [ ] `ci.yml` skips its coverage step on the same condition the Gate uses, so the two never
+      disagree about one branch.
 - [ ] The skip is reported, not silent. A skipped slice prints why, so a green Gate never looks
       like it checked more than it did.
 - [ ] `pwsh ./scripts/run-powershell-suites.ps1` passes.
