@@ -60,6 +60,25 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+function ConvertTo-HomeRelativePath {
+    # A committed selection record must not carry an absolute path that names the local user,
+    # such as C:/Users/<name>/... . Rewrite a path that sits under $HOME so it starts with '~',
+    # matching the anonymized form the documentation uses. A path outside $HOME is returned
+    # unchanged.
+    param([string] $Path)
+
+    if ([string]::IsNullOrEmpty($Path)) { return $Path }
+
+    $homeNormalised = ($HOME -replace '\\', '/').TrimEnd('/')
+    $pathNormalised = $Path -replace '\\', '/'
+
+    if ($pathNormalised -ieq $homeNormalised) { return '~' }
+    if ($pathNormalised.StartsWith($homeNormalised + '/', [System.StringComparison]::OrdinalIgnoreCase)) {
+        return '~' + $pathNormalised.Substring($homeNormalised.Length)
+    }
+    return $Path
+}
+
 # The selection is a deterministic function of the seed and the message key: hash the pair and
 # take the SampleSize lowest hashes. Two properties come from this, and the published interval
 # needs both.
@@ -483,7 +502,7 @@ $selectionPath = [System.IO.Path]::ChangeExtension($OutputPath, '.selection.json
     windowStart       = $script:WindowStart.ToString('o')
     windowEnd         = $script:WindowEnd.ToString('o')
     transcriptFiles   = $files.Count
-    transcriptRoot    = $transcriptRoot
+    transcriptRoot    = ConvertTo-HomeRelativePath $transcriptRoot
     recordsInWindow   = $selected.Count
     populationCount   = $population.Count
     flaggedCount      = $flagged.Count

@@ -556,13 +556,30 @@ try {
 
     if (Test-Path -LiteralPath $fixtureSelection) {
         $fixtureRecord = Get-Content -LiteralPath $fixtureSelection -Raw | ConvertFrom-Json
-        Assert-True ($fixtureRecord.transcriptRoot -eq $fixtureRoot) `
-            "the selection record must name the transcript root it read, expected $fixtureRoot, got $($fixtureRecord.transcriptRoot)"
+        Assert-True ($fixtureRecord.transcriptRoot -eq (ConvertTo-HomeRelativePath $fixtureRoot)) `
+            ("the selection record must name the transcript root it read, anonymized: expected " +
+            "$(ConvertTo-HomeRelativePath $fixtureRoot), got $($fixtureRecord.transcriptRoot)")
     }
 }
 finally {
     Remove-Item -LiteralPath $fixtureRoot -Recurse -Force -ErrorAction SilentlyContinue
 }
+
+# --- 18. The recorded transcript root is anonymized, never the local username ---
+#
+# A committed *.selection.json must not carry an absolute path such as C:/Users/<name>/... .
+# ConvertTo-HomeRelativePath rewrites a path under $HOME to a leading '~', and leaves a path
+# outside $HOME unchanged. Case 17 above proves the sampler runs the recorded root through it.
+$underHome = Join-Path $HOME 'AHKFlowApp-friction-snapshot-2026-08-21'
+$userLeaf = Split-Path $HOME -Leaf
+Assert-True ((ConvertTo-HomeRelativePath $underHome) -eq '~/AHKFlowApp-friction-snapshot-2026-08-21') `
+    "a path under HOME must be recorded as '~/...', got $(ConvertTo-HomeRelativePath $underHome)"
+Assert-True ((ConvertTo-HomeRelativePath $underHome).IndexOf($userLeaf, [System.StringComparison]::OrdinalIgnoreCase) -lt 0) `
+    "the recorded root must not keep the home directory name '$userLeaf'"
+Assert-True ((ConvertTo-HomeRelativePath $HOME) -eq '~') "HOME itself must be recorded as '~'"
+$outsideHome = if ($IsWindows) { 'X:/transcripts/copy' } else { '/transcripts/copy' }
+Assert-True ((ConvertTo-HomeRelativePath $outsideHome) -eq $outsideHome) `
+    "a path outside HOME must be left unchanged, got $(ConvertTo-HomeRelativePath $outsideHome)"
 
 if ($failures.Count -gt 0) {
     foreach ($failure in $failures) { Write-Host ''; Write-Host $failure -ForegroundColor Red }
@@ -570,4 +587,4 @@ if ($failures.Count -gt 0) {
     throw "Friction recall sample tests failed with $($failures.Count) problem(s). See the detail above."
 }
 
-Write-Host 'Friction recall sample tests passed. 7 selection cases, 11 interval cases.'
+Write-Host 'Friction recall sample tests passed. 8 selection cases, 11 interval cases.'
