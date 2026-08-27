@@ -27,9 +27,10 @@ session.
 
 **One hoisted check in the orchestrator was rejected.** Reading `Ambiguous` once in
 `Invoke-AgentGuardPolicyForReading`, and never inside a layer, is less code. It protects the
-orchestrator only. All three layers are public and separately tested, and backlog 111 is about to
-replace first-non-Allow with strongest-of-three, which makes every layer run on every command. A
-layer that allows a command it could not read is wrong on its own terms, not only in a chain.
+orchestrator only. All three layers are public and separately tested, and backlog 111
+replaces first-non-Allow with strongest-of-three, which runs every layer on every command that no
+earlier layer denies. A layer that allows a command it could not read is wrong on its own terms,
+not only in a chain.
 
 **Documenting the disagreement instead of fixing it was rejected.** It matches today's measured
 behaviour exactly and changes nothing. It leaves the safer of two opposite answers reachable only
