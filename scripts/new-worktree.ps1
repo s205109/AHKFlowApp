@@ -44,9 +44,23 @@ function Get-HookInput {
         return $null
     }
 
+    # The console text reader decodes with the console code page (cp437 on Windows), so a UTF-8
+    # byte order mark or any byte above 0x7F arrives wrong and ConvertFrom-Json then rejects the
+    # payload. Read the raw stdin stream with a UTF-8 StreamReader instead;
+    # detectEncodingFromByteOrderMarks consumes a leading mark. This matches Read-RawStdin in
+    # remove-worktree-local-dev.ps1 (GitHub issue #356, sibling fix in backlog 117).
+    try {
+        $stream = [Console]::OpenStandardInput()
+        $reader = New-Object System.IO.StreamReader($stream, (New-Object System.Text.UTF8Encoding($false)), $true)
+    } catch {
+        return $null
+    }
+
     # A redirected-but-open stdin (background/piped launch that never sends EOF) makes a
-    # blocking ReadToEnd hang forever. Bound the read so a direct invocation can't stall.
-    $readTask = [Console]::In.ReadToEndAsync()
+    # blocking read hang forever. Bound the read so a direct invocation can't stall. On timeout
+    # the reader is left undisposed on purpose: the async read is still pending, and disposing the
+    # shared stdin stream under it is unsafe. The script exits right after this.
+    $readTask = $reader.ReadToEndAsync()
     if (-not $readTask.Wait(2000)) {
         Write-Stderr 'No hook stdin within timeout; continuing without hook input.'
         return $null
