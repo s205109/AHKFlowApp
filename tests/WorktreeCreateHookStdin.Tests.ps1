@@ -130,6 +130,38 @@ function Invoke-CreateHook {
     }
 }
 
+# Spawns new-worktree.ps1 with stdin redirected but never written and never closed: a
+# redirected-but-open pipe that sends no end of file. Returns whether the process exited, how
+# long it took, and its stderr, so the caller can prove the bounded read returns instead of
+# hanging.
+function Invoke-CreateHookOpenStdin {
+    param([string] $RepoDir, [int] $WaitMs = 20000)
+
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = [System.Diagnostics.Process]::GetCurrentProcess().Path
+    $psi.Arguments = '-NoProfile -ExecutionPolicy Bypass -File "' + (Join-Path $RepoDir 'scripts\new-worktree.ps1') + '"'
+    $psi.RedirectStandardInput = $true
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.UseShellExecute = $false
+    $psi.WorkingDirectory = $RepoDir
+
+    $sw = [System.Diagnostics.Stopwatch]::StartNew()
+    $proc = [System.Diagnostics.Process]::Start($psi)
+    try {
+        $exited = $proc.WaitForExit($WaitMs)
+        $sw.Stop()
+        $stderr = if ($exited) { $proc.StandardError.ReadToEnd() } else { '' }
+        return [pscustomobject]@{
+            Exited         = $exited
+            ElapsedSeconds = $sw.Elapsed.TotalSeconds
+            Stderr         = $stderr
+        }
+    } finally {
+        if (-not $proc.HasExited) { try { $proc.Kill() } catch { } }
+    }
+}
+
 function Assert-WorktreeCreatedFromPayload {
     param([string] $RepoDir, [pscustomobject] $Result, [string] $Name)
 
@@ -161,19 +193,29 @@ try {
     Remove-TempTree $repo
 }
 
-# --- Content check: Get-HookInput reads the raw stream, not [Console]::In ------
-# [Console]::In is the console-code-page reader that caused issue #356.
-$newWorktreeText = Get-Content -Raw -LiteralPath (Join-Path $scriptsDir 'new-worktree.ps1')
-$match = [regex]::Match($newWorktreeText, '(?s)function Get-HookInput\s*\{.*?\n\}')
-Assert-True $match.Success 'Could not locate the Get-HookInput function body in new-worktree.ps1.'
-$body = $match.Value
-Assert-True ($body -notmatch '\[Console\]::In\.') 'Get-HookInput must not read stdin through [Console]::In (console code page).'
-Assert-True ($body -match 'OpenStandardInput') 'Get-HookInput must read the raw stdin stream via [Console]::OpenStandardInput().'
-Assert-True ($body -match 'UTF8Encoding') 'Get-HookInput must decode the raw stdin stream as UTF-8.'
+# --- Test: stdin redirected but never closed -> bounded read returns ---------
+# A background or piped launch can leave stdin open with no end of file. The read must not hang
+# the script. The 2-second bounded read returns, the timeout message is written, and the script
+# then runs on to fail with "-Name required" (issue #356 acceptance criterion).
+$repo = New-WorktreeToolingRepo
+try {
+    $run = Invoke-CreateHookOpenStdin -RepoDir $repo
+    Assert-True $run.Exited "new-worktree.ps1 must exit when stdin stays open with no end of file; it ran past $([math]::Round($run.ElapsedSeconds, 1))s."
+    Assert-True ($run.ElapsedSeconds -ge 1.8) "The bounded read should wait about 2 seconds; it waited only $([math]::Round($run.ElapsedSeconds, 1))s, so the wait may have been skipped."
+    Assert-True ($run.ElapsedSeconds -lt 15) "The bounded read must return promptly; it took $([math]::Round($run.ElapsedSeconds, 1))s."
+    Assert-True ($run.Stderr -match 'No hook stdin within timeout') "Expected the bounded-read timeout message. Stderr: $($run.Stderr)"
+} finally {
+    Remove-TempTree $repo
+}
 
-# --- Content check: the bounded read is still there --------------------------
-# A redirected-but-open stdin that never sends end of file must not hang the script.
-Assert-True ($body -match 'Wait\(2000\)') 'Get-HookInput must keep the 2-second bounded read.'
-Assert-True ($body -match 'No hook stdin within timeout') 'Get-HookInput must keep the timeout message.'
+# --- Content check: Get-HookInput reads the raw stream, not [Console]::In ------
+# The behavioural tests above prove decoding on this host. This pins the reader shape so a
+# regression is caught even where the console code page happens to be UTF-8. [Console]::Out is
+# used elsewhere in the file, so the check is anchored to the "::In." call form that caused
+# issue #356.
+$newWorktreeText = Get-Content -Raw -LiteralPath (Join-Path $scriptsDir 'new-worktree.ps1')
+Assert-True ($newWorktreeText -notmatch '\[Console\]::In\.') 'new-worktree.ps1 must not read stdin through [Console]::In (console code page).'
+Assert-True ($newWorktreeText -match 'OpenStandardInput') 'Get-HookInput must read the raw stdin stream via [Console]::OpenStandardInput().'
+Assert-True ($newWorktreeText -match 'System\.Text\.UTF8Encoding') 'Get-HookInput must decode the raw stdin stream as UTF-8.'
 
 Write-Host 'Worktree create-hook stdin tests passed.'

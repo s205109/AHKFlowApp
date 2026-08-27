@@ -57,15 +57,16 @@ function Get-HookInput {
     }
 
     # A redirected-but-open stdin (background/piped launch that never sends EOF) makes a
-    # blocking read hang forever. Bound the read so a direct invocation can't stall. On timeout
-    # the reader is left undisposed on purpose: the async read is still pending, and disposing the
-    # shared stdin stream under it is unsafe. The script exits right after this.
+    # blocking read hang forever. Bound the read so a direct invocation can't stall.
     $readTask = $reader.ReadToEndAsync()
     if (-not $readTask.Wait(2000)) {
         Write-Stderr 'No hook stdin within timeout; continuing without hook input.'
+        # The reader is left undisposed on purpose: the async read is still pending, and disposing
+        # the shared stdin stream under it is unsafe. The script exits right after this.
         return $null
     }
     $stdin = $readTask.Result
+    $reader.Dispose()
     if ([string]::IsNullOrWhiteSpace($stdin)) {
         return $null
     }
