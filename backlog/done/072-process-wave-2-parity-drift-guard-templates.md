@@ -193,6 +193,42 @@ several lines.
    inside a `powershell` fence and is still English, so a fenced line only counts when it starts
    with a command and is not inside a here-string.
 
+### Measured 2026-08-22, redrawn against the 2026-08-21 transcript snapshot
+
+**This is an addition, not a correction of the section above.** `### Measured 2026-08-16` stays
+readable as what was measured then. Only the two sampled metrics are redrawn; the other three are
+unchanged and are not repeated here.
+
+Backlog 113 drew both samples again, from a copy of the transcripts taken on 2026-08-21. Three
+things changed at the same time, and a reader comparing the two sections needs all three:
+
+- **The population shrank.** Claude Code deleted the window's first week before the copy was
+  taken, so the draw reads 4,633 handoff messages instead of 5,472, and 890 ask messages instead
+  of 1,042. The window itself is unchanged.
+- **The draw became uniform.** The 2026-08-16 sampler kept every row an earlier draw had
+  selected, so an older row had about 1.4 times the inclusion probability of a newer one.
+- **The method changed.** The range is now the exact hypergeometric interval, not a Wilson one.
+
+| Count | Figure | What it rests on |
+|---|---|---|
+| Blocked-agent handoffs | **108 to 392** | 15 flagged, 10 real (precision 67 percent). 9 misses in a fully read 200-message sample of 4,618 unflagged, so 98 to 382 more. Plain Wilson on the same labels gives 120 to 395 |
+| Next-step asks | **29 to 72** | 29 flagged, 15 real (precision 52 percent). 7 misses in a fully read 200-message sample of 861 unflagged, so 14 to 57 more. Plain Wilson on the same labels gives 30 to 76 |
+
+**The ask precision rises because messages were deleted, not because the match set improved.**
+Nine of the 38 flagged asks are gone from the transcripts, and only three of the nine were
+labelled real, so the survivors are a higher share by chance. The archived manifest at
+`docs/development/friction-samples/next-step-asks-sample-2026-08-16.csv` is the only record of
+those nine.
+
+**Neither figure is comparable to the section above.** Both describe a three-week population
+where the earlier ones describe four weeks. Reading 108 to 392 against 179 to 533 measures
+deletion at least as much as it measures friction.
+
+The labels, the method, and the two agreement checks behind them are in
+[`docs/development/friction-recall-sample.md`](../../docs/development/friction-recall-sample.md).
+The window rule that follows from the deletion is
+[ADR 0011](../../docs/adr/0011-a-friction-window-fits-inside-transcript-retention.md).
+
 ### The withdrawn figures
 
 | Count | Candidates that were withdrawn |

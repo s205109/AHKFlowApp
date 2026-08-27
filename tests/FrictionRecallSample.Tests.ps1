@@ -265,12 +265,70 @@ if (Test-Path -LiteralPath $docPath) {
         }
     )
 
+    # --- The 2026-08-16 draw is archived, not overwritten ---
+    #
+    # Nine flagged ask rows survive only here. Three are labelled real: F28, F30 and F35. A file
+    # that exists but was emptied would pass a bare Test-Path, so the rows are counted too.
+    $archiveExpectations = @(
+        [pscustomobject]@{ Name = 'handoffs-sample-2026-08-16'; FlaggedRows = 15; RealFlagged = 10 },
+        [pscustomobject]@{ Name = 'next-step-asks-sample-2026-08-16'; FlaggedRows = 38; RealFlagged = 18 }
+    )
+
+    foreach ($archive in $archiveExpectations) {
+        $archiveCsv = Join-Path $repoRoot "docs/development/friction-samples/$($archive.Name).csv"
+        $archiveJson = Join-Path $repoRoot "docs/development/friction-samples/$($archive.Name).selection.json"
+
+        Assert-True (Test-Path -LiteralPath $archiveCsv) "The archived manifest is missing: $archiveCsv"
+        Assert-True (Test-Path -LiteralPath $archiveJson) "The archived selection record is missing: $archiveJson"
+        if (-not (Test-Path -LiteralPath $archiveCsv)) { continue }
+
+        $archiveRows = @(Import-Csv -LiteralPath $archiveCsv)
+        $archiveFlagged = @($archiveRows | Where-Object { $_.Stratum -eq 'flagged' })
+        $archiveReal = @($archiveFlagged | Where-Object { $_.Label -eq 'real' })
+
+        Assert-True ($archiveFlagged.Count -eq $archive.FlaggedRows) `
+            "$($archive.Name) must keep all $($archive.FlaggedRows) flagged rows, got $($archiveFlagged.Count)."
+        Assert-True ($archiveReal.Count -eq $archive.RealFlagged) `
+            "$($archive.Name) must keep $($archive.RealFlagged) flagged rows labelled real, got $($archiveReal.Count)."
+    }
+
+    # The three real flagged asks the transcript snapshot lost. They exist in the archive alone.
+    $lostAskPath = Join-Path $repoRoot 'docs/development/friction-samples/next-step-asks-sample-2026-08-16.csv'
+    if (Test-Path -LiteralPath $lostAskPath) {
+        $lostAskRows = @(Import-Csv -LiteralPath $lostAskPath)
+        foreach ($lostId in @('F28', 'F30', 'F35')) {
+            $lostRow = @($lostAskRows | Where-Object { $_.Id -eq $lostId -and $_.Label -eq 'real' })
+            Assert-True ($lostRow.Count -eq 1) `
+                "$lostId must survive in the archive labelled real. It is deleted from the transcripts and exists nowhere else."
+        }
+    }
+
     $item072Path = Join-Path $repoRoot 'backlog/done/072-process-wave-2-parity-drift-guard-templates.md'
     Assert-True (Test-Path -LiteralPath $item072Path) "Item 072 is missing: $item072Path"
-    $item072Flat = if (Test-Path -LiteralPath $item072Path) {
-        ((Get-Content -LiteralPath $item072Path -Raw) -replace '\s+', ' ')
-    }
-    else { '' }
+    $item072Raw = if (Test-Path -LiteralPath $item072Path) { (Get-Content -LiteralPath $item072Path -Raw) } else { '' }
+    $item072Flat = ($item072Raw -replace '\s+', ' ')
+
+    # The dated addition lives in its own section. Reading the whole file would match the frozen
+    # 2026-08-16 row first, and that row is the record of what was measured then.
+    #
+    # The section is cut out of the RAW text, not the flattened text, and both anchors are
+    # line-anchored. Cutting it out of the flattened text ends the body at the first '### '
+    # anywhere in it, and this section's own prose quotes `### Measured 2026-08-16` inline - so
+    # the body stopped before the table and the rows below were invisible.
+    $section072 = [regex]::Match(
+        $item072Raw,
+        '(?ms)^### Measured 2026-08-22, redrawn against the 2026-08-21 transcript snapshot$(?<body>.*?)(?=^### |\z)')
+    Assert-True $section072.Success `
+        ('Item 072 must carry a dated section for the redraw, headed ' +
+        '"### Measured 2026-08-22, redrawn against the 2026-08-21 transcript snapshot".')
+    $body072 = if ($section072.Success) { ($section072.Groups['body'].Value -replace '\s+', ' ') } else { '' }
+
+    # The frozen rows stay exactly as they were measured. A dated addition is required, never a
+    # substitution, and this is what makes that a test rather than a sentence in a plan.
+    Assert-True ($item072Flat -match '\| Blocked-agent handoffs \| \*\*179 to 533\*\* \|') `
+        'Item 072 must still carry its 2026-08-16 handoff row, **179 to 533**, unchanged.'
+    Assert-True ($item072Flat -match '\| Next-step asks \| \*\*35 to 89\*\* \|') `
+        'Item 072 must still carry its 2026-08-16 ask row, **35 to 89**, unchanged.'
 
     foreach ($spec in $specs) {
         $manifestPath = Join-Path $repoRoot "docs/development/friction-samples/$($spec.Manifest).csv"
@@ -287,7 +345,7 @@ if (Test-Path -LiteralPath $docPath) {
         # The document states its own inputs. If the manifest and the prose disagree about how
         # many rows were drawn or how many were missed, the range describes neither.
         $pattern = "$($missed.Count) in $($unflagged.Count) is a [\d.]+ percent miss rate, " +
-        '95 percent Wilson interval ([\d.]+) to ([\d.]+) percent\. Across ([\d,]+) ' +
+        '95 percent hypergeometric interval ([\d.]+) to ([\d.]+) percent\. Across ([\d,]+) ' +
         "unflagged messages that is \*\*(\d+) to (\d+) $([regex]::Escape($spec.Noun))\*\*"
 
         $match = [regex]::Match($docFlat, $pattern)
@@ -300,7 +358,9 @@ if (Test-Path -LiteralPath $docPath) {
         Assert-True ($statedPopulation -eq $population) `
             "The document says $statedPopulation unflagged $($spec.Name) messages; the selection record says $population."
 
-        $interval = Get-RecallInterval -Hits $missed.Count -Drawn $unflagged.Count -Population $population
+        # Backlog 113 redrew both samples uniformly, so -Correct's precondition holds and the
+        # published range is the exact hypergeometric interval.
+        $interval = Get-RecallInterval -Hits $missed.Count -Drawn $unflagged.Count -Population $population -Correct
 
         $statedLowRate = [double]$match.Groups[1].Value
         $statedHighRate = [double]$match.Groups[2].Value
@@ -313,6 +373,31 @@ if (Test-Path -LiteralPath $docPath) {
             "The document publishes $($match.Groups[4].Value) as the $($spec.Name) low count; the function computes $($interval.LowCount)."
         Assert-True ([int]$match.Groups[5].Value -eq $interval.HighCount) `
             "The document publishes $($match.Groups[5].Value) as the $($spec.Name) high count; the function computes $($interval.HighCount)."
+
+        # --- The companion Wilson value, stated once ---
+        #
+        # The document publishes the hypergeometric range and states the Wilson one beside it, so
+        # a reader comparing against the 2026-08-16 figures can separate the method change from
+        # the population change. Stated twice, nobody can tell which number is published.
+        $wilson = Get-RecallInterval -Hits $missed.Count -Drawn $unflagged.Count -Population $population
+        $wilsonPattern = "plain Wilson would give $($wilson.LowCount) to $($wilson.HighCount) $([regex]::Escape($spec.Noun))"
+        $wilsonHits = @([regex]::Matches($docFlat, $wilsonPattern))
+        Assert-True ($wilsonHits.Count -eq 1) `
+            ("The document must state the $($spec.Name) Wilson value exactly once, as " +
+            "'plain Wilson would give $($wilson.LowCount) to $($wilson.HighCount) $($spec.Noun)'. Found $($wilsonHits.Count).")
+
+        # --- Precision, derived from the flagged census rather than trusted as prose ---
+        #
+        # Precision is counted over every flagged row, which is a census and not a sample. It was
+        # prose only until backlog 113, so 67 percent and 52 percent could drift from the labels
+        # with nothing failing.
+        $flaggedRows = @($rows | Where-Object { $_.Stratum -eq 'flagged' })
+        $realFlaggedCount = @($flaggedRows | Where-Object { $_.Label -eq 'real' }).Count
+        $precision = [int][Math]::Round($realFlaggedCount / [double]$flaggedRows.Count * 100)
+        $precisionPattern = "Flagged: $($flaggedRows.Count)\. Real: $realFlaggedCount\. Precision: $precision percent\."
+        Assert-True ($docFlat -match $precisionPattern) `
+            ("The document must publish $($spec.Name) precision as " +
+            "'Flagged: $($flaggedRows.Count). Real: $realFlaggedCount. Precision: $precision percent.'")
 
         # --- The headline figure, which is the sub-range plus the flagged rows labelled real ---
         #
@@ -333,25 +418,32 @@ if (Test-Path -LiteralPath $docPath) {
         }
 
         # --- Item 072 quotes the same figure, and must not drift from it ---
-        $row072 = [regex]::Match($item072Flat, $spec.Row072)
+        $row072 = [regex]::Match($body072, $spec.Row072)
         Assert-True $row072.Success `
             "Item 072 must carry a $($spec.Name) row with a published range. Pattern did not match."
         if ($row072.Success) {
             Assert-True ([int]$row072.Groups[1].Value -eq $expectedLow -and [int]$row072.Groups[2].Value -eq $expectedHigh) `
                 ("Item 072 publishes $($spec.Name) as $($row072.Groups[1].Value) to $($row072.Groups[2].Value); " +
-                "the labels give $expectedLow to $expectedHigh. A corrected figure belongs there as a dated " +
-                'addition under "The withdrawn figures", never as a silent substitution.')
+                "the labels give $expectedLow to $expectedHigh. The redrawn figure belongs in its own " +
+                'dated section, never as a substitution for the 2026-08-16 rows.')
         }
     }
 
-    # --- 11. The document still says the interval is an approximation ---
+    # --- 11. The document says where the draw came from, and what it is missing ---
 
-    # Backlog 102 decided the ranges stay plain Wilson and stay labelled approximate, because
-    # the draw had unequal inclusion probabilities and the records a design-based estimator
-    # would need are deleted. An edit that dropped this sentence while keeping the numbers
-    # would publish a figure that looks exact and is not.
-    Assert-True ($docFlat -match 'drawn the old way, and its intervals are approximate') `
-        'The document must still say the committed sample was drawn the old way and its intervals are approximate.'
+    # Backlog 113 redrew both samples from a copy of the transcripts. Three things changed at
+    # once: the population shrank because messages were deleted, the draw became uniform, and the
+    # method became the exact hypergeometric interval. A document that publishes the new numbers
+    # without saying so invites a reader to read a smaller count as less friction.
+
+    Assert-True ($docFlat -match 'AHKFlowApp-friction-snapshot-2026-08-21') `
+        'The document must name the transcript snapshot the draw read.'
+
+    Assert-True ($docFlat -match 'first week of the window') `
+        "The document must say the window's first week is absent, or the smaller population reads as a fall in friction."
+
+    Assert-True ($docFlat -match 'precision rises because messages were deleted') `
+        'The document must attribute the ask precision change to deletion, not to a better match set.'
 }
 
 # --- 12. A census is exact, and does not divide by zero ---
@@ -400,135 +492,94 @@ foreach ($bad in @(@{ Hits = 5; Drawn = 2; Population = 10 }, @{ Hits = 1; Drawn
     Assert-True $threw "Get-RecallInterval must throw for Hits=$($bad.Hits) Drawn=$($bad.Drawn) Population=$($bad.Population)"
 }
 
-# --- 16. No script applies the correction to the committed draw ---
-
-# -Correct is valid only for an equal-probability draw. The committed 2026-08-16 manifests are
-# not one, so a script that passed the switch would publish a narrower range resting on an
-# assumption the data breaks. Nothing passes it today, and this case keeps it that way.
-# Parsed, not grepped. A regex needing both tokens on one physical line misses a call split
-# across lines, and misses a splat entirely - `$args = @{ Correct = $true }` followed by
-# `Get-RecallInterval @args` carries no literal `-Correct` anywhere. The parser sees those.
+# --- 16. Removed by backlog 113 ---
 #
-# What it CANNOT see, and what this case therefore does not promise:
+# This case forbade any script passing -Correct. It existed because the committed draw kept the
+# rows an earlier draw had selected, so an older row had about 1.4 times the inclusion
+# probability of a newer one, and the correction assumes every row had the same chance.
 #
-#   Set-Alias gri Get-RecallInterval ; gri -Hits 1 -Drawn 2 -Population 3 -Correct
-#   $name = 'Get-RecallInterval' ; & $name -Correct
-#   Invoke-Expression 'Get-RecallInterval -Correct'
+# The committed draw is now uniform, so the ban forbade the correct thing. No script computes a
+# published figure either - this file does - so there was nothing left in scripts/ to scan in
+# either direction.
 #
-# A command name is only known statically when it is written literally, so each of these reaches
-# the switch with the scan reporting nothing. The three shapes are reported below wherever they
-# appear in a file that also names Get-RecallInterval, which turns a silent bypass into a
-# failure a human has to clear. That is narrower than a proof: a script could still build the
-# name from pieces, or reach the function through a module loaded at run time.
+# What replaced it is case 10 above. It computes the published range with -Correct, so a plain
+# Wilson number republished as the corrected one no longer matches, and it asserts the companion
+# Wilson value appears exactly once.
+
+# --- 17. -ProjectRoot is honoured, not merely accepted ---
 #
-# So the claim this case supports is the modest one. Nothing in this repository passes -Correct
-# today, and no ordinary edit can start doing so without failing here. It is not a guarantee
-# that the switch is unreachable.
-function Test-BindsToCorrect {
-    <#
-    .SYNOPSIS
-        Whether a written parameter name binds to -Correct.
-    .DESCRIPTION
-        PowerShell binds any unambiguous prefix, so -C, -Co, -Cor and -Corr all reach -Correct:
-        it is the only parameter of Get-RecallInterval that starts with C. A check for the whole
-        word lets every one of those through, which is a guard that reads as if it works.
+# The script returns at `if ($AsModule) { return }` before it reads a transcript, so a
+# module-mode test cannot reach the parameter's only use. This one runs the script as a script
+# against a fixture directory. If the parameter were ignored the run would read the live
+# transcripts, and neither assertion below would hold.
+#
+# Get-TranscriptFile keeps only directories whose name matches 'AHKFlow', so the fixture folder
+# is named accordingly. The timestamps sit inside the fixed window.
 
-        Both directions are tested. A name that is a prefix of 'Correct' binds to it, and a name
-        that starts with 'Correct' is either the parameter itself or a longer name that no longer
-        binds - reported anyway, because a name that close to the prohibited switch is worth a
-        human look.
-    #>
-    param([Parameter(Mandatory)][AllowEmptyString()][string] $Name)
-    if ([string]::IsNullOrEmpty($Name)) { return $false }
-    return 'Correct'.StartsWith($Name, [System.StringComparison]::OrdinalIgnoreCase) -or
-    $Name.StartsWith('Correct', [System.StringComparison]::OrdinalIgnoreCase)
-}
+$fixtureRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("friction-fixture-" + [guid]::NewGuid().ToString('n'))
+$fixtureProject = Join-Path $fixtureRoot 'C--fixture-AHKFlowApp'
+New-Item -ItemType Directory -Path $fixtureProject -Force | Out-Null
 
-# The guard's own rule, checked before it is trusted to read the scripts. Each of these binds
-# to -Correct when written at a call site; the earlier whole-word check caught only the first.
-foreach ($name in @('Correct', 'correct', 'CORRECT', 'C', 'c', 'Co', 'Cor', 'Corr', 'Correctly')) {
-    Assert-True (Test-BindsToCorrect -Name $name) "-$name reaches -Correct, so the guard must catch it"
-}
-foreach ($name in @('Hits', 'Drawn', 'Population', 'D', 'Population2', '')) {
-    Assert-True (-not (Test-BindsToCorrect -Name $name)) "-$name does not reach -Correct, so the guard must not report it"
-}
+$fixtureRows = @(
+    '{"type":"assistant","timestamp":"2026-08-01T10:00:00.000Z","uuid":"f0000000-0000-0000-0000-000000000001","sessionId":"fixture-a","message":{"id":"msg_fixture_001","content":[{"type":"text","text":"The token is corrupt, so please run it yourself in your terminal."}]}}'
+    '{"type":"assistant","timestamp":"2026-08-01T10:01:00.000Z","uuid":"f0000000-0000-0000-0000-000000000002","sessionId":"fixture-a","message":{"id":"msg_fixture_002","content":[{"type":"text","text":"Fixture message two. It carries no handoff wording at all."}]}}'
+    '{"type":"assistant","timestamp":"2026-08-01T10:02:00.000Z","uuid":"f0000000-0000-0000-0000-000000000003","sessionId":"fixture-a","message":{"id":"msg_fixture_003","content":[{"type":"text","text":"Fixture message three. It carries no handoff wording either."}]}}'
+    '{"type":"assistant","timestamp":"2026-08-01T10:03:00.000Z","uuid":"f0000000-0000-0000-0000-000000000004","sessionId":"fixture-a","message":{"id":"msg_fixture_004","content":[{"type":"text","text":"Fixture message four. Also plain, also inside the window."}]}}'
+)
+Set-Content -LiteralPath (Join-Path $fixtureProject 'fixture-a.jsonl') -Value $fixtureRows -Encoding utf8
 
-$scriptDir = Join-Path $repoRoot 'scripts'
-$callers = New-Object System.Collections.Generic.List[string]
+$fixtureManifest = Join-Path $fixtureRoot 'fixture-sample.csv'
+$fixtureSelection = Join-Path $fixtureRoot 'fixture-sample.selection.json'
 
-foreach ($file in (Get-ChildItem -LiteralPath $scriptDir -Filter '*.ps1' -Recurse)) {
-    $parseErrors = $null
-    $parsedTokens = $null
-    $ast = [System.Management.Automation.Language.Parser]::ParseFile(
-        $file.FullName, [ref]$parsedTokens, [ref]$parseErrors)
-    if ($parseErrors -and $parseErrors.Count -gt 0) {
-        Assert-True $false "Could not parse $($file.Name) to check for -Correct callers: $($parseErrors[0].Message)"
-        continue
+try {
+    & (Join-Path $repoRoot 'scripts/sample-friction-recall.ps1') `
+        -Metric handoffs `
+        -ProjectRoot $fixtureRoot `
+        -OutputPath $fixtureManifest `
+        -SampleSize 2 | Out-Null
+
+    Assert-True (Test-Path -LiteralPath $fixtureManifest) `
+        "the sampler must write a manifest when -ProjectRoot names a fixture directory: $fixtureManifest"
+
+    if (Test-Path -LiteralPath $fixtureManifest) {
+        $fixtureRowsRead = @(Import-Csv -LiteralPath $fixtureManifest)
+        $foreign = @($fixtureRowsRead | Where-Object { $_.Key -notlike 'msg:msg_fixture_*' })
+        Assert-True ($foreign.Count -eq 0) `
+        ("every row must come from the fixture, so -ProjectRoot was read rather than ignored. " +
+            "Foreign keys: $(@($foreign | ForEach-Object { $_.Key }) -join ', ')")
+        Assert-True ($fixtureRowsRead.Count -eq 3) `
+            "the fixture holds 1 flagged and 3 unflagged rows, so a 2-row draw gives 3 rows, got $($fixtureRowsRead.Count)"
     }
 
-    # Only a file that names the function can reach it by any of the shapes below. Scanning every
-    # script for a dynamic invocation would report Invoke-Expression across the whole repository,
-    # which is a different rule and not this one.
-    $mentionsFunction = (Get-Content -LiteralPath $file.FullName -Raw) -match 'Get-RecallInterval'
+    Assert-True (Test-Path -LiteralPath $fixtureSelection) `
+        "the sampler must write a selection record beside the fixture manifest: $fixtureSelection"
 
-    if ($mentionsFunction) {
-        # `& $name` and `. $name`, where the command is held in a variable. Reported because the
-        # name could be Get-RecallInterval and nothing here can tell.
-        #
-        # A dot-source of a computed PATH is not this. `. (Join-Path $PSScriptRoot 'x.ps1')` also
-        # hides its command name from the parser, and this file uses it at line 305 to load a
-        # sibling script. Loading a file is not invoking the function, so flagging it would
-        # report a pattern the repository depends on and teach the reader to ignore the failure.
-        $opaque = $ast.FindAll({
-                param($node)
-                $node -is [System.Management.Automation.Language.CommandAst] -and
-                $null -eq $node.GetCommandName() -and
-                $node.CommandElements.Count -gt 0 -and
-                $node.CommandElements[0] -is [System.Management.Automation.Language.VariableExpressionAst]
-            }, $true)
-        foreach ($command in $opaque) {
-            $callers.Add("$($file.Name):$($command.Extent.StartLineNumber) command name held in a variable")
-        }
-
-        $named = $ast.FindAll({
-                param($node)
-                $node -is [System.Management.Automation.Language.CommandAst] -and
-                $node.GetCommandName() -in @('Set-Alias', 'New-Alias', 'Invoke-Expression', 'iex')
-            }, $true)
-        foreach ($command in $named) {
-            $callers.Add("$($file.Name):$($command.Extent.StartLineNumber) $($command.GetCommandName()) in a file that names Get-RecallInterval")
-        }
-    }
-
-    $commands = $ast.FindAll({
-            param($node)
-            $node -is [System.Management.Automation.Language.CommandAst] -and
-            $node.GetCommandName() -eq 'Get-RecallInterval'
-        }, $true)
-
-    foreach ($command in $commands) {
-        foreach ($element in $command.CommandElements) {
-            # A named switch, however the call is wrapped across lines, and however far it is
-            # abbreviated. -C is enough to bind, so the whole word is not what to look for.
-            if ($element -is [System.Management.Automation.Language.CommandParameterAst] -and
-                (Test-BindsToCorrect -Name $element.ParameterName)) {
-                $callers.Add("$($file.Name):$($element.Extent.StartLineNumber) -$($element.ParameterName)")
-            }
-            # A splat. What it holds cannot be resolved here, so any splat onto this command is
-            # reported: a call nobody can read is not a call anybody can clear.
-            if ($element -is [System.Management.Automation.Language.VariableExpressionAst] -and
-                $element.Splatted) {
-                $callers.Add("$($file.Name):$($element.Extent.StartLineNumber) splat @$($element.VariablePath.UserPath)")
-            }
-        }
+    if (Test-Path -LiteralPath $fixtureSelection) {
+        $fixtureRecord = Get-Content -LiteralPath $fixtureSelection -Raw | ConvertFrom-Json
+        Assert-True ($fixtureRecord.transcriptRoot -eq (ConvertTo-HomeRelativePath $fixtureRoot)) `
+            ("the selection record must name the transcript root it read, anonymized: expected " +
+            "$(ConvertTo-HomeRelativePath $fixtureRoot), got $($fixtureRecord.transcriptRoot)")
     }
 }
+finally {
+    Remove-Item -LiteralPath $fixtureRoot -Recurse -Force -ErrorAction SilentlyContinue
+}
 
-Assert-True ($callers.Count -eq 0) `
-    ('No script may pass -Correct while the published draw is the 2026-08-16 one. Also reported: ' +
-    'a splat onto Get-RecallInterval, a command name held in a variable, and Set-Alias, New-Alias ' +
-    'or Invoke-Expression in a file that names the function - each hides whether the switch is ' +
-    'passed, and a call nobody can read is not a call anybody can clear: ' + ($callers -join '; '))
+# --- 18. The recorded transcript root is anonymized, never the local username ---
+#
+# A committed *.selection.json must not carry an absolute path such as C:/Users/<name>/... .
+# ConvertTo-HomeRelativePath rewrites a path under $HOME to a leading '~', and leaves a path
+# outside $HOME unchanged. Case 17 above proves the sampler runs the recorded root through it.
+$underHome = Join-Path $HOME 'AHKFlowApp-friction-snapshot-2026-08-21'
+$userLeaf = Split-Path $HOME -Leaf
+Assert-True ((ConvertTo-HomeRelativePath $underHome) -eq '~/AHKFlowApp-friction-snapshot-2026-08-21') `
+    "a path under HOME must be recorded as '~/...', got $(ConvertTo-HomeRelativePath $underHome)"
+Assert-True ((ConvertTo-HomeRelativePath $underHome).IndexOf($userLeaf, [System.StringComparison]::OrdinalIgnoreCase) -lt 0) `
+    "the recorded root must not keep the home directory name '$userLeaf'"
+Assert-True ((ConvertTo-HomeRelativePath $HOME) -eq '~') "HOME itself must be recorded as '~'"
+$outsideHome = if ($IsWindows) { 'X:/transcripts/copy' } else { '/transcripts/copy' }
+Assert-True ((ConvertTo-HomeRelativePath $outsideHome) -eq $outsideHome) `
+    "a path outside HOME must be left unchanged, got $(ConvertTo-HomeRelativePath $outsideHome)"
 
 if ($failures.Count -gt 0) {
     foreach ($failure in $failures) { Write-Host ''; Write-Host $failure -ForegroundColor Red }
@@ -536,4 +587,4 @@ if ($failures.Count -gt 0) {
     throw "Friction recall sample tests failed with $($failures.Count) problem(s). See the detail above."
 }
 
-Write-Host 'Friction recall sample tests passed. 7 selection cases, 11 interval cases.'
+Write-Host 'Friction recall sample tests passed. 8 selection cases, 11 interval cases.'

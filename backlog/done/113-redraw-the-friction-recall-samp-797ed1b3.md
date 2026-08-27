@@ -6,7 +6,7 @@
 - **Type**: Process / tooling
 - **Interfaces**: none (scripts, docs)
 - **Difficulty**: complex
-- **Stage**: 0-intake
+- **Stage**: 9-ship
 - **Depends on**: 102-recall-sample-was-drawn-without-equal-inclusion-probabilities
 
 ## Summary
@@ -24,23 +24,36 @@ actually happened, so that the range means what a 95 percent interval means.
 
 ## Acceptance criteria
 
-- [ ] Both samples are redrawn with the current sampler, reading the snapshot rather than the
+- [x] Both samples are redrawn with the current sampler, reading the snapshot rather than the
       live transcripts, and the selection records are committed with the new manifests.
-- [ ] Every unlabelled row in the new draw is labelled by hand, against the rule sheet in
+- [x] Every unlabelled row in the new draw is labelled by hand, against the rule sheet in
       `docs/development/friction-recall-sample.md`.
-- [ ] The two ranges are recomputed with `Get-RecallInterval -Correct` and republished in that
+- [x] The two ranges are recomputed with `Get-RecallInterval -Correct` and republished in that
       file. The correction is valid for the new draw, because that draw is uniform.
-- [ ] The corrected figures reach `backlog/done/072-process-wave-2-parity-drift-guard-templates.md`
-      as a dated addition under `### The withdrawn figures`, never as a substitution. Its
-      `### Measured 2026-08-16` section stays readable as what was measured then.
-- [ ] The paragraph "The committed sample was drawn the old way, and its intervals are
+- [x] The corrected figures reach `backlog/done/072-process-wave-2-parity-drift-guard-templates.md`
+      as a dated addition, never as a substitution. Its `### Measured 2026-08-16` section stays
+      readable as what was measured then, and a test pins its two published rows to their exact
+      text.
+      **This criterion was rewritten on 2026-08-22, at Design.** It originally required the
+      addition "under `### The withdrawn figures`". That heading holds a table of figures that
+      were withdrawn as wrong, so a current figure placed under it would read as withdrawn too.
+      The addition goes in a new `### Measured <date>, redrawn against the 2026-08-21 transcript
+      snapshot` section immediately after `### Measured 2026-08-16`, and `### The withdrawn
+      figures` is left alone. The requirement the criterion existed for — dated, additive, never
+      a substitution — is unchanged and is now also a test.
+- [x] The paragraph "The committed sample was drawn the old way, and its intervals are
       approximate" is removed, because after the redraw it no longer applies.
-- [ ] The window question is decided and the decision is written down: a rolling window that
+- [x] The window question is decided and the decision is written down: a rolling window that
       retention always covers, a longer `cleanupPeriodDays` on the measuring machine, or a
       committed artifact that survives deletion. Whichever is chosen, the reason the other two
       were not is recorded.
-- [ ] `tests/FrictionRecallSample.Tests.ps1` asserts the new published ranges, and its case that
+- [x] `tests/FrictionRecallSample.Tests.ps1` asserts the new published ranges, computed with
+      `-Correct`, and asserts the companion Wilson value appears exactly once. Its case that
       forbids `-Correct` in `scripts/` is updated or removed with a stated reason.
+- [x] The test also pins what the design leaves otherwise unguarded: both precision figures
+      against the manifests, the sentence attributing the ask precision change to deletion, all
+      four archived 2026-08-16 records, and `-ProjectRoot` proven end to end by running the
+      sampler as a script against a fixture transcript directory.
 
 ## Out of scope
 
@@ -83,5 +96,25 @@ actually happened, so that the range means what a 95 percent interval means.
   item is what finally satisfies the story 102 was filed for.
 - `Get-RecallInterval` already exists in `scripts/sample-friction-recall.ps1` and carries the
   `-Correct` switch this item will be the first to use.
-- Spec: none — Design has not run.
-- Plan: none — the item is at Intake.
+- Base: `origin/main` at e65a5b9c, confirmed at Pickup. The snapshot directory
+  `~/AHKFlowApp-friction-snapshot-2026-08-21` was re-checked on 2026-08-22 and still holds
+  106 top-level project folders.
+- **The window question is answered in
+  [ADR 0011](../docs/adr/0011-a-friction-window-fits-inside-transcript-retention.md).** A friction
+  measurement window is at most 21 days, and the draw runs at most 7 days after the window
+  closes. 21 plus 7 is 28, inside the 30-day retention period with two days to spare. Raising
+  `cleanupPeriodDays` was rejected because it is a setting on one machine and recovers nothing
+  already deleted. A committed artifact was rejected as a complete answer because the manifests
+  already preserve every sampled row's text, and no artifact lets anyone draw a *different*
+  sample from a past window — the 2026-08-21 copy alone is 445 MB.
+- **The transcript copy is kept until 2026-12-31, then deleted.** After that the manifests are
+  the only evidence for these figures, which is where the 2026-08-16 draw already stands.
+- **What the redraw published.** Handoffs 108 to 392, asks 29 to 72, both exact hypergeometric.
+  The earlier 179 to 533 and 35 to 89 are not comparable: the population is three weeks, not
+  four, because the window's first week was deleted before the copy was taken.
+- **The two agreement checks are weak, and the document says so.** 54 of 54 against the
+  2026-08-16 round, and 20 of 20 within this one. 53 of the 54 shared rows are negatives, all 20
+  in the second check were negatives, and the second check ran in the session that wrote the
+  labels. Neither shows the second round catches misses.
+- Spec: `docs/superpowers/specs/2026-08-22-friction-recall-redraw-design-113.md`
+- Plan: `docs/superpowers/plans/2026-08-22-friction-recall-redraw-plan-113.md`
