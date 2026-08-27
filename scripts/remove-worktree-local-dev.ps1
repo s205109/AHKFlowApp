@@ -63,6 +63,12 @@ $script:RunId = $null
 $script:WorktreeLogName = 'unknown'
 $script:DiagnosticsPath = $null
 
+# The temp folder the hook staged this attempt in. A process started through Win32_Process.Create
+# does not inherit the caller's TEMP, so the watcher can read a different %TEMP% than the hook
+# wrote to. The hook records its own root in the param file and the watcher sets this from it, so
+# both modes agree on where the run directory and the fallback log live.
+$script:TempRoot = $null
+
 $worktreeLogHelperPath = Join-Path $PSScriptRoot 'worktree-log.common.ps1'
 if (Test-Path -LiteralPath $worktreeLogHelperPath) {
     . $worktreeLogHelperPath
@@ -270,8 +276,29 @@ if (-not (Get-Command Write-WorktreeDiagnostic -ErrorAction SilentlyContinue)) {
     }
 }
 
+# The temp root, not the run directory. The shared outcome log lives here, and so does every run
+# directory. The watcher's working directory is set here too, because a process holds its own
+# working directory and the watcher has to delete its run directory at the end.
 function Get-RemovalTempDir {
+    if ($script:TempRoot) {
+        return $script:TempRoot
+    }
+
     return [System.IO.Path]::GetTempPath()
+}
+
+# The private folder for one removal attempt. It holds the watcher script, the param file, and both
+# helper copies, so two watchers started by the same sweep never write over each other's files.
+function Get-RemovalRunTempDir {
+    param([string] $RunId)
+
+    if ([string]::IsNullOrWhiteSpace($RunId)) {
+        # Without an id the name is the bare prefix, and Test-RemovalRunTempDirPath would accept a
+        # folder no attempt owns. Refusing here keeps that folder from ever being created.
+        throw 'Get-RemovalRunTempDir needs a run id.'
+    }
+
+    return (Join-Path (Get-RemovalTempDir) "ahkflowapp-wt-remove-$RunId")
 }
 
 function Set-ProductionLogPath {
@@ -905,12 +932,31 @@ function Invoke-HookMode {
     }
 
     # --- snapshot watcher script + sidecar params outside the worktree ------
+    # Every attempt gets its own directory. One merged-cleanup sweep starts several watchers at
+    # once, and each one dot-sources the helpers from its own script folder. A shared folder meant
+    # watcher B copied over the exact file watcher A held open, so B lost both helpers and ran on
+    # its inline fallbacks (GitHub issue #339).
     $tempDir = Get-RemovalTempDir
-    $watcherScript = Join-Path $tempDir "ahkflowapp-wt-remove-watcher-$script:RunId.ps1"
-    $paramFile = Join-Path $tempDir "ahkflowapp-wt-remove-$script:RunId.json"
+    $runDir = Get-RemovalRunTempDir -RunId $script:RunId
 
     try {
-        Copy-Item -LiteralPath $PSCommandPath -Destination $watcherScript -Force
+        New-Item -ItemType Directory -Path $runDir -Force -ErrorAction Stop | Out-Null
+    } catch {
+        Write-DiagnosticLog "Failed to create the watcher temp directory '$runDir': $($_.Exception.Message). Aborting (worktree left intact)."
+        Write-Outcome 'Failed: the watcher could not be prepared.'
+        return
+    }
+
+    # The directory carries the run id, so the file names inside it do not repeat it.
+    $watcherScript = Join-Path $runDir 'watcher.ps1'
+    $paramFile = Join-Path $runDir 'params.json'
+
+    # -ErrorAction Stop on every copy below. This script runs with $ErrorActionPreference =
+    # 'Continue', and a Copy-Item failure is a non-terminating error, so without it the catch
+    # blocks never run: the copy fails in silence and the hook spawns a watcher script that is not
+    # there.
+    try {
+        Copy-Item -LiteralPath $PSCommandPath -Destination $watcherScript -Force -ErrorAction Stop
     } catch {
         Write-DiagnosticLog "Failed to snapshot watcher script: $($_.Exception.Message). Aborting (worktree left intact)."
         Write-Outcome 'Failed: the watcher could not be prepared.'
@@ -924,7 +970,7 @@ function Invoke-HookMode {
     try {
         $logSource = Join-Path $PSScriptRoot 'worktree-log.common.ps1'
         if (Test-Path -LiteralPath $logSource) {
-            Copy-Item -LiteralPath $logSource -Destination (Join-Path $tempDir 'worktree-log.common.ps1') -Force
+            Copy-Item -LiteralPath $logSource -Destination (Join-Path $runDir 'worktree-log.common.ps1') -Force -ErrorAction Stop
         }
     } catch {
         Write-DiagnosticLog "Could not copy the log helper beside the watcher: $($_.Exception.Message). The watcher will append without retrying."
@@ -936,7 +982,7 @@ function Invoke-HookMode {
     try {
         $holderSource = Join-Path $PSScriptRoot 'worktree-holder.common.ps1'
         if (Test-Path -LiteralPath $holderSource) {
-            Copy-Item -LiteralPath $holderSource -Destination (Join-Path $tempDir 'worktree-holder.common.ps1') -Force
+            Copy-Item -LiteralPath $holderSource -Destination (Join-Path $runDir 'worktree-holder.common.ps1') -Force -ErrorAction Stop
         }
     } catch {
         Write-DiagnosticLog "Could not copy the holder probe beside the watcher: $($_.Exception.Message). A timed-out removal will not name the holder."
@@ -944,6 +990,10 @@ function Invoke-HookMode {
 
     $payload = [ordered]@{
         RunId          = $script:RunId
+        # Where this hook staged the run directory. The watcher does not inherit the hook's TEMP,
+        # so without this it can look for the run directory in the wrong root and refuse to clean
+        # it up.
+        TempRoot       = $tempDir
         WorktreePath   = $worktreeFull
         BranchName     = $branchName
         MainCheckout   = $mainCheckoutFromGit
@@ -1045,6 +1095,11 @@ function Invoke-WatcherMode {
     }
 
     $script:RunId = [string] $cfg.RunId
+    # Read before anything asks for a temp path. Set-ProductionLogPath and the cleanup guard both
+    # call Get-RemovalTempDir, and both have to answer with the root the hook actually used.
+    if ($cfg.PSObject.Properties.Name -contains 'TempRoot' -and $cfg.TempRoot) {
+        $script:TempRoot = [string] $cfg.TempRoot
+    }
     if ($cfg.LogPath) {
         $script:LogPath = [string] $cfg.LogPath
         $script:DiagnosticsPath = $null
@@ -1282,54 +1337,72 @@ function Complete-WatcherPreserved {
     Remove-WatcherArtifacts -ParamFilePath $ParamFilePath -WatcherScriptPath $WatcherScriptPath
 }
 
+# Deletes the whole run directory. Both paths handed in live inside it, so the caller does not have
+# to know the directory: eleven call sites already pass these two values and none of them changed.
 function Remove-WatcherArtifacts {
     param([string] $ParamFilePath, [string] $WatcherScriptPath)
-    Remove-GeneratedTempArtifact -Path $ParamFilePath -LeafPattern 'ahkflowapp-wt-remove-*.json' -Description 'watcher param file'
-    Remove-GeneratedTempArtifact -Path $WatcherScriptPath -LeafPattern 'ahkflowapp-wt-remove-watcher-*.ps1' -Description 'watcher script'
-}
 
-function Remove-GeneratedTempArtifact {
-    param(
-        [string] $Path,
-        [string] $LeafPattern,
-        [string] $Description
-    )
-
-    if (-not $Path -or -not (Test-Path -LiteralPath $Path)) {
+    $anchor = if ($WatcherScriptPath) { $WatcherScriptPath } else { $ParamFilePath }
+    if (-not $anchor) {
         return
     }
 
-    if (-not (Test-GeneratedTempArtifactPath -Path $Path -LeafPattern $LeafPattern)) {
-        Write-DiagnosticLog "Skipping deletion of non-generated $Description '$Path'."
+    $runDir = ''
+    try {
+        $runDir = Split-Path -Parent ([System.IO.Path]::GetFullPath($anchor))
+    } catch {
+        Write-DiagnosticLog "Could not resolve the watcher temp directory from '$anchor': $($_.Exception.Message)"
+        return
+    }
+
+    if (-not $runDir -or -not (Test-Path -LiteralPath $runDir)) {
+        return
+    }
+
+    if (-not (Test-RemovalRunTempDirPath -Path $runDir)) {
+        Write-DiagnosticLog "Skipping deletion of non-generated watcher temp directory '$runDir'."
         return
     }
 
     try {
-        Remove-Item -LiteralPath $Path -Force -ErrorAction Stop
+        Remove-Item -LiteralPath $runDir -Recurse -Force -ErrorAction Stop
     } catch {
-        Write-DiagnosticLog "Could not delete temp artifact '$Path': $($_.Exception.Message)"
+        Write-DiagnosticLog "Could not delete temp artifact '$runDir': $($_.Exception.Message)"
     }
 }
 
-function Test-GeneratedTempArtifactPath {
-    param(
-        [string] $Path,
-        [string] $LeafPattern
-    )
+# True when the path is a run directory this script created: named for one attempt, and sitting
+# directly in the temp root. The prefix alone is not enough -- a folder called exactly
+# 'ahkflowapp-wt-remove-' belongs to no attempt, so it is refused.
+function Test-RemovalRunTempDirPath {
+    param([string] $Path)
+
+    if (-not $Path) {
+        return $false
+    }
 
     try {
         $fullPath = [System.IO.Path]::GetFullPath($Path)
+        # GetTempPath() ends with a separator and Split-Path -Parent does not, so both sides are
+        # trimmed before they are compared.
         $tempRoot = [System.IO.Path]::GetFullPath((Get-RemovalTempDir)).TrimEnd('\', '/')
     } catch {
         return $false
     }
 
+    $prefix = 'ahkflowapp-wt-remove-'
     $leaf = Split-Path -Leaf $fullPath
-    if ($leaf -notlike $LeafPattern) {
+    if (-not $leaf.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase) -or
+        $leaf.Length -le $prefix.Length) {
         return $false
     }
 
-    return $fullPath.StartsWith($tempRoot + '\', [System.StringComparison]::OrdinalIgnoreCase)
+    $parent = (Split-Path -Parent $fullPath)
+    if (-not $parent) {
+        return $false
+    }
+
+    return [string]::Equals($parent.TrimEnd('\', '/'), $tempRoot, [System.StringComparison]::OrdinalIgnoreCase)
 }
 
 # ===========================================================================
