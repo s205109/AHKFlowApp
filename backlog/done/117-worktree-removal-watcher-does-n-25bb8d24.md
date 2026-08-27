@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: CLI
 - **Difficulty**: moderate
-- **Stage**: 4-execute
+- **Stage**: 8-review
 
 ## Summary
 
@@ -71,16 +71,16 @@ hook to say what it did, so that a worktree left behind always has a log line ex
 
 ## Acceptance criteria
 
-- [ ] `Read-RawStdin` in `scripts/remove-worktree-local-dev.ps1` decodes stdin as UTF-8 through
+- [x] `Read-RawStdin` in `scripts/remove-worktree-local-dev.ps1` decodes stdin as UTF-8 through
       a `StreamReader` over the raw stream, not through `[Console]::In`, so a leading byte order
       mark is consumed and a non-ASCII worktree path survives.
-- [ ] The hook writes exactly one outcome line to `worktree-removal.log` when it finds no
+- [x] The hook writes exactly one outcome line to `worktree-removal.log` when it finds no
       `worktree_path`, so no removal attempt ends with an empty log.
-- [ ] `tests/WorktreeRemoveHook.Tests.ps1` declares `#Requires -Version 5.1` and passes under
+- [x] `tests/WorktreeRemoveHook.Tests.ps1` declares `#Requires -Version 5.1` and passes under
       both `powershell.exe` and `pwsh`.
-- [ ] `tests/WorktreeRemoveHook.Tests.ps1` has a case that feeds BOM-prefixed stdin and
+- [x] `tests/WorktreeRemoveHook.Tests.ps1` has a case that feeds BOM-prefixed stdin and
       asserts the worktree is still removed.
-- [ ] The header comment of `tests/WorktreeRemoveHook.Tests.ps1` no longer claims the watcher
+- [x] The header comment of `tests/WorktreeRemoveHook.Tests.ps1` no longer claims the watcher
       fails under Windows PowerShell.
 
 ## Out of scope
