@@ -65,7 +65,9 @@ function Get-HookInput {
         # the shared stdin stream under it is unsafe. The script exits right after this.
         return $null
     }
-    $stdin = $readTask.Result
+    # GetAwaiter().GetResult() over .Result: a faulted read then throws the inner exception,
+    # not an AggregateException wrapping it.
+    $stdin = $readTask.GetAwaiter().GetResult()
     $reader.Dispose()
     if ([string]::IsNullOrWhiteSpace($stdin)) {
         return $null
