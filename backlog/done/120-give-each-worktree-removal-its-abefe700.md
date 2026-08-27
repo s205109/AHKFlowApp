@@ -40,12 +40,12 @@ writer. The holder fallback loses the process name in a timed-out outcome line.
 Each attempt gets its own directory, `%TEMP%\ahkflowapp-wt-remove-<RunId>\`, built by
 `Get-RemovalRunTempDir` (`scripts/remove-worktree-local-dev.ps1:297`, "function Get-RemovalRunTempDir {").
 It holds the watcher script, the param file, and both helper copies
-(`scripts/remove-worktree-local-dev.ps1:981`, "Copy-Item -LiteralPath $logSource -Destination (Join-Path $runDir 'worktree-log.common.ps1') -Force -ErrorAction Stop").
+(`scripts/remove-worktree-local-dev.ps1:1026`, "Copy-Item -LiteralPath $logSource -Destination (Join-Path $runDir 'worktree-log.common.ps1') -Force -ErrorAction Stop").
 
 `Remove-WatcherArtifacts` deletes the directory as one unit
-(`scripts/remove-worktree-local-dev.ps1:1383`, "Remove-Item -LiteralPath $runDir -Recurse -Force -ErrorAction Stop"),
+(`scripts/remove-worktree-local-dev.ps1:1428`, "Remove-Item -LiteralPath $runDir -Recurse -Force -ErrorAction Stop"),
 after `Test-RemovalRunTempDirPath` confirms the path is a run directory in the temp root
-(`scripts/remove-worktree-local-dev.ps1:1392`, "function Test-RemovalRunTempDirPath {").
+(`scripts/remove-worktree-local-dev.ps1:1437`, "function Test-RemovalRunTempDirPath {").
 
 `Get-RemovalTempDir` still means the temp root
 (`scripts/remove-worktree-local-dev.ps1:287`, "function Get-RemovalTempDir {"). The shared outcome
@@ -93,7 +93,9 @@ cleanup. The param file now records the root the hook used, and the watcher read
   `fix/wt-gate-runs-the-coverage-slice-on-b9c0664d`.
 - `Get-NextBacklogNumber` reads the working tree only, so two worktrees started close together pick
   the same next number. Nothing detects that until both branches meet in `main`.
-- That branch also changes `scripts/remove-worktree-local-dev.ps1`, for GitHub issue #348. It has
-  not touched the script yet, so there is no conflict today. Whichever branch merges second rebases.
+- `fix/wt-removal-watcher-powershell-5` changed the same script for GitHub issue #348. It merged
+  first, as pull request #354. This branch merged `main` back in and resolved the result: the script
+  and the tests merged on their own, and the only conflicts were cited line numbers, which were
+  recomputed against the merged script.
 - Spec: none — the root cause and the fix are both stated in the issue, so this goes straight to Plan.
 - Plan: `docs/superpowers/plans/2026-08-27-worktree-removal-run-temp-dir-plan-120.md`
