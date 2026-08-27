@@ -40,6 +40,11 @@ param(
     [string] $WorktreePath,
     [string] $ParamFile,
 
+    # Watcher mode only. The temp root the hook staged this attempt in. It arrives on the command
+    # line, not only in the param file, because the watcher has to know it before it parses
+    # anything: a param file it cannot read is exactly when it must still delete its run directory.
+    [string] $HookTempRoot,
+
     [string] $LogPath,
 
     # The base the merged gate decides against. cleanup-merged-worktrees.ps1 passes the base it
@@ -960,6 +965,9 @@ function Invoke-HookMode {
     } catch {
         Write-DiagnosticLog "Failed to snapshot watcher script: $($_.Exception.Message). Aborting (worktree left intact)."
         Write-Outcome 'Failed: the watcher could not be prepared.'
+        # The run directory was created a few lines above, and may already hold a partial
+        # watcher.ps1. Without this every failed attempt leaves one more dead directory in %TEMP%.
+        Remove-WatcherArtifacts -ParamFilePath $paramFile -WatcherScriptPath $watcherScript
         return
     }
 
@@ -1014,7 +1022,7 @@ function Invoke-HookMode {
 
     # --- spawn the detached watcher OUTSIDE claude's job object (WMI) --------
     $psExe = Resolve-PowerShellExecutable
-    $watcherCmd = '"{0}" -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "{1}" -Mode Watcher -ParamFile "{2}"' -f $psExe, $watcherScript, $paramFile
+    $watcherCmd = '"{0}" -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "{1}" -Mode Watcher -ParamFile "{2}" -HookTempRoot "{3}"' -f $psExe, $watcherScript, $paramFile, $tempDir
 
     # Without ProcessStartupInformation the new process gets a visible console window, and
     # -WindowStyle Hidden above only hides it after the host starts. The user sees that gap as
@@ -1048,7 +1056,8 @@ function Invoke-HookMode {
         try {
             $p = Start-Process -FilePath $psExe -WindowStyle Hidden -PassThru -WorkingDirectory $tempDir -ArgumentList @(
                 '-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden',
-                '-File', $watcherScript, '-Mode', 'Watcher', '-ParamFile', $paramFile)
+                '-File', $watcherScript, '-Mode', 'Watcher', '-ParamFile', $paramFile,
+                '-HookTempRoot', $tempDir)
             Write-DiagnosticLog "Watcher spawned via Start-Process (fallback; may be killed if claude uses a kill-on-close job). PID=$($p.Id)"
             $spawned = $true
         } catch {
@@ -1071,6 +1080,12 @@ function Invoke-HookMode {
 # WATCHER MODE
 # ===========================================================================
 function Invoke-WatcherMode {
+    # Before anything else, including the two cleanup paths below. Every one of them asks
+    # Get-RemovalTempDir where the temp root is, and this process does not inherit the hook's TEMP.
+    if ($HookTempRoot) {
+        $script:TempRoot = $HookTempRoot
+    }
+
     # Never let the watcher itself become a locker.
     try { [System.IO.Directory]::SetCurrentDirectory((Get-RemovalTempDir)) } catch { }
 

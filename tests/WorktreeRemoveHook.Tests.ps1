@@ -406,16 +406,24 @@ try {
 #
 # scripts/run-powershell-suites.ps1 runs suites one after another, so this lock on a file in the
 # shared %TEMP% cannot collide with another suite.
+#
+# Both helper destinations are locked, not just one. With only the log helper locked, putting the
+# holder probe's destination back to the shared path still passed: nothing held that name open.
 $repo = New-TempGitRepo
-$lockedHelper = Join-Path ([System.IO.Path]::GetTempPath()) 'worktree-log.common.ps1'
-$lockStream = $null
+$lockedHelperNames = @('worktree-log.common.ps1', 'worktree-holder.common.ps1')
+$lockedHelpers = @()
+$lockStreams = @()
 try {
-    Copy-Item -LiteralPath (Join-Path $scriptsDir 'worktree-log.common.ps1') -Destination $lockedHelper -Force
-    $lockStream = [System.IO.File]::Open(
-        $lockedHelper,
-        [System.IO.FileMode]::Open,
-        [System.IO.FileAccess]::Read,
-        [System.IO.FileShare]::None)
+    foreach ($helperName in $lockedHelperNames) {
+        $lockedHelper = Join-Path ([System.IO.Path]::GetTempPath()) $helperName
+        Copy-Item -LiteralPath (Join-Path $scriptsDir $helperName) -Destination $lockedHelper -Force
+        $lockedHelpers += $lockedHelper
+        $lockStreams += [System.IO.File]::Open(
+            $lockedHelper,
+            [System.IO.FileMode]::Open,
+            [System.IO.FileAccess]::Read,
+            [System.IO.FileShare]::None)
+    }
 
     $wtPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-locked-helper'
 
@@ -436,8 +444,10 @@ try {
     Assert-True (-not ($diagnostics -match 'Could not copy the holder probe')) `
         "The holder probe must be copied into this attempt's own directory. Log: $diagnostics"
 } finally {
-    if ($lockStream) { $lockStream.Dispose() }
-    Remove-Item -LiteralPath $lockedHelper -Force -ErrorAction SilentlyContinue
+    foreach ($stream in $lockStreams) { $stream.Dispose() }
+    foreach ($helper in $lockedHelpers) {
+        Remove-Item -LiteralPath $helper -Force -ErrorAction SilentlyContinue
+    }
     Remove-TempTree $repo
 }
 
@@ -493,5 +503,116 @@ Assert-True (-not (Test-RemovalRunTempDirPath -Path 'C:\ahkflowapp-wt-remove-hoo
 
 Assert-True (-not (Test-RemovalRunTempDirPath -Path '')) `
     'An empty path must be refused.'
+
+# --- Test: a failed watcher snapshot leaves no run directory behind ---------------
+# The hook creates the run directory, then copies itself into it as watcher.ps1. When that copy
+# fails the hook aborts, and before this test it returned without deleting the directory it had
+# just made. A sweep that keeps failing then grows one dead directory per attempt.
+#
+# The copy is made to fail with a deny entry on a private temp root: creating a folder stays
+# allowed, creating a file inside it does not. So the run directory is created and the snapshot
+# then fails, which is the exact path under test.
+function New-NoFileCreationTempRoot {
+    $root = Join-Path ([System.IO.Path]::GetTempPath()) ('wt-nofile-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+    New-Item -ItemType Directory -Path $root -Force | Out-Null
+
+    $me = [System.Security.Principal.WindowsIdentity]::GetCurrent().User
+    $acl = Get-Acl -LiteralPath $root
+    $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule(
+                $me, 'CreateFiles', 'ContainerInherit,ObjectInherit', 'None', 'Deny')))
+    Set-Acl -LiteralPath $root -AclObject $acl
+
+    return $root
+}
+
+function Remove-NoFileCreationTempRoot {
+    param([string] $Root)
+
+    if (-not $Root -or -not (Test-Path -LiteralPath $Root)) {
+        return
+    }
+
+    try {
+        $me = [System.Security.Principal.WindowsIdentity]::GetCurrent().User
+        $acl = Get-Acl -LiteralPath $Root
+        $acl.SetAccessRuleProtection($true, $false)
+        foreach ($rule in @($acl.Access)) { [void] $acl.RemoveAccessRule($rule) }
+        $acl.AddAccessRule((New-Object System.Security.AccessControl.FileSystemAccessRule(
+                    $me, 'FullControl', 'ContainerInherit,ObjectInherit', 'None', 'Allow')))
+        Set-Acl -LiteralPath $Root -AclObject $acl
+    } catch { }
+
+    Remove-Item -LiteralPath $Root -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+$repo = New-TempGitRepo
+$deniedRoot = New-NoFileCreationTempRoot
+try {
+    $wtPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-snapshot-fails'
+
+    # .NET reads TMP before TEMP, so both are pointed at the private root.
+    $result = Invoke-RemoveHook -WorktreePath $wtPath -EnvOverrides @{ TEMP = $deniedRoot; TMP = $deniedRoot }
+    Assert-Equal 0 $result.ExitCode "Hook should exit 0. Stderr: $($result.Stderr)"
+
+    $diagnostics = Get-Content -Raw -LiteralPath (Get-RemovalDiagnosticsPath $repo)
+
+    # Without this the test passes when the hook failed earlier than the snapshot, which is a
+    # false green: no run directory would exist to leak.
+    Assert-True ($diagnostics -match 'Failed to snapshot watcher script') `
+        "Expected the watcher snapshot to be the step that failed. Log: $diagnostics"
+
+    Assert-True (Test-Path -LiteralPath $wtPath) 'A hook that could not prepare the watcher must leave the worktree intact.'
+
+    $leftBehind = @(Get-ChildItem -LiteralPath $deniedRoot -Directory -Filter 'ahkflowapp-wt-remove-*' -ErrorAction SilentlyContinue)
+    Assert-Equal 0 $leftBehind.Count `
+        "A failed watcher snapshot must delete its own run directory, found: $($leftBehind.FullName -join ', ')"
+} finally {
+    Remove-NoFileCreationTempRoot $deniedRoot
+    Remove-TempTree $repo
+}
+
+# --- Test: the watcher cleans up after malformed params in a different TEMP -------
+# A Win32_Process.Create child does not inherit the caller's TEMP, so the watcher can read a
+# different temp root than the hook wrote to. The watcher recovers the hook's root from
+# params.json, but a malformed params.json is exactly the case where it cannot. Then the deletion
+# guard compared the run directory against the watcher's own root, refused it, and the directory
+# stayed forever. The hook root now arrives on the command line, before any parsing.
+$hookRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('wt-hookroot-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+$watcherRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('wt-wroot-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+try {
+    New-Item -ItemType Directory -Path $hookRoot -Force | Out-Null
+    New-Item -ItemType Directory -Path $watcherRoot -Force | Out-Null
+
+    $runDir = Join-Path $hookRoot ('ahkflowapp-wt-remove-badparams-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+    New-Item -ItemType Directory -Path $runDir -Force | Out-Null
+
+    # The watcher runs from its own snapshot, so $PSCommandPath sits inside the run directory --
+    # the same anchor production uses to find the directory it must delete.
+    $watcherSnapshot = Join-Path $runDir 'watcher.ps1'
+    Copy-Item -LiteralPath $removeScript -Destination $watcherSnapshot -Force
+
+    $badParams = Join-Path $runDir 'params.json'
+    Set-Content -LiteralPath $badParams -Value '{ this is not json' -Encoding utf8
+
+    $previousTemp = $env:TEMP
+    $previousTmp = $env:TMP
+    try {
+        $env:TEMP = $watcherRoot
+        $env:TMP = $watcherRoot
+        $psExe = [System.Diagnostics.Process]::GetCurrentProcess().Path
+        Start-Process -FilePath $psExe -NoNewWindow -Wait -PassThru -WorkingDirectory $watcherRoot -ArgumentList @(
+            '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $watcherSnapshot,
+            '-Mode', 'Watcher', '-ParamFile', $badParams, '-HookTempRoot', $hookRoot) | Out-Null
+    } finally {
+        $env:TEMP = $previousTemp
+        $env:TMP = $previousTmp
+    }
+
+    Assert-True (-not (Test-Path -LiteralPath $runDir)) `
+        "A watcher that cannot parse its params must still delete its run directory '$runDir'."
+} finally {
+    Remove-Item -LiteralPath $hookRoot -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $watcherRoot -Recurse -Force -ErrorAction SilentlyContinue
+}
 
 Write-Host 'Worktree remove-hook gate tests passed.'
