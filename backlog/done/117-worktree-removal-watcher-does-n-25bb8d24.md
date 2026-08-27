@@ -82,6 +82,14 @@ hook to say what it did, so that a worktree left behind always has a log line ex
       asserts the worktree is still removed.
 - [x] The header comment of `tests/WorktreeRemoveHook.Tests.ps1` no longer claims the watcher
       fails under Windows PowerShell.
+- [x] `Resolve-MainCheckoutFromScriptRoot` resolves the main checkout through git's common
+      directory, so a hook running from a linked worktree copy writes its outcome to the one
+      log in the main checkout and not into the worktree.
+- [x] `Invoke-GitCapture` forces UTF-8 console output encoding around the `git` call, so a
+      detached process cannot replace non-ASCII bytes in the paths git returns.
+- [x] `tests/WorktreeRemoveHook.Tests.ps1` has a case for a non-ASCII worktree path, and the
+      no-path case drives a hook copy inside a linked worktree and asserts the outcome lands
+      in the main checkout.
 
 ## Out of scope
 
@@ -99,5 +107,10 @@ hook to say what it did, so that a worktree left behind always has a log line ex
   not work; the reader has to bypass `[Console]::In`. Recorded in the plan's Task 1.
 - Follow-up, not fixed here: `Get-HookInput` in `scripts/new-worktree.ps1` reads its hook stdin
   through `[Console]::In.ReadToEnd()` and carries the same code-page defect.
+- Scope grew after the plan was written. Fixing the input side exposed two more faults on the
+  same silent-no-op path: the hook resolved the wrong checkout for its log when run from a
+  worktree copy, and git's UTF-8 output was decoded through the console code page. Both are
+  covered by the last two acceptance criteria and by their own tests. The plan is frozen at
+  its Task 1 wording and does not describe them.
 - Spec: none - root cause is proven above and the change is moderate, so this item goes straight to Plan.
 - Plan: `docs/superpowers/plans/2026-08-27-removal-hook-stdin-bom-plan-117.md`
