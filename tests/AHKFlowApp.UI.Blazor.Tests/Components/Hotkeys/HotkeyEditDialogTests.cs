@@ -128,6 +128,12 @@ public sealed class HotkeyEditDialogTests : BunitContext, IAsyncLifetime
             .Single(p => p.Instance.DataTest == dataTest)
             .Instance.ValueChanged.InvokeAsync(key));
 
+    /// <summary>The preview run in flight right now. Capture it while its generation is still
+    /// current, then await it later to know that generation's response has been handled.</summary>
+    private static Task PreviewRun(IRenderedComponent<MudDialogProvider> provider) =>
+        provider.FindComponent<HotkeyEditDialog>().Instance.PreviewRun
+        ?? throw new InvalidOperationException("No preview run has started yet.");
+
     [Fact]
     public async Task CreateMode_RendersEmptyFields()
     {
@@ -780,6 +786,9 @@ public sealed class HotkeyEditDialogTests : BunitContext, IAsyncLifetime
         provider.WaitForAssertion(() => _api.Received(1).PreviewAsync(
             Arg.Is<HotkeyPreviewRequestDto>(r => r.Key == "one"), Arg.Any<CancellationToken>()));
 
+        // Capture generation 1's run before generation 2 replaces the handle.
+        Task staleRun = PreviewRun(provider);
+
         await SetKeyAsync(provider, "key-picker", "two");
         provider.WaitForAssertion(() => _api.Received(1).PreviewAsync(
             Arg.Is<HotkeyPreviewRequestDto>(r => r.Key == "two"), Arg.Any<CancellationToken>()));
@@ -790,7 +799,7 @@ public sealed class HotkeyEditDialogTests : BunitContext, IAsyncLifetime
         provider.WaitForAssertion(() => provider.Markup.Should().Contain("snippet-two"));
 
         first.SetResult(ApiResult<HotkeyPreviewDto>.Ok(new HotkeyPreviewDto("snippet-one")));
-        await Task.Delay(150);
+        await staleRun;
         provider.Render();
 
         provider.Markup.Should().Contain("snippet-two");

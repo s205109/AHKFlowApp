@@ -145,21 +145,32 @@ public sealed class ProfilesPageTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
-    public Task Page_Delete_ConfirmCallsDeleteAsync()
+    public Task Page_Delete_CancelPreventsDeleteAsync()
     {
         ProfileDto dto = MakeProfile("Work");
         StubList(dto);
         _api.DeleteAsync(dto.Id, Arg.Any<CancellationToken>())
             .Returns(ApiResult.Ok());
 
+        // The stub answers the confirmation with "cancel". Without it the message box never
+        // resolves in bUnit, and the delete handler would stay suspended, proving nothing.
+        IDialogService dialogService = Substitute.For<IDialogService>();
+        dialogService.ShowMessageBoxAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(),
+            Arg.Any<DialogOptions>())
+            .Returns(Task.FromResult<bool?>(false));
+        Services.AddSingleton(dialogService);
+
         IRenderedComponent<Profiles> cut = RenderPage();
         cut.WaitForAssertion(() => cut.Find("button.delete"));
         cut.Find("button.delete").Click();
 
-        // ShowMessageBoxAsync renders via JS interop; confirm is not callable in bUnit.
-        // Verify Delete button was clicked and api was invoked or not invoked (cancel path).
-        // bUnit JS is loose so the dialog resolves as null (cancel) — DeleteAsync NOT called.
-        cut.WaitForAssertion(() => _api.DidNotReceive().DeleteAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>()));
+        // The answered confirmation is the signal that the cancel path ran.
+        cut.WaitForAssertion(() => dialogService.Received(1).ShowMessageBoxAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(),
+            Arg.Any<DialogOptions>()));
+
+        _ = _api.DidNotReceive().DeleteAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
         return Task.CompletedTask;
     }
 

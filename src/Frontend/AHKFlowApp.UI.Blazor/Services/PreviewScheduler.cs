@@ -33,6 +33,14 @@ internal sealed class PreviewScheduler<TRequest, TResult>(
     public bool Pending { get; private set; }
 
     /// <summary>
+    /// The run started by the most recent <see cref="Schedule"/> call. A test awaits it to know
+    /// that a response has been handled, including a superseded one the scheduler discards.
+    /// Capture it while its generation is still current; the next <see cref="Schedule"/> call
+    /// replaces it.
+    /// </summary>
+    internal Task? LastRun { get; private set; }
+
+    /// <summary>
     /// Supersedes any in-flight preview and starts a new one. When <paramref name="debounce"/> is
     /// greater than zero the fetch waits that long first, so a burst of keystrokes costs one call.
     /// </summary>
@@ -45,8 +53,9 @@ internal sealed class PreviewScheduler<TRequest, TResult>(
         Pending = true;
 
         // Fire-and-forget: RunAsync handles every exception it can raise (including unexpected
-        // ones), so the task never faults.
-        _ = RunAsync(request, cts.Token, generation, debounce);
+        // ones), so the task never faults. The handle is kept only so a test can await the run
+        // and know a superseded response has been handled. Nothing here reads it.
+        LastRun = RunAsync(request, cts.Token, generation, debounce);
 
         stateHasChanged();
     }

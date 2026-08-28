@@ -20,6 +20,14 @@ public sealed class StartupErrorRootTests : BunitContext
     private const string ValidDevJson =
         """{"AzureAd":{"TenantId":"tenant-123","ClientId":"client-456"}}""";
 
+    /// <summary>
+    /// Stops a regression from hanging the suite instead of failing it. No test measures anything
+    /// against this number, and none comes near it: the reload arrives in a few milliseconds. It is
+    /// a guard, not a budget. The same value and the same reasoning as
+    /// <c>DevConfigTests.HangGuard</c>.
+    /// </summary>
+    private static readonly TimeSpan HangGuard = TimeSpan.FromSeconds(30);
+
     public StartupErrorRootTests()
     {
         JSInterop.Mode = JSRuntimeMode.Loose;
@@ -46,17 +54,23 @@ public sealed class StartupErrorRootTests : BunitContext
         // restoring appsettings.Development.json while the error screen is shown.
         UseConfigHandler(devAvailable: false, devAvailableFromCall: 2);
 
+        // Subscribe before rendering, so a reload that happens at once is not missed.
+        // BunitNavigationManager pushes the history entry before it raises this event.
+        var nav = (BunitNavigationManager)Services.GetRequiredService<NavigationManager>();
+        TaskCompletionSource forced = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        nav.LocationChanged += (_, _) =>
+        {
+            if (nav.History.Any(h => h.Options.ForceLoad))
+                forced.TrySetResult();
+        };
+
         Render<StartupErrorRoot>(ps => ps
             .Add(p => p.PollInterval, TimeSpan.FromMilliseconds(10))
             .Add(p => p.ReloadDelay, TimeSpan.Zero)
             .Add(p => p.MaxAttempts, 50));
 
-        var nav = (BunitNavigationManager)Services.GetRequiredService<NavigationManager>();
-        DateTime deadline = DateTime.UtcNow.AddSeconds(5);
-        while (DateTime.UtcNow < deadline && !nav.History.Any(h => h.Options.ForceLoad))
-        {
-            await Task.Delay(20);
-        }
+        // LocationChanged is the signal. HangGuard only decides how a regression reports itself.
+        await forced.Task.WaitAsync(HangGuard);
 
         nav.History.Should().Contain(h => h.Options.ForceLoad);
     }

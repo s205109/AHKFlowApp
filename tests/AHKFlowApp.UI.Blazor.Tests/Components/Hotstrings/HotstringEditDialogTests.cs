@@ -6,6 +6,7 @@ using AHKFlowApp.UI.Blazor.Validation;
 using Bunit;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Time.Testing;
 using MudBlazor;
 using MudBlazor.Extensions;
 using MudBlazor.Services;
@@ -19,10 +20,16 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
     private readonly IHotstringsApiClient _api = Substitute.For<IHotstringsApiClient>();
     private readonly ISnackbar _snackbar = Substitute.For<ISnackbar>();
 
+    /// <summary>The date the dialog's preview renders. Fixed, so a run on New Year's Eve reads the
+    /// same year as the assertion. Mid-day, so the date is the same in UTC and in local time.
+    /// Only the preview test reads it; nothing else in this class depends on the date.</summary>
+    private static readonly DateTimeOffset FixedNow = new(2031, 7, 23, 12, 0, 0, TimeSpan.Zero);
+
     public HotstringEditDialogTests()
     {
         Services.AddSingleton(_api);
         Services.AddSingleton(_snackbar);
+        Services.AddSingleton<TimeProvider>(new FakeTimeProvider(FixedNow));
         Services.AddMudServices();
         JSInterop.Mode = JSRuntimeMode.Loose;
     }
@@ -291,7 +298,7 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
         IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
 
         provider.WaitForAssertion(() => provider.Find("[data-test=\"datetime-preview\"]").TextContent.Trim()
-            .Should().Be(DateTime.Now.Year.ToString()));
+            .Should().Be("2031"));
 
         item.DateTimeFormat = "yyyy'unterminated";
         provider.Render();
@@ -615,6 +622,9 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
         provider.WaitForAssertion(() => _api.Received(1).PreviewAsync(
             Arg.Is<HotstringPreviewRequestDto>(r => r.Trigger == "one"), Arg.Any<CancellationToken>()));
 
+        // Capture generation 1's run before generation 2 replaces the handle.
+        Task staleRun = PreviewRun(provider);
+
         provider.Find("input[data-test=\"trigger-input\"]").Input("two");
 
         provider.WaitForAssertion(() => _api.Received(1).PreviewAsync(
@@ -626,7 +636,7 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
         provider.WaitForAssertion(() => provider.Markup.Should().Contain("snippet-two"));
 
         tcs1.SetResult(ApiResult<HotstringPreviewDto>.Ok(new HotstringPreviewDto("snippet-one")));
-        await Task.Delay(150);
+        await staleRun;
         provider.Render();
 
         provider.Markup.Should().Contain("snippet-two");
@@ -646,12 +656,14 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
 
         provider.WaitForAssertion(() => _api.Received(1).PreviewAsync(Arg.Any<HotstringPreviewRequestDto>(), Arg.Any<CancellationToken>()));
 
+        Task run = PreviewRun(provider);
+
         // Collapse while the preview call is still pending.
         provider.Find("[data-test=\"ahk-preview\"] .mud-expand-panel-header").Click();
 
         tcs.SetException(new OperationCanceledException());
 
-        await Task.Delay(150);
+        await run;
         provider.Render();
 
         provider.FindAll(".mud-alert").Should().BeEmpty();
@@ -670,12 +682,15 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
 
         provider.WaitForAssertion(() => _api.Received(1).PreviewAsync(Arg.Any<HotstringPreviewRequestDto>(), Arg.Any<CancellationToken>()));
 
+        // Capture the run before disposal; the component is gone afterwards.
+        Task run = PreviewRun(provider);
+
         await DisposeAsync();
 
         Func<Task> act = async () =>
         {
             tcs.SetException(new OperationCanceledException());
-            await Task.Delay(150);
+            await run;
         };
 
         await act.Should().NotThrowAsync();
@@ -722,11 +737,13 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
 
         provider.WaitForAssertion(() => _api.Received(1).PreviewAsync(Arg.Any<HotstringPreviewRequestDto>(), Arg.Any<CancellationToken>()));
 
+        Task run = PreviewRun(provider);
+
         // Collapse, then let the first transport "ignore" cancellation and complete successfully.
         provider.Find("[data-test=\"ahk-preview\"] .mud-expand-panel-header").Click();
         tcs1.SetResult(ApiResult<HotstringPreviewDto>.Ok(new HotstringPreviewDto("sneaky-snippet")));
 
-        await Task.Delay(100);
+        await run;
         provider.Render();
         provider.Markup.Should().NotContain("sneaky-snippet");
 
@@ -1072,8 +1089,8 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
         // Value field left empty while context is on.
         provider.Find("button.commit-edit").Click();
 
-        await Task.Delay(150);
-        provider.Render();
+        // The rendered required message is the signal that the blocked save finished.
+        provider.WaitForAssertion(() => provider.Markup.Should().Contain("Value is required"));
 
         _ = _api.DidNotReceive().CreateAsync(Arg.Any<CreateHotstringDto>(), Arg.Any<CancellationToken>());
     }
@@ -1549,6 +1566,12 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
 
     private static void DisablePreviewDebounce(IRenderedComponent<MudDialogProvider> provider) =>
         provider.FindComponent<HotstringEditDialog>().Instance.PreviewDebounce = TimeSpan.Zero;
+
+    /// <summary>The preview run in flight right now. Capture it while its generation is still
+    /// current, then await it later to know that generation's response has been handled.</summary>
+    private static Task PreviewRun(IRenderedComponent<MudDialogProvider> provider) =>
+        provider.FindComponent<HotstringEditDialog>().Instance.PreviewRun
+        ?? throw new InvalidOperationException("No preview run has started yet.");
 
     /// <summary>Set by <see cref="RenderDialogAsync"/>. MudSelect renders its open menu into the
     /// popover provider's tree, not the dialog's, so a test that inspects menu items needs this.</summary>

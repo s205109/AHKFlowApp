@@ -280,6 +280,10 @@
     /// </summary>
     internal IReadOnlyDictionary<string, string> SaveFieldErrors => _saveFieldErrors;
 
+    /// <summary>Test seam: the preview run the scheduler started last. Await it instead of
+    /// sleeping when a test needs to know a response has been handled.</summary>
+    internal Task? PreviewRun => _preview.LastRun;
+
     // Server-reported errors keyed by DTO field name. Dictionaries rather than the hotstring
     // dialog's positional tuple: seven panels have too many fields for positional returns, and
     // the key is exactly what the server's ProblemDetails reports.
