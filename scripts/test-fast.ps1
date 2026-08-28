@@ -18,7 +18,7 @@ param(
 
     [switch]$NoBuild,
 
-    # Coverage mode only. Runs the slice even when the branch changed no compiled file.
+    # Coverage mode only. Runs the slice even when the filter excludes every changed path.
     [switch]$Force,
 
     # PowerShell mode only. Forwarded to run-powershell-suites.ps1 so a test can point the mode at a

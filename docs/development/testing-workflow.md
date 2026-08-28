@@ -1,6 +1,6 @@
 # Local testing workflow
 
-Use the fastest test slice that still covers the code you changed. The pre-push hook runs an incremental build plus the fast slice automatically; run the full coverage gate yourself before you mark a PR **ready** (CI enforces it on every PR that changed a file the build compiles).
+Use the fastest test slice that still covers the code you changed. The pre-push hook runs an incremental build plus the fast slice automatically; run the full coverage gate yourself before you mark a PR **ready** (CI enforces it on every PR with at least one changed path that `.github/code-paths-filter.yml` does not exclude).
 
 This file is the single source for which tests to run and when. Other docs link here rather than restating commands.
 
@@ -40,12 +40,18 @@ git diff --check "$(gh pr view --json baseRefName -q .baseRefName)...HEAD"
 **The coverage slice skips itself when it cannot measure anything.** Run the same command either
 way. `-Mode Coverage` compares your branch against its base and skips when **every** changed file
 matches one of the patterns in [`.github/code-paths-filter.yml`](../../.github/code-paths-filter.yml):
-Markdown anywhere, anything under `docs/` or `.claude/`, any `.ps1` under `scripts/`, and any
-`.ps1` directly in `tests/`. One file outside that list — a `.cs` file, a `.csproj`, a root build
-file — and the slice runs in full.
+lowercase `.md` anywhere, anything under `docs/` or `.claude/`, any `.ps1` under `scripts/`, and
+any `.ps1` directly in `tests/`. One file outside that list and the slice runs in full.
+
+The list is a deny-list, so read it that way round: the slice runs for any path nobody excluded,
+not only for a path the build compiles. A `.cs` file and a `.csproj` run it, and so do
+`.github/workflows/ci.yml`, `.github/code-paths-filter.yml`, `Directory.Packages.props`, and
+`scripts/ci/check-coverage-thresholds.py`. None of those last four compile. A pattern nobody
+wrote costs a few minutes; it never costs coverage.
 
 Renames count as two paths. Moving `src/Foo.cs` to `docs/Foo.md` still runs the slice, because the
-build lost a file. Matching is case-sensitive: `scripts/Thing.PS1` is not `scripts/Thing.ps1`.
+build lost a file. Matching is case-sensitive: `scripts/Thing.PS1` is not `scripts/Thing.ps1`, and
+`README.MD` is not `README.md`. Only lowercase `.md` is excluded.
 
 The same file lists seven scripts under `coverage-tooling`. Changing one of those runs the slice
 even though the patterns above exclude it, because the coverage step is the only local check that
@@ -67,7 +73,7 @@ them from the same file the local slice reads, `.github/code-paths-filter.yml`. 
 whose changed files all match those patterns, the `build-test` job still starts, but every one of
 its .NET steps is skipped — build, test, coverage, thresholds, and the format check are all
 guarded by the `dorny/paths-filter` step in `ci.yml`. Nothing in those steps can fail on a diff
-that compiles no C#.
+the filter excluded in full.
 
 Two things still run on such a pull request. The changelog check
 (`scripts/ci/generate-changelog-json.ps1 -Check`) sits above that filter in `build-test`, so it
@@ -183,7 +189,7 @@ runs on every PR.
 pwsh .\scripts\test-fast.ps1 -Mode Coverage
 ```
 
-Coverage mode delegates to `scripts/run-coverage.ps1`. Run it before you mark a PR ready; CI enforces the same coverage + threshold gate on every pull request that changed a file the build compiles. The pre-push hook itself only runs quick checks (incremental build + fast slice, see `scripts/pre-push-quick-checks.ps1`), not this full coverage path. The local coverage script uses the same disposable shared SQL container behavior as Integration mode for the SQL-backed suites. Coverage mode skips itself when the branch changed no compiled file — see the Gate section above for the condition and the `-Force` switch. `run-coverage.ps1` makes no such check: calling it directly always runs the full slice.
+Coverage mode delegates to `scripts/run-coverage.ps1`. Run it before you mark a PR ready; CI enforces the same coverage + threshold gate on every pull request with at least one changed path that `.github/code-paths-filter.yml` does not exclude. The pre-push hook itself only runs quick checks (incremental build + fast slice, see `scripts/pre-push-quick-checks.ps1`), not this full coverage path. The local coverage script uses the same disposable shared SQL container behavior as Integration mode for the SQL-backed suites. Coverage mode skips itself when the branch changed no compiled file — see the Gate section above for the condition and the `-Force` switch. `run-coverage.ps1` makes no such check: calling it directly always runs the full slice.
 
 ### One test run at a time
 

@@ -1,11 +1,16 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-  Decide whether a branch changed anything the .NET build compiles.
+  Decide whether a branch changed any path the shared code filter does not exclude.
 .DESCRIPTION
   The Gate's coverage slice starts a SQL Server container and instruments every assembly. On a
   branch that compiled no C# it costs minutes and can say nothing. This module answers the one
   question that decides whether to run it.
+
+  State that question the way the code actually asks it: does any changed path survive the
+  exclusions? Not "does anything compile?". The two differ, and the difference is not an edge
+  case - ci.yml, Directory.Packages.props, and coverlet.runsettings all require the slice and
+  none of them compiles.
 
   The patterns live in .github/code-paths-filter.yml, which ci.yml reads through
   dorny/paths-filter. One file, two readers, applying the same exclusions to the same diff.
@@ -284,7 +289,7 @@ function Write-AhkFlowCoverageSkipReport {
 
     Write-Host ''
     Write-Host '==> Coverage slice skipped' -ForegroundColor Cyan
-    Write-Host "    No changed file compiles into the solution, so a coverage run would measure nothing new."
+    Write-Host "    Every changed file matched an exclusion, so a coverage run would measure nothing new."
     Write-Host "    Base ref      : $($Decision.BaseRef)"
     Write-Host "    Changed files : $($Decision.ChangedPath.Count)"
     foreach ($path in $Decision.ChangedPath) {

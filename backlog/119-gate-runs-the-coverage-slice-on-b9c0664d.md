@@ -85,8 +85,9 @@ Do not design from the YAML alone. This answer came from a real run.
       33078712913: `code` was `true` and the full .NET pipeline ran. See the section above.
 - [x] The Gate documentation names the condition under which the coverage slice may be skipped, in
       terms a reader can check against their own diff.
-- [x] Running the Gate on a branch that changed no compiled file completes without starting a SQL
-      Server container.
+- [x] Running the Gate on a branch whose changed paths the filter excludes in full completes
+      without starting a SQL Server container. Reworded during Execute: "changed no compiled file"
+      was false as a rule, because `infra/**` compiles nothing and still runs the slice.
 - [x] Running the Gate on a branch that changed one `.cs` file still runs the coverage slice.
 - [x] `ci.yml` and the Gate use the same `code` exclusions for the same committed diff. The Gate
       may additionally run for `coverage-tooling`, so it can be stricter than CI but never
@@ -119,11 +120,12 @@ Do not design from the YAML alone. This answer came from a real run.
   Editing it is honest; ticking the original wording would not have been.
 - This branch cannot demonstrate the CI skip. It adds `.github/code-paths-filter.yml` and edits
   `.github/workflows/ci.yml`. No pattern excludes a `.yml` file under `.github/`, so `code` is
-  `true` here and the full .NET pipeline runs. Markdown under `.github/` is a different case: the
-  repository-wide `!**/*.md` pattern excludes it, the same as Markdown anywhere else, because it
-  compiles nothing. Only the non-Markdown files there count as code. That is correct: a change to the filter should be measured
-  by the pipeline it changes. Criterion 5 is ticked on structural evidence — `ci.yml` holds no
-  patterns of its own — asserted by the `ci.yml reads the shared filter file` case in
-  `tests/CoverageSliceSkip.Tests.ps1`. The empirical confirmation arrives on the next pull request
-  that touches only tooling or documentation: the "Skip notice (nothing the .NET build compiles)"
-  step should run there instead of being skipped.
+  `true` here and the full .NET pipeline runs. A file ending in lowercase `.md` under `.github/`
+  is a different case: the repository-wide `!**/*.md` pattern excludes it, the same as a lowercase
+  `.md` file anywhere else. Matching is case-sensitive, so `.MD` and `.Md` are not excluded and
+  still count as code. Every other file under `.github/` counts as code too. That is correct: a
+  change to the filter should be measured by the pipeline it changes. Criterion 5 is ticked on
+  structural evidence — `ci.yml` holds no patterns of its own — asserted by the `ci.yml reads the
+  shared filter file` case in `tests/CoverageSliceSkip.Tests.ps1`. The empirical confirmation
+  arrives on the next pull request that touches only tooling or documentation: the "Skip notice
+  (every changed path excluded)" step should run there instead of being skipped.

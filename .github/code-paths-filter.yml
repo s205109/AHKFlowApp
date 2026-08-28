@@ -1,4 +1,8 @@
-# One source of truth for "did this branch change anything the .NET build compiles?".
+# One source of truth for "did this branch change any path this file does not exclude?".
+#
+# That is the real question, and it is wider than "did anything compile?". A changed path counts
+# as code unless a pattern below excludes it, so ci.yml and Directory.Packages.props both count
+# even though neither compiles. The deny-list direction is the whole design.
 #
 # Read by two callers:
 #   - .github/workflows/ci.yml, through dorny/paths-filter's `filters` input, which accepts a

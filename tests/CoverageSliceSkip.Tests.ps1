@@ -94,11 +94,14 @@ Invoke-TestCase 'Each supported pattern shape matches the right paths' {
     }
 }
 
-Invoke-TestCase 'Under .github, workflow files are code and Markdown is not' {
-    # The list carries no '.github/**' pattern, so every file there counts as code - except
-    # Markdown, which '**/*.md' excludes wherever it sits. That split is deliberate and worth
-    # pinning: a change to ci.yml or to the filter itself must run the pipeline it changes,
-    # while a change to a README or an instructions file under .github compiles nothing.
+Invoke-TestCase 'Under .github, only a lowercase .md file is excluded' {
+    # The list carries no '.github/**' pattern, so every file there counts as code - except one
+    # ending in lowercase '.md', which '**/*.md' excludes wherever it sits. That split is
+    # deliberate and worth pinning: a change to ci.yml or to the filter itself must run the
+    # pipeline it changes, while a change to an instructions file under .github compiles nothing.
+    #
+    # 'Markdown' would be the wrong word for the exclusion. Matching is case-sensitive, so a
+    # file named .MD is Markdown to a reader and code to this filter. The third loop pins that.
     #
     # The PowerShell suites that do check .github Markdown - PersonalDefaultsSyncMarker, for
     # one - run in the powershell-suites job, which carries no filter at all.
@@ -114,6 +117,12 @@ Invoke-TestCase 'Under .github, workflow files are code and Markdown is not' {
         $match = Get-AhkFlowPathExclusionMatch -Path $path -Exclusion $exclusion
         Assert-True ($match -ceq '**/*.md') `
             "'$path' must be excluded by '**/*.md'. Got '$match'."
+    }
+
+    foreach ($path in @('.github/instructions/PERSONAL-DEFAULTS.MD', '.github/Readme.Md')) {
+        $match = Get-AhkFlowPathExclusionMatch -Path $path -Exclusion $exclusion
+        Assert-True ($null -eq $match) `
+            "'$path' is Markdown to a reader but not lowercase .md, so it must count as code. Pattern '$match' excluded it."
     }
 }
 
