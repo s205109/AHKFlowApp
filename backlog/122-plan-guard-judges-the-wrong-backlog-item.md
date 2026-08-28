@@ -71,21 +71,29 @@ all along.
 
 - [ ] A worktree whose recorded number names an item that is not its own is judged against its own
       item instead.
-- [ ] A sweep from the main checkout removes `wt-give-each-worktree-removal-its-abefe700` with no
-      hand edit of its manifest.
-- [ ] A worktree with no recorded backlog item is still removable. An unknown item still refuses.
+- [ ] A sweep removes a worktree whose recorded number names one item while its directory name
+      matches a second item that sits in `backlog/done/` with an implemented plan, and the manifest
+      is not edited. Proved by a fixture, so the box can be settled before this branch merges.
+- [ ] A worktree with no recorded backlog item is still removable, **including when its directory
+      name matches an open item**. The empty-number allow stays ahead of the name lookup.
+- [ ] An unreadable manifest still refuses.
 - [ ] A test builds a worktree whose recorded number and whose directory name point at two
       different items, and asserts the guard reads the right one.
+- [ ] The name lookup accepts a suffixed item number such as `022b`.
+- [ ] `scripts/setup-worktree-local-dev.ps1` still derives a number from `backlog/` only, and the
+      backlog 073 regression test still passes unchanged.
 - [ ] `ConvertTo-BacklogSlug` in `scripts/slug.common.ps1` stays the only slug rule in the
       repository.
 
 ### The outcome log names the reason that applied
 
 - [ ] A kept-worktree line in `.claude/worktrees/worktree-removal.log` carries the guard's own
-      reason.
+      reason. Proved by running the real hook and the real sweep, not by scanning source text.
 - [ ] Two different refusal reasons produce two different lines in that log.
 - [ ] Both the sweep and the removal hook gate write the reason.
 - [ ] A long or multi-line reason still produces exactly one log line.
+- [ ] When the guard allows but the recorded number and the directory name disagree, the removal
+      still happens and the diagnostics file names both numbers.
 
 ## Out of scope
 
