@@ -20,6 +20,14 @@ public sealed class StartupErrorRootTests : BunitContext
     private const string ValidDevJson =
         """{"AzureAd":{"TenantId":"tenant-123","ClientId":"client-456"}}""";
 
+    /// <summary>
+    /// Stops a regression from hanging the suite instead of failing it. No test measures anything
+    /// against this number, and none comes near it: the reload arrives in a few milliseconds. It is
+    /// a guard, not a budget. The same value and the same reasoning as
+    /// <c>DevConfigTests.HangGuard</c>.
+    /// </summary>
+    private static readonly TimeSpan HangGuard = TimeSpan.FromSeconds(30);
+
     public StartupErrorRootTests()
     {
         JSInterop.Mode = JSRuntimeMode.Loose;
@@ -61,8 +69,8 @@ public sealed class StartupErrorRootTests : BunitContext
             .Add(p => p.ReloadDelay, TimeSpan.Zero)
             .Add(p => p.MaxAttempts, 50));
 
-        // No deadline here on purpose. A deadline is what made this test unreliable.
-        await forced.Task;
+        // LocationChanged is the signal. HangGuard only decides how a regression reports itself.
+        await forced.Task.WaitAsync(HangGuard);
 
         nav.History.Should().Contain(h => h.Options.ForceLoad);
     }
