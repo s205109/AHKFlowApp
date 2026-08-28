@@ -487,6 +487,137 @@ Invoke-TestCase 'A base ref that does not exist throws rather than reporting no 
     finally { Remove-Fixture -Root $root }
 }
 
+$script:HostExe = [System.Diagnostics.Process]::GetCurrentProcess().Path
+
+# test-fast.ps1 resolves its repository root from $PSScriptRoot, so the only way to drive it
+# against a controlled diff is to give it a repository of its own. Everything it dot-sources is
+# copied in. run-coverage.ps1 is replaced by a stub, so 'the slice ran' is a file on disk rather
+# than several minutes and a SQL Server container.
+function New-WrapperFixture {
+    # The scripts go in through -BaseSetup so they are committed on main. Several of them are on
+    # the coverage-tooling list, so committing them on the branch would make every skip case
+    # report a code change.
+    return (New-DiffFixture -BaseSetup {
+            param($root)
+
+            New-Item -ItemType Directory -Path (Join-Path $root 'scripts') -Force | Out-Null
+
+            foreach ($name in @(
+                    'test-fast.ps1'
+                    'Common.ps1'
+                    'test-sql-container.common.ps1'
+                    'test-run-lock.common.ps1'
+                    'coverage-inputs.common.ps1'
+                    'code-change-filter.common.ps1'
+                )) {
+                Copy-Item -LiteralPath (Join-Path $repoRoot "scripts/$name") -Destination (Join-Path $root "scripts/$name")
+            }
+
+            Set-Content -LiteralPath (Join-Path $root 'scripts/run-coverage.ps1') -Encoding utf8 -Value @'
+[CmdletBinding()]
+param([string]$Configuration = 'Release', [switch]$SkipThresholdCheck)
+Set-Content -LiteralPath (Join-Path (Split-Path -Parent $PSScriptRoot) 'coverage-ran.marker') -Value $Configuration
+exit 0
+'@
+        })
+}
+
+function Invoke-CoverageMode {
+    # -BaseRef is passed by default and omitted when $UseDefaultBaseRef is set, so at least one
+    # case drives Resolve-AhkFlowGateBaseRef through the wrapper instead of around it.
+    param([string] $Root, [string[]] $ExtraArgument = @(), [switch] $UseDefaultBaseRef)
+
+    $arguments = @('-NoProfile', '-File', (Join-Path $Root 'scripts/test-fast.ps1'), '-Mode', 'Coverage')
+    if (-not $UseDefaultBaseRef) { $arguments += @('-BaseRef', 'main') }
+    $arguments += $ExtraArgument
+
+    $output = & $script:HostExe @arguments 2>&1 | Out-String
+    return [pscustomobject]@{
+        ExitCode = $LASTEXITCODE
+        Output   = $output
+        SliceRan = (Test-Path -LiteralPath (Join-Path $Root 'coverage-ran.marker'))
+    }
+}
+
+Invoke-TestCase 'Coverage mode skips, and says why, when no compiled file changed' {
+    $root = New-WrapperFixture
+    try {
+        Add-FixtureFile -Root $root -RelativePath 'docs/thing.md'
+        Add-FixtureFile -Root $root -RelativePath 'tests/Thing.Tests.ps1'
+        Save-Fixture -Root $root -Message 'docs and a suite'
+
+        $result = Invoke-CoverageMode -Root $root
+        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
+        Assert-True (-not $result.SliceRan) "The slice must not run. Output: $($result.Output)"
+
+        # The acceptance criterion is that the skip is reported, not silent. Each of the four
+        # things the report promises gets its own assertion, or 'reported' quietly degrades to
+        # 'printed the word skipped'.
+        Assert-True ($result.Output -match 'Coverage slice skipped') "The skip must be reported. Output: $($result.Output)"
+        Assert-True ($result.Output -match 'Base ref\s*:\s*main') "The report must name the base ref it used. Output: $($result.Output)"
+        Assert-True ($result.Output -match 'docs/thing\.md\s+excluded by \*\*/\*\.md') `
+            "The report must name each file and the exact pattern that excluded it. Output: $($result.Output)"
+        Assert-True ($result.Output -match 'tests/Thing\.Tests\.ps1\s+excluded by tests/\*\.ps1') `
+            "The pattern shown must be the one that matched, not the first in the list. Output: $($result.Output)"
+        Assert-True ($result.Output -match 'code-paths-filter\.yml') "The report must name the pattern file. Output: $($result.Output)"
+    }
+    finally { Remove-Fixture -Root $root }
+}
+
+Invoke-TestCase 'Coverage mode skips with no -BaseRef, resolving the base itself' {
+    $root = New-WrapperFixture
+    try {
+        Add-FixtureFile -Root $root -RelativePath 'docs/thing.md'
+        Save-Fixture -Root $root -Message 'docs only'
+
+        $result = Invoke-CoverageMode -Root $root -UseDefaultBaseRef
+        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
+        Assert-True (-not $result.SliceRan) "The slice must not run. Output: $($result.Output)"
+        Assert-True ($result.Output -match 'Base ref\s*:\s*main') `
+            "The resolver must have chosen main and said so. Output: $($result.Output)"
+    }
+    finally { Remove-Fixture -Root $root }
+}
+
+Invoke-TestCase 'Coverage mode runs the slice when one .cs file changed' {
+    $root = New-WrapperFixture
+    try {
+        Add-FixtureFile -Root $root -RelativePath 'src/Backend/AHKFlowApp.Domain/Hotstring.cs'
+        Save-Fixture -Root $root -Message 'one cs file'
+
+        $result = Invoke-CoverageMode -Root $root
+        Assert-True $result.SliceRan "The slice must run for a .cs change. Output: $($result.Output)"
+        Assert-True ($result.Output -notmatch 'Coverage slice skipped') "It must not report a skip. Output: $($result.Output)"
+    }
+    finally { Remove-Fixture -Root $root }
+}
+
+Invoke-TestCase '-Force runs the slice even with nothing compiled changed' {
+    $root = New-WrapperFixture
+    try {
+        Add-FixtureFile -Root $root -RelativePath 'docs/thing.md'
+        Save-Fixture -Root $root -Message 'docs only'
+
+        $result = Invoke-CoverageMode -Root $root -ExtraArgument @('-Force')
+        Assert-True $result.SliceRan "-Force must run the slice. Output: $($result.Output)"
+    }
+    finally { Remove-Fixture -Root $root }
+}
+
+Invoke-TestCase 'A decision that cannot be made runs the slice and says so' {
+    $root = New-WrapperFixture
+    try {
+        Add-FixtureFile -Root $root -RelativePath 'docs/thing.md'
+        Save-Fixture -Root $root -Message 'docs only'
+        Remove-Item -LiteralPath (Join-Path $root '.github/code-paths-filter.yml') -Force
+
+        $result = Invoke-CoverageMode -Root $root
+        Assert-True $result.SliceRan "A broken decision must fall back to running the slice. Output: $($result.Output)"
+        Assert-True ($result.Output -match 'code-paths-filter') "It must name what it could not read. Output: $($result.Output)"
+    }
+    finally { Remove-Fixture -Root $root }
+}
+
 Write-Host ''
 if ($script:Failures.Count -gt 0) {
     Write-Host "FAILED: $($script:Failures.Count) test(s)" -ForegroundColor Red

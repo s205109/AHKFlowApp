@@ -18,6 +18,9 @@ param(
 
     [switch]$NoBuild,
 
+    # Coverage mode only. Runs the slice even when the branch changed no compiled file.
+    [switch]$Force,
+
     # PowerShell mode only. Forwarded to run-powershell-suites.ps1 so a test can point the mode at a
     # folder of fake suites. Empty means the runner picks its own default of tests/.
     #
@@ -25,7 +28,15 @@ param(
     # order, and switches take none, so putting it here leaves $Mode at position 0 and
     # $Configuration at position 1. Put it above $Configuration instead and 'test-fast.ps1 Fast
     # Debug' silently binds Debug to $SuiteRoot while $Configuration stays Release.
-    [string]$SuiteRoot
+    [string]$SuiteRoot,
+
+    # Coverage mode only. The ref the changed-file check diffs against. Empty means: ask the
+    # pull request for its base, then fall back to origin/main.
+    #
+    # This goes last for the same reason $SuiteRoot does. An unattributed parameter takes an
+    # implicit position in declaration order, so putting it any earlier would silently rebind
+    # 'test-fast.ps1 Fast Debug'.
+    [string]$BaseRef
 )
 
 $ErrorActionPreference = 'Stop'
@@ -36,6 +47,7 @@ $sharedSqlScript = Join-Path $PSScriptRoot 'test-sql-container.common.ps1'
 . $sharedSqlScript
 . "$PSScriptRoot\Common.ps1"
 . "$PSScriptRoot\test-run-lock.common.ps1"
+. "$PSScriptRoot\code-change-filter.common.ps1"
 
 function New-TestRun {
     param(
@@ -165,6 +177,25 @@ $previousSharedSqlConnectionString = $env:AHKFLOW_TEST_SQL_CONNECTION_STRING
 Push-Location $repoRoot
 try {
     if ($Mode -eq 'Coverage') {
+        if (-not $Force) {
+            # A decision that cannot be made is never a skip. Anything that goes wrong here -
+            # a git failure, a missing filter file, a pattern the matcher cannot read - runs
+            # the slice and prints the reason.
+            $decision = $null
+            try {
+                $decision = Get-AhkFlowCoverageDecision -RepoRoot $repoRoot -BaseRef $BaseRef
+            }
+            catch {
+                Write-Warn "Cannot decide whether this branch changed compiled code, so the coverage slice will run."
+                Write-Warn $_.Exception.Message
+            }
+
+            if ($decision -and -not $decision.CoverageRequired) {
+                Write-AhkFlowCoverageSkipReport -Decision $decision
+                return
+            }
+        }
+
         & (Join-Path $PSScriptRoot 'run-coverage.ps1') -Configuration $Configuration
         if ($LASTEXITCODE -ne 0) {
             throw 'Coverage mode failed.'
