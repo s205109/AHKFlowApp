@@ -30,6 +30,59 @@ function New-TemporaryBacklogRoot {
     return $tempRoot
 }
 
+function Invoke-FixtureGit {
+    param([string] $RepoDir, [string[]] $GitArgs)
+    $out = & git -C $RepoDir @GitArgs 2>&1
+    if ($LASTEXITCODE -ne 0) { throw "git $($GitArgs -join ' ') failed: $out" }
+    return $out
+}
+
+# A git repository with backlog/, backlog/done/, and backlog/blocked/ folders and one committed
+# item on main. Returns the repo path. Callers add branches and worktrees on top.
+function New-GitBacklogFixture {
+    param([string] $FirstItem = '100-first.md')
+
+    $root = Join-Path ([System.IO.Path]::GetTempPath()) ('backlog-num-git-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+    $repo = Join-Path $root 'repo'
+    New-Item -ItemType Directory -Path $repo -Force | Out-Null
+
+    & git -C $repo init --quiet
+    & git -C $repo symbolic-ref HEAD refs/heads/main
+    Invoke-FixtureGit $repo @('config', 'user.email', 'test@example.com') | Out-Null
+    Invoke-FixtureGit $repo @('config', 'user.name', 'Backlog Numbering Test') | Out-Null
+
+    foreach ($subfolder in @('backlog', 'backlog/done', 'backlog/blocked')) {
+        New-Item -ItemType Directory -Path (Join-Path $repo $subfolder) -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $repo "$subfolder/.gitkeep") -Value '' -Encoding utf8
+    }
+    Copy-Item -LiteralPath $templatePath -Destination (Join-Path $repo 'backlog/000-backlog-item-template.md')
+
+    Set-Content -LiteralPath (Join-Path $repo "backlog/$FirstItem") -Value "# $($FirstItem.Substring(0,3)) - First`n" -Encoding utf8
+    Invoke-FixtureGit $repo @('add', '-A') | Out-Null
+    Invoke-FixtureGit $repo @('commit', '--quiet', '-m', 'file the first item') | Out-Null
+
+    return (Resolve-Path -LiteralPath $repo).Path
+}
+
+# Adds a branch off main that commits one backlog file, then returns HEAD to main.
+function Add-FixtureBranchItem {
+    param([string] $RepoDir, [string] $Branch, [string] $ItemFile)
+    Invoke-FixtureGit $RepoDir @('checkout', '--quiet', '-b', $Branch, 'main') | Out-Null
+    Set-Content -LiteralPath (Join-Path $RepoDir "backlog/$ItemFile") -Value "# $($ItemFile.Substring(0,3)) - Branch item`n" -Encoding utf8
+    Invoke-FixtureGit $RepoDir @('add', '-A') | Out-Null
+    Invoke-FixtureGit $RepoDir @('commit', '--quiet', '-m', "file $ItemFile on $Branch") | Out-Null
+    Invoke-FixtureGit $RepoDir @('checkout', '--quiet', 'main') | Out-Null
+}
+
+function Remove-GitFixture {
+    param([string] $RepoPath)
+    $root = Split-Path -Parent $RepoPath
+    for ($attempt = 1; $attempt -le 5; $attempt++) {
+        try { Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction Stop; return }
+        catch { if ($attempt -eq 5) { return }; Start-Sleep -Milliseconds 300 }
+    }
+}
+
 function Assert-True {
     param([bool] $Condition, [string] $Message)
     if (-not $Condition) {
@@ -447,6 +500,128 @@ try {
 finally {
     Remove-Item -LiteralPath $tempRoot -Recurse -Force
 }
+
+# --- Case 21: a number committed on another branch is considered ---
+
+$repo = New-GitBacklogFixture -FirstItem '100-first.md'
+try {
+    Add-FixtureBranchItem -RepoDir $repo -Branch 'feat/x' -ItemFile '130-on-branch.md'
+    $next = Get-NextBacklogNumber -BacklogRoot (Join-Path $repo 'backlog')
+    Assert-True ($next -eq '131') "The next number must follow the item on feat/x, got '$next'"
+}
+finally { Remove-GitFixture $repo }
+
+# --- Case 22: two refs that each claim the same next number, and the function skips it ---
+
+$repo = New-GitBacklogFixture -FirstItem '140-first.md'
+try {
+    Add-FixtureBranchItem -RepoDir $repo -Branch 'feat/x' -ItemFile '141-x.md'
+    Add-FixtureBranchItem -RepoDir $repo -Branch 'feat/y' -ItemFile '141-y.md'
+    $next = Get-NextBacklogNumber -BacklogRoot (Join-Path $repo 'backlog')
+    Assert-True ($next -eq '142') "Two branches both holding 141 must push the next number to 142, got '$next'"
+}
+finally { Remove-GitFixture $repo }
+
+# --- Case 23: a repository with no remote still returns a number ---
+
+$repo = New-GitBacklogFixture -FirstItem '150-first.md'
+try {
+    $remotes = & git -C $repo remote
+    Assert-True ([string]::IsNullOrWhiteSpace(($remotes -join ''))) 'The fixture must have no remote'
+    $next = Get-NextBacklogNumber -BacklogRoot (Join-Path $repo 'backlog') -WarningVariable w -WarningAction SilentlyContinue
+    Assert-True ($next -eq '151') "A repository with no remote must still number, got '$next'"
+    Assert-True ($w.Count -eq 0) "No remote is not an error, so no warning is expected, got: $($w -join ' | ')"
+}
+finally { Remove-GitFixture $repo }
+
+# --- Case 24: an unreadable ref makes the function warn, not fail ---
+#
+# A ref that points at a blob rather than a commit is a clean "cannot read this ref": git
+# for-each-ref lists it because the object exists, and git ls-tree on it exits non-zero.
+
+$repo = New-GitBacklogFixture -FirstItem '160-first.md'
+try {
+    $blobSha = (& git -C $repo rev-parse 'HEAD:backlog/160-first.md').Trim()
+    Set-Content -LiteralPath (Join-Path $repo '.git/refs/heads/points-at-a-blob') -Value $blobSha -Encoding ascii -NoNewline
+
+    $next = Get-NextBacklogNumber -BacklogRoot (Join-Path $repo 'backlog') -WarningVariable w -WarningAction SilentlyContinue
+    Assert-True ($next -eq '161') "An unreadable ref must not stop numbering, got '$next'"
+    Assert-True ($w.Count -ge 1) 'An unreadable ref must produce a warning'
+    Assert-True (($w -join ' ') -like '*points-at-a-blob*') "The warning must name the ref, got: $($w -join ' | ')"
+}
+finally { Remove-GitFixture $repo }
+
+# --- Case 25: two worktrees of one repository, neither pushed, pick different numbers ---
+
+$repo = New-GitBacklogFixture -FirstItem '170-first.md'
+try {
+    # The main checkout scaffolds first and commits, the way Intake does.
+    & $scaffoldScript -Title 'Item from the main checkout' -BacklogRoot (Join-Path $repo 'backlog') | Out-Null
+    $firstNumber = (Get-ChildItem -LiteralPath (Join-Path $repo 'backlog') -Filter '*.md' -File |
+        Where-Object { $_.BaseName -match '^\d{3}-item-from-the-main-checkout$' }).BaseName.Substring(0, 3)
+    Assert-True ($firstNumber -eq '171') "The main checkout must pick 171, got '$firstNumber'"
+    Invoke-FixtureGit $repo @('add', '-A') | Out-Null
+    Invoke-FixtureGit $repo @('commit', '--quiet', '-m', 'file the main-checkout item') | Out-Null
+
+    $tree = Join-Path (Split-Path -Parent $repo) 'wt-second'
+    Invoke-FixtureGit $repo @('worktree', 'add', '--quiet', '-b', 'feat/second', $tree, 'main') | Out-Null
+
+    $secondNext = Get-NextBacklogNumber -BacklogRoot (Join-Path $tree 'backlog')
+    Assert-True ($secondNext -eq '172') "The second worktree must not reuse 171, got '$secondNext'"
+}
+finally { Remove-GitFixture $repo }
+
+# --- Case 26: an item written but not committed in a sibling worktree is still seen ---
+
+$repo = New-GitBacklogFixture -FirstItem '180-first.md'
+try {
+    $tree = Join-Path (Split-Path -Parent $repo) 'wt-uncommitted'
+    Invoke-FixtureGit $repo @('worktree', 'add', '--quiet', '-b', 'feat/uncommitted', $tree, 'main') | Out-Null
+
+    # The sibling worktree scaffolds an item and does NOT commit it.
+    & $scaffoldScript -Title 'Uncommitted sibling item' -BacklogRoot (Join-Path $tree 'backlog') | Out-Null
+
+    $next = Get-NextBacklogNumber -BacklogRoot (Join-Path $repo 'backlog')
+    Assert-True ($next -eq '182') "The main checkout must skip the uncommitted 181 in the sibling worktree, got '$next'"
+}
+finally { Remove-GitFixture $repo }
+
+# --- Case 27: a number reachable only from a tag is considered ---
+#
+# "Any local or remote ref" includes tags. release-cli.yml tags releases as v*, and this repo
+# already carries refs/tags/v0.1.0 through v0.1.3.
+
+$repo = New-GitBacklogFixture -FirstItem '200-first.md'
+try {
+    Add-FixtureBranchItem -RepoDir $repo -Branch 'tmp/tagbase' -ItemFile '250-tagged.md'
+    Invoke-FixtureGit $repo @('tag', 'v9.9.9', 'tmp/tagbase') | Out-Null
+    # Delete the branch so only the tag reaches 250. A branch scan alone would now miss it.
+    Invoke-FixtureGit $repo @('branch', '-D', 'tmp/tagbase') | Out-Null
+
+    $next = Get-NextBacklogNumber -BacklogRoot (Join-Path $repo 'backlog')
+    Assert-True ($next -eq '251') "A number reachable only from a tag must be considered, got '$next'"
+}
+finally { Remove-GitFixture $repo }
+
+# --- Case 28: the helper works when $PSNativeCommandUseErrorActionPreference does not exist ---
+#
+# That variable is new in PowerShell 7.3. Under Set-StrictMode an unguarded read of it throws on
+# 7.0 to 7.2. The runner has 7.4, so simulate the older host by removing the variable for one call.
+
+$repo = New-GitBacklogFixture -FirstItem '190-first.md'
+try {
+    $hadVar = Test-Path -LiteralPath 'Variable:PSNativeCommandUseErrorActionPreference'
+    $savedVar = if ($hadVar) { $PSNativeCommandUseErrorActionPreference } else { $null }
+    if ($hadVar) { Remove-Item -LiteralPath 'Variable:PSNativeCommandUseErrorActionPreference' }
+    try {
+        $next = Get-NextBacklogNumber -BacklogRoot (Join-Path $repo 'backlog')
+        Assert-True ($next -eq '191') "The helper must work with the native-preference variable absent, got '$next'"
+    }
+    finally {
+        if ($hadVar) { Set-Variable -Name 'PSNativeCommandUseErrorActionPreference' -Value $savedVar -Scope Global }
+    }
+}
+finally { Remove-GitFixture $repo }
 
 # --- Report ---
 

@@ -271,12 +271,127 @@ Backlog $($item.Key) has more than one 'none' plan bullet.
     return $problems
 }
 
+# A backlog number can be committed on another branch, or written in another worktree, where the
+# working-tree scan above cannot see it. Two worktrees started close together then pick the same
+# number, and nothing notices until both branches meet in main. See backlog 121.
+#
+# This reads every local and remote ref, plus every linked worktree's working copy. It never
+# throws: a folder with no git repository behind it (every fixture test) gets an empty result,
+# and a ref that cannot be read is recorded in Unreadable for the caller to warn about.
+function Get-BacklogNumbersFromGit {
+    param([Parameter(Mandatory)][string] $RepoRoot)
+
+    $result = [pscustomobject]@{
+        Numbers    = [System.Collections.Generic.List[int]]::new()
+        Unreadable = [System.Collections.Generic.List[string]]::new()
+    }
+
+    # $PSNativeCommandUseErrorActionPreference is on by default under 7.4 with $ErrorActionPreference
+    # 'Stop', which turns a non-zero git exit code into a terminating error. Every git call here
+    # checks $LASTEXITCODE by hand instead, so opt out for the length of this function.
+    #
+    # The variable only exists from PowerShell 7.3, and this file runs under Set-StrictMode, so a
+    # bare read to save the old value throws on 7.0 to 7.2 - where there is nothing to opt out of,
+    # because a non-zero native exit code does not throw there. Guard the read with Test-Path. This
+    # is the pattern at scripts/backlog-staleness.common.ps1.
+    $hasNativePreference = Test-Path -LiteralPath 'Variable:PSNativeCommandUseErrorActionPreference'
+    $previousNativePreference = $null
+    if ($hasNativePreference) {
+        $previousNativePreference = $PSNativeCommandUseErrorActionPreference
+        $PSNativeCommandUseErrorActionPreference = $false
+    }
+    try {
+        $probe = & git -C $RepoRoot rev-parse --is-inside-work-tree 2>$null
+        if ($LASTEXITCODE -ne 0 -or "$probe".Trim() -ne 'true') {
+            return $result
+        }
+
+        # backlog/<NNN>-..., backlog/done/<NNN>-..., backlog/blocked/<NNN>-... — one segment deep,
+        # exactly the folders Get-BacklogItem scans.
+        $itemPathRegex = '^backlog/(done/|blocked/)?[^/]+\.md$'
+        # The number is anchored to the start of the file name, so a name like
+        # 'issue-30176-closes.md' is not read as 30176.
+        $numberRegex = '^(?<num>\d{3})[a-z]?-'
+
+        # refs/tags is included: the item says "any local or remote ref", and a tagged commit
+        # carries a full backlog/ tree. git ls-tree dereferences an annotated tag to its commit
+        # on its own, so both tag kinds work.
+        $refs = @(& git -C $RepoRoot for-each-ref --format='%(refname)' refs/heads refs/remotes refs/tags 2>$null)
+        if ($LASTEXITCODE -ne 0) {
+            $result.Unreadable.Add('git for-each-ref')
+            $refs = @()
+        }
+
+        foreach ($ref in $refs) {
+            if ([string]::IsNullOrWhiteSpace($ref)) { continue }
+            # refs/remotes/<remote>/HEAD is a symbolic alias for the remote's default branch.
+            # Reading it duplicates another ref and errors on a remote with no default.
+            if ($ref -match '(^|/)HEAD$') { continue }
+
+            $names = & git -C $RepoRoot ls-tree -r --name-only $ref -- backlog 2>$null
+            if ($LASTEXITCODE -ne 0) {
+                $result.Unreadable.Add($ref)
+                continue
+            }
+            foreach ($name in @($names)) {
+                if ($name -notmatch $itemPathRegex) { continue }
+                if ((Split-Path -Leaf $name) -match $numberRegex) {
+                    $result.Numbers.Add([int] $Matches.num)
+                }
+            }
+        }
+
+        # Linked worktrees, this one included. Their working copies hold items that are written
+        # but not yet committed, so no ref covers them.
+        $porcelain = @(& git -C $RepoRoot worktree list --porcelain 2>$null)
+        if ($LASTEXITCODE -ne 0) {
+            $result.Unreadable.Add('git worktree list')
+            $porcelain = @()
+        }
+        foreach ($line in $porcelain) {
+            if ($line -notmatch '^worktree (.+)$') { continue }
+            $treePath = $Matches[1]
+            foreach ($sub in @('backlog', 'backlog/done', 'backlog/blocked')) {
+                $dir = Join-Path $treePath $sub
+                if (-not (Test-Path -LiteralPath $dir)) { continue }
+                foreach ($file in Get-ChildItem -LiteralPath $dir -Filter '*.md' -File) {
+                    if ($file.BaseName -match $numberRegex) {
+                        $result.Numbers.Add([int] $Matches.num)
+                    }
+                }
+            }
+        }
+
+        return $result
+    }
+    finally {
+        if ($hasNativePreference) {
+            $PSNativeCommandUseErrorActionPreference = $previousNativePreference
+        }
+    }
+}
+
 function Get-NextBacklogNumber {
     param([Parameter(Mandatory)][string] $BacklogRoot)
 
-    $items = @(Get-BacklogItem -BacklogRoot $BacklogRoot | Where-Object { $null -ne $_.Number })
-    $max = [int] ($items | Measure-Object -Property Number -Maximum).Maximum
-    return '{0:D3}' -f ($max + 1)
+    $numbers = [System.Collections.Generic.List[int]]::new()
+
+    # The working tree this call was pointed at. Always scanned, so a test -BacklogRoot with no
+    # git repository behind it still returns a number.
+    foreach ($item in Get-BacklogItem -BacklogRoot $BacklogRoot) {
+        if ($null -ne $item.Number) { $numbers.Add([int] $item.Number) }
+    }
+
+    $repoRoot = Split-Path -Parent (Resolve-Path -LiteralPath $BacklogRoot).Path
+    $fromGit = Get-BacklogNumbersFromGit -RepoRoot $repoRoot
+    foreach ($n in $fromGit.Numbers) { $numbers.Add([int] $n) }
+
+    foreach ($ref in $fromGit.Unreadable) {
+        Write-Warning "Get-NextBacklogNumber: could not read backlog files from '$ref'. Numbers held only there are not counted."
+    }
+
+    $max = if ($numbers.Count -gt 0) { ($numbers | Measure-Object -Maximum).Maximum } else { 0 }
+    return '{0:D3}' -f ([int] $max + 1)
 }
 
 function New-BacklogFile {
