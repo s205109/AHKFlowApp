@@ -37,9 +37,45 @@ gh pr view --json baseRefName -q .baseRefName
 git diff --check "$(gh pr view --json baseRefName -q .baseRefName)...HEAD"
 ```
 
+**The coverage slice skips itself when it cannot measure anything.** Run the same command either
+way. `-Mode Coverage` compares your branch against its base and skips when **every** changed file
+matches one of the patterns in [`.github/code-paths-filter.yml`](../../.github/code-paths-filter.yml):
+Markdown anywhere, anything under `docs/` or `.claude/`, any `.ps1` under `scripts/`, and any
+`.ps1` directly in `tests/`. One file outside that list — a `.cs` file, a `.csproj`, a root build
+file — and the slice runs in full.
+
+Renames count as two paths. Moving `src/Foo.cs` to `docs/Foo.md` still runs the slice, because the
+build lost a file. Matching is case-sensitive: `scripts/Thing.PS1` is not `scripts/Thing.ps1`.
+
+The same file lists seven scripts under `coverage-tooling`. Changing one of those runs the slice
+even though the patterns above exclude it, because the coverage step is the only local check that
+runs `run-coverage.ps1` and what it loads.
+
+A skip prints the base ref, every changed file, and the pattern that excluded it, so a green Gate
+never looks like it checked more than it did. Pass `-Force` to run the slice anyway. When the
+check itself cannot decide, it says so and runs the slice.
+
+`ci.yml` reads the `code` patterns from that same file, so the two cannot drift apart. CI ignores
+`coverage-tooling`, and that is correct rather than a gap: CI never runs `run-coverage.ps1`. Its
+coverage step is a plain `dotnet test`. So on those seven paths this Gate is stricter than CI, and
+never looser.
+
 Then verify the change actually works — see **Verification After Implementation** in [`AGENTS.md`](../../AGENTS.md). A green gate proves nothing regressed; it does not prove the new behavior happened.
 
-CI enforces the same build, format, and coverage-threshold steps on every **non-docs** PR. On a PR touching only `**/*.md`, `docs/**`, or `.claude/**`, the `build-test` job still starts, but every one of its .NET steps is skipped — build, test, coverage, thresholds, and the format check are all guarded by the `dorny/paths-filter` step in `ci.yml`. Two things still run on such a PR. The changelog check (`scripts/ci/generate-changelog-json.ps1 -Check`) sits above that filter in `build-test`, so it runs on every PR. And the `powershell-suites`, `codex-skills-hash-parity`, and `bicep-lint` jobs carry no filter at all, so they run on every PR too. Nothing checks the .NET side of a docs-only branch, which makes this local gate matter more there, not less. The pre-push hook is a faster subset (incremental build + fast slice, `scripts/pre-push-quick-checks.ps1`), not this gate.
+CI enforces the same build, format, and coverage-threshold steps, and it decides whether to run
+them from the same file the local slice reads, `.github/code-paths-filter.yml`. On a pull request
+whose changed files all match those patterns, the `build-test` job still starts, but every one of
+its .NET steps is skipped — build, test, coverage, thresholds, and the format check are all
+guarded by the `dorny/paths-filter` step in `ci.yml`. Nothing in those steps can fail on a diff
+that compiles no C#.
+
+Two things still run on such a pull request. The changelog check
+(`scripts/ci/generate-changelog-json.ps1 -Check`) sits above that filter in `build-test`, so it
+runs on every pull request. And the `powershell-suites`, `codex-skills-hash-parity`, and
+`bicep-lint` jobs carry no filter at all, so they run on every pull request too. Nothing checks
+the .NET side of such a branch, which makes this local gate matter more there, not less. The
+pre-push hook is a faster subset (incremental build + fast slice,
+`scripts/pre-push-quick-checks.ps1`), not this gate.
 
 ## Fast inner loop
 
@@ -147,7 +183,7 @@ runs on every PR.
 pwsh .\scripts\test-fast.ps1 -Mode Coverage
 ```
 
-Coverage mode delegates to `scripts/run-coverage.ps1`. Run it before you mark a PR ready; CI enforces the same coverage + threshold gate on every non-docs PR. The pre-push hook itself only runs quick checks (incremental build + fast slice, see `scripts/pre-push-quick-checks.ps1`), not this full coverage path. The local coverage script uses the same disposable shared SQL container behavior as Integration mode for the SQL-backed suites.
+Coverage mode delegates to `scripts/run-coverage.ps1`. Run it before you mark a PR ready; CI enforces the same coverage + threshold gate on every non-docs PR. The pre-push hook itself only runs quick checks (incremental build + fast slice, see `scripts/pre-push-quick-checks.ps1`), not this full coverage path. The local coverage script uses the same disposable shared SQL container behavior as Integration mode for the SQL-backed suites. Coverage mode skips itself when the branch changed no compiled file — see the Gate section above for the condition and the `-Force` switch. `run-coverage.ps1` makes no such check: calling it directly always runs the full slice.
 
 ### One test run at a time
 

@@ -100,7 +100,7 @@ function Get-BacklogStaleOpenProblem {
     }
 
     # A shallow clone cannot answer the question, and a silent pass would be a false green.
-    # CI checks out full history for this job (`.github/workflows/ci.yml:108`, "fetch-depth: 0").
+    # CI checks out full history for this job (`.github/workflows/ci.yml:107`, "fetch-depth: 0").
     $shallow = Invoke-BacklogGit -RepoRoot $RepoRoot -GitArgs @('rev-parse', '--is-shallow-repository')
     if ($shallow.ExitCode -ne 0) {
         return @("Cannot read git history in $RepoRoot. The stale-open check needs a git repository.")

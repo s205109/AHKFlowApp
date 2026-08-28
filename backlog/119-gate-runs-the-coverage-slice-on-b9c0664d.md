@@ -6,7 +6,7 @@
 - **Type**: Feature
 - **Interfaces**: CLI
 - **Difficulty**: moderate
-- **Stage**: 3-plan
+- **Stage**: 4-execute
 
 ## Summary
 
@@ -39,7 +39,7 @@ The five Gate steps on that branch:
 
 The Gate is defined at (`docs/development/testing-workflow.md:24`, "dotnet build AHKFlowApp.slnx --configuration Release").
 
-Coverage mode hands off to `run-coverage.ps1` (`scripts/test-fast.ps1:168`, "& (Join-Path $PSScriptRoot 'run-coverage.ps1') -Configuration $Configuration").
+Coverage mode hands off to `run-coverage.ps1` (`scripts/test-fast.ps1:199`, "& (Join-Path $PSScriptRoot 'run-coverage.ps1') -Configuration $Configuration").
 That script starts a real SQL Server container, then runs `dotnet test` per project with coverlet
 instrumentation (`scripts/run-coverage.ps1:79`, "dotnet test $project.Path --configuration $Configuration").
 
@@ -51,9 +51,9 @@ on disk, and `run-powershell-suites.ps1` runs every suite as its own process, on
 ## What CI does — measured, not read from the YAML
 
 `ci.yml` skips every .NET step when its `code` filter is false
-(`.github/workflows/ci.yml:35`, "        if: steps.filter.outputs.code == 'false'").
+(`.github/workflows/ci.yml:34`, "        if: steps.filter.outputs.code == 'false'").
 The filter is three negative patterns under `predicate-quantifier: 'every'`
-(`.github/workflows/ci.yml:28`, "          predicate-quantifier: 'every'").
+(`.github/workflows/ci.yml:31`, "          predicate-quantifier: 'every'").
 
 Reading that config, it looked possible that `code` would be false for a *mixed* pull request —
 one changing a `.ps1` file and a `.md` file together — because the `.md` file fails `!**/*.md`.
@@ -83,16 +83,17 @@ Do not design from the YAML alone. This answer came from a real run.
 - [x] A written statement of what `ci.yml`'s `code` filter evaluates to for a mixed pull request,
       backed by a real workflow run, not by reading the YAML. Answered at Intake from run
       33078712913: `code` was `true` and the full .NET pipeline ran. See the section above.
-- [ ] The Gate documentation names the condition under which the coverage slice may be skipped, in
+- [x] The Gate documentation names the condition under which the coverage slice may be skipped, in
       terms a reader can check against their own diff.
-- [ ] Running the Gate on a branch that changed no compiled file completes without starting a SQL
+- [x] Running the Gate on a branch that changed no compiled file completes without starting a SQL
       Server container.
-- [ ] Running the Gate on a branch that changed one `.cs` file still runs the coverage slice.
-- [ ] `ci.yml` skips its coverage step on the same condition the Gate uses, so the two never
-      disagree about one branch.
-- [ ] The skip is reported, not silent. A skipped slice prints why, so a green Gate never looks
+- [x] Running the Gate on a branch that changed one `.cs` file still runs the coverage slice.
+- [x] `ci.yml` and the Gate use the same `code` exclusions for the same committed diff. The Gate
+      may additionally run for `coverage-tooling`, so it can be stricter than CI but never
+      looser.
+- [x] The skip is reported, not silent. A skipped slice prints why, so a green Gate never looks
       like it checked more than it did.
-- [ ] `pwsh ./scripts/run-powershell-suites.ps1` passes.
+- [x] `pwsh ./scripts/run-powershell-suites.ps1` passes.
 
 ## Out of scope
 
@@ -110,4 +111,17 @@ Do not design from the YAML alone. This answer came from a real run.
   unmerged branches: 117 belongs to `fix/wt-removal-watcher-powershell-5` and 118 to
   `fix/wt-give-each-worktree-removal-its-abefe700`, and neither was merged when this was filed.
 - Spec: none — the design fits inside the plan. Decided at Plan.
-- Plan: docs/superpowers/plans/2026-08-27-gate-coverage-skip-plan-119.md
+- Plan: `docs/superpowers/plans/2026-08-27-gate-coverage-skip-plan-119.md`
+- Criterion 5 was reworded during Execute. It said `ci.yml` and the Gate "never disagree about one
+  branch", and the design's `coverage-tooling` key makes that false on seven paths. A change to
+  `scripts/run-coverage.ps1` runs the slice locally and skips the .NET steps in CI. That is the
+  right answer in both places, so the criterion now states the one-directional difference instead.
+  Editing it is honest; ticking the original wording would not have been.
+- This branch cannot demonstrate the CI skip. It adds `.github/code-paths-filter.yml` and edits
+  `.github/workflows/ci.yml`, and `.github/**` is deliberately not excluded, so `code` is `true`
+  here and the full .NET pipeline runs. That is correct: a change to the filter should be measured
+  by the pipeline it changes. Criterion 5 is ticked on structural evidence — `ci.yml` holds no
+  patterns of its own — asserted by the `ci.yml reads the shared filter file` case in
+  `tests/CoverageSliceSkip.Tests.ps1`. The empirical confirmation arrives on the next pull request
+  that touches only tooling or documentation: the "Skip notice (nothing the .NET build compiles)"
+  step should run there instead of being skipped.
