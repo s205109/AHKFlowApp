@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: none - repository tooling
 - **Difficulty**: moderate
-- **Stage**: 1-pickup
+- **Stage**: 3-plan
 
 ## Summary
 
@@ -53,9 +53,11 @@ a plan outside docs/superpowers/plans.
 
 ## The two defects
 
-**1. The recorded number goes stale.** `Set-ManifestBacklogItem` has one caller,
-`scripts/new-backlog-item.ps1`, which runs once when the item is created. A renumber is a hand
-`git mv` plus a heading edit. Nothing writes the manifest again.
+**1. The recorded number goes stale.** Two places write the key. `new-backlog-item.ps1` writes it
+once, when the item is filed. `setup-worktree-local-dev.ps1` derives it from the worktree name, but
+only when no value is recorded yet: `Resolve-WorktreeBacklogItem` returns any recorded value
+untouched. A renumber is a hand `git mv` plus a heading edit, so neither writer ever runs again, and
+a wrong value is kept forever.
 
 **2. The outcome log states a reason nobody checked.** Both writers hardcode one sentence,
 `Kept: the plan was never implemented.`, whatever the verdict was. The real reason reaches stderr
@@ -104,5 +106,8 @@ all along.
   `fix/wt-backlog-numbering-reads-one-working-tree` already holds. The file was renamed to 122 by
   hand, and the manifest had to be rewritten by hand as well. That second step is exactly the
   defect this item fixes, and nothing would have reminded a person to do it.
+- The slug lookup this item needs already exists in `scripts/setup-worktree-local-dev.ps1`, but it
+  scans `backlog/` only and never re-checks a number it already recorded. Grilling found it. The
+  plan reuses it rather than writing a second one.
 - Spec: none - the root cause is proven above, so this goes straight to Plan.
-- Plan: <path, or "none - reason">
+- Plan: `docs/superpowers/plans/2026-08-28-plan-guard-identity-plan-122.md`
