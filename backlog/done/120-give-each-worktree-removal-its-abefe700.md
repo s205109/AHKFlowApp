@@ -38,17 +38,17 @@ writer. The holder fallback loses the process name in a timed-out outcome line.
 ## The fix
 
 Each attempt gets its own directory, `%TEMP%\ahkflowapp-wt-remove-<RunId>\`, built by
-`Get-RemovalRunTempDir` (`scripts/remove-worktree-local-dev.ps1:297`, "function Get-RemovalRunTempDir {").
+`Get-RemovalRunTempDir` (`scripts/remove-worktree-local-dev.ps1:299`, "function Get-RemovalRunTempDir {").
 It holds the watcher script, the param file, and both helper copies
-(`scripts/remove-worktree-local-dev.ps1:1026`, "Copy-Item -LiteralPath $logSource -Destination (Join-Path $runDir 'worktree-log.common.ps1') -Force -ErrorAction Stop").
+(`scripts/remove-worktree-local-dev.ps1:1030`, "Copy-Item -LiteralPath $logSource -Destination (Join-Path $runDir 'worktree-log.common.ps1') -Force -ErrorAction Stop").
 
 `Remove-WatcherArtifacts` deletes the directory as one unit
-(`scripts/remove-worktree-local-dev.ps1:1428`, "Remove-Item -LiteralPath $runDir -Recurse -Force -ErrorAction Stop"),
+(`scripts/remove-worktree-local-dev.ps1:1432`, "Remove-Item -LiteralPath $runDir -Recurse -Force -ErrorAction Stop"),
 after `Test-RemovalRunTempDirPath` confirms the path is a run directory in the temp root
-(`scripts/remove-worktree-local-dev.ps1:1437`, "function Test-RemovalRunTempDirPath {").
+(`scripts/remove-worktree-local-dev.ps1:1441`, "function Test-RemovalRunTempDirPath {").
 
 `Get-RemovalTempDir` still means the temp root
-(`scripts/remove-worktree-local-dev.ps1:287`, "function Get-RemovalTempDir {"). The shared outcome
+(`scripts/remove-worktree-local-dev.ps1:289`, "function Get-RemovalTempDir {"). The shared outcome
 log and the watcher's working directory both stay there.
 
 ## Two further findings

@@ -243,6 +243,150 @@ try {
     Assert-True (Test-WorktreePlanWasImplemented -MainCheckout $root -ItemNumber '073').Allow `
         'An unquoted pointer, as backlog/done/104 writes it, still reads'
 
+    # --- the worktree name decides which item is judged ---------------------
+    # The recorded number goes stale: a renumber is a hand `git mv` plus a heading edit, and
+    # nothing rewrites the manifest. The worktree directory name carries the title slug, which a
+    # renumber never changes, so the slug names the item the worktree really serves.
+
+    # A scratch checkout with two items whose verdicts differ, so which one was judged is visible
+    # in the answer rather than only in a field.
+    function New-SlugScenario {
+        param(
+            [string] $OwnSlug = 'give-each-worktree-removal',
+            [string] $OwnNumber = '120',
+            [string] $OwnFolder = 'backlog',
+            [string] $OwnPlanBody = "- [x] Step 1",
+            [string] $RecordedNumber = '118'
+        )
+
+        $root = Join-Path ([System.IO.Path]::GetTempPath()) ("ahkflow-planguard-slug-" + [Guid]::NewGuid().ToString('N').Substring(0, 8))
+        New-Item -ItemType Directory -Path (Join-Path $root 'backlog') -Force | Out-Null
+        New-Item -ItemType Directory -Path (Join-Path $root ('docs\superpowers\plans')) -Force | Out-Null
+        New-Item -ItemType Directory -Path (Join-Path $root $OwnFolder) -Force | Out-Null
+        $script:scenarios += $root
+
+        # The item the worktree name points at. Its plan is implemented, so judging it allows.
+        Set-Content -LiteralPath (Join-Path $root ('docs\superpowers\plans\own-plan.md')) -Value $OwnPlanBody
+        Set-Content -LiteralPath (Join-Path $root (Join-Path $OwnFolder "$OwnNumber-$OwnSlug.md")) `
+            -Value "# $OwnNumber - own`n`n- Plan: ``docs/superpowers/plans/own-plan.md``"
+
+        # The item the manifest still records. Somebody else's item, still open, with the unfilled
+        # template pointer -- exactly the shape that kept one finished worktree alive for days.
+        if ($RecordedNumber) {
+            Set-Content -LiteralPath (Join-Path $root "backlog\$RecordedNumber-a-different-title.md") `
+                -Value "# $RecordedNumber - other`n`n- Plan: <path, or ""none - reason"">"
+        }
+
+        return $root
+    }
+
+    $root = New-SlugScenario
+    $verdict = Test-WorktreePlanWasImplemented -MainCheckout $root -ItemNumber '118' -WorktreeName 'wt-give-each-worktree-removal'
+    Assert-True $verdict.Allow "The item the worktree name matches must be judged, got '$($verdict.Reason)'"
+    Assert-Equal '120' $verdict.ItemNumber 'The verdict reports the item it judged'
+    Assert-Equal '118' $verdict.RecordedItemNumber 'The verdict still reports what the manifest recorded'
+    Assert-True ($verdict.Reason -match 'records item 118') `
+        "A disagreement must name both numbers, got '$($verdict.Reason)'"
+
+    # The same wiring in the refusing direction, so the case cannot pass by allowing everything.
+    $root = New-SlugScenario -OwnPlanBody "- [ ] Step 1"
+    $verdict = Test-WorktreePlanWasImplemented -MainCheckout $root -ItemNumber '118' -WorktreeName 'wt-give-each-worktree-removal'
+    Assert-True (-not $verdict.Allow) 'An unimplemented plan on the name-matched item must still refuse'
+    Assert-True ($verdict.Reason -match 'item 120') "The refusal must name item 120, got '$($verdict.Reason)'"
+
+    # --- the name-matched item is found in backlog/done too -----------------
+    # This is the worktree that started this item: its own item shipped, and the sweep kept
+    # refusing because the manifest still named an open item belonging to somebody else.
+    $root = New-SlugScenario -OwnFolder 'backlog\done'
+    $verdict = Test-WorktreePlanWasImplemented -MainCheckout $root -ItemNumber '118' -WorktreeName 'wt-give-each-worktree-removal'
+    Assert-True $verdict.Allow "A shipped item in backlog/done must still resolve by slug, got '$($verdict.Reason)'"
+    Assert-Equal '120' $verdict.ItemNumber 'The done/ item is the one judged'
+
+    # blocked/ is scanned as well, for the same reason.
+    $root = New-SlugScenario -OwnFolder 'backlog\blocked'
+    Assert-True (Test-WorktreePlanWasImplemented -MainCheckout $root -ItemNumber '118' -WorktreeName 'wt-give-each-worktree-removal').Allow `
+        'An item in backlog/blocked must resolve by slug'
+
+    # --- a name that matches nothing falls back to the recorded number ------
+    # Never the other way round. A slug that matches nothing must not skip a check the guard would
+    # otherwise make, or any worktree whose name does not match its item would walk past the gate.
+    $root = New-SlugScenario
+    $verdict = Test-WorktreePlanWasImplemented -MainCheckout $root -ItemNumber '118' -WorktreeName 'wt-no-item-has-this-slug'
+    Assert-True (-not $verdict.Allow) 'A name that matches no item falls back to the recorded number'
+    Assert-Equal '118' $verdict.ItemNumber 'The fallback judges the recorded number'
+    Assert-True (-not ($verdict.Reason -match 'records item')) `
+        "Numbers that agree must not be reported as a disagreement, got '$($verdict.Reason)'"
+
+    # --- a name and a number that agree give the same verdict as before -----
+    $root = New-SlugScenario -OwnNumber '120' -RecordedNumber ''
+    $verdict = Test-WorktreePlanWasImplemented -MainCheckout $root -ItemNumber '120' -WorktreeName 'wt-give-each-worktree-removal'
+    Assert-True $verdict.Allow 'A name and a number that agree keep the old verdict'
+    Assert-Equal '120' $verdict.RecordedItemNumber 'Agreement still reports the recorded number'
+
+    # --- a leaf with no wt- prefix runs the number path, and throws nothing --
+    $root = New-SlugScenario
+    $verdict = Test-WorktreePlanWasImplemented -MainCheckout $root -ItemNumber '118' -WorktreeName 'plain-directory-name'
+    Assert-True (-not $verdict.Allow) 'A leaf with no wt- prefix runs the number path'
+    Assert-Equal '118' $verdict.ItemNumber 'A leaf with no wt- prefix judges the recorded number'
+    Assert-Equal '' (Get-WorktreeSlugFromName -WorktreeName 'plain-directory-name') 'A name without the prefix has no slug'
+    Assert-Equal '' (Get-WorktreeSlugFromName -WorktreeName '') 'An empty name has no slug'
+    Assert-Equal 'probe' (Get-WorktreeSlugFromName -WorktreeName 'C:\somewhere\wt-probe\') 'A full path yields its leaf slug'
+
+    # --- an empty recorded number still allows, even when the name matches ---
+    # The empty-number allow stays ahead of the name lookup. A worktree with nothing recorded is
+    # removable by contract, and production always passes a name, so this case must pass one too.
+    $root = New-SlugScenario -OwnPlanBody "- [ ] Step 1"
+    $verdict = Test-WorktreePlanWasImplemented -MainCheckout $root -ItemNumber '' -WorktreeName 'wt-give-each-worktree-removal'
+    Assert-True $verdict.Allow 'An empty recorded number allows removal even when the name matches an item'
+    Assert-True ($verdict.Reason -match 'no backlog item is recorded') `
+        "The empty-number reason must not change, got '$($verdict.Reason)'"
+
+    # --- a suffixed item number resolves through the slug route -------------
+    # A collision is settled by suffixing a number, so 022b is a real shape. A digits-only pattern
+    # would skip it in silence and fall back to a number that is not this worktree's.
+    $root = New-SlugScenario -OwnNumber '022b'
+    $verdict = Test-WorktreePlanWasImplemented -MainCheckout $root -ItemNumber '118' -WorktreeName 'wt-give-each-worktree-removal'
+    Assert-True $verdict.Allow "A suffixed item number must resolve, got '$($verdict.Reason)'"
+    Assert-Equal '022b' $verdict.ItemNumber 'The suffixed number is reported as the item judged'
+
+    # --- two items sharing one slug cannot be told apart --------------------
+    # Guessing between them is how the guard would judge the wrong item all over again.
+    $root = New-SlugScenario
+    Set-Content -LiteralPath (Join-Path $root 'backlog\131-give-each-worktree-removal.md') `
+        -Value "# 131 - twin`n`n- Plan: none - twin"
+    $verdict = Test-WorktreePlanWasImplemented -MainCheckout $root -ItemNumber '118' -WorktreeName 'wt-give-each-worktree-removal'
+    Assert-True (-not $verdict.Allow) 'Two items sharing one slug fall back to the recorded number'
+    Assert-Equal '118' $verdict.ItemNumber 'An ambiguous slug judges the recorded number'
+
+    # --- the slug route runs against the base ref as well -------------------
+    # The number path reads the base when one is supplied, and the slug path has to read the same
+    # base. Otherwise a worktree whose item merged on GitHub is judged from a stale local disk.
+    $slugRefRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("ahkflow-planguard-sr-" + [Guid]::NewGuid().ToString('N').Substring(0, 8))
+    $scenarios += $slugRefRoot
+    New-Item -ItemType Directory -Path (Join-Path $slugRefRoot 'backlog\done') -Force | Out-Null
+    New-Item -ItemType Directory -Path (Join-Path $slugRefRoot 'docs\superpowers\plans') -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $slugRefRoot 'docs\superpowers\plans\own-plan.md') -Value "- [x] Step 1"
+    Invoke-QuietGit $slugRefRoot @('init')
+    Invoke-QuietGit $slugRefRoot @('symbolic-ref', 'HEAD', 'refs/heads/main')
+    Invoke-QuietGit $slugRefRoot @('config', 'user.email', 'test@example.com')
+    Invoke-QuietGit $slugRefRoot @('config', 'user.name', 'Plan Guard Test')
+    Set-Content -LiteralPath (Join-Path $slugRefRoot 'backlog\done\120-give-each-worktree-removal.md') `
+        -Value "# 120 - own`n`n- Plan: ``docs/superpowers/plans/own-plan.md``"
+    Set-Content -LiteralPath (Join-Path $slugRefRoot 'backlog\118-a-different-title.md') `
+        -Value "# 118 - other`n`n- Plan: <path, or ""none - reason"">"
+    Invoke-QuietGit $slugRefRoot @('add', '-A')
+    Invoke-QuietGit $slugRefRoot @('commit', '-m', 'two items')
+
+    $verdict = Test-WorktreePlanWasImplemented -MainCheckout $slugRefRoot -ItemNumber '118' -BaseRef 'main' `
+        -WorktreeName 'wt-give-each-worktree-removal'
+    Assert-True $verdict.Allow "The slug route must read the base ref, got '$($verdict.Reason)'"
+    Assert-Equal '120' $verdict.ItemNumber 'The base ref supplies the name-matched item'
+
+    # With no name, the same call still refuses on the recorded number. That is the old behavior,
+    # and it is what makes the case above a measurement of the name rather than of the fixture.
+    Assert-True (-not (Test-WorktreePlanWasImplemented -MainCheckout $slugRefRoot -ItemNumber '118' -BaseRef 'main').Allow) `
+        'Without a name the recorded number still decides'
+
     # --- the hook gate asks the guard only after the merge gate -------------
     # Asking first made an unmerged worktree fail with the plan guard's wording, and read the
     # working tree while the merge gate read the resolved base.
@@ -256,7 +400,10 @@ try {
     $sweepSource = Get-Content -Raw -LiteralPath (Join-Path $scriptsDir 'cleanup-merged-worktrees.ps1')
     Assert-True ($sweepSource -match 'Test-WorktreePlanWasImplemented') 'The sweep must call the plan guard'
     Assert-True ($sweepSource -match 'Get-ManifestBacklogItem') 'The sweep must read the manifest key'
-    Assert-True ($sweepSource -match 'Kept: the plan was never implemented\.') 'The sweep writes its own outcome line'
+    Assert-True ($sweepSource -match "Kept: ' \+ \(Format-WorktreeLogReason -Text \`$planVerdict\.Reason\)") `
+        "The sweep's outcome line must carry the guard's own reason"
+    Assert-True ($sweepSource -match '-WorktreeName \$wtFull') `
+        'The sweep must hand the worktree name to the plan guard'
 
     # --- the watcher's temp copy refuses when the guard cannot run ----------
     # A guard that cannot run is not a guard that passes. The one asymmetry: with no recorded item
@@ -265,7 +412,18 @@ try {
     Assert-True ($removeSource -match 'Get-Command Test-WorktreePlanWasImplemented -ErrorAction SilentlyContinue') `
         'remove-worktree-local-dev.ps1 must carry an inline fallback for the plan guard'
     Assert-True ($removeSource -match 'the plan check could not run') 'The fallback must say why it refused'
-    Assert-True ($removeSource -match 'Kept: the plan was never implemented\.') 'The hook gate writes its own outcome line'
+
+    # --- one writer of the Kept line, carrying the reason that applied ------
+    # The gate used to write its own fixed sentence and suppress the writer that would have logged
+    # the real reason. A human reading worktree-removal.log saw a reason nobody had checked.
+    Assert-True (-not ($removeSource -match 'Kept: the plan was never implemented')) `
+        'The hook gate must not write a fixed plan-gate sentence any more'
+    Assert-True (-not ($removeSource -match 'NoOutcome')) `
+        'The hook gate must not suppress the writer that carries the reason'
+    Assert-True ($removeSource -match '(?s)plan gate: \$\(\$planVerdict\.Reason\).*?-Reason \$planVerdict\.Reason') `
+        "The hook gate must pass the guard's own reason into the preserve guidance"
+    Assert-True ($removeSource -match '-WorktreeName \$worktreeFull') `
+        'The hook gate must hand the worktree name to the plan guard'
 
     Write-Host 'Worktree plan guard tests passed.'
 } finally {

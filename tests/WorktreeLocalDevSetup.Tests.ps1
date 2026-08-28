@@ -723,4 +723,23 @@ try {
     Remove-TempTree $repo
 }
 
+# --- a suffixed item number is recorded, not dropped ---
+# A collision is settled by suffixing a number, so 022b is a real shape. The derivation matched the
+# file and then failed a three-digit-only pattern, so it recorded an empty value. An empty recorded
+# number makes the plan guard allow removal with no check at all: the guard switches itself off for
+# that worktree, and never says so.
+$repo = New-TempMainCheckout
+try {
+    Write-SeedFile (Join-Path $repo 'backlog\022b-suffixed-item.md') @('# 022b - suffixed item')
+    Invoke-TestGit $repo @('add', '-A') | Out-Null
+    Invoke-TestGit $repo @('commit', '-m', 'seed a suffixed open item') | Out-Null
+
+    $wtPath = Add-TestWorktree -RepoDir $repo -BranchName 'suffixed-item'
+    & $setupScript -RepoRoot $wtPath -Quiet
+    Assert-Equal '022b' (Get-ManifestPort (Join-Path $wtPath 'scripts\.env.worktree') 'AHKFLOW_BACKLOG_ITEM') `
+        'A suffixed item number is recorded in full, not dropped.'
+} finally {
+    Remove-TempTree $repo
+}
+
 Write-Host 'Worktree local-dev setup no-auth tests passed.'

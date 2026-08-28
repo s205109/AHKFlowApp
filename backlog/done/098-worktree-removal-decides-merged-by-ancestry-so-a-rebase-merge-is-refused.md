@@ -28,7 +28,7 @@ The removal script runs `git merge-base --is-ancestor HEAD <base>`
 The sweep asks a different question: reachability plus a ref-log reading of the branch's own work
 (`scripts/worktree-git.common.ps1:868`, "function Test-BranchOwnWorkWasMerged {"), after a
 first filter of `git branch --merged`. That filter is gone now: the shared decision is the only
-gate (`scripts/cleanup-merged-worktrees.ps1:139`, "        if (-not (Test-BranchOwnWorkWasMerged -RepoRoot $RepoRoot -Branch $wt.Branch -MainRef $MainRef -MergedPullRequests $MergedPullRequests)) { continue }").
+gate (`scripts/cleanup-merged-worktrees.ps1:143`, "        if (-not (Test-BranchOwnWorkWasMerged -RepoRoot $RepoRoot -Branch $wt.Branch -MainRef $MainRef -MergedPullRequests $MergedPullRequests)) { continue }").
 
 **Measured, not assumed.** A scratch repository reproduced a GitHub rebase merge: the branch tip
 was replayed onto main with a new committer, so main carries a different SHA for the same patch.

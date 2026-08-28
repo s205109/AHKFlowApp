@@ -393,6 +393,58 @@ try {
     Remove-TempTree $repo
 }
 
+# --- Test: the plan gate's Kept line carries the guard's own reason ------------
+# The gate used to write one fixed sentence, "Kept: the plan was never implemented.", for every
+# refusal, and suppress the writer that would have logged the real reason. A human reading
+# worktree-removal.log saw a reason nobody had checked. This drives the real hook and reads the
+# real log, because a source scan cannot show what landed in the file.
+#
+# Two runs, two different refusal reasons, so the wording cannot collapse back into one sentence.
+foreach ($case in @(
+    @{ Branch = 'planguard-outside'; Number = '140'; Bullet = '<path, or "none - reason">'; Plan = $null
+       Expected = 'Kept: backlog item 140 names a plan outside docs/superpowers/plans \(the worktree manifest records item 118\)\.$' },
+    @{ Branch = 'planguard-untouched'; Number = '141'; Bullet = '`docs/superpowers/plans/plan-141.md`'
+       Plan = "- [ ] Step 1`n- [ ] Step 2"
+       Expected = 'Kept: the plan for item 141 was never implemented \(2 steps, none ticked\) \(the worktree manifest records item 118\)\.$' }
+)) {
+    $repo = New-TempGitRepo
+    try {
+        # The manifest must not make the worktree dirty: the clean gate runs before the plan gate.
+        Set-Content -LiteralPath (Join-Path $repo '.gitignore') -Value 'scripts/.env.worktree' -Encoding utf8
+        New-Item -ItemType Directory -Path (Join-Path $repo 'backlog') -Force | Out-Null
+        New-Item -ItemType Directory -Path (Join-Path $repo 'docs\superpowers\plans') -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $repo "backlog\$($case.Number)-$($case.Branch).md") `
+            -Value "# $($case.Number) - probe`n`n- Plan: $($case.Bullet)" -Encoding utf8
+        if ($case.Plan) {
+            Set-Content -LiteralPath (Join-Path $repo "docs\superpowers\plans\plan-$($case.Number).md") -Value $case.Plan -Encoding utf8
+        }
+        Invoke-TestGit $repo @('add', '-A') | Out-Null
+        Invoke-TestGit $repo @('commit', '-m', 'seed a backlog item') | Out-Null
+
+        $wtPath = Add-TestWorktree -RepoDir $repo -BranchName $case.Branch
+        # A stale recorded number, which is what a renumber leaves behind. The worktree name still
+        # points at its own item, and that is the item the gate must judge.
+        New-Item -ItemType Directory -Path (Join-Path $wtPath 'scripts') -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $wtPath 'scripts\.env.worktree') -Value 'AHKFLOW_BACKLOG_ITEM=118' -Encoding utf8
+
+        $result = Invoke-RemoveHook -WorktreePath $wtPath
+        Assert-Equal 0 $result.ExitCode "Hook should exit 0. Stderr: $($result.Stderr)"
+        Assert-True (Test-Path -LiteralPath $wtPath) 'A refused worktree must be preserved.'
+
+        $outcomeLines = @(Get-Content -LiteralPath (Get-RemovalLogPath $repo))
+        Assert-Equal 1 $outcomeLines.Count "A plan-gate refusal writes exactly one outcome line, got $($outcomeLines.Count): $($outcomeLines -join ' || ')"
+        Assert-True ($outcomeLines[0] -match $case.Expected) `
+            "The outcome line must carry the guard's own reason, got '$($outcomeLines[0])'"
+        Assert-True (-not ($outcomeLines[0] -match 'Kept: the plan was never implemented\.')) `
+            "The old fixed sentence must be gone, got '$($outcomeLines[0])'"
+
+        $diagnostics = Get-Content -Raw -LiteralPath (Get-RemovalDiagnosticsPath $repo)
+        Assert-True ($diagnostics -match "plan gate: ") "Expected the plan-gate reason in diagnostics. Log: $diagnostics"
+    } finally {
+        Remove-TempTree $repo
+    }
+}
+
 # --- Test: merged + dirty -> folder preserved -----------------------------------
 $repo = New-TempGitRepo
 try {

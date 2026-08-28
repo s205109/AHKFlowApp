@@ -674,7 +674,11 @@ function Get-WorktreeBacklogItemNumber {
     $directory = Join-Path $MainCheckoutRoot 'backlog'
     if (-not (Test-Path -LiteralPath $directory)) { return '' }
     $match = @(Get-ChildItem -LiteralPath $directory -Filter "*-$slug.md" -File -ErrorAction SilentlyContinue)
-    if ($match.Count -eq 1 -and $match[0].BaseName -match '^(?<num>\d{3})-') {
+    # Three digits plus an optional letter. A collision is settled by suffixing a number, so 022b
+    # is a real shape this repository ships. A digits-only pattern matched the file, failed here,
+    # and returned empty -- and an empty recorded number makes the plan guard allow removal with no
+    # check at all, switching the guard off for that worktree without saying so.
+    if ($match.Count -eq 1 -and $match[0].BaseName -match '^(?<num>\d{3}[a-z]?)-') {
         return $Matches.num
     }
 
