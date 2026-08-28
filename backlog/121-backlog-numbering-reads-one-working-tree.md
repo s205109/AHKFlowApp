@@ -1,0 +1,76 @@
+# 121 - Backlog numbering reads one working tree, so numbers collide
+
+## Metadata
+
+- **Epic**: Developer workflow
+- **Type**: Fix
+- **Interfaces**: none - repository tooling
+- **Difficulty**: moderate
+- **Stage**: 7-document
+
+## Summary
+
+`Get-NextBacklogNumber` picks the next number from the files in the current working tree. It cannot
+see numbers claimed on other branches or worktrees. Two worktrees started close together pick the
+same number, and nothing notices until both branches meet in `main`. CI then fails on a duplicate,
+days after the number was chosen.
+
+## User story
+
+As a developer running several worktrees at once, I want a new backlog item to get a number nobody
+else holds, so that CI does not fail on a duplicate long after I filed the item.
+
+## Acceptance criteria
+
+### Numbering reads every ref
+
+- [x] `Get-NextBacklogNumber` considers every backlog number reachable from any local or remote ref, not only the files in the working tree.
+- [x] Running `new-backlog-item.ps1` in two worktrees of the same repository, without either branch being pushed, produces two different numbers.
+- [x] Running the scaffold twice in one worktree, without committing in between, produces two different numbers.
+- [x] A test builds two refs that each claim the same next number, and asserts the function skips it.
+- [x] The function still returns a number in a repository that has no remote.
+- [x] The function still returns a number when a ref cannot be read, and says so, rather than failing the run.
+
+### CI fails fast on repository invariants
+
+- [x] `ci.yml` runs the cheap repository-invariant checks in one job.
+- [x] Every other job in `ci.yml` names that job in `needs:`, so nothing expensive starts until the invariants pass.
+- [x] That job finishes in under two minutes on a normal pull request. Confirmed: the first `repo-invariants` run on pull request #360 took 1 minute 14 seconds. The local Windows run was 2 minutes 4 seconds, so Linux process startup is indeed faster.
+- [x] A duplicate backlog number fails the run before the .NET build starts.
+- [x] The invariant job covers at least: backlog numbering, backlog plan pointers, stale open backlog items, citation freshness, and skill parity.
+
+## Out of scope
+
+- Renumbering items that already collided. Each one is repaired on its own branch.
+- Changing how `run-powershell-suites.ps1` reports. It runs every suite after a failure on purpose, so one run lists every broken suite.
+- Reserving a number at worktree creation time instead of at item creation time. That is a larger design change and belongs in its own item.
+
+## Notes / dependencies
+
+- The numbering function is (`scripts/backlog.common.ps1:404`, "function Get-NextBacklogNumber {").
+- `ci.yml` has no `needs:` key at all today, so every job starts at once. A duplicate number is found
+  only after the slowest job has been running for minutes.
+- The suite runner discovers suites in name order and deliberately keeps going after a failure. That
+  is correct for reporting, and this item does not change it.
+- Measured on 2026-08-27: `BacklogNumbering.Tests.ps1` failed about 90 seconds into a
+  `powershell-suites` job that then ran for a further 12 minutes, while `build-test` spent 8 minutes
+  in parallel.
+- One item was renumbered three times for this reason: filed as 117, changed to 118, then to 120.
+  117 belongs to `fix/wt-removal-watcher-powershell-5`, 118 merged first from
+  `feature/wt-pickup-enters-worktree`, and 119 belongs to
+  `fix/wt-gate-runs-the-coverage-slice-on-b9c0664d`.
+- Filing this very item hit the same defect twice: the scaffold ran three times in one worktree and
+  handed out 119, 120 and 121, two of which were already taken elsewhere.
+- Spec: none - the cause and both fixes are stated here.
+- Plan: `docs/superpowers/plans/2026-08-28-backlog-numbering-reads-one-working-tree-plan-121.md`
+- Verification (Stage 6): `tests/BacklogNumbering.Tests.ps1` (11 new cases, 21 to 31), `tests/RepoInvariantsCiJob.Tests.ps1`,
+  and `tests/SkillParity.Tests.ps1` all pass. `scripts/ci/check-repo-invariants.ps1` runs the five suites
+  in parallel and exits 0. The full local PowerShell gate (44 suites) and the .NET fast slice both pass.
+  The two-minute CI target is confirmed by the first Actions run on pull request #360: 1 minute 14 seconds.
+- Review round 1 added three cases to `tests/BacklogNumbering.Tests.ps1`, numbered 29 to 31: a branch
+  named `head` in lower case is an ordinary ref and must count; git metadata that is present but
+  unreadable must warn rather than fall back to the working tree in silence; and a folder with no
+  repository behind it must stay silent, which is the other half of that same split.
+- Review round 2 hardened `tests/RepoInvariantsCiJob.Tests.ps1`. It now reads the parsed `$suites`
+  assignment instead of the file text, so a commented-out suite cannot pass, and it recognises a
+  quoted YAML job key, so such a job cannot escape the `needs:` check.

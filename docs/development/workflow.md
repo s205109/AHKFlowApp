@@ -234,12 +234,12 @@ is what the pre-PR discovery rule below relies on. The template already carries 
 edit is a change of value rather than a new line (backlog 087). Backlog 072 adds `Difficulty` to
 the template, which removes the second edit as well.
 
-**Two sessions can still pick the same number**, because the number is assigned when the file
-is written and neither session can see the other's unmerged branch. The duplicate check in
-`Get-BacklogProblem` catches it, and the `powershell-suites` CI job runs on every pull
-request — but not at once. Both pull requests stay green while both branches are unmerged,
-because each checkout holds only its own file. The duplicate appears when the first branch
-merges and the second refreshes against it.
+**A number is now picked against every ref and every worktree.** `Get-NextBacklogNumber` reads
+the backlog files in the current working tree, plus the numbers on every local branch, every
+remote branch, every tag, and every linked worktree's working copy. So two worktrees started
+close together pick different numbers even before either branch is pushed. The duplicate check
+in `Get-BacklogProblem` and the `repo-invariants` CI job stay as a second line of defence, for
+the case of a number claimed on a ref this checkout has never fetched.
 
 The repair is `git mv` on one file plus its heading. The branch, the worktree, and the pull
 request all keep their names, because none of them carries the number.

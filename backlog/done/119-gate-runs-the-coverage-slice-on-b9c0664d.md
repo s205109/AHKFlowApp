@@ -51,9 +51,9 @@ on disk, and `run-powershell-suites.ps1` runs every suite as its own process, on
 ## What CI does — measured, not read from the YAML
 
 `ci.yml` skips every .NET step when its `code` filter is false
-(`.github/workflows/ci.yml:34`, "        if: steps.filter.outputs.code == 'false'").
+(`.github/workflows/ci.yml:50`, "        if: steps.filter.outputs.code == 'false'").
 The filter is three negative patterns under `predicate-quantifier: 'every'`
-(`.github/workflows/ci.yml:31`, "          predicate-quantifier: 'every'").
+(`.github/workflows/ci.yml:47`, "          predicate-quantifier: 'every'").
 
 Reading that config, it looked possible that `code` would be false for a *mixed* pull request —
 one changing a `.ps1` file and a `.md` file together — because the `.md` file fails `!**/*.md`.
