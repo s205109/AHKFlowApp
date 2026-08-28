@@ -94,6 +94,29 @@ Invoke-TestCase 'Each supported pattern shape matches the right paths' {
     }
 }
 
+Invoke-TestCase 'Under .github, workflow files are code and Markdown is not' {
+    # The list carries no '.github/**' pattern, so every file there counts as code - except
+    # Markdown, which '**/*.md' excludes wherever it sits. That split is deliberate and worth
+    # pinning: a change to ci.yml or to the filter itself must run the pipeline it changes,
+    # while a change to a README or an instructions file under .github compiles nothing.
+    #
+    # The PowerShell suites that do check .github Markdown - PersonalDefaultsSyncMarker, for
+    # one - run in the powershell-suites job, which carries no filter at all.
+    $exclusion = Read-AhkFlowCodePathExclusion -FilterPath (Get-AhkFlowCodePathFilterPath -RepoRoot $repoRoot)
+
+    foreach ($path in @('.github/workflows/ci.yml', '.github/code-paths-filter.yml')) {
+        $match = Get-AhkFlowPathExclusionMatch -Path $path -Exclusion $exclusion
+        Assert-True ($null -eq $match) `
+            "'$path' must require coverage - a change to the pipeline must run the pipeline. Pattern '$match' excluded it."
+    }
+
+    foreach ($path in @('.github/instructions/personal-defaults.md', '.github/PULL_REQUEST_TEMPLATE.md')) {
+        $match = Get-AhkFlowPathExclusionMatch -Path $path -Exclusion $exclusion
+        Assert-True ($match -ceq '**/*.md') `
+            "'$path' must be excluded by '**/*.md'. Got '$match'."
+    }
+}
+
 Invoke-TestCase 'Matching is case-sensitive, the way the action matches' {
     # PowerShell's -match is case-insensitive and picomatch is not. With -match, this path is
     # excluded here and counted as code in CI, which is the disagreement the shared file exists

@@ -118,8 +118,10 @@ Do not design from the YAML alone. This answer came from a real run.
   right answer in both places, so the criterion now states the one-directional difference instead.
   Editing it is honest; ticking the original wording would not have been.
 - This branch cannot demonstrate the CI skip. It adds `.github/code-paths-filter.yml` and edits
-  `.github/workflows/ci.yml`, and `.github/**` is deliberately not excluded, so `code` is `true`
-  here and the full .NET pipeline runs. That is correct: a change to the filter should be measured
+  `.github/workflows/ci.yml`. No pattern excludes a `.yml` file under `.github/`, so `code` is
+  `true` here and the full .NET pipeline runs. Markdown under `.github/` is a different case: the
+  repository-wide `!**/*.md` pattern excludes it, the same as Markdown anywhere else, because it
+  compiles nothing. Only the non-Markdown files there count as code. That is correct: a change to the filter should be measured
   by the pipeline it changes. Criterion 5 is ticked on structural evidence — `ci.yml` holds no
   patterns of its own — asserted by the `ci.yml reads the shared filter file` case in
   `tests/CoverageSliceSkip.Tests.ps1`. The empirical confirmation arrives on the next pull request

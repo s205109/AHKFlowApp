@@ -16,7 +16,7 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 . "$PSScriptRoot\Common.ps1"
 
-$skipHint = "CI still runs the full coverage + format gate on this PR. Skip locally with: SKIP_PUSH_HOOK=1 git push  (or: git push --no-verify)"
+$skipHint = "CI runs the full coverage + format gate on this PR when it changed a file the build compiles. Skip locally with: SKIP_PUSH_HOOK=1 git push  (or: git push --no-verify)"
 
 Push-Location $repoRoot
 try {
