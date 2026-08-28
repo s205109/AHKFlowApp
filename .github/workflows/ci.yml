@@ -10,6 +10,9 @@ permissions:
 jobs:
   repo-invariants:
     runs-on: ubuntu-latest
+    # Every other job waits on this one, so a hang here stalls the whole run. The job takes about
+    # 75 seconds; ten minutes is a wide margin that still fails fast when a suite hangs.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:

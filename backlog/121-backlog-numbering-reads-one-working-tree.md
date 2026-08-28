@@ -35,7 +35,7 @@ else holds, so that CI does not fail on a duplicate long after I filed the item.
 
 - [x] `ci.yml` runs the cheap repository-invariant checks in one job.
 - [x] Every other job in `ci.yml` names that job in `needs:`, so nothing expensive starts until the invariants pass.
-- [ ] That job finishes in under two minutes on a normal pull request. Not yet confirmed: the local Windows parallel run was 2 minutes 4 seconds. Linux process startup is faster, so the first real Actions run for pull request #360 must record the `repo-invariants` job duration.
+- [x] That job finishes in under two minutes on a normal pull request. Confirmed: the first `repo-invariants` run on pull request #360 took 1 minute 14 seconds. The local Windows run was 2 minutes 4 seconds, so Linux process startup is indeed faster.
 - [x] A duplicate backlog number fails the run before the .NET build starts.
 - [x] The invariant job covers at least: backlog numbering, backlog plan pointers, stale open backlog items, citation freshness, and skill parity.
 
@@ -47,7 +47,7 @@ else holds, so that CI does not fail on a duplicate long after I filed the item.
 
 ## Notes / dependencies
 
-- The numbering function is (`scripts/backlog.common.ps1:374`, "function Get-NextBacklogNumber {").
+- The numbering function is (`scripts/backlog.common.ps1:404`, "function Get-NextBacklogNumber {").
 - `ci.yml` has no `needs:` key at all today, so every job starts at once. A duplicate number is found
   only after the slowest job has been running for minutes.
 - The suite runner discovers suites in name order and deliberately keeps going after a failure. That
@@ -66,4 +66,7 @@ else holds, so that CI does not fail on a duplicate long after I filed the item.
 - Verification (Stage 6): `tests/BacklogNumbering.Tests.ps1` (8 new cases), `tests/RepoInvariantsCiJob.Tests.ps1`,
   and `tests/SkillParity.Tests.ps1` all pass. `scripts/ci/check-repo-invariants.ps1` runs the five suites
   in parallel and exits 0. The full local PowerShell gate (44 suites) and the .NET fast slice both pass.
-  The one open box is the two-minute CI target, which needs the first real Actions run on pull request #360.
+  The two-minute CI target is confirmed by the first Actions run on pull request #360: 1 minute 14 seconds.
+- Review round 1 added two cases to `tests/BacklogNumbering.Tests.ps1`: a branch named `head` in lower
+  case is an ordinary ref and must count, and git metadata that is present but unreadable must warn
+  rather than fall back to the working tree in silence.

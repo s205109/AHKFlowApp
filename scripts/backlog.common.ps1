@@ -271,6 +271,24 @@ Backlog $($item.Key) has more than one 'none' plan bullet.
     return $problems
 }
 
+# Walks from $StartPath up to the filesystem root, looking for a .git entry. It matches either a
+# folder, as a normal checkout has, or a file, as a linked worktree and a submodule have.
+#
+# This tells "there is no repository here" apart from "the repository here cannot be read".
+# git reports both as "not a git repository" and exits 128, so the message cannot separate them.
+function Test-GitMetadataPresent {
+    param([Parameter(Mandatory)][string] $StartPath)
+
+    $current = $StartPath
+    while (-not [string]::IsNullOrWhiteSpace($current)) {
+        if (Test-Path -LiteralPath (Join-Path $current '.git')) { return $true }
+        $parent = Split-Path -Parent $current
+        if ($parent -eq $current) { break }
+        $current = $parent
+    }
+    return $false
+}
+
 # A backlog number can be committed on another branch, or written in another worktree, where the
 # working-tree scan above cannot see it. Two worktrees started close together then pick the same
 # number, and nothing notices until both branches meet in main. See backlog 121.
@@ -302,7 +320,16 @@ function Get-BacklogNumbersFromGit {
     }
     try {
         $probe = & git -C $RepoRoot rev-parse --is-inside-work-tree 2>$null
-        if ($LASTEXITCODE -ne 0 -or "$probe".Trim() -ne 'true') {
+        if ($LASTEXITCODE -ne 0) {
+            # A folder with no repository behind it, such as every fixture test, is expected and
+            # silent. Metadata that is there but cannot be read is a real loss of numbers, so the
+            # caller gets a warning.
+            if (Test-GitMetadataPresent -StartPath $RepoRoot) {
+                $result.Unreadable.Add('git rev-parse')
+            }
+            return $result
+        }
+        if ("$probe".Trim() -ne 'true') {
             return $result
         }
 
@@ -326,7 +353,10 @@ function Get-BacklogNumbersFromGit {
             if ([string]::IsNullOrWhiteSpace($ref)) { continue }
             # refs/remotes/<remote>/HEAD is a symbolic alias for the remote's default branch.
             # Reading it duplicates another ref and errors on a remote with no default.
-            if ($ref -match '(^|/)HEAD$') { continue }
+            #
+            # -cmatch, and the full anchored path, on purpose. Git accepts a branch called 'head'
+            # in lower case, and refs/heads/head is an ordinary ref whose numbers must count.
+            if ($ref -cmatch '^refs/remotes/[^/]+/HEAD$') { continue }
 
             $names = & git -C $RepoRoot ls-tree -r --name-only $ref -- backlog 2>$null
             if ($LASTEXITCODE -ne 0) {

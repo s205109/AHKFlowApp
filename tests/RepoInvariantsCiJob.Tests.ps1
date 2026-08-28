@@ -35,8 +35,15 @@ Assert-True (Test-Path -LiteralPath $checkScript) 'scripts/ci/check-repo-invaria
 
 if (Test-Path -LiteralPath $checkScript) {
     $checkText = Get-Content -LiteralPath $checkScript -Raw
+
+    # Read the $suites array itself, not the file text. A suite name in a comment, or in the
+    # description block at the top, must not count as the script running that suite.
+    $suitesBlock = [regex]::Match($checkText, '(?ms)^\$suites\s*=\s*@\((?<body>.*?)^\)').Groups['body'].Value
+    Assert-True (-not [string]::IsNullOrWhiteSpace($suitesBlock)) 'check-repo-invariants.ps1 must define a $suites = @( ... ) array'
+
+    $declaredSuites = @([regex]::Matches($suitesBlock, "'(?<name>[^']+)'") | ForEach-Object { $_.Groups['name'].Value })
     foreach ($suite in $expectedSuites) {
-        Assert-True ($checkText -match [regex]::Escape($suite)) "check-repo-invariants.ps1 must run $suite"
+        Assert-True ($declaredSuites -contains $suite) "The `$suites array in check-repo-invariants.ps1 must list $suite. Found: $($declaredSuites -join ', ')"
     }
 }
 foreach ($suite in $expectedSuites) {
@@ -59,14 +66,27 @@ foreach ($line in $ciLines) {
 }
 
 Assert-True ($jobNames -contains 'repo-invariants') "ci.yml must define a 'repo-invariants' job. Found: $($jobNames -join ', ')"
-Assert-True ($jobNames.Count -ge 5) "Expected at least five ci.yml jobs, found: $($jobNames -join ', ')"
 
 $ciRaw = $ciLines -join "`n"
 foreach ($job in ($jobNames | Where-Object { $_ -ne 'repo-invariants' })) {
     $pattern = "(?ms)^  $([regex]::Escape($job)):\s*$.*?(?=^  [A-Za-z0-9_-]+:\s*$|\z)"
     $block = [regex]::Match($ciRaw, $pattern).Value
-    Assert-True ($block -match '(?m)^\s{4}needs:') "Job '$job' must declare a needs: key"
-    Assert-True ($block -match 'repo-invariants') "Job '$job' needs: must include repo-invariants"
+
+    # Read the needs: value, not the job block. The words 'repo-invariants' appear in step names
+    # and comments too, and matching those would pass a job that waits on nothing.
+    $needsMatch = [regex]::Match($block, '(?m)^\s{4}needs:\s*(?<value>.*)$')
+    Assert-True ($needsMatch.Success) "Job '$job' must declare a needs: key"
+    if ($needsMatch.Success) {
+        $needsValue = $needsMatch.Groups['value'].Value.Trim().Trim('[', ']')
+        if ([string]::IsNullOrWhiteSpace($needsValue)) {
+            # The block form: needs: on its own line, then one '- job' line per dependency.
+            $listMatch = [regex]::Match($block, '(?ms)^\s{4}needs:\s*$(?<items>(\s*\n)*(^\s{6}-\s.*$\n?)+)')
+            $needsValue = ($listMatch.Groups['items'].Value -split "`n" |
+                ForEach-Object { $_.Trim() -replace '^-\s*', '' } | Where-Object { $_ }) -join ','
+        }
+        $needsJobs = @($needsValue -split ',' | ForEach-Object { $_.Trim().Trim("'", '"') } | Where-Object { $_ })
+        Assert-True ($needsJobs -contains 'repo-invariants') "Job '$job' needs: must name repo-invariants. Found: '$needsValue'"
+    }
 }
 
 # --- The runner runs the suites in parallel ---

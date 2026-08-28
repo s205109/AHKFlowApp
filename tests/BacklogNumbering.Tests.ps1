@@ -623,6 +623,58 @@ try {
 }
 finally { Remove-GitFixture $repo }
 
+# --- Case 29: a branch named 'head' is read, not skipped ---
+#
+# refs/remotes/<remote>/HEAD is a symbolic alias and is skipped on purpose. Git also accepts a
+# branch called 'head' in lower case. That is an ordinary ref with an ordinary backlog tree
+# behind it, so its numbers must count.
+
+$repo = New-GitBacklogFixture -FirstItem '210-first.md'
+try {
+    Add-FixtureBranchItem -RepoDir $repo -Branch 'head' -ItemFile '260-on-head-branch.md'
+    $refNames = @(& git -C $repo for-each-ref --format='%(refname)' refs/heads)
+    Assert-True ($refNames -ccontains 'refs/heads/head') "The fixture must create refs/heads/head, got: $($refNames -join ', ')"
+
+    $next = Get-NextBacklogNumber -BacklogRoot (Join-Path $repo 'backlog')
+    Assert-True ($next -eq '261') "A branch named 'head' holds 260, so the next number is 261, got '$next'"
+}
+finally { Remove-GitFixture $repo }
+
+# --- Case 30: git metadata that cannot be read produces a warning ---
+#
+# A .git file pointing at a directory that does not exist. Git reports the same "not a git
+# repository" message it gives for a folder with no repository at all, so the message cannot tell
+# the two apart. The .git entry is there, so this one must warn.
+
+$corruptRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('backlog-num-corrupt-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+try {
+    foreach ($subfolder in @('backlog', 'backlog/done', 'backlog/blocked')) {
+        New-Item -ItemType Directory -Path (Join-Path $corruptRoot $subfolder) -Force | Out-Null
+    }
+    Set-Content -LiteralPath (Join-Path $corruptRoot 'backlog/220-first.md') -Value "# 220 - First`n" -Encoding utf8
+    Set-Content -LiteralPath (Join-Path $corruptRoot '.git') -Value 'gitdir: ./no-such-git-dir' -Encoding ascii
+
+    $next = Get-NextBacklogNumber -BacklogRoot (Join-Path $corruptRoot 'backlog') `
+        -WarningVariable corruptWarnings -WarningAction SilentlyContinue
+    Assert-True ($next -eq '221') "Unreadable git metadata must not stop numbering, got '$next'"
+    Assert-True ($corruptWarnings.Count -ge 1) 'Unreadable git metadata must warn, so the caller knows numbers held on refs were not read'
+}
+finally { Remove-Item -LiteralPath $corruptRoot -Recurse -Force -ErrorAction SilentlyContinue }
+
+# --- Case 31: a folder with no repository behind it stays silent ---
+#
+# The other half of Case 30. Every fixture test runs in such a folder, and that is not an error.
+
+$tempRoot = New-TemporaryBacklogRoot
+try {
+    Set-Content -LiteralPath (Join-Path $tempRoot '230-first.md') -Value "# 230 - First`n"
+
+    $next = Get-NextBacklogNumber -BacklogRoot $tempRoot -WarningVariable plainWarnings -WarningAction SilentlyContinue
+    Assert-True ($next -eq '231') "A folder with no repository must still number, got '$next'"
+    Assert-True ($plainWarnings.Count -eq 0) "No repository is not an error, so no warning is expected, got: $($plainWarnings -join ' | ')"
+}
+finally { Remove-Item -LiteralPath $tempRoot -Recurse -Force }
+
 # --- Report ---
 
 if ($failures.Count -gt 0) {
