@@ -80,6 +80,9 @@ all along.
 - [ ] A test builds a worktree whose recorded number and whose directory name point at two
       different items, and asserts the guard reads the right one.
 - [ ] The name lookup accepts a suffixed item number such as `022b`.
+- [ ] `scripts/setup-worktree-local-dev.ps1` records `022b` for a worktree whose open item is named
+      `022b-<slug>.md`. It records an empty value today, which switches the plan guard off for that
+      worktree.
 - [ ] `scripts/setup-worktree-local-dev.ps1` still derives a number from `backlog/` only, and the
       backlog 073 regression test still passes unchanged.
 - [ ] `ConvertTo-BacklogSlug` in `scripts/slug.common.ps1` stays the only slug rule in the
@@ -116,6 +119,13 @@ all along.
   defect this item fixes, and nothing would have reminded a person to do it.
 - The slug lookup this item needs already exists in `scripts/setup-worktree-local-dev.ps1`, but it
   scans `backlog/` only and never re-checks a number it already recorded. Grilling found it. The
-  plan reuses it rather than writing a second one.
+  plan reuses the idea rather than writing a second slug rule, and it leaves both of those
+  behaviors alone: the folder rule is a backlog 073 regression fix, and re-deriving a recorded
+  number would reopen that same defect.
+- A third, smaller defect rides along. `Get-WorktreeBacklogItemNumber` accepts three digits only, so
+  it returns nothing for a suffixed item such as `022b`. An empty recorded number makes the plan
+  guard allow removal with no check, which turns the guard off for that worktree without saying so.
+  It is one character class, it does not touch the folder rule, and the plan already teaches the
+  guard the same shape — so it is fixed here rather than filed separately.
 - Spec: none - the root cause is proven above, so this goes straight to Plan.
 - Plan: `docs/superpowers/plans/2026-08-28-plan-guard-identity-plan-122.md`
