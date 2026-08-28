@@ -44,14 +44,31 @@ function Get-HookInput {
         return $null
     }
 
-    # A redirected-but-open stdin (background/piped launch that never sends EOF) makes a
-    # blocking ReadToEnd hang forever. Bound the read so a direct invocation can't stall.
-    $readTask = [Console]::In.ReadToEndAsync()
-    if (-not $readTask.Wait(2000)) {
-        Write-Stderr 'No hook stdin within timeout; continuing without hook input.'
+    # The console text reader decodes with the console code page (cp437 on Windows), so a UTF-8
+    # byte order mark or any byte above 0x7F arrives wrong and ConvertFrom-Json then rejects the
+    # payload. Read the raw stdin stream with a UTF-8 StreamReader instead;
+    # detectEncodingFromByteOrderMarks consumes a leading mark. This matches Read-RawStdin in
+    # remove-worktree-local-dev.ps1 (GitHub issue #356, sibling fix in backlog 117).
+    try {
+        $stream = [Console]::OpenStandardInput()
+        $reader = New-Object System.IO.StreamReader($stream, (New-Object System.Text.UTF8Encoding($false)), $true)
+    } catch {
         return $null
     }
-    $stdin = $readTask.Result
+
+    # A redirected-but-open stdin (background/piped launch that never sends EOF) makes a
+    # blocking read hang forever. Bound the read so a direct invocation can't stall.
+    $readTask = $reader.ReadToEndAsync()
+    if (-not $readTask.Wait(2000)) {
+        Write-Stderr 'No hook stdin within timeout; continuing without hook input.'
+        # The reader is left undisposed on purpose: the async read is still pending, and disposing
+        # the shared stdin stream under it is unsafe. The script exits right after this.
+        return $null
+    }
+    # GetAwaiter().GetResult() over .Result: a faulted read then throws the inner exception,
+    # not an AggregateException wrapping it.
+    $stdin = $readTask.GetAwaiter().GetResult()
+    $reader.Dispose()
     if ([string]::IsNullOrWhiteSpace($stdin)) {
         return $null
     }
