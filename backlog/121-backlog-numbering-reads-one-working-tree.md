@@ -47,7 +47,7 @@ else holds, so that CI does not fail on a duplicate long after I filed the item.
 
 ## Notes / dependencies
 
-- The numbering function is (`scripts/backlog.common.ps1:274`, "function Get-NextBacklogNumber {").
+- The numbering function is (`scripts/backlog.common.ps1:374`, "function Get-NextBacklogNumber {").
 - `ci.yml` has no `needs:` key at all today, so every job starts at once. A duplicate number is found
   only after the slowest job has been running for minutes.
 - The suite runner discovers suites in name order and deliberately keeps going after a failure. That

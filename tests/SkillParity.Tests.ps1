@@ -7,7 +7,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $suiteRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
-$pluginSkills = Join-Path $suiteRoot 'plugins\ahkflowapp\skills'
+$pluginSkills = [System.IO.Path]::Combine($suiteRoot, 'plugins', 'ahkflowapp', 'skills')
 $agentsRoot = Join-Path $suiteRoot '.agents'
 
 # Names of every skill that has a SKILL.md directly under a root's skill dir.
@@ -39,7 +39,7 @@ function Get-SkillFiles {
     param([string] $SkillDir)
 
     $files = @(Get-ChildItem -LiteralPath $SkillDir -Recurse -File |
-        ForEach-Object { $_.FullName.Substring($SkillDir.Length).TrimStart('\') })
+        ForEach-Object { $_.FullName.Substring($SkillDir.Length).TrimStart('\', '/') })
     return , $files
 }
 
