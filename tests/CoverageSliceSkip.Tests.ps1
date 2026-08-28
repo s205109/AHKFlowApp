@@ -180,6 +180,313 @@ Invoke-TestCase 'A filter entry that is not a negative pattern is rejected' {
     finally { Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue }
 }
 
+# A throwaway repository with the real filter file copied in. Git is configured locally so the
+# case never depends on the developer's global user.name or commit signing settings.
+function New-DiffFixture {
+    # -BaseSetup runs against the new root BEFORE the base commit, so whatever it writes lands
+    # on main and does not show up in the branch diff. New-WrapperFixture needs that: the
+    # scripts it copies in include run-coverage.ps1, which the coverage-tooling list treats as
+    # a code change. Committed on the branch they would make every skip case fail.
+    param([scriptblock] $BaseSetup)
+
+    $root = Join-Path ([System.IO.Path]::GetTempPath()) ('ahkflow-diff-' + [guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $root -Force | Out-Null
+    New-Item -ItemType Directory -Path (Join-Path $root '.github') -Force | Out-Null
+    Copy-Item -LiteralPath (Get-AhkFlowCodePathFilterPath -RepoRoot $repoRoot) `
+        -Destination (Join-Path $root '.github/code-paths-filter.yml')
+
+    & git -C $root init --quiet --initial-branch=main *> $null
+    & git -C $root config user.email 'test@example.com' *> $null
+    & git -C $root config user.name 'Test' *> $null
+    & git -C $root config commit.gpgsign false *> $null
+
+    Set-Content -LiteralPath (Join-Path $root 'README.md') -Value 'base' -Encoding utf8
+    if ($BaseSetup) { & $BaseSetup $root }
+
+    & git -C $root add -A *> $null
+    & git -C $root commit --quiet -m 'base' *> $null
+    & git -C $root checkout --quiet -b work *> $null
+
+    return (Resolve-Path -LiteralPath $root).Path
+}
+
+function Add-FixtureFile {
+    param([string] $Root, [string] $RelativePath, [string] $Content = 'x')
+    $target = Join-Path $Root $RelativePath
+    New-Item -ItemType Directory -Path (Split-Path -Parent $target) -Force | Out-Null
+    Set-Content -LiteralPath $target -Value $Content -Encoding utf8
+}
+
+function Save-Fixture {
+    param([string] $Root, [string] $Message)
+    & git -C $Root add -A *> $null
+    & git -C $Root commit --quiet -m $Message *> $null
+}
+
+function Remove-Fixture {
+    param([string] $Root)
+    if (Test-Path -LiteralPath $Root) {
+        Remove-Item -LiteralPath $Root -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+Invoke-TestCase 'A branch of docs, backlog, and PowerShell changes is not a code change' {
+    $root = New-DiffFixture
+    try {
+        # Not test-fast.ps1 or run-coverage.ps1. Those are on the coverage-tooling list, so they
+        # are code changes by design and would contradict this case.
+        Add-FixtureFile -Root $root -RelativePath 'backlog/119-thing.md'
+        Add-FixtureFile -Root $root -RelativePath 'docs/development/testing-workflow.md'
+        Add-FixtureFile -Root $root -RelativePath 'scripts/deploy.ps1'
+        Add-FixtureFile -Root $root -RelativePath 'scripts/agents/check-symlinks.ps1'
+        Add-FixtureFile -Root $root -RelativePath 'tests/Thing.Tests.ps1'
+        Save-Fixture -Root $root -Message 'tooling only'
+
+        $decision = Get-AhkFlowCoverageDecision -RepoRoot $root -BaseRef 'main'
+        Assert-True (-not $decision.CoverageRequired) "Expected no code change. Changed: $($decision.ChangedPath -join ', ')"
+        Assert-True ($decision.ChangedPath.Count -eq 5) "Expected 5 changed paths, got $($decision.ChangedPath.Count)."
+    }
+    finally { Remove-Fixture -Root $root }
+}
+
+Invoke-TestCase 'One committed .cs file makes it a code change' {
+    $root = New-DiffFixture
+    try {
+        Add-FixtureFile -Root $root -RelativePath 'backlog/119-thing.md'
+        Add-FixtureFile -Root $root -RelativePath 'src/Backend/AHKFlowApp.Domain/Hotstring.cs'
+        Save-Fixture -Root $root -Message 'one cs file'
+
+        $decision = Get-AhkFlowCoverageDecision -RepoRoot $root -BaseRef 'main'
+        Assert-True $decision.CoverageRequired 'One .cs file must make this a code change.'
+    }
+    finally { Remove-Fixture -Root $root }
+}
+
+Invoke-TestCase 'An uncommitted .cs file makes it a code change' {
+    $root = New-DiffFixture
+    try {
+        Add-FixtureFile -Root $root -RelativePath 'docs/thing.md'
+        Save-Fixture -Root $root -Message 'docs only'
+        # Never committed. A developer mid-edit must not get a skip.
+        Add-FixtureFile -Root $root -RelativePath 'src/Backend/AHKFlowApp.Domain/Hotkey.cs'
+
+        $decision = Get-AhkFlowCoverageDecision -RepoRoot $root -BaseRef 'main'
+        Assert-True $decision.CoverageRequired 'An untracked .cs file must make this a code change.'
+    }
+    finally { Remove-Fixture -Root $root }
+}
+
+Invoke-TestCase 'A rename out of src/ is a code change, not a docs change' {
+    # The source file must exist on main, or there is no deletion in the branch diff and this
+    # case proves nothing. Creating it on the branch and renaming it there nets out to one
+    # added .md file, which --no-renames would not change.
+    #
+    # With the file on main, git's default rename detection collapses the branch to a single
+    # new path, docs/Foo.md, and the class silently leaves the build. --no-renames is what
+    # keeps the deletion visible.
+    $root = New-DiffFixture -BaseSetup {
+        param($root)
+        New-Item -ItemType Directory -Path (Join-Path $root 'src/Backend/AHKFlowApp.Domain') -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $root 'src/Backend/AHKFlowApp.Domain/Foo.cs') -Value 'class Foo { }' -Encoding utf8
+    }
+    try {
+        New-Item -ItemType Directory -Path (Join-Path $root 'docs') -Force | Out-Null
+        & git -C $root mv 'src/Backend/AHKFlowApp.Domain/Foo.cs' 'docs/Foo.md' *> $null
+        Save-Fixture -Root $root -Message 'move it to docs'
+
+        $decision = Get-AhkFlowCoverageDecision -RepoRoot $root -BaseRef 'main'
+        Assert-True ($decision.ChangedPath -contains 'src/Backend/AHKFlowApp.Domain/Foo.cs') `
+            "The old path must survive the diff. Got: $($decision.ChangedPath -join ', ')"
+        Assert-True $decision.CoverageRequired 'Deleting a .cs file by renaming it must require coverage.'
+    }
+    finally { Remove-Fixture -Root $root }
+}
+
+Invoke-TestCase 'A staged, uncommitted rename out of src/ is a code change' {
+    # Same reason as above: the source file goes on main. Nothing is committed on the branch,
+    # so the committed diff is empty and git status is the only thing under test here. Get
+    # this wrong and the case passes off the committed diff while --no-renames is broken.
+    $root = New-DiffFixture -BaseSetup {
+        param($root)
+        New-Item -ItemType Directory -Path (Join-Path $root 'src/Backend/AHKFlowApp.Domain') -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $root 'src/Backend/AHKFlowApp.Domain/Bar.cs') -Value 'class Bar { }' -Encoding utf8
+    }
+    try {
+        # Staged, never committed. git status prints 'R old -> new' without --no-renames.
+        New-Item -ItemType Directory -Path (Join-Path $root 'docs') -Force | Out-Null
+        & git -C $root mv 'src/Backend/AHKFlowApp.Domain/Bar.cs' 'docs/Bar.md' *> $null
+
+        $decision = Get-AhkFlowCoverageDecision -RepoRoot $root -BaseRef 'main'
+        Assert-True ($decision.ChangedPath -contains 'src/Backend/AHKFlowApp.Domain/Bar.cs') `
+            "The old path must survive git status. Got: $($decision.ChangedPath -join ', ')"
+        # Without --no-renames the parser yields one mangled 'old -> new' string. That string
+        # matches no exclusion, so the verdict would be right by accident. Assert the shape.
+        Assert-True (-not ($decision.ChangedPath | Where-Object { $_ -like '* -> *' })) `
+            "No path may carry git's rename arrow. Got: $($decision.ChangedPath -join ', ')"
+        Assert-True $decision.CoverageRequired 'A staged rename out of src/ must require coverage.'
+    }
+    finally { Remove-Fixture -Root $root }
+}
+
+Invoke-TestCase 'Changing the coverage runner is a code change even though it is a script' {
+    $root = New-DiffFixture
+    try {
+        Add-FixtureFile -Root $root -RelativePath 'scripts/run-coverage.ps1' -Content '# changed'
+        Save-Fixture -Root $root -Message 'edit the coverage runner'
+
+        $decision = Get-AhkFlowCoverageDecision -RepoRoot $root -BaseRef 'main'
+        Assert-True $decision.CoverageRequired `
+            'run-coverage.ps1 is the one script the coverage slice is the only local check for.'
+    }
+    finally { Remove-Fixture -Root $root }
+}
+
+Invoke-TestCase 'An ordinary script is still not a code change' {
+    # The guard above must protect seven named files, not re-admit every .ps1 under scripts/.
+    $root = New-DiffFixture
+    try {
+        Add-FixtureFile -Root $root -RelativePath 'scripts/deploy.ps1' -Content '# changed'
+        Save-Fixture -Root $root -Message 'edit an unrelated script'
+
+        $decision = Get-AhkFlowCoverageDecision -RepoRoot $root -BaseRef 'main'
+        Assert-True (-not $decision.CoverageRequired) `
+            "deploy.ps1 must stay excluded. Changed: $($decision.ChangedPath -join ', ')"
+    }
+    finally { Remove-Fixture -Root $root }
+}
+
+Invoke-TestCase 'With no base ref given, the resolver falls back to main' {
+    # Every other decision case passes -BaseRef, so without this one Resolve-AhkFlowGateBaseRef
+    # could throw on every call and the suite would still be green.
+    $root = New-DiffFixture
+    try {
+        Add-FixtureFile -Root $root -RelativePath 'src/Backend/AHKFlowApp.Domain/Hotkey.cs'
+        Save-Fixture -Root $root -Message 'one cs file'
+
+        # No remote, so the gh branch is skipped and origin/main does not resolve.
+        $resolved = Resolve-AhkFlowGateBaseRef -RepoRoot $root
+        Assert-True ($resolved -eq 'main') "Expected 'main', got '$resolved'."
+
+        $decision = Get-AhkFlowCoverageDecision -RepoRoot $root
+        Assert-True ($decision.BaseRef -eq 'main') "The decision must report the ref it used. Got '$($decision.BaseRef)'."
+        Assert-True $decision.CoverageRequired 'The resolved base must produce the same verdict as an explicit one.'
+    }
+    finally { Remove-Fixture -Root $root }
+}
+
+Invoke-TestCase 'origin/main wins over main when it exists' {
+    $root = New-DiffFixture
+    try {
+        # A remote-tracking ref without a remote: enough to prove which candidate is preferred,
+        # and it keeps the case offline.
+        & git -C $root update-ref refs/remotes/origin/main HEAD *> $null
+
+        $resolved = Resolve-AhkFlowGateBaseRef -RepoRoot $root
+        Assert-True ($resolved -eq 'origin/main') "Expected 'origin/main', got '$resolved'."
+    }
+    finally { Remove-Fixture -Root $root }
+}
+
+Invoke-TestCase 'A stacked branch takes its base from the pull request' {
+    # The gh lookup is the one branch of the resolver that needs an external command, and it is
+    # the branch stacked work depends on. A fake gh earlier on PATH covers it: a test fixture,
+    # not a backdoor in the module.
+    #
+    # The fake also records the directory it ran in. gh reads the current directory rather than
+    # a -C argument, so a resolver that forgot to push the location would silently answer from
+    # whatever repository the temp folder sits inside.
+    $root = New-DiffFixture
+    $fakeBin = Join-Path ([System.IO.Path]::GetTempPath()) ('ahkflow-fake-gh-' + [guid]::NewGuid().ToString('N'))
+    $previousPath = $env:PATH
+    try {
+        New-Item -ItemType Directory -Path $fakeBin -Force | Out-Null
+        $cwdRecord = Join-Path $fakeBin 'cwd.txt'
+
+        # A .cmd, because Get-Command resolves it through PATHEXT the same way it finds the
+        # real gh.exe. It ignores its arguments and always answers with the stacked base.
+        Set-Content -LiteralPath (Join-Path $fakeBin 'gh.cmd') -Encoding ascii -Value @"
+@echo off
+cd > "$cwdRecord"
+echo feature/wt-prerequisite
+exit /b 0
+"@
+
+        # The resolver only asks gh when the repository has an origin remote, so give it one.
+        # The URL is never contacted.
+        & git -C $root remote add origin 'https://example.invalid/ahkflow.git' *> $null
+        & git -C $root update-ref refs/remotes/origin/feature/wt-prerequisite HEAD *> $null
+        & git -C $root update-ref refs/remotes/origin/main HEAD *> $null
+
+        $env:PATH = $fakeBin + [System.IO.Path]::PathSeparator + $previousPath
+        $resolved = Resolve-AhkFlowGateBaseRef -RepoRoot $root
+
+        Assert-True ($resolved -eq 'origin/feature/wt-prerequisite') `
+            "The pull request base must win over origin/main. Got '$resolved'."
+        Assert-True (Test-Path -LiteralPath $cwdRecord) 'The fake gh was never called.'
+        $ranIn = (Get-Content -LiteralPath $cwdRecord -Raw).Trim()
+        Assert-True ($ranIn -eq $root) "gh must run inside the repository. Ran in '$ranIn', expected '$root'."
+    }
+    finally {
+        $env:PATH = $previousPath
+        Remove-Item -LiteralPath $fakeBin -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Fixture -Root $root
+    }
+}
+
+Invoke-TestCase 'A pull request base that has no remote-tracking ref falls back' {
+    # gh answers, but origin/<that branch> does not exist locally - a base branch nobody has
+    # fetched. Falling through to origin/main is right; using an unresolvable ref would make
+    # git diff fail and turn every run into an error.
+    $root = New-DiffFixture
+    $fakeBin = Join-Path ([System.IO.Path]::GetTempPath()) ('ahkflow-fake-gh-' + [guid]::NewGuid().ToString('N'))
+    $previousPath = $env:PATH
+    try {
+        New-Item -ItemType Directory -Path $fakeBin -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $fakeBin 'gh.cmd') -Encoding ascii -Value @"
+@echo off
+echo feature/never-fetched
+exit /b 0
+"@
+        & git -C $root remote add origin 'https://example.invalid/ahkflow.git' *> $null
+        & git -C $root update-ref refs/remotes/origin/main HEAD *> $null
+
+        $env:PATH = $fakeBin + [System.IO.Path]::PathSeparator + $previousPath
+        $resolved = Resolve-AhkFlowGateBaseRef -RepoRoot $root
+        Assert-True ($resolved -eq 'origin/main') "Expected the origin/main fallback, got '$resolved'."
+    }
+    finally {
+        $env:PATH = $previousPath
+        Remove-Item -LiteralPath $fakeBin -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Fixture -Root $root
+    }
+}
+
+Invoke-TestCase 'A repository with neither candidate throws' {
+    $root = New-DiffFixture
+    try {
+        & git -C $root branch -m main trunk *> $null
+
+        $threw = $false
+        try { Resolve-AhkFlowGateBaseRef -RepoRoot $root | Out-Null } catch { $threw = $true }
+        Assert-True $threw 'An unresolvable base must throw, so the caller runs the slice.'
+    }
+    finally { Remove-Fixture -Root $root }
+}
+
+Invoke-TestCase 'A base ref that does not exist throws rather than reporting no change' {
+    $root = New-DiffFixture
+    try {
+        Add-FixtureFile -Root $root -RelativePath 'src/Backend/AHKFlowApp.Domain/Hotkey.cs'
+        Save-Fixture -Root $root -Message 'one cs file'
+
+        $threw = $false
+        try { Get-AhkFlowCoverageDecision -RepoRoot $root -BaseRef 'no-such-branch' | Out-Null }
+        catch { $threw = $true }
+        Assert-True $threw 'A failed diff must throw. Reporting an empty diff would skip real coverage.'
+    }
+    finally { Remove-Fixture -Root $root }
+}
+
 Write-Host ''
 if ($script:Failures.Count -gt 0) {
     Write-Host "FAILED: $($script:Failures.Count) test(s)" -ForegroundColor Red
