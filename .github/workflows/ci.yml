@@ -21,19 +21,18 @@ jobs:
       - name: Verify changelog asset
         # Requires PowerShell 7 (pwsh); available on GitHub-hosted runners
         run: pwsh ./scripts/ci/generate-changelog-json.ps1 -Check
-      - name: Detect non-docs changes
+      - name: Detect changes the .NET build compiles
         id: filter
         uses: dorny/paths-filter@v4.0.1
         with:
+          # The patterns live in their own file because the local Gate reads them too - see
+          # scripts/code-change-filter.common.ps1. Two copies would let CI and the Gate
+          # disagree about one branch.
           predicate-quantifier: 'every'
-          filters: |
-            code:
-              - '!**/*.md'
-              - '!docs/**'
-              - '!.claude/**'
-      - name: Skip notice (docs-only PR)
+          filters: .github/code-paths-filter.yml
+      - name: Skip notice (nothing the .NET build compiles)
         if: steps.filter.outputs.code == 'false'
-        run: echo "Docs-only changes detected — skipping build, test, and coverage." >> "$GITHUB_STEP_SUMMARY"
+        run: echo "No changed file compiles into the solution — skipping build, test, and coverage. The patterns are in .github/code-paths-filter.yml." >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/setup-dotnet@v4
         if: steps.filter.outputs.code == 'true'
         with:

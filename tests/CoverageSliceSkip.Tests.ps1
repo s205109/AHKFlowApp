@@ -618,6 +618,17 @@ Invoke-TestCase 'A decision that cannot be made runs the slice and says so' {
     finally { Remove-Fixture -Root $root }
 }
 
+Invoke-TestCase 'ci.yml reads the shared filter file and holds no second copy' {
+    $ci = Get-Content -LiteralPath (Join-Path $repoRoot '.github/workflows/ci.yml') -Raw
+
+    Assert-True ($ci -match 'filters:\s*\.github/code-paths-filter\.yml') `
+        'ci.yml must point dorny/paths-filter at .github/code-paths-filter.yml.'
+    Assert-True ($ci -match "predicate-quantifier:\s*'every'") `
+        "The 'every' quantifier must stay. Without it the negative patterns do not exclude."
+    Assert-True ($ci -notmatch "-\s*'!\*\*/\*\.md'") `
+        'ci.yml must not keep an inline copy of the patterns. One source of truth, or the Gate and CI can disagree.'
+}
+
 Write-Host ''
 if ($script:Failures.Count -gt 0) {
     Write-Host "FAILED: $($script:Failures.Count) test(s)" -ForegroundColor Red
