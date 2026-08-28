@@ -3,8 +3,9 @@
 .SYNOPSIS
   Fast fail-fast pre-push checks: incremental build + container-free unit tests.
 .DESCRIPTION
-  Called by .githooks/pre-push.ps1. CI still runs the full coverage + format gate on every
-  PR, so this script deliberately skips coverage collection and testcontainers to stay fast.
+  Called by .githooks/pre-push.ps1. CI runs the full coverage + format gate on every PR that
+  changed a file the build compiles, so this script deliberately skips coverage collection and
+  testcontainers to stay fast.
 #>
 [CmdletBinding()]
 param(

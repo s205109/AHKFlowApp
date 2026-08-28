@@ -22,9 +22,9 @@ skipping it stops being the normal way to push.
 ## Detail
 
 The hook runs two checks over `docs/superpowers` and throws on either
-(`scripts/pre-push-quick-checks.ps1:47`, "    Write-Step 'Checking citations in the private plans repository'")
+(`scripts/pre-push-quick-checks.ps1:48`, "    Write-Step 'Checking citations in the private plans repository'")
 and
-(`scripts/pre-push-quick-checks.ps1:126`, "    Write-Step 'Checking the plans against the source'").
+(`scripts/pre-push-quick-checks.ps1:127`, "    Write-Step 'Checking the plans against the source'").
 
 Measured twice on 2026-08-21 with the command below: 55 problems in the morning, 62 a few hours
 later. The count rises on its own, because the plans repository is shared across every worktree and
