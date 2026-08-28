@@ -62,4 +62,4 @@ else holds, so that CI does not fail on a duplicate long after I filed the item.
 - Filing this very item hit the same defect twice: the scaffold ran three times in one worktree and
   handed out 119, 120 and 121, two of which were already taken elsewhere.
 - Spec: none - the cause and both fixes are stated here.
-- Plan: none - not yet planned.
+- Plan: `docs/superpowers/plans/2026-08-28-backlog-numbering-reads-one-working-tree-plan-121.md`
