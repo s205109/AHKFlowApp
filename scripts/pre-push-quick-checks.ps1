@@ -3,8 +3,9 @@
 .SYNOPSIS
   Fast fail-fast pre-push checks: incremental build + container-free unit tests.
 .DESCRIPTION
-  Called by .githooks/pre-push.ps1. CI still runs the full coverage + format gate on every
-  PR, so this script deliberately skips coverage collection and testcontainers to stay fast.
+  Called by .githooks/pre-push.ps1. CI runs the full coverage + format gate on every PR with a
+  changed path that .github/code-paths-filter.yml does not exclude, so this script deliberately
+  skips coverage collection and testcontainers to stay fast.
 #>
 [CmdletBinding()]
 param(
@@ -16,7 +17,7 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 . "$PSScriptRoot\Common.ps1"
 
-$skipHint = "CI still runs the full coverage + format gate on this PR. Skip locally with: SKIP_PUSH_HOOK=1 git push  (or: git push --no-verify)"
+$skipHint = "CI runs the full coverage + format gate on this PR when a changed path is not excluded by .github/code-paths-filter.yml. Skip locally with: SKIP_PUSH_HOOK=1 git push  (or: git push --no-verify)"
 
 Push-Location $repoRoot
 try {

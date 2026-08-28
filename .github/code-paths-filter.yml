@@ -1,0 +1,54 @@
+# One source of truth for "did this branch change any path this file does not exclude?".
+#
+# That is the real question, and it is wider than "did anything compile?". A changed path counts
+# as code unless a pattern below excludes it, so ci.yml and Directory.Packages.props both count
+# even though neither compiles. The deny-list direction is the whole design.
+#
+# Read by two callers:
+#   - .github/workflows/ci.yml, through dorny/paths-filter's `filters` input, which accepts a
+#     path to a file as well as inline YAML.
+#   - scripts/code-change-filter.common.ps1, which the local Gate uses, so both readers apply
+#     the same exclusions to the same diff. The Gate adds the coverage-tooling key below, which
+#     CI does not read, so the Gate can be stricter on those paths and never looser.
+#
+# Every entry is negative, and the action runs them with predicate-quantifier: 'every'. A
+# changed file counts as code only when no pattern here excludes it. `code` is true when at
+# least one changed file survives. Adding a pattern can only make `code` false more often.
+#
+# This is a deny-list on purpose. A path nobody listed counts as code, so a forgotten pattern
+# costs a few minutes of CI time. An allow-list would silently skip real coverage instead.
+#
+# scripts/*.ps1 and scripts/**/*.ps1 overlap deliberately. The overlap removes any dependence
+# on whether ** matches zero directory segments in the action's glob engine.
+#
+# tests/*.ps1 is one level only. The PowerShell suites sit directly in tests/, while
+# tests/AHKFlowApp.*.Tests/ holds compiled C# projects that must keep counting as code.
+#
+# scripts/ci/check-coverage-thresholds.py is not excluded. It is .py, so changing the coverage
+# gate still re-runs the coverage gate.
+code:
+  - '!**/*.md'
+  - '!docs/**'
+  - '!.claude/**'
+  - '!scripts/*.ps1'
+  - '!scripts/**/*.ps1'
+  - '!tests/*.ps1'
+
+# Scripts the local coverage run itself executes. The Gate treats a change to any of these as a
+# code change even though the patterns above exclude it, because a defect in one of them makes
+# the coverage step fail and the Gate is the only thing that would catch it.
+#
+# CI does not read this key, and that is correct rather than a gap: CI never runs
+# run-coverage.ps1. Its coverage step is a plain `dotnet test` in ci.yml, so a change to these
+# files cannot affect it. scripts/ci/check-coverage-thresholds.py, which CI does run, is a .py
+# file that no pattern above excludes, so it already counts as code for both readers.
+#
+# The list is the entry points plus everything run-coverage.ps1 dot-sources.
+coverage-tooling:
+  - 'scripts/run-coverage.ps1'
+  - 'scripts/test-fast.ps1'
+  - 'scripts/Common.ps1'
+  - 'scripts/coverage-inputs.common.ps1'
+  - 'scripts/test-run-lock.common.ps1'
+  - 'scripts/test-sql-container.common.ps1'
+  - 'scripts/code-change-filter.common.ps1'
