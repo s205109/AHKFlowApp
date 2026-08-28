@@ -149,6 +149,14 @@ and the line was restored:
 | The sweep logs the old fixed sentence | `WorktreeMergedCleanup` | fails |
 | The hook gate logs the old fixed sentence | `WorktreeRemoveHook` | fails |
 | The allow-path diagnostic is deleted | `WorktreeMergedCleanup` | fails |
+| The `unusable` refusal is deleted, so it falls back again | `WorktreePlanGuard` | fails |
+| A read failure returns an empty item number | `WorktreePlanGuard` | fails |
+| `absent` refuses as well, so nothing falls back | `WorktreePlanGuard` | fails |
+
+The last row is worth naming. The first run of that mutation passed, because the fallback test
+asserted only that the verdict refused, and refusing for the wrong reason still refuses. The test
+now asserts the refusal comes from judging the recorded item, and a second case gives the recorded
+item a `Plan: none` bullet so the fallback has to allow. Both sides of the split are pinned.
 
 Two boxes are worth a word on how they were settled.
 

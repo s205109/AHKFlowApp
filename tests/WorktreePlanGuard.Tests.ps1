@@ -314,8 +314,21 @@ try {
     $verdict = Test-WorktreePlanWasImplemented -MainCheckout $root -ItemNumber '118' -WorktreeName 'wt-no-item-has-this-slug'
     Assert-True (-not $verdict.Allow) 'A name that matches no item falls back to the recorded number'
     Assert-Equal '118' $verdict.ItemNumber 'The fallback judges the recorded number'
+    Assert-True ($verdict.Reason -match 'backlog item 118 names a plan outside') `
+        "The refusal must come from judging item 118, not from the slug lookup, got '$($verdict.Reason)'"
     Assert-True (-not ($verdict.Reason -match 'records item')) `
         "Numbers that agree must not be reported as a disagreement, got '$($verdict.Reason)'"
+
+    # The case that tells "fell back and refused" apart from "refused instead of falling back":
+    # the recorded item allows. Refusing on `absent` would keep every worktree whose name does not
+    # match an item, which is most of them, and a guard that always fires gets ignored.
+    $root = New-SlugScenario -RecordedNumber ''
+    Set-Content -LiteralPath (Join-Path $root 'backlog\118-a-different-title.md') `
+        -Value "# 118 - other`n`n- Plan: none - nothing to do"
+    $verdict = Test-WorktreePlanWasImplemented -MainCheckout $root -ItemNumber '118' -WorktreeName 'wt-no-item-has-this-slug'
+    Assert-True $verdict.Allow `
+        "A slug that matches nothing must fall back, not refuse, got '$($verdict.Reason)'"
+    Assert-Equal '118' $verdict.ItemNumber 'The fallback judges the recorded number'
 
     # --- a name and a number that agree give the same verdict as before -----
     $root = New-SlugScenario -OwnNumber '120' -RecordedNumber ''
