@@ -250,6 +250,32 @@ public sealed class RawHotkeyBodyScannerTests
         line.Should().Be(4);
     }
 
+    // Measured against AutoHotkey64.exe v2 (not inferred from the docs): a line whose "*/" has
+    // real code on BOTH sides is the documented "Common mistake" — the comment stays open and
+    // every later line is commented out too, so a definition after it can never run. Probe:
+    // `/* comment */ FileAppend(...)` followed by more FileAppend lines produced no output at
+    // all beyond the lines before the opener.
+    [Fact]
+    public void SameLineCloserWithCodeAfterIt_LeavesTheCommentOpen()
+    {
+        int? line = RawHotkeyBodyScanner.FindInjectedDefinitionLine(
+            "return\n/* comment */ ^a::Run(\"calc\")\n^b::Run(\"evil\")");
+
+        line.Should().BeNull();
+    }
+
+    // The boundary case for the test above: the same opener and closer on one line, but with
+    // nothing after the closer, IS a closer "at the end of a line", so the comment closes and the
+    // next line is live code again. Measured the same way.
+    [Fact]
+    public void SameLineCloserAtTheEndOfTheLine_ClosesTheComment()
+    {
+        int? line = RawHotkeyBodyScanner.FindInjectedDefinitionLine(
+            "return\n  /* comment */  \n^a::Run(\"calc\")");
+
+        line.Should().Be(3);
+    }
+
     // --- Accepted: definition-shaped text that is not a real top-level definition ----------
 
     [Fact]
