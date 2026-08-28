@@ -36,12 +36,28 @@ Assert-True (Test-Path -LiteralPath $checkScript) 'scripts/ci/check-repo-invaria
 if (Test-Path -LiteralPath $checkScript) {
     $checkText = Get-Content -LiteralPath $checkScript -Raw
 
-    # Read the $suites array itself, not the file text. A suite name in a comment, or in the
-    # description block at the top, must not count as the script running that suite.
-    $suitesBlock = [regex]::Match($checkText, '(?ms)^\$suites\s*=\s*@\((?<body>.*?)^\)').Groups['body'].Value
-    Assert-True (-not [string]::IsNullOrWhiteSpace($suitesBlock)) 'check-repo-invariants.ps1 must define a $suites = @( ... ) array'
+    # Read the parsed $suites assignment, not the file text. The parser drops comments, so a
+    # suite named only in a comment - the description block at the top, or an entry commented
+    # out inside the array - cannot count as the script running that suite.
+    $parseErrors = $null
+    $checkAst = [System.Management.Automation.Language.Parser]::ParseFile($checkScript, [ref] $null, [ref] $parseErrors)
+    Assert-True (@($parseErrors).Count -eq 0) "check-repo-invariants.ps1 must parse cleanly. Errors: $(@($parseErrors) -join ' | ')"
 
-    $declaredSuites = @([regex]::Matches($suitesBlock, "'(?<name>[^']+)'") | ForEach-Object { $_.Groups['name'].Value })
+    $suitesAssignment = $checkAst.Find({
+            param($node)
+            $node -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+            $node.Left -is [System.Management.Automation.Language.VariableExpressionAst] -and
+            $node.Left.VariablePath.UserPath -eq 'suites'
+        }, $true)
+    Assert-True ($null -ne $suitesAssignment) 'check-repo-invariants.ps1 must assign a $suites variable'
+
+    $declaredSuites = @()
+    if ($null -ne $suitesAssignment) {
+        $declaredSuites = @($suitesAssignment.Right.FindAll({
+                    param($node)
+                    $node -is [System.Management.Automation.Language.StringConstantExpressionAst]
+                }, $true) | ForEach-Object { $_.Value })
+    }
     foreach ($suite in $expectedSuites) {
         Assert-True ($declaredSuites -contains $suite) "The `$suites array in check-repo-invariants.ps1 must list $suite. Found: $($declaredSuites -join ', ')"
     }
@@ -55,6 +71,12 @@ foreach ($suite in $expectedSuites) {
 $ciPath = Join-Path $repoRoot '.github/workflows/ci.yml'
 Assert-True (Test-Path -LiteralPath $ciPath) '.github/workflows/ci.yml must exist'
 
+# YAML allows a job key to be quoted, so 'bicep-lint': names the same job as bicep-lint. Reading
+# only the unquoted form would drop that job from the list, and a dropped job is never checked
+# for its needs: key.
+$jobKeyPattern = '^  (?<quote>[''"]?)(?<name>[A-Za-z0-9_-]+)\k<quote>:\s*$'
+$anyJobKeyPattern = '^  [''"]?[A-Za-z0-9_-]+[''"]?:\s*$'
+
 $ciLines = Get-Content -LiteralPath $ciPath
 $jobNames = @()
 $inJobs = $false
@@ -62,14 +84,14 @@ foreach ($line in $ciLines) {
     if ($line -match '^jobs:\s*$') { $inJobs = $true; continue }
     if (-not $inJobs) { continue }
     if ($line -match '^[^\s#]') { break }
-    if ($line -match '^  (?<name>[A-Za-z0-9_-]+):\s*$') { $jobNames += $Matches.name }
+    if ($line -match $jobKeyPattern) { $jobNames += $Matches.name }
 }
 
 Assert-True ($jobNames -contains 'repo-invariants') "ci.yml must define a 'repo-invariants' job. Found: $($jobNames -join ', ')"
 
 $ciRaw = $ciLines -join "`n"
 foreach ($job in ($jobNames | Where-Object { $_ -ne 'repo-invariants' })) {
-    $pattern = "(?ms)^  $([regex]::Escape($job)):\s*$.*?(?=^  [A-Za-z0-9_-]+:\s*$|\z)"
+    $pattern = '(?ms)^  [''"]?' + [regex]::Escape($job) + '[''"]?:\s*$.*?(?=' + $anyJobKeyPattern + '|\z)'
     $block = [regex]::Match($ciRaw, $pattern).Value
 
     # Read the needs: value, not the job block. The words 'repo-invariants' appear in step names
@@ -97,7 +119,8 @@ if (Test-Path -LiteralPath $checkScript) {
 
 # --- The job runs on ubuntu-latest ---
 
-$invariantBlock = [regex]::Match($ciRaw, "(?ms)^  repo-invariants:\s*$.*?(?=^  [A-Za-z0-9_-]+:\s*$|\z)").Value
+$invariantPattern = '(?ms)^  [''"]?repo-invariants[''"]?:\s*$.*?(?=' + $anyJobKeyPattern + '|\z)'
+$invariantBlock = [regex]::Match($ciRaw, $invariantPattern).Value
 Assert-True ($invariantBlock -match '(?m)^\s{4}runs-on:\s*ubuntu-latest\s*$') 'repo-invariants must run on ubuntu-latest'
 
 # --- Report ---
