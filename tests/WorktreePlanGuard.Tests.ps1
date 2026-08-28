@@ -425,6 +425,14 @@ try {
     Assert-True ($removeSource -match '-WorktreeName \$worktreeFull') `
         'The hook gate must hand the worktree name to the plan guard'
 
+    # Both writers flatten the reason before it reaches the log, so a long or multi-line reason
+    # still becomes exactly one line. Format-WorktreeLogReason's own behaviour is pinned by
+    # tests/WorktreeRemovalLog.Tests.ps1; what matters here is that neither writer bypasses it.
+    Assert-True ($removeSource -match "Write-Outcome \('Kept: ' \+ \(Format-WorktreeLogReason -Text \`$Reason\) \+ '\.'\)") `
+        'The hook gate must flatten the reason before it writes the Kept line'
+    Assert-Equal 1 (@([regex]::Matches($removeSource, "Write-Outcome \('Kept: ")).Count) `
+        'There must be exactly one writer of the Kept line in the hook gate'
+
     Write-Host 'Worktree plan guard tests passed.'
 } finally {
     foreach ($scenario in $scenarios) {

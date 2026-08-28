@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: none - repository tooling
 - **Difficulty**: moderate
-- **Stage**: 3-plan
+- **Stage**: 9-ship
 
 ## Summary
 
@@ -69,34 +69,62 @@ all along.
 
 ### The guard judges the item the worktree serves
 
-- [ ] A worktree whose recorded number names an item that is not its own is judged against its own
+- [x] A worktree whose recorded number names an item that is not its own is judged against its own
       item instead.
-- [ ] A sweep removes a worktree whose recorded number names one item while its directory name
+- [x] A sweep removes a worktree whose recorded number names one item while its directory name
       matches a second item that sits in `backlog/done/` with an implemented plan, and the manifest
       is not edited. Proved by a fixture, so the box can be settled before this branch merges.
-- [ ] A worktree with no recorded backlog item is still removable, **including when its directory
+- [x] A worktree with no recorded backlog item is still removable, **including when its directory
       name matches an open item**. The empty-number allow stays ahead of the name lookup.
-- [ ] An unreadable manifest still refuses.
-- [ ] A test builds a worktree whose recorded number and whose directory name point at two
+- [x] An unreadable manifest still refuses.
+- [x] A test builds a worktree whose recorded number and whose directory name point at two
       different items, and asserts the guard reads the right one.
-- [ ] The name lookup accepts a suffixed item number such as `022b`.
-- [ ] `scripts/setup-worktree-local-dev.ps1` records `022b` for a worktree whose open item is named
+- [x] The name lookup accepts a suffixed item number such as `022b`.
+- [x] `scripts/setup-worktree-local-dev.ps1` records `022b` for a worktree whose open item is named
       `022b-<slug>.md`. It records an empty value today, which switches the plan guard off for that
       worktree.
-- [ ] `scripts/setup-worktree-local-dev.ps1` still derives a number from `backlog/` only, and the
+- [x] `scripts/setup-worktree-local-dev.ps1` still derives a number from `backlog/` only, and the
       backlog 073 regression test still passes unchanged.
-- [ ] `ConvertTo-BacklogSlug` in `scripts/slug.common.ps1` stays the only slug rule in the
+- [x] `ConvertTo-BacklogSlug` in `scripts/slug.common.ps1` stays the only slug rule in the
       repository.
 
 ### The outcome log names the reason that applied
 
-- [ ] A kept-worktree line in `.claude/worktrees/worktree-removal.log` carries the guard's own
+- [x] A kept-worktree line in `.claude/worktrees/worktree-removal.log` carries the guard's own
       reason. Proved by running the real hook and the real sweep, not by scanning source text.
-- [ ] Two different refusal reasons produce two different lines in that log.
-- [ ] Both the sweep and the removal hook gate write the reason.
-- [ ] A long or multi-line reason still produces exactly one log line.
-- [ ] When the guard allows but the recorded number and the directory name disagree, the removal
+- [x] Two different refusal reasons produce two different lines in that log.
+- [x] Both the sweep and the removal hook gate write the reason.
+- [x] A long or multi-line reason still produces exactly one log line.
+- [x] When the guard allows but the recorded number and the directory name disagree, the removal
       still happens and the diagnostics file names both numbers.
+
+## How this was verified
+
+`pwsh ./scripts/run-powershell-suites.ps1` — all 45 suites pass. Build, format check, and
+`git diff --check main...HEAD` are green. The coverage slice reports nothing to run: this branch
+changes no path that `.github/code-paths-filter.yml` covers.
+
+Every new test was proved with a mutation. Each mutation reverted one line, the named suite ran,
+and the line was restored:
+
+| Mutation | Suite | Result |
+|---|---|---|
+| The guard's slug lookup returns nothing | `WorktreePlanGuard` | fails |
+| The empty-number allow loses to the slug route | `WorktreePlanGuard` | fails |
+| The guard's number shape drops `[a-z]?` | `WorktreePlanGuard` | fails |
+| `setup-worktree-local-dev.ps1` drops `[a-z]?` | `WorktreeLocalDevSetup` | fails, on the new case only |
+| The sweep logs the old fixed sentence | `WorktreeMergedCleanup` | fails |
+| The hook gate logs the old fixed sentence | `WorktreeRemoveHook` | fails |
+| The allow-path diagnostic is deleted | `WorktreeMergedCleanup` | fails |
+
+Two boxes are worth a word on how they were settled.
+
+- "A long or multi-line reason still produces exactly one log line." Both writers now pass the
+  reason through `Format-WorktreeLogReason`, and `tests/WorktreePlanGuard.Tests.ps1` asserts that
+  neither one bypasses it. The formatter's own flattening and truncation stay pinned by
+  `tests/WorktreeRemovalLog.Tests.ps1`.
+- "`ConvertTo-BacklogSlug` stays the only slug rule." No slug rule was added.
+  `Get-WorktreeSlugFromName` removes a `wt-` prefix from a name; it never builds a slug.
 
 ## Out of scope
 
