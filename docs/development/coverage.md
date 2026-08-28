@@ -10,7 +10,11 @@ From the repo root, run:
 pwsh .\scripts\run-coverage.ps1
 ```
 
-`test-fast.ps1 -Mode Coverage` delegates to this script. It:
+`test-fast.ps1 -Mode Coverage` delegates to this script whenever your branch changed at least one
+path that `.github/code-paths-filter.yml` does not exclude, **or** changed one of the scripts the
+coverage run itself executes. It skips only when neither is true. See [the Gate](testing-workflow.md#canonical-pre-pr-gate) for both
+conditions and the `-Force` switch. Running `run-coverage.ps1` yourself always runs the full
+slice. The script:
 
 1. runs the test suite with `XPlat Code Coverage`
 2. merges the per-project coverage files into `CoverageReport\Cobertura.xml`
@@ -38,7 +42,7 @@ git config core.hooksPath .githooks
 
 The Gate also requires `python` on `PATH`.
 
-That `core.hooksPath` setting enables the repo-managed `.githooks/pre-push` hook, which runs `pwsh .\scripts\pre-push-quick-checks.ps1` automatically before each push — an incremental build plus the container-free fast test slice, not full coverage. CI runs the full coverage + format gate on every non-docs PR, so the hook is a quick local sanity check rather than the authoritative gate. Coverage is step 4 of the Gate, so run it before you mark a PR ready — `pwsh .\scripts\test-fast.ps1 -Mode Coverage`, or `pwsh .\scripts\run-coverage.ps1` directly. It is required, not an optional extra.
+That `core.hooksPath` setting enables the repo-managed `.githooks/pre-push` hook, which runs `pwsh .\scripts\pre-push-quick-checks.ps1` automatically before each push — an incremental build plus the container-free fast test slice, not full coverage. CI runs the full coverage + format gate on every pull request with at least one changed path that `.github/code-paths-filter.yml` does not exclude, so the hook is a quick local sanity check rather than the authoritative gate. Coverage is step 4 of the Gate, so run it before you mark a PR ready — `pwsh .\scripts\test-fast.ps1 -Mode Coverage`. That form skips itself when the filter excludes every changed path and none of them is a script the coverage run executes, and it says so. `pwsh .\scripts\run-coverage.ps1` runs the full slice with no such check. It is required, not an optional extra.
 
 The hook adds well under two minutes per push. Skip it for WIP pushes with either:
 
