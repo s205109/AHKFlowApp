@@ -6,7 +6,7 @@
 - **Type**: Fix
 - **Interfaces**: none - repository tooling
 - **Difficulty**: moderate
-- **Stage**: 3-plan
+- **Stage**: 7-document
 
 ## Summary
 
@@ -24,20 +24,20 @@ else holds, so that CI does not fail on a duplicate long after I filed the item.
 
 ### Numbering reads every ref
 
-- [ ] `Get-NextBacklogNumber` considers every backlog number reachable from any local or remote ref, not only the files in the working tree.
-- [ ] Running `new-backlog-item.ps1` in two worktrees of the same repository, without either branch being pushed, produces two different numbers.
-- [ ] Running the scaffold twice in one worktree, without committing in between, produces two different numbers.
-- [ ] A test builds two refs that each claim the same next number, and asserts the function skips it.
-- [ ] The function still returns a number in a repository that has no remote.
-- [ ] The function still returns a number when a ref cannot be read, and says so, rather than failing the run.
+- [x] `Get-NextBacklogNumber` considers every backlog number reachable from any local or remote ref, not only the files in the working tree.
+- [x] Running `new-backlog-item.ps1` in two worktrees of the same repository, without either branch being pushed, produces two different numbers.
+- [x] Running the scaffold twice in one worktree, without committing in between, produces two different numbers.
+- [x] A test builds two refs that each claim the same next number, and asserts the function skips it.
+- [x] The function still returns a number in a repository that has no remote.
+- [x] The function still returns a number when a ref cannot be read, and says so, rather than failing the run.
 
 ### CI fails fast on repository invariants
 
-- [ ] `ci.yml` runs the cheap repository-invariant checks in one job.
-- [ ] Every other job in `ci.yml` names that job in `needs:`, so nothing expensive starts until the invariants pass.
-- [ ] That job finishes in under two minutes on a normal pull request.
-- [ ] A duplicate backlog number fails the run before the .NET build starts.
-- [ ] The invariant job covers at least: backlog numbering, backlog plan pointers, stale open backlog items, citation freshness, and skill parity.
+- [x] `ci.yml` runs the cheap repository-invariant checks in one job.
+- [x] Every other job in `ci.yml` names that job in `needs:`, so nothing expensive starts until the invariants pass.
+- [ ] That job finishes in under two minutes on a normal pull request. Not yet confirmed: the local Windows parallel run was 2 minutes 4 seconds. Linux process startup is faster, so the first real Actions run for pull request #360 must record the `repo-invariants` job duration.
+- [x] A duplicate backlog number fails the run before the .NET build starts.
+- [x] The invariant job covers at least: backlog numbering, backlog plan pointers, stale open backlog items, citation freshness, and skill parity.
 
 ## Out of scope
 
@@ -63,3 +63,7 @@ else holds, so that CI does not fail on a duplicate long after I filed the item.
   handed out 119, 120 and 121, two of which were already taken elsewhere.
 - Spec: none - the cause and both fixes are stated here.
 - Plan: `docs/superpowers/plans/2026-08-28-backlog-numbering-reads-one-working-tree-plan-121.md`
+- Verification (Stage 6): `tests/BacklogNumbering.Tests.ps1` (8 new cases), `tests/RepoInvariantsCiJob.Tests.ps1`,
+  and `tests/SkillParity.Tests.ps1` all pass. `scripts/ci/check-repo-invariants.ps1` runs the five suites
+  in parallel and exits 0. The full local PowerShell gate (44 suites) and the .NET fast slice both pass.
+  The one open box is the two-minute CI target, which needs the first real Actions run on pull request #360.
