@@ -76,6 +76,9 @@ all along.
       is not edited. Proved by a fixture, so the box can be settled before this branch merges.
 - [x] A worktree with no recorded backlog item is still removable, **including when its directory
       name matches an open item**. The empty-number allow stays ahead of the name lookup.
+- [x] A name lookup that cannot answer keeps the worktree. More than one item carrying the slug, or
+      an item that cannot be read, refuses instead of falling back to the recorded number. Only
+      "no item carries this slug" falls back. Added after review; see **The review round** below.
 - [x] An unreadable manifest still refuses.
 - [x] A test builds a worktree whose recorded number and whose directory name point at two
       different items, and asserts the guard reads the right one.
@@ -97,6 +100,36 @@ all along.
 - [x] A long or multi-line reason still produces exactly one log line.
 - [x] When the guard allows but the recorded number and the directory name disagree, the removal
       still happens and the diagnostics file names both numbers.
+
+## The review round
+
+Review found that the first implementation failed open. The slug lookup returns three statuses,
+and the guard handled only `found`. Both `absent` and `unusable` fell back to the recorded number,
+so an ambiguous or unreadable slug judged a different item — the original defect through a second
+door.
+
+Measured on the built branch before the fix, with two items sharing the slug and a stale recorded
+item 118 whose bullet said `Plan: none`:
+
+```
+Allow  : True
+Reason : backlog item 118 states it has no plan
+Item   : 118
+```
+
+After the fix, the same fixture:
+
+```
+Allow  : False
+Reason : 2 backlog items carry the slug 'probe-slug'
+```
+
+`absent` still falls back, because no item carries the slug and there is nothing else to judge.
+`unusable` refuses. When one item matched and only the read failed, the refusal names that item
+rather than the recorded number.
+
+The earlier ambiguity test could not catch this: its recorded item refused on its own, so the
+fallback looked safe. The new test gives the recorded item a `Plan: none` bullet, which allows.
 
 ## How this was verified
 

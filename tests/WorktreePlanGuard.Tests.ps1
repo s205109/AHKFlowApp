@@ -349,14 +349,57 @@ try {
     Assert-True $verdict.Allow "A suffixed item number must resolve, got '$($verdict.Reason)'"
     Assert-Equal '022b' $verdict.ItemNumber 'The suffixed number is reported as the item judged'
 
-    # --- two items sharing one slug cannot be told apart --------------------
-    # Guessing between them is how the guard would judge the wrong item all over again.
+    # --- a slug lookup that cannot answer refuses, it never falls back ------
+    # Two statuses are not one. "absent" means no item carries this slug, so the recorded number is
+    # the only thing left to judge, and judging it is the old behaviour. "unusable" means the slug
+    # DID name this worktree's item and the lookup could not deliver it. Falling back there judges a
+    # different item, which is the defect this whole change exists to stop.
     $root = New-SlugScenario
     Set-Content -LiteralPath (Join-Path $root 'backlog\131-give-each-worktree-removal.md') `
         -Value "# 131 - twin`n`n- Plan: none - twin"
     $verdict = Test-WorktreePlanWasImplemented -MainCheckout $root -ItemNumber '118' -WorktreeName 'wt-give-each-worktree-removal'
-    Assert-True (-not $verdict.Allow) 'Two items sharing one slug fall back to the recorded number'
-    Assert-Equal '118' $verdict.ItemNumber 'An ambiguous slug judges the recorded number'
+    Assert-True (-not $verdict.Allow) 'Two items sharing one slug must refuse'
+    Assert-True ($verdict.Reason -match "2 backlog items carry the slug 'give-each-worktree-removal'") `
+        "The refusal must name the ambiguity, got '$($verdict.Reason)'"
+
+    # The case that proves it is a refusal and not a lucky fallback: the recorded item states it has
+    # no plan, so judging it would ALLOW. Before this rule the guard removed the worktree here,
+    # after judging an item that was never its own.
+    $root = New-SlugScenario -RecordedNumber ''
+    Set-Content -LiteralPath (Join-Path $root 'backlog\118-a-different-title.md') `
+        -Value "# 118 - other`n`n- Plan: none - nothing to do"
+    Set-Content -LiteralPath (Join-Path $root 'backlog\131-give-each-worktree-removal.md') `
+        -Value "# 131 - twin`n`n- Plan: none - twin"
+    $verdict = Test-WorktreePlanWasImplemented -MainCheckout $root -ItemNumber '118' -WorktreeName 'wt-give-each-worktree-removal'
+    Assert-True (-not $verdict.Allow) `
+        "An ambiguous slug must refuse even when the recorded item would allow, got '$($verdict.Reason)'"
+
+    # --- an item found by slug but unreadable refuses, and names itself -----
+    # The number is already known at that point, so the refusal says which item it could not read.
+    # Reporting the recorded number here would blame an item the guard never opened.
+    $root = New-SlugScenario -RecordedNumber ''
+    Set-Content -LiteralPath (Join-Path $root 'backlog\118-a-different-title.md') `
+        -Value "# 118 - other`n`n- Plan: none - nothing to do"
+    $ownItem = Join-Path $root 'backlog\120-give-each-worktree-removal.md'
+    $heldItem = [System.IO.File]::Open($ownItem, 'Open', 'Read', 'None')
+    try {
+        $verdict = Test-WorktreePlanWasImplemented -MainCheckout $root -ItemNumber '118' -WorktreeName 'wt-give-each-worktree-removal'
+        Assert-True (-not $verdict.Allow) 'An item another process holds must refuse'
+        Assert-Equal '120' $verdict.ItemNumber 'The refusal reports the item it could not read, not the recorded one'
+        Assert-True ($verdict.Reason -match 'backlog item 120 could not be read') `
+            "The refusal must name the item it could not read, got '$($verdict.Reason)'"
+    } finally {
+        $heldItem.Dispose()
+    }
+
+    # --- an empty recorded number still allows, even on an unusable slug ----
+    # The empty-number allow keeps its place ahead of the whole slug route. A worktree with nothing
+    # recorded is removable by contract, and the new refusal must not quietly take that away.
+    $root = New-SlugScenario -RecordedNumber ''
+    Set-Content -LiteralPath (Join-Path $root 'backlog\131-give-each-worktree-removal.md') `
+        -Value "# 131 - twin`n`n- Plan: none - twin"
+    Assert-True (Test-WorktreePlanWasImplemented -MainCheckout $root -ItemNumber '' -WorktreeName 'wt-give-each-worktree-removal').Allow `
+        'An empty recorded number allows removal even when the slug is ambiguous'
 
     # --- the slug route runs against the base ref as well -------------------
     # The number path reads the base when one is supplied, and the slug path has to read the same
@@ -386,6 +429,31 @@ try {
     # and it is what makes the case above a measurement of the name rather than of the fixture.
     Assert-True (-not (Test-WorktreePlanWasImplemented -MainCheckout $slugRefRoot -ItemNumber '118' -BaseRef 'main').Allow) `
         'Without a name the recorded number still decides'
+
+    # --- the same refusal rule applies on the base-ref route ----------------
+    # An unusable answer from the base is not permission to read a different item. Two items sharing
+    # the slug in the base ref must keep the worktree, whatever the recorded number would have said.
+    Set-Content -LiteralPath (Join-Path $slugRefRoot 'backlog\131-give-each-worktree-removal.md') `
+        -Value "# 131 - twin`n`n- Plan: none - twin"
+    Set-Content -LiteralPath (Join-Path $slugRefRoot 'backlog\118-a-different-title.md') `
+        -Value "# 118 - other`n`n- Plan: none - nothing to do"
+    Invoke-QuietGit $slugRefRoot @('add', '-A')
+    Invoke-QuietGit $slugRefRoot @('commit', '-m', 'a second item with the same slug')
+
+    $verdict = Test-WorktreePlanWasImplemented -MainCheckout $slugRefRoot -ItemNumber '118' -BaseRef 'main' `
+        -WorktreeName 'wt-give-each-worktree-removal'
+    Assert-True (-not $verdict.Allow) `
+        "An ambiguous slug in the base must refuse even when the recorded item would allow, got '$($verdict.Reason)'"
+    Assert-True ($verdict.Reason -match "2 backlog items carry the slug 'give-each-worktree-removal'") `
+        "The base-ref refusal must name the ambiguity, got '$($verdict.Reason)'"
+
+    # A base that cannot be resolved is unusable too, so the slug route refuses rather than
+    # quietly handing the decision to the recorded number.
+    $verdict = Test-WorktreePlanWasImplemented -MainCheckout $slugRefRoot -ItemNumber '118' -BaseRef 'no-such-ref' `
+        -WorktreeName 'wt-give-each-worktree-removal'
+    Assert-True (-not $verdict.Allow) 'An unresolvable base must refuse on the slug route as well'
+    Assert-True ($verdict.Reason -match 'could not be resolved') `
+        "The reason must say the base could not be resolved, got '$($verdict.Reason)'"
 
     # --- the hook gate asks the guard only after the merge gate -------------
     # Asking first made an unmerged worktree fail with the plan guard's wording, and read the

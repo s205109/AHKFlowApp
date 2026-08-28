@@ -1150,8 +1150,11 @@ function Get-WorktreeSlugFromName {
 # exactly like Get-BacklogItemLinesFromRef, and returns the matched number as well, because the
 # caller has to report which item it judged.
 #
-# 'unusable' covers more than one match too: two items that share a slug cannot be told apart, and
-# guessing between them is how the guard would judge the wrong item all over again.
+# The three statuses are not interchangeable, and the caller must not treat them as one.
+# 'absent' means no item carries this slug, so there is nothing here to judge. 'unusable' means the
+# slug DID name an item and the lookup could not deliver it: more than one match, or a read that
+# failed. Those two answers lead to opposite decisions, so Detail is written as a complete clause
+# that names the real reason, ready to go straight into a refusal.
 function Get-BacklogItemLinesFromRefBySlug {
     param(
         [Parameter(Mandatory)][string] $MainCheckout,
@@ -1161,30 +1164,32 @@ function Get-BacklogItemLinesFromRefBySlug {
 
     $sha = (& git -C $MainCheckout rev-parse --verify --quiet "$BaseRef^{commit}" 2>$null)
     if ($LASTEXITCODE -ne 0 -or -not $sha) {
-        return [pscustomobject]@{ Status = 'unusable'; Lines = @(); Detail = 'could not be resolved'; ItemNumber = '' }
+        return [pscustomobject]@{ Status = 'unusable'; Lines = @(); Detail = "the base '$BaseRef' could not be resolved"; ItemNumber = '' }
     }
     $sha = ([string] $sha).Trim()
 
     $listed = & git -C $MainCheckout ls-tree -r --name-only $sha -- backlog 2>$null
     if ($LASTEXITCODE -ne 0) {
-        return [pscustomobject]@{ Status = 'unusable'; Lines = @(); Detail = 'could not be listed'; ItemNumber = '' }
+        return [pscustomobject]@{ Status = 'unusable'; Lines = @(); Detail = "the base '$BaseRef' could not be listed"; ItemNumber = '' }
     }
 
     $pattern = '^backlog/(done/|blocked/)?(?<num>' + $WorktreeBacklogNumberPattern + ')-' + [regex]::Escape($Slug) + '\.md$'
     $matched = @(@($listed) | Where-Object { $_ -match $pattern })
     if ($matched.Count -eq 0) {
-        return [pscustomobject]@{ Status = 'absent'; Lines = @(); Detail = 'does not carry an item with that slug'; ItemNumber = '' }
+        return [pscustomobject]@{ Status = 'absent'; Lines = @(); Detail = "no backlog item carries the slug '$Slug'"; ItemNumber = '' }
     }
     if ($matched.Count -gt 1) {
-        return [pscustomobject]@{ Status = 'unusable'; Lines = @(); Detail = "carries $($matched.Count) items with that slug"; ItemNumber = '' }
+        return [pscustomobject]@{ Status = 'unusable'; Lines = @(); Detail = "$($matched.Count) backlog items carry the slug '$Slug'"; ItemNumber = '' }
     }
 
     $null = $matched[0] -match $pattern
     $number = $Matches.num
 
+    # The number is already known, so a read failure names the item it could not read. Returning it
+    # empty would make the caller blame the recorded number, which is an item it never opened.
     $content = & git -C $MainCheckout show "$($sha):$($matched[0])" 2>$null
     if ($LASTEXITCODE -ne 0 -or $null -eq $content) {
-        return [pscustomobject]@{ Status = 'unusable'; Lines = @(); Detail = 'holds an item that could not be read'; ItemNumber = '' }
+        return [pscustomobject]@{ Status = 'unusable'; Lines = @(); Detail = "backlog item $number could not be read"; ItemNumber = $number }
     }
     return [pscustomobject]@{ Status = 'found'; Lines = @($content); Detail = ''; ItemNumber = $number }
 }
@@ -1213,16 +1218,17 @@ function Get-BacklogItemLinesFromWorkingTreeBySlug {
     }
 
     if ($found.Count -eq 0) {
-        return [pscustomobject]@{ Status = 'absent'; Lines = @(); Detail = 'no item carries that slug'; ItemNumber = '' }
+        return [pscustomobject]@{ Status = 'absent'; Lines = @(); Detail = "no backlog item carries the slug '$Slug'"; ItemNumber = '' }
     }
     if ($found.Count -gt 1) {
-        return [pscustomobject]@{ Status = 'unusable'; Lines = @(); Detail = "$($found.Count) items carry that slug"; ItemNumber = '' }
+        return [pscustomobject]@{ Status = 'unusable'; Lines = @(); Detail = "$($found.Count) backlog items carry the slug '$Slug'"; ItemNumber = '' }
     }
 
+    # As in the ref twin: the number is known, so a read failure names the item it could not read.
     try {
         $lines = @(Get-Content -LiteralPath $found[0].Path -ErrorAction Stop)
     } catch {
-        return [pscustomobject]@{ Status = 'unusable'; Lines = @(); Detail = 'holds an item that could not be read'; ItemNumber = '' }
+        return [pscustomobject]@{ Status = 'unusable'; Lines = @(); Detail = "backlog item $($found[0].Number) could not be read"; ItemNumber = $found[0].Number }
     }
     return [pscustomobject]@{ Status = 'found'; Lines = $lines; Detail = ''; ItemNumber = $found[0].Number }
 }
@@ -1292,8 +1298,18 @@ function Test-WorktreePlanWasImplemented {
     # The recorded number goes stale. A renumber is a hand `git mv` plus a heading edit, and
     # nothing rewrites the manifest, so the guard used to judge somebody else's item. The worktree
     # directory name carries the title slug, which a renumber never changes, so the slug resolves
-    # the item the worktree really serves. The recorded number stays as the fallback: a slug that
-    # matches nothing must never skip a check the guard would otherwise make.
+    # the item the worktree really serves.
+    #
+    # The lookup's three answers lead to three different decisions, and collapsing any two of them
+    # is how this guard fails open:
+    #
+    #   found    - judge that item.
+    #   absent   - no item carries this slug, so there is nothing here to judge. Fall back to the
+    #              recorded number, which is exactly the old behaviour. A slug that matches nothing
+    #              must never skip a check the guard would otherwise make.
+    #   unusable - the slug DID name this worktree's item and the lookup could not deliver it.
+    #              Refuse. Falling back here judges a DIFFERENT item, and a stale recorded item
+    #              saying "Plan: none" would then allow the very removal this guard exists to stop.
     $itemLines = $null
     $judged = $ItemNumber
     $slug = Get-WorktreeSlugFromName -WorktreeName $WorktreeName
@@ -1306,6 +1322,12 @@ function Test-WorktreePlanWasImplemented {
         if ($bySlug.Status -eq 'found') {
             $judged = $bySlug.ItemNumber
             $itemLines = $bySlug.Lines
+        } elseif ($bySlug.Status -eq 'unusable') {
+            # One item was found and could not be read: name it, rather than blaming the recorded
+            # number for a file the guard never opened.
+            if ($bySlug.ItemNumber) { $judged = $bySlug.ItemNumber }
+            return New-WorktreePlanVerdict -Allow $false -Reason $bySlug.Detail `
+                -ItemNumber $judged -RecordedItemNumber $recorded
         }
     }
 
