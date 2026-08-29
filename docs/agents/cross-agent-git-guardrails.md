@@ -22,8 +22,11 @@ Most Git mutations are allowed only from a **managed linked worktree**, which is
    once, the three ports numeric, the API/UI URLs carrying the manifest ports, DB/compose values
    non-empty, and `AHKFLOW_ROOT` resolving back to the worktree root.
 
-The supported way to create one is `scripts/new-worktree.ps1`, or the agent's native `EnterWorktree`
-tool — that tool fires the `WorktreeCreate` hook, which runs the same script.
+The supported way to create one is `scripts/new-worktree.ps1`, followed by the agent's native
+`EnterWorktree` tool with `path`, which moves the session into it. The tool can also create one on
+its own, with `name` — it fires the `WorktreeCreate` hook, which runs the same script — but Pickup
+does not use that route, because it cannot pass `-Title` or `-BaseRef`. See
+[`../adr/0012-pickup-enters-the-worktree.md`](../adr/0012-pickup-enters-the-worktree.md).
 A raw `git worktree add` run by an agent is Tier 2 — allowed even from main, with no prompt (see
 "Location tiers" below). It skips the manifest and no-auth setup that `scripts/new-worktree.ps1`
 performs, though, so the resulting worktree would still fail the managed check. Use the script, or
@@ -427,11 +430,29 @@ An agent running the same command would need a prompt or override.
   managed worktree cannot write, move, or delete a path resolving under the main checkout. This
   covers shell commands and Claude `Edit`, `Write`, and `NotebookEdit` tool calls. A main-checkout
   session is unaffected and may still edit, build, test, and format there.
-- Claude Code has its own worktree isolation for `Edit` and `Write`, and it reads a session flag
-  rather than the working directory. It fires only for a session started with `-w`, `--worktree`, or
-  the `EnterWorktree` tool. This repository's guard reads the working directory instead, so the two
-  now overlap rather than leave a gap. In a `-w` session the harness refusal wins; in every other
-  worktree session this repository's refusal is the one that fires.
+- Claude Code has its own worktree isolation, and it reads a session flag rather than the working
+  directory. It fires only for a session started with `-w`, `--worktree`, or the `EnterWorktree`
+  tool. This repository's guard reads the working directory instead, so the two now overlap rather
+  than leave a gap. In a `-w` session the harness refusal wins; in every other worktree session this
+  repository's refusal is the one that fires.
+- **The harness isolation covers three things, not one.** Measured for backlog 118 on Claude Code
+  `2.1.251`:
+  1. `Edit` and `Write` on a path that resolves outside the worktree, including a path reached
+     through a symlink.
+  2. A shell command that sends git outside the worktree, with `git -C <path>` or with
+     `cd <path> && git ...`.
+  3. A shell command the harness judges too complex to verify, which includes a loop and a command
+     substitution.
+
+  None of these can be overridden with `AHKFLOW_ALLOW_MAIN=1`. That variable is read by this
+  repository's guard, and these refusals do not come from this repository. Telling them apart is
+  easy: this repository's refusals carry a rule name, such as
+  `[agent-guard:Claude] deny [agent-worktree-main-write]`. A harness refusal carries none.
+- **Point 2 puts the plans repository out of reach of an entered session.** `docs/superpowers` links
+  back to the main checkout, so every route into it leaves the worktree by definition. Writing a
+  plan or a spec there still works from the shell. Committing it does not, and the way around it is
+  to leave the worktree and keep it, commit, then enter the same path again. Pickup takes this
+  trade knowingly: see [`../adr/0012-pickup-enters-the-worktree.md`](../adr/0012-pickup-enters-the-worktree.md).
 - Codex and Copilot file-edit tool calls are **not** covered. Their tool names and payload shapes are
   not verified here, and neither agent has native worktree isolation. Their shell commands are
   covered as before.
@@ -450,8 +471,10 @@ An agent running the same command would need a prompt or override.
   internal execution order. Method and output:
   `docs/superpowers/specs/2026-08-07-worktree-edit-isolation-precedence-design.md`. Tracked in
   `backlog/blocked/058-native-edit-refusal-names-missing-worktree-copy.md`, which is blocked: the
-  only remaining step is a report to Anthropic, and that report has not been filed. Confirmed on
-  Claude Code `2.1.224`. Until it changes upstream, treat the refusal text as wrong for
+  only remaining step is a report to Anthropic, and that report has not been filed. First confirmed
+  on Claude Code `2.1.224`, and re-measured unchanged on `2.1.251` for backlog 118, whose evidence
+  is in `docs/superpowers/specs/2026-08-29-pickup-enters-the-worktree-design-118.md`. Until it
+  changes upstream, treat the refusal text as wrong for
   `docs/superpowers` and do not go looking for a worktree copy of a plan or spec. This applies to a
   `-w` session only. Outside one, a write inside `docs/superpowers` is now allowed outright, so no
   refusal fires at all. Only the plans root itself is still refused there.
