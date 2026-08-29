@@ -1083,36 +1083,55 @@ function Resolve-BacklogPlanPath {
     return $fullCandidate
 }
 
-# The lines of a backlog item, read from a git ref rather than from disk. The merge gate decides
-# against the resolved base, so the plan gate must read the same base: an item filed on the branch
-# and merged on GitHub lives in that ref long before a local pull puts it on disk.
+# One snapshot of the base: the commit it names, plus every path under backlog/ in that commit.
+# The merge gate decides against the resolved base, so the plan gate must read the same base -- an
+# item filed on the branch and merged on GitHub lives in that ref long before a local pull puts it
+# on disk.
 #
-# Returns Status plus Lines. 'found' means exactly one item and its content. 'absent' means the ref
-# is readable and does not carry the item. 'unusable' means the ref could not be resolved, git
-# failed, or more than one file claims the number. The caller must not treat any of the three as a
-# reason to read the working tree instead: a base was supplied because the base is the authority.
-function Get-BacklogItemLinesFromRef {
+# The plan gate looks the item up twice, once by slug and once by number, and both lookups read
+# this one snapshot. Resolving the ref inside each lookup let a fetch move it in between: the guard
+# could answer "no item carries this slug" against one commit and then read the recorded item out
+# of another. That is the wrong-item defect through a third door.
+#
+# Status 'ok' carries Sha and Paths. Status 'unusable' means the ref could not be resolved, or git
+# could not list it, and Detail is the end of a sentence the caller starts with the ref name.
+function Get-BacklogInventoryFromRef {
     param(
         [Parameter(Mandatory)][string] $MainCheckout,
-        [Parameter(Mandatory)][string] $BaseRef,
-        [Parameter(Mandatory)][string] $ItemNumber
+        [Parameter(Mandatory)][string] $BaseRef
     )
 
     # Pin the base to one commit first. Without this, a ref that does not exist and a ref that
     # simply lacks the item both arrive as an empty listing, and they are not the same answer.
     $sha = (& git -C $MainCheckout rev-parse --verify --quiet "$BaseRef^{commit}" 2>$null)
     if ($LASTEXITCODE -ne 0 -or -not $sha) {
-        return [pscustomobject]@{ Status = 'unusable'; Lines = @(); Detail = 'could not be resolved' }
+        return [pscustomobject]@{ Status = 'unusable'; Sha = ''; Paths = @(); Detail = 'could not be resolved' }
     }
     $sha = ([string] $sha).Trim()
 
     $listed = & git -C $MainCheckout ls-tree -r --name-only $sha -- backlog 2>$null
     if ($LASTEXITCODE -ne 0) {
-        return [pscustomobject]@{ Status = 'unusable'; Lines = @(); Detail = 'could not be listed' }
+        return [pscustomobject]@{ Status = 'unusable'; Sha = $sha; Paths = @(); Detail = 'could not be listed' }
     }
 
+    return [pscustomobject]@{ Status = 'ok'; Sha = $sha; Paths = @($listed); Detail = '' }
+}
+
+# The lines of a backlog item, read from a base snapshot rather than from disk.
+#
+# Returns Status plus Lines. 'found' means exactly one item and its content. 'absent' means the
+# snapshot does not carry the item. 'unusable' means more than one file claims the number, or the
+# read of the one file failed. The caller must not treat any of the three as a reason to read the
+# working tree instead: a base was supplied because the base is the authority.
+function Get-BacklogItemLinesFromRef {
+    param(
+        [Parameter(Mandatory)][string] $MainCheckout,
+        [Parameter(Mandatory)][psobject] $Inventory,
+        [Parameter(Mandatory)][string] $ItemNumber
+    )
+
     $pattern = '^backlog/(done/|blocked/)?' + [regex]::Escape($ItemNumber) + '-[^/]*\.md$'
-    $matched = @(@($listed) | Where-Object { $_ -match $pattern })
+    $matched = @(@($Inventory.Paths) | Where-Object { $_ -match $pattern })
     if ($matched.Count -eq 0) {
         return [pscustomobject]@{ Status = 'absent'; Lines = @(); Detail = 'does not carry the item' }
     }
@@ -1120,7 +1139,7 @@ function Get-BacklogItemLinesFromRef {
         return [pscustomobject]@{ Status = 'unusable'; Lines = @(); Detail = "carries $($matched.Count) files for the item" }
     }
 
-    $content = & git -C $MainCheckout show "$($sha):$($matched[0])" 2>$null
+    $content = & git -C $MainCheckout show "$($Inventory.Sha):$($matched[0])" 2>$null
     if ($LASTEXITCODE -ne 0 -or $null -eq $content) {
         return [pscustomobject]@{ Status = 'unusable'; Lines = @(); Detail = 'holds an item that could not be read' }
     }
@@ -1146,9 +1165,9 @@ function Get-WorktreeSlugFromName {
     return $leaf.Substring(3)
 }
 
-# The lines of a backlog item found by slug rather than by number, read from a git ref. Shaped
-# exactly like Get-BacklogItemLinesFromRef, and returns the matched number as well, because the
-# caller has to report which item it judged.
+# The lines of a backlog item found by slug rather than by number, read from the same base snapshot
+# the number lookup reads. Shaped exactly like Get-BacklogItemLinesFromRef, and returns the matched
+# number as well, because the caller has to report which item it judged.
 #
 # The three statuses are not interchangeable, and the caller must not treat them as one.
 # 'absent' means no item carries this slug, so there is nothing here to judge. 'unusable' means the
@@ -1158,23 +1177,12 @@ function Get-WorktreeSlugFromName {
 function Get-BacklogItemLinesFromRefBySlug {
     param(
         [Parameter(Mandatory)][string] $MainCheckout,
-        [Parameter(Mandatory)][string] $BaseRef,
+        [Parameter(Mandatory)][psobject] $Inventory,
         [Parameter(Mandatory)][string] $Slug
     )
 
-    $sha = (& git -C $MainCheckout rev-parse --verify --quiet "$BaseRef^{commit}" 2>$null)
-    if ($LASTEXITCODE -ne 0 -or -not $sha) {
-        return [pscustomobject]@{ Status = 'unusable'; Lines = @(); Detail = "the base '$BaseRef' could not be resolved"; ItemNumber = '' }
-    }
-    $sha = ([string] $sha).Trim()
-
-    $listed = & git -C $MainCheckout ls-tree -r --name-only $sha -- backlog 2>$null
-    if ($LASTEXITCODE -ne 0) {
-        return [pscustomobject]@{ Status = 'unusable'; Lines = @(); Detail = "the base '$BaseRef' could not be listed"; ItemNumber = '' }
-    }
-
     $pattern = '^backlog/(done/|blocked/)?(?<num>' + $WorktreeBacklogNumberPattern + ')-' + [regex]::Escape($Slug) + '\.md$'
-    $matched = @(@($listed) | Where-Object { $_ -match $pattern })
+    $matched = @(@($Inventory.Paths) | Where-Object { $_ -match $pattern })
     if ($matched.Count -eq 0) {
         return [pscustomobject]@{ Status = 'absent'; Lines = @(); Detail = "no backlog item carries the slug '$Slug'"; ItemNumber = '' }
     }
@@ -1187,7 +1195,7 @@ function Get-BacklogItemLinesFromRefBySlug {
 
     # The number is already known, so a read failure names the item it could not read. Returning it
     # empty would make the caller blame the recorded number, which is an item it never opened.
-    $content = & git -C $MainCheckout show "$($sha):$($matched[0])" 2>$null
+    $content = & git -C $MainCheckout show "$($Inventory.Sha):$($matched[0])" 2>$null
     if ($LASTEXITCODE -ne 0 -or $null -eq $content) {
         return [pscustomobject]@{ Status = 'unusable'; Lines = @(); Detail = "backlog item $number could not be read"; ItemNumber = $number }
     }
@@ -1198,6 +1206,10 @@ function Get-BacklogItemLinesFromRefBySlug {
 # It scans the same three folders the number path scans, and it counts matches across all three
 # rather than stopping at the first folder: two folders holding the same slug is the ambiguity
 # this must refuse, not a race to whichever folder is read first.
+#
+# A folder that exists and cannot be read is 'unusable', never 'absent'. "Could not look" and
+# "nothing is there" lead to opposite decisions, and collapsing them lets the caller fall back to
+# the recorded number, which is the defect this whole route exists to close.
 function Get-BacklogItemLinesFromWorkingTreeBySlug {
     param(
         [Parameter(Mandatory)][string] $MainCheckout,
@@ -1209,7 +1221,16 @@ function Get-BacklogItemLinesFromWorkingTreeBySlug {
     foreach ($folder in @('backlog', 'backlog\done', 'backlog\blocked')) {
         $directory = Join-Path $MainCheckout $folder
         if (-not (Test-Path -LiteralPath $directory)) { continue }
-        $candidates = @(Get-ChildItem -LiteralPath $directory -Filter "*-$Slug.md" -File -ErrorAction SilentlyContinue)
+        # No -Filter here, and that is deliberate. Get-ChildItem with a filter answers a folder it
+        # cannot read with an empty list and raises nothing at all, so -ErrorAction Stop never fires
+        # and a permission problem arrives as "no item carries this slug". The caller then falls back
+        # to the recorded number and judges somebody else's item. Without the filter the same call
+        # throws, and the name test below already does the filtering the filter did.
+        try {
+            $candidates = @(Get-ChildItem -LiteralPath $directory -File -ErrorAction Stop)
+        } catch {
+            return [pscustomobject]@{ Status = 'unusable'; Lines = @(); Detail = "the folder '$folder' could not be read"; ItemNumber = '' }
+        }
         foreach ($candidate in $candidates) {
             if ($candidate.BaseName -match $namePattern) {
                 $found += [pscustomobject]@{ Path = $candidate.FullName; Number = $Matches.num }
@@ -1312,10 +1333,23 @@ function Test-WorktreePlanWasImplemented {
     #              saying "Plan: none" would then allow the very removal this guard exists to stop.
     $itemLines = $null
     $judged = $ItemNumber
+
+    # Both lookups below read this one snapshot, so a fetch that moves the base mid-run cannot make
+    # them disagree. It is taken here, after the empty-number allow, so a worktree with nothing
+    # recorded still costs no git call.
+    $inventory = $null
+    if ($BaseRef) {
+        $inventory = Get-BacklogInventoryFromRef -MainCheckout $MainCheckout -BaseRef $BaseRef
+        if ($inventory.Status -ne 'ok') {
+            return New-WorktreePlanVerdict -Allow $false -Reason "the base '$BaseRef' $($inventory.Detail)" `
+                -ItemNumber '' -RecordedItemNumber $recorded
+        }
+    }
+
     $slug = Get-WorktreeSlugFromName -WorktreeName $WorktreeName
     if ($slug) {
-        $bySlug = if ($BaseRef) {
-            Get-BacklogItemLinesFromRefBySlug -MainCheckout $MainCheckout -BaseRef $BaseRef -Slug $slug
+        $bySlug = if ($inventory) {
+            Get-BacklogItemLinesFromRefBySlug -MainCheckout $MainCheckout -Inventory $inventory -Slug $slug
         } else {
             Get-BacklogItemLinesFromWorkingTreeBySlug -MainCheckout $MainCheckout -Slug $slug
         }
@@ -1323,11 +1357,12 @@ function Test-WorktreePlanWasImplemented {
             $judged = $bySlug.ItemNumber
             $itemLines = $bySlug.Lines
         } elseif ($bySlug.Status -eq 'unusable') {
-            # One item was found and could not be read: name it, rather than blaming the recorded
-            # number for a file the guard never opened.
-            if ($bySlug.ItemNumber) { $judged = $bySlug.ItemNumber }
+            # ItemNumber names the item that was judged, so it carries the lookup's own answer and
+            # nothing else. One item found and unreadable names that item. An ambiguous or
+            # unresolvable lookup selected none, and it reports none: filling in the recorded number
+            # there would blame an item the guard never opened.
             return New-WorktreePlanVerdict -Allow $false -Reason $bySlug.Detail `
-                -ItemNumber $judged -RecordedItemNumber $recorded
+                -ItemNumber $bySlug.ItemNumber -RecordedItemNumber $recorded
         }
     }
 
@@ -1335,8 +1370,8 @@ function Test-WorktreePlanWasImplemented {
     # the base cannot answer throws away the reason the base was resolved: a stale local item saying
     # "Plan: none" would then allow the very removal this guard exists to stop. So the base answers
     # or the worktree is kept. The working tree is read only when no base was supplied at all.
-    if ($null -eq $itemLines -and $BaseRef) {
-        $fromRef = Get-BacklogItemLinesFromRef -MainCheckout $MainCheckout -BaseRef $BaseRef -ItemNumber $ItemNumber
+    if ($null -eq $itemLines -and $inventory) {
+        $fromRef = Get-BacklogItemLinesFromRef -MainCheckout $MainCheckout -Inventory $inventory -ItemNumber $ItemNumber
         if ($fromRef.Status -ne 'found') {
             $wording = if ($fromRef.Status -eq 'absent') { "backlog item $ItemNumber is not in '$BaseRef'" }
                        else { "the base '$BaseRef' $($fromRef.Detail)" }

@@ -46,6 +46,36 @@ function Invoke-QuietGit {
     }
 }
 
+# Denies the current account read access to a folder, and gives it back. The plan guard has to
+# tell "this folder holds no matching item" apart from "this folder could not be read", and an
+# access denial is the only way to produce the second one on demand.
+function Set-FolderReadDenied {
+    param([string] $Path, [switch] $Remove)
+
+    $account = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try {
+        if ($Remove) { & icacls $Path /remove:d $account 2>&1 | Out-Null }
+        else { & icacls $Path /deny "${account}:(RX)" 2>&1 | Out-Null }
+    } finally {
+        $ErrorActionPreference = $previous
+    }
+}
+
+# True when the denial really bit. A run whose account walks through its own deny rules cannot
+# express this case, and a test that asserts anyway would fail for the wrong reason.
+function Test-FolderReadDenied {
+    param([string] $Path)
+
+    try {
+        [System.IO.Directory]::GetFiles($Path) | Out-Null
+        return $false
+    } catch {
+        return $true
+    }
+}
+
 # A scratch main checkout, so no case reads the real backlog. The item file and the plan file are
 # both optional: which row of the table a case exercises is decided by which of them exist.
 $scenarios = @()
@@ -367,17 +397,9 @@ try {
     # the only thing left to judge, and judging it is the old behaviour. "unusable" means the slug
     # DID name this worktree's item and the lookup could not deliver it. Falling back there judges a
     # different item, which is the defect this whole change exists to stop.
-    $root = New-SlugScenario
-    Set-Content -LiteralPath (Join-Path $root 'backlog\131-give-each-worktree-removal.md') `
-        -Value "# 131 - twin`n`n- Plan: none - twin"
-    $verdict = Test-WorktreePlanWasImplemented -MainCheckout $root -ItemNumber '118' -WorktreeName 'wt-give-each-worktree-removal'
-    Assert-True (-not $verdict.Allow) 'Two items sharing one slug must refuse'
-    Assert-True ($verdict.Reason -match "2 backlog items carry the slug 'give-each-worktree-removal'") `
-        "The refusal must name the ambiguity, got '$($verdict.Reason)'"
-
-    # The case that proves it is a refusal and not a lucky fallback: the recorded item states it has
-    # no plan, so judging it would ALLOW. Before this rule the guard removed the worktree here,
-    # after judging an item that was never its own.
+    # One fixture covers both halves. The recorded item states it has no plan, so judging it would
+    # ALLOW: a refusal here cannot be a lucky fallback. Before this rule the guard removed the
+    # worktree after judging an item that was never its own.
     $root = New-SlugScenario -RecordedNumber ''
     Set-Content -LiteralPath (Join-Path $root 'backlog\118-a-different-title.md') `
         -Value "# 118 - other`n`n- Plan: none - nothing to do"
@@ -386,6 +408,13 @@ try {
     $verdict = Test-WorktreePlanWasImplemented -MainCheckout $root -ItemNumber '118' -WorktreeName 'wt-give-each-worktree-removal'
     Assert-True (-not $verdict.Allow) `
         "An ambiguous slug must refuse even when the recorded item would allow, got '$($verdict.Reason)'"
+    Assert-True ($verdict.Reason -match "2 backlog items carry the slug 'give-each-worktree-removal'") `
+        "The refusal must name the ambiguity, got '$($verdict.Reason)'"
+
+    # ItemNumber is the item that was judged. An ambiguous lookup judged none, so it stays empty:
+    # reporting the recorded number here would name an item the guard never opened.
+    Assert-Equal '' $verdict.ItemNumber 'An ambiguous slug reports no judged item'
+    Assert-Equal '118' $verdict.RecordedItemNumber 'The verdict still reports what the manifest recorded'
 
     # --- an item found by slug but unreadable refuses, and names itself -----
     # The number is already known at that point, so the refusal says which item it could not read.
@@ -403,6 +432,31 @@ try {
             "The refusal must name the item it could not read, got '$($verdict.Reason)'"
     } finally {
         $heldItem.Dispose()
+    }
+
+    # --- a folder the guard cannot enumerate is unusable, not "no such slug" ---
+    # "Could not look" and "nothing is there" are different answers, and the slug scan used to
+    # return the second one for both. The own item sits in backlog/done, that folder is unreadable,
+    # and the recorded item says "Plan: none" -- so a fallback here ALLOWS, which is the failure
+    # this pins. Note the fix is not -ErrorAction Stop on its own: Get-ChildItem with -Filter
+    # answers an unreadable folder with an empty list and raises nothing at all.
+    $root = New-SlugScenario -OwnFolder 'backlog\done' -RecordedNumber ''
+    Set-Content -LiteralPath (Join-Path $root 'backlog\118-a-different-title.md') `
+        -Value "# 118 - other`n`n- Plan: none - nothing to do"
+    $blockedFolder = Join-Path $root 'backlog\done'
+    Set-FolderReadDenied -Path $blockedFolder
+    try {
+        if (-not (Test-FolderReadDenied -Path $blockedFolder)) {
+            Write-Host 'SKIPPED: this account reads through its own deny rule, so the unreadable-folder case cannot run here.'
+        } else {
+            $verdict = Test-WorktreePlanWasImplemented -MainCheckout $root -ItemNumber '118' -WorktreeName 'wt-give-each-worktree-removal'
+            Assert-True (-not $verdict.Allow) `
+                "A folder the slug scan cannot read must refuse, got '$($verdict.Reason)'"
+            Assert-True ($verdict.Reason -match 'could not be read') `
+                "The refusal must say the folder could not be read, got '$($verdict.Reason)'"
+        }
+    } finally {
+        Set-FolderReadDenied -Path $blockedFolder -Remove
     }
 
     # --- an empty recorded number still allows, even on an unusable slug ----
@@ -467,6 +521,7 @@ try {
     Assert-True (-not $verdict.Allow) 'An unresolvable base must refuse on the slug route as well'
     Assert-True ($verdict.Reason -match 'could not be resolved') `
         "The reason must say the base could not be resolved, got '$($verdict.Reason)'"
+    Assert-Equal '' $verdict.ItemNumber 'An unresolvable base reports no judged item'
 
     # --- the hook gate asks the guard only after the merge gate -------------
     # Asking first made an unmerged worktree fail with the plan guard's wording, and read the
