@@ -131,6 +131,58 @@ rather than the recorded number.
 The earlier ambiguity test could not catch this: its recorded item refused on its own, so the
 fallback looked safe. The new test gives the recorded item a `Plan: none` bullet, which allows.
 
+## The second review round
+
+A second review found four more ways the guard could judge the wrong item, plus one stale comment.
+
+**The direct hook never logged the disagreement.** The sweep wrote "Plan guard judged backlog item
+X; the worktree manifest records item Y" on the allow path, and the hook wrote nothing. The
+acceptance box above says "the diagnostics file names both numbers", and it does not say "in the
+sweep only", so the hook was missing half of it. The hook now writes the same sentence, and
+`tests/WorktreeRemoveHook.Tests.ps1` drives the real hook to prove it.
+
+**The base was resolved twice.** The slug lookup ran `rev-parse` and `ls-tree` for itself, and an
+`absent` answer then sent the number lookup through the same two calls again. A base ref such as
+`origin/main` moves, so a fetch between the two calls let the guard answer "no item carries this
+slug" against one commit and read the recorded item out of another. `Get-BacklogInventoryFromRef`
+now takes one snapshot, and both lookups match against it.
+
+**An unreadable folder read as "no such slug".** The working-tree slug scan used
+`Get-ChildItem -Filter ... -ErrorAction SilentlyContinue`, so a folder it could not read came back
+as `absent`, and the guard fell back to the recorded number. `-ErrorAction Stop` alone does not fix
+this: measured on Windows, `Get-ChildItem` with a `-Filter` answers a folder under a deny rule with
+an empty list and raises nothing at all. The filter is gone, the name test does that work instead,
+and the same call now throws and returns `unusable`.
+
+**`ItemNumber` could name an item the guard never opened.** It started as the recorded number, and
+an ambiguous or unresolvable slug lookup kept that value, which contradicts the field's own
+contract. It now carries the lookup's own answer: the item when one was selected, and empty when
+none was.
+
+**The setup script's comment was stale.** It said the plan guard reads the recorded value rather
+than re-deriving it. The guard resolves the item from the worktree name first now, and reads the
+recorded value only as a fallback.
+
+Three mutations proved the new tests. Each reverted one line, the named suite ran, and the line was
+restored:
+
+| Mutation | Suite | Result |
+|---|---|---|
+| The slug scan goes back to `-Filter` plus `SilentlyContinue` | `WorktreePlanGuard` | fails |
+| The unusable refusal reports the recorded number again | `WorktreePlanGuard` | fails |
+| The hook's allow-path diagnostic is deleted | `WorktreeRemoveHook` | fails |
+
+The one-snapshot change carries no test of its own. Its effect only shows when the base ref moves
+between two git calls, which no single-process test can stage. Every existing base-ref case in
+`tests/WorktreePlanGuard.Tests.ps1` still passes, and those cover the resolve, absent, ambiguous,
+and unresolvable paths.
+
+One reviewer suggestion was not taken: dropping one of the two hook refusal fixtures. The box "Two
+different refusal reasons produce two different lines in that log" is not scoped to the sweep, and
+those two fixtures are the only proof of it on the hook path.
+
+`pwsh ./scripts/run-powershell-suites.ps1` — 45 of 45 suites pass.
+
 ## How this was verified
 
 `pwsh ./scripts/run-powershell-suites.ps1` — all 45 suites pass. Build, format check, and

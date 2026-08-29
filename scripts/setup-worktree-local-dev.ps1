@@ -653,9 +653,13 @@ function Write-BackendWorktreeDockerProfile {
 }
 
 # The backlog item this worktree serves, found once at creation time while both names exist.
-# Returns '' when the worktree was created with -Name, or when no open item matches its slug. The
-# plan guard reads the recorded value rather than re-deriving it later: by removal time the folder
-# may be gone, and the slug match already misses for at least one live worktree.
+# Returns '' when the worktree was created with -Name, or when no open item matches its slug.
+#
+# The plan guard does not read this value first any more. It resolves the item from the worktree's
+# own directory name, because a renumber changes the number and never the slug, and it reads the
+# value recorded here only when no item carries that slug. The recorded value still matters: it is
+# the last answer left for a worktree whose name matches nothing, and by removal time the folder
+# may be gone.
 #
 # Only backlog/ is searched, never backlog/done or backlog/blocked. A worktree is created either to
 # pick up an open item, whose number this finds, or to file a new one, which does not exist yet and
