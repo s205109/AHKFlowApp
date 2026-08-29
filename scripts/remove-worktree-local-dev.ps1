@@ -983,6 +983,16 @@ function Invoke-HookMode {
                 -BranchName $branchName -Reason $planVerdict.Reason
             return
         }
+
+        # The guard allowed removal while the manifest names one item and the worktree name names
+        # another. That is a stale recorded number, not a reason to keep anything, so it goes to
+        # diagnostics and never to the outcome line. The sweep writes the same sentence, so one
+        # search finds the case whichever writer handled it.
+        if ($planVerdict.ItemNumber -and $planVerdict.RecordedItemNumber -and
+            $planVerdict.ItemNumber -ne $planVerdict.RecordedItemNumber) {
+            Write-DiagnosticLog ("Plan guard judged backlog item $($planVerdict.ItemNumber); " +
+                "the worktree manifest records item $($planVerdict.RecordedItemNumber).")
+        }
     }
 
     # --- snapshot watcher script + sidecar params outside the worktree ------

@@ -445,6 +445,54 @@ foreach ($case in @(
     }
 }
 
+# --- Test: the hook removes a stale-numbered worktree and logs the disagreement ---
+# The guard allows while the manifest names one item and the worktree name names another. That is
+# a stale recorded number, not a reason to keep anything, so the removal goes ahead and both
+# numbers go to diagnostics. The sweep already does this; the hook is the other writer, and a
+# human reading only the hook's log had no way to see which item was judged.
+$repo = New-TempGitRepo
+try {
+    Set-Content -LiteralPath (Join-Path $repo '.gitignore') -Value 'scripts/.env.worktree' -Encoding utf8
+    New-Item -ItemType Directory -Path (Join-Path $repo 'backlog\done') -Force | Out-Null
+    New-Item -ItemType Directory -Path (Join-Path $repo 'docs\superpowers\plans') -Force | Out-Null
+
+    # The worktree's own item: shipped into done/, with a plan whose steps are ticked. Judging it
+    # allows removal.
+    Set-Content -LiteralPath (Join-Path $repo 'backlog\done\120-planguard-stale.md') `
+        -Value "# 120 - own`n`n- Plan: ``docs/superpowers/plans/plan-120.md``" -Encoding utf8
+    Set-Content -LiteralPath (Join-Path $repo 'docs\superpowers\plans\plan-120.md') -Value "- [x] Step 1" -Encoding utf8
+
+    # The item the stale number names: still open, with the unfilled template pointer. Judging it
+    # refuses, so a removal here proves the guard judged the other one.
+    Set-Content -LiteralPath (Join-Path $repo 'backlog\118-a-different-title.md') `
+        -Value "# 118 - other`n`n- Plan: <path, or ""none - reason"">" -Encoding utf8
+    Invoke-TestGit $repo @('add', '-A') | Out-Null
+    Invoke-TestGit $repo @('commit', '-m', 'seed both items') | Out-Null
+
+    $wtPath = Add-TestWorktree -RepoDir $repo -BranchName 'planguard-stale'
+    New-Item -ItemType Directory -Path (Join-Path $wtPath 'scripts') -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $wtPath 'scripts\.env.worktree') -Value 'AHKFLOW_BACKLOG_ITEM=118' -Encoding utf8
+
+    $result = Invoke-RemoveHook -WorktreePath $wtPath
+    Assert-Equal 0 $result.ExitCode "Hook should exit 0. Stderr: $($result.Stderr)"
+
+    $removed = Wait-ForCondition { -not (Test-Path -LiteralPath $wtPath) }
+    Assert-True $removed "A stale recorded number must not stop the removal. Stderr: $($result.Stderr)"
+
+    $outcomeLines = @(Wait-ForOutcomeLine -RepoDir $repo)
+    Assert-Equal 1 $outcomeLines.Count "A stale-number removal writes exactly one outcome line, got $($outcomeLines.Count)"
+    Assert-True ($outcomeLines[0] -match 'Removed\.$') "Expected the normal removal line, got '$($outcomeLines[0])'"
+
+    # The disagreement is a diagnostic, never an outcome.
+    $diagnostics = Get-Content -Raw -LiteralPath (Get-RemovalDiagnosticsPath $repo)
+    Assert-True ($diagnostics -match 'Plan guard judged backlog item 120') `
+        "The diagnostics must name the item that was judged. Log: $diagnostics"
+    Assert-True ($diagnostics -match 'records item 118') `
+        "The diagnostics must name the recorded number too. Log: $diagnostics"
+} finally {
+    Remove-TempTree $repo
+}
+
 # --- Test: merged + dirty -> folder preserved -----------------------------------
 $repo = New-TempGitRepo
 try {
