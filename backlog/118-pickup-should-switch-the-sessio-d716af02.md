@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: CLI
 - **Difficulty**: moderate
-- **Stage**: 4-execute
+- **Stage**: 7-document
 
 ## Summary
 
@@ -63,14 +63,21 @@ working in, so that I do not have to notice it silently restarted on `main`.
 
 ## Acceptance criteria
 
-- [ ] A written measurement says whether the `058` `Edit`/`Write` refusal still fires under
+- [x] A written measurement says whether the `058` `Edit`/`Write` refusal still fires under
       `docs/superpowers/` on the installed Claude Code version, with the version recorded.
-- [ ] A written measurement says whether a resumed session returns to a worktree entered with
-      `EnterWorktree`.
-- [ ] One of the three candidate fixes is chosen, with the reason the other two were not.
+      It still fires, word for word, on `2.1.251`.
+- [x] A written measurement says whether a resumed session returns to a worktree entered with
+      `EnterWorktree`. It does.
+- [x] One of the three candidate fixes is chosen, with the reason the other two were not.
+      Candidate 1. See `docs/adr/0012-pickup-enters-the-worktree.md`.
 - [ ] The chosen fix is implemented, and a session that picks up an item can no longer end that
       pickup with its working directory in the main checkout.
-- [ ] `.claude/CLAUDE.md` and `docs/development/workflow.md` describe the route that is actually
+      **Half true, so left unticked.** The fix is implemented, and once a session enters the
+      worktree the harness refuses to let it write into the main checkout. Nothing forces the
+      session to enter in the first place. Only candidate 3's session marker would have made
+      "can no longer" literally true, and the human chose candidate 1 without it. The route is
+      now a rule in three documents and an exit condition of Stage 1, not an enforced barrier.
+- [x] `.claude/CLAUDE.md` and `docs/development/workflow.md` describe the route that is actually
       taken, and no longer describe one that was abandoned.
 
 ## Out of scope
