@@ -266,8 +266,9 @@ the API URL + `/health`. SWA hostname:
 ## Git Workflow
 
 - Use GitHub Flow: feature branches from `main`, a PR for every merge — see [workflow.md#stage-1-pickup](docs/development/workflow.md#stage-1-pickup).
-- Name branches `feature/short-description`, `fix/short-description`, or `hotfix/issueid-short-description` — see [workflow.md#stage-1-pickup](docs/development/workflow.md#stage-1-pickup).
+- Name branches `feature/short-description`, `fix/short-description`, `chore/short-description`, or `hotfix/issueid-short-description`. Use `chore/` for a housekeeping round, which carries no single feature and no single fix — see [workflow.md#stage-1-pickup](docs/development/workflow.md#stage-1-pickup).
 - Insert `wt-` after the type prefix for a branch born in an agent worktree: `fix/wt-<topic>`, `feature/wt-<topic>`. No backlog number appears in a branch name or a worktree name; the number lives in the backlog item file — see [workflow.md#stage-0-intake](docs/development/workflow.md#stage-0-intake).
+- Name the housekeeping round's worktree `wt-backlog-housekeeping` and its branch `chore/wt-backlog-housekeeping`. Both names stay generic, because one round carries several unrelated chores. Never name a round after one chore inside it — see [workflow.md#stage-1-pickup](docs/development/workflow.md#stage-1-pickup).
 - Confirm the base before branching, and state it. Pass `-BaseRef <branch>` to `scripts/new-worktree.ps1` for work that builds on an unmerged branch. The native worktree tool cannot pass a base ref, so stacked work calls the script directly — see [workflow.md#stage-1-pickup](docs/development/workflow.md#stage-1-pickup).
 - Write conventional commits: `feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `chore:`. The body explains "why", not "what" — see [workflow.md#stage-4-execute](docs/development/workflow.md#stage-4-execute).
 - Keep commits atomic: one logical change per commit, a feature and its tests together. Do not bundle unrelated changes — see [workflow.md#stage-4-execute](docs/development/workflow.md#stage-4-execute).
