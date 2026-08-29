@@ -88,5 +88,8 @@ working in, so that I do not have to notice it silently restarted on `main`.
   [`docs/agents/cross-agent-git-guardrails.md`](../docs/agents/cross-agent-git-guardrails.md).
 - This file was renumbered from 117 by hand. `scripts/new-backlog-item.ps1` picked 117 because
   it reads the working tree, and the real 117 lives on an unmerged branch. Worth its own item.
+- Pickup: branch `fix/wt-pickup-should-switch-the-sessio-d716af02`, based on `main` at
+  `4f51230b`. Worktree `.claude/worktrees/wt-pickup-should-switch-the-sessio-d716af02`, created
+  with `scripts/new-worktree.ps1` and then entered with the native `EnterWorktree` tool.
 - Spec: <path, or "none - reason">
 - Plan: <path, or "none - reason">
