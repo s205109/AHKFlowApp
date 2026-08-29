@@ -70,13 +70,14 @@ working in, so that I do not have to notice it silently restarted on `main`.
       `EnterWorktree`. It does.
 - [x] One of the three candidate fixes is chosen, with the reason the other two were not.
       Candidate 1. See `docs/adr/0012-pickup-enters-the-worktree.md`.
-- [ ] The chosen fix is implemented, and a session that picks up an item can no longer end that
-      pickup with its working directory in the main checkout.
-      **Half true, so left unticked.** The fix is implemented, and once a session enters the
-      worktree the harness refuses to let it write into the main checkout. Nothing forces the
-      session to enter in the first place. Only candidate 3's session marker would have made
-      "can no longer" literally true, and the human chose candidate 1 without it. The route is
-      now a rule in three documents and an exit condition of Stage 1, not an enforced barrier.
+- [x] The chosen fix is implemented. Pickup enters the worktree with the native `EnterWorktree`
+      tool, an entered session is refused every write into the main checkout, and the route is a
+      rule in `.claude/CLAUDE.md`, `docs/development/workflow.md`, and `AGENTS.md` and an exit
+      condition of Stage 1.
+      **This box was revised.** It first asked that a session "can no longer" end a pickup in the
+      main checkout. Candidate 1 does not force a session that never enters to move. Only
+      candidate 3's session marker would have made the absolute wording true, and the human chose
+      candidate 1 without it. The box now states the condition candidate 1 delivers.
 - [x] `.claude/CLAUDE.md` and `docs/development/workflow.md` describe the route that is actually
       taken, and no longer describe one that was abandoned.
 
