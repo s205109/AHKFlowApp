@@ -6,7 +6,7 @@
 - **Type**: Fix
 - **Interfaces**: none - repository tooling
 - **Difficulty**: moderate
-- **Stage**: 7-document
+- **Stage**: 9-ship
 
 ## Summary
 
