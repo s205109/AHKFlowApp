@@ -9,7 +9,7 @@ AHKFlowApp worktrees carry local-dev isolation — per-worktree ports, database,
 
 ## Creating
 
-**Claude Code:** run `new-worktree.ps1` directly (see below), and pass `-Title` so the worktree name matches the backlog item. Then move the session into the worktree with the native `EnterWorktree` tool, passing the `path` the script printed. Do not create the worktree through the native tool. That route fires the `WorktreeCreate` hook, which runs the same script, but the hook contract carries only a name, so it cannot pass `-Title` or `-BaseRef`, and it leaves a worktree the exit prompt offers to delete. Reasons in full: [docs/adr/0012-pickup-enters-the-worktree.md](../../docs/adr/0012-pickup-enters-the-worktree.md).
+**Claude Code:** run `new-worktree.ps1` directly (see below), and pass `-Title` so the worktree name matches the backlog item. Then move the session into the worktree with the native `EnterWorktree` tool, passing the `path` the script printed. Do not create the worktree through the native tool. That route fires the `WorktreeCreate` hook, which runs the same script, but the hook contract carries only a name, so it cannot pass `-Title` or `-BaseRef`, and it leaves a worktree the exit prompt offers to delete. Reasons in full: `docs/adr/0012-pickup-enters-the-worktree.md` at the repository root.
 
 **Codex, Copilot, plain git, or any non-hook path:** run the script directly from the main checkout:
 
@@ -138,7 +138,7 @@ Two limits are deliberate.
 #### Claude Code in-conversation native creation: ask once, then remember
 
 The primary route is `new-worktree.ps1` followed by `EnterWorktree` with `path`, per
-[docs/adr/0012-pickup-enters-the-worktree.md](../../docs/adr/0012-pickup-enters-the-worktree.md).
+`docs/adr/0012-pickup-enters-the-worktree.md` at the repository root.
 This section applies only to the discouraged fallback: creating a brand-new worktree via
 `EnterWorktree` with `name` in direct response to a conversation request. Entering an
 existing worktree with `path` never triggers this.

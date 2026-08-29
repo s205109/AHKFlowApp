@@ -33,7 +33,7 @@ it stops in between. That is the exact partial failure the deferred cleanup rout
 the sweep is blind to it.
 
 Stage 10 — Cleanup therefore hands the reader a hand-written check
-(`docs/development/workflow.md:650`, "Branch still present, worktree already gone."): a local
+(`docs/development/workflow.md:652`, "Branch still present, worktree already gone."): a local
 branch other than `main`, merged into `main`, with no registered worktree, whose tip differs from
 `main`'s tip. The tip comparison is what keeps it usable, because `git branch --merged main` alone
 also lists every branch freshly cut from `main`.
@@ -48,7 +48,7 @@ also lists every branch freshly cut from `main`.
       the remote still counts (backlog 094)
 - [x] A fixture proves both leftovers and proves a clean repository reports nothing
 - [x] The Cleanup leftover check
-      (`docs/development/workflow.md:650`, "Branch still present, worktree already gone.")
+      (`docs/development/workflow.md:652`, "Branch still present, worktree already gone.")
       names the command instead of the hand-written check
 
 ## Out of scope

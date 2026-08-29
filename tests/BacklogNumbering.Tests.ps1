@@ -457,7 +457,7 @@ finally {
 
 # --- Case 19: a blocked item keeps its last stage, so blocked/ takes any valid value ---
 #
-# (`docs/development/workflow.md:699`, "A blocked item keeps its last stage"). Only done/ is pinned
+# (`docs/development/workflow.md:701`, "A blocked item keeps its last stage"). Only done/ is pinned
 # to a single value.
 
 $tempRoot = New-TemporaryBacklogRoot

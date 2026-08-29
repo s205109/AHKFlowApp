@@ -252,7 +252,7 @@ A housekeeping round files no backlog item at all, so none of this applies to it
 
 - **Entry** — item chosen
 - **Who** — Sonnet, default effort
-- **Technique** — `scripts/new-worktree.ps1` to create, then the agent's native `EnterWorktree` tool with `path` to move the session into it. `-BaseRef` recreates the worktree when the base was wrong. Trivial work uses the housekeeping worktree
+- **Technique** — `scripts/new-worktree.ps1` to create, then move the session into it with `path`. In Claude Code that move is the native `EnterWorktree` tool; Codex, Copilot, and plain git have no such tool and start with the working directory in the worktree. `-BaseRef` recreates the worktree when the base was wrong. Trivial work uses the housekeeping worktree
 - **Action** — choose the execution location by Difficulty: a dedicated worktree for `moderate` and `complex`, the housekeeping worktree for `trivial`. **Then move the session into it**, so the location survives a resume. Confirm branch and base, and state both. For a tracked item: push the branch, open the draft pull request, and **only then** stamp the Stage the Difficulty jump names — publishing the next Stage before the pull request exists would claim an exit condition that is still false. Until that stamp lands the item keeps `Stage: 1-pickup`, and the worktree is the pointer. For a housekeeping round: no item, so no Stage stamp and no push here. The round worktree is the pointer, and the route is the round pull request opened at Execute close
 - **Exit** — Location chosen by Difficulty, session inside it, base confirmed and stated, PR route in place
 - **Next** — `2-design/3-plan/4-execute`
@@ -277,9 +277,11 @@ records where the work lives. A resumed session then starts again on `main`. Tha
 also unguarded: this repository's write isolation decides from the working directory, so while the
 session sits in main the guard treats it as a main-checkout session and never fires.
 
-So Pickup creates with `scripts/new-worktree.ps1` and then enters with the native `EnterWorktree`
-tool, passing the `path` the script printed. Entering is what the harness records, and a resumed
-session comes back inside the worktree on its own.
+So Pickup creates with `scripts/new-worktree.ps1`, then the session moves into it by `path`. In
+Claude Code that move is the native `EnterWorktree` tool, and the harness records it, so a
+resumed session comes back inside the worktree on its own. Codex, Copilot, and plain git have
+no such tool: they run with the working directory set to the worktree, and this repository's
+own write guard, which reads the working directory, isolates them.
 
 Enter with `path`, never create with `name`. Creating through the tool runs the same script, but it
 cannot pass `-Title`, which keeps the worktree name equal to the backlog item's, and it cannot pass
@@ -745,8 +747,8 @@ never entered a worktree — Codex or Copilot — commits in place, because the 
 reads a session flag those agents do not set.
 
 If the session stops between the exit and the re-enter, the next resume starts in the main
-checkout. Re-enter the worktree before any other work. The Design and Plan resume edges
-assume the session is already inside it.
+checkout. The Design and Plan resume edges check for this and re-enter the worktree first.
+When you resume at any other stage, re-enter the worktree yourself before any other work.
 
 Two paths stay refused for every session. The folder root itself, because renaming or
 deleting `docs/superpowers` breaks the link every worktree depends on. And
