@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: CLI
 - **Difficulty**: to-be-determined
-- **Stage**: 0-intake
+- **Stage**: 2-design
 
 ## Summary
 
@@ -91,5 +91,6 @@ working in, so that I do not have to notice it silently restarted on `main`.
 - Pickup: branch `fix/wt-pickup-should-switch-the-sessio-d716af02`, based on `main` at
   `4f51230b`. Worktree `.claude/worktrees/wt-pickup-should-switch-the-sessio-d716af02`, created
   with `scripts/new-worktree.ps1` and then entered with the native `EnterWorktree` tool.
+- Draft pull request: https://github.com/s205109/AHKFlowApp/pull/364.
 - Spec: <path, or "none - reason">
 - Plan: <path, or "none - reason">
