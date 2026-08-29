@@ -1083,36 +1083,55 @@ function Resolve-BacklogPlanPath {
     return $fullCandidate
 }
 
-# The lines of a backlog item, read from a git ref rather than from disk. The merge gate decides
-# against the resolved base, so the plan gate must read the same base: an item filed on the branch
-# and merged on GitHub lives in that ref long before a local pull puts it on disk.
+# One snapshot of the base: the commit it names, plus every path under backlog/ in that commit.
+# The merge gate decides against the resolved base, so the plan gate must read the same base -- an
+# item filed on the branch and merged on GitHub lives in that ref long before a local pull puts it
+# on disk.
 #
-# Returns Status plus Lines. 'found' means exactly one item and its content. 'absent' means the ref
-# is readable and does not carry the item. 'unusable' means the ref could not be resolved, git
-# failed, or more than one file claims the number. The caller must not treat any of the three as a
-# reason to read the working tree instead: a base was supplied because the base is the authority.
-function Get-BacklogItemLinesFromRef {
+# The plan gate looks the item up twice, once by slug and once by number, and both lookups read
+# this one snapshot. Resolving the ref inside each lookup let a fetch move it in between: the guard
+# could answer "no item carries this slug" against one commit and then read the recorded item out
+# of another. That is the wrong-item defect through a third door.
+#
+# Status 'ok' carries Sha and Paths. Status 'unusable' means the ref could not be resolved, or git
+# could not list it, and Detail is the end of a sentence the caller starts with the ref name.
+function Get-BacklogInventoryFromRef {
     param(
         [Parameter(Mandatory)][string] $MainCheckout,
-        [Parameter(Mandatory)][string] $BaseRef,
-        [Parameter(Mandatory)][string] $ItemNumber
+        [Parameter(Mandatory)][string] $BaseRef
     )
 
     # Pin the base to one commit first. Without this, a ref that does not exist and a ref that
     # simply lacks the item both arrive as an empty listing, and they are not the same answer.
     $sha = (& git -C $MainCheckout rev-parse --verify --quiet "$BaseRef^{commit}" 2>$null)
     if ($LASTEXITCODE -ne 0 -or -not $sha) {
-        return [pscustomobject]@{ Status = 'unusable'; Lines = @(); Detail = 'could not be resolved' }
+        return [pscustomobject]@{ Status = 'unusable'; Sha = ''; Paths = @(); Detail = 'could not be resolved' }
     }
     $sha = ([string] $sha).Trim()
 
     $listed = & git -C $MainCheckout ls-tree -r --name-only $sha -- backlog 2>$null
     if ($LASTEXITCODE -ne 0) {
-        return [pscustomobject]@{ Status = 'unusable'; Lines = @(); Detail = 'could not be listed' }
+        return [pscustomobject]@{ Status = 'unusable'; Sha = $sha; Paths = @(); Detail = 'could not be listed' }
     }
 
+    return [pscustomobject]@{ Status = 'ok'; Sha = $sha; Paths = @($listed); Detail = '' }
+}
+
+# The lines of a backlog item, read from a base snapshot rather than from disk.
+#
+# Returns Status plus Lines. 'found' means exactly one item and its content. 'absent' means the
+# snapshot does not carry the item. 'unusable' means more than one file claims the number, or the
+# read of the one file failed. The caller must not treat any of the three as a reason to read the
+# working tree instead: a base was supplied because the base is the authority.
+function Get-BacklogItemLinesFromRef {
+    param(
+        [Parameter(Mandatory)][string] $MainCheckout,
+        [Parameter(Mandatory)][psobject] $Inventory,
+        [Parameter(Mandatory)][string] $ItemNumber
+    )
+
     $pattern = '^backlog/(done/|blocked/)?' + [regex]::Escape($ItemNumber) + '-[^/]*\.md$'
-    $matched = @(@($listed) | Where-Object { $_ -match $pattern })
+    $matched = @(@($Inventory.Paths) | Where-Object { $_ -match $pattern })
     if ($matched.Count -eq 0) {
         return [pscustomobject]@{ Status = 'absent'; Lines = @(); Detail = 'does not carry the item' }
     }
@@ -1120,11 +1139,143 @@ function Get-BacklogItemLinesFromRef {
         return [pscustomobject]@{ Status = 'unusable'; Lines = @(); Detail = "carries $($matched.Count) files for the item" }
     }
 
-    $content = & git -C $MainCheckout show "$($sha):$($matched[0])" 2>$null
+    $content = & git -C $MainCheckout show "$($Inventory.Sha):$($matched[0])" 2>$null
     if ($LASTEXITCODE -ne 0 -or $null -eq $content) {
         return [pscustomobject]@{ Status = 'unusable'; Lines = @(); Detail = 'holds an item that could not be read' }
     }
     return [pscustomobject]@{ Status = 'found'; Lines = @($content); Detail = '' }
+}
+
+# The number shape a backlog file name may carry. Three digits, plus an optional lower-case
+# letter: this repository ships suffixed items such as 022b, and tests/BacklogNumbering.Tests.ps1
+# pins that shape. A digits-only pattern would skip 022b in silence.
+$WorktreeBacklogNumberPattern = '[0-9]{3}[a-z]?'
+
+# The slug half of a worktree directory name, or '' when the name has no 'wt-' prefix.
+# A worktree is named 'wt-' plus the title slug and a backlog file is the number plus the same
+# slug, both from ConvertTo-BacklogSlug. A renumber changes the number and never the slug, so the
+# slug is the identity that does not drift. Accepts a full path or a bare leaf name, and the
+# folder does not have to exist: this reads the string only.
+function Get-WorktreeSlugFromName {
+    param([string] $WorktreeName)
+
+    if ([string]::IsNullOrWhiteSpace($WorktreeName)) { return '' }
+    $leaf = Split-Path -Leaf ($WorktreeName.TrimEnd('\', '/'))
+    if (-not $leaf.StartsWith('wt-')) { return '' }
+    return $leaf.Substring(3)
+}
+
+# The lines of a backlog item found by slug rather than by number, read from the same base snapshot
+# the number lookup reads. Shaped exactly like Get-BacklogItemLinesFromRef, and returns the matched
+# number as well, because the caller has to report which item it judged.
+#
+# The three statuses are not interchangeable, and the caller must not treat them as one.
+# 'absent' means no item carries this slug, so there is nothing here to judge. 'unusable' means the
+# slug DID name an item and the lookup could not deliver it: more than one match, or a read that
+# failed. Those two answers lead to opposite decisions, so Detail is written as a complete clause
+# that names the real reason, ready to go straight into a refusal.
+function Get-BacklogItemLinesFromRefBySlug {
+    param(
+        [Parameter(Mandatory)][string] $MainCheckout,
+        [Parameter(Mandatory)][psobject] $Inventory,
+        [Parameter(Mandatory)][string] $Slug
+    )
+
+    $pattern = '^backlog/(done/|blocked/)?(?<num>' + $WorktreeBacklogNumberPattern + ')-' + [regex]::Escape($Slug) + '\.md$'
+    $matched = @(@($Inventory.Paths) | Where-Object { $_ -match $pattern })
+    if ($matched.Count -eq 0) {
+        return [pscustomobject]@{ Status = 'absent'; Lines = @(); Detail = "no backlog item carries the slug '$Slug'"; ItemNumber = '' }
+    }
+    if ($matched.Count -gt 1) {
+        return [pscustomobject]@{ Status = 'unusable'; Lines = @(); Detail = "$($matched.Count) backlog items carry the slug '$Slug'"; ItemNumber = '' }
+    }
+
+    $null = $matched[0] -match $pattern
+    $number = $Matches.num
+
+    # The number is already known, so a read failure names the item it could not read. Returning it
+    # empty would make the caller blame the recorded number, which is an item it never opened.
+    $content = & git -C $MainCheckout show "$($Inventory.Sha):$($matched[0])" 2>$null
+    if ($LASTEXITCODE -ne 0 -or $null -eq $content) {
+        return [pscustomobject]@{ Status = 'unusable'; Lines = @(); Detail = "backlog item $number could not be read"; ItemNumber = $number }
+    }
+    return [pscustomobject]@{ Status = 'found'; Lines = @($content); Detail = ''; ItemNumber = $number }
+}
+
+# The working-tree twin of Get-BacklogItemLinesFromRefBySlug, for the call that supplies no base.
+# It scans the same three folders the number path scans, and it counts matches across all three
+# rather than stopping at the first folder: two folders holding the same slug is the ambiguity
+# this must refuse, not a race to whichever folder is read first.
+#
+# A folder that exists and cannot be read is 'unusable', never 'absent'. "Could not look" and
+# "nothing is there" lead to opposite decisions, and collapsing them lets the caller fall back to
+# the recorded number, which is the defect this whole route exists to close.
+function Get-BacklogItemLinesFromWorkingTreeBySlug {
+    param(
+        [Parameter(Mandatory)][string] $MainCheckout,
+        [Parameter(Mandatory)][string] $Slug
+    )
+
+    $namePattern = '^(?<num>' + $WorktreeBacklogNumberPattern + ')-' + [regex]::Escape($Slug) + '$'
+    $found = @()
+    foreach ($folder in @('backlog', 'backlog\done', 'backlog\blocked')) {
+        $directory = Join-Path $MainCheckout $folder
+        if (-not (Test-Path -LiteralPath $directory)) { continue }
+        # No -Filter here, and that is deliberate. Get-ChildItem with a filter answers a folder it
+        # cannot read with an empty list and raises nothing at all, so -ErrorAction Stop never fires
+        # and a permission problem arrives as "no item carries this slug". The caller then falls back
+        # to the recorded number and judges somebody else's item. Without the filter the same call
+        # throws, and the name test below already does the filtering the filter did.
+        try {
+            $candidates = @(Get-ChildItem -LiteralPath $directory -File -ErrorAction Stop)
+        } catch {
+            return [pscustomobject]@{ Status = 'unusable'; Lines = @(); Detail = "the folder '$folder' could not be read"; ItemNumber = '' }
+        }
+        foreach ($candidate in $candidates) {
+            if ($candidate.BaseName -match $namePattern) {
+                $found += [pscustomobject]@{ Path = $candidate.FullName; Number = $Matches.num }
+            }
+        }
+    }
+
+    if ($found.Count -eq 0) {
+        return [pscustomobject]@{ Status = 'absent'; Lines = @(); Detail = "no backlog item carries the slug '$Slug'"; ItemNumber = '' }
+    }
+    if ($found.Count -gt 1) {
+        return [pscustomobject]@{ Status = 'unusable'; Lines = @(); Detail = "$($found.Count) backlog items carry the slug '$Slug'"; ItemNumber = '' }
+    }
+
+    # As in the ref twin: the number is known, so a read failure names the item it could not read.
+    try {
+        $lines = @(Get-Content -LiteralPath $found[0].Path -ErrorAction Stop)
+    } catch {
+        return [pscustomobject]@{ Status = 'unusable'; Lines = @(); Detail = "backlog item $($found[0].Number) could not be read"; ItemNumber = $found[0].Number }
+    }
+    return [pscustomobject]@{ Status = 'found'; Lines = $lines; Detail = ''; ItemNumber = $found[0].Number }
+}
+
+# One shape for every verdict the plan guard returns. ItemNumber is the item that was judged and
+# RecordedItemNumber is what the manifest said, which are not always the same number after a
+# renumber. When they differ the reason names both, so no caller has to guess which one applied.
+function New-WorktreePlanVerdict {
+    param(
+        [Parameter(Mandatory)][bool] $Allow,
+        [Parameter(Mandatory)][AllowEmptyString()][string] $Reason,
+        [AllowEmptyString()][string] $ItemNumber = '',
+        [AllowEmptyString()][string] $RecordedItemNumber = ''
+    )
+
+    $text = $Reason
+    if ($ItemNumber -and $RecordedItemNumber -and $ItemNumber -ne $RecordedItemNumber) {
+        $text = "$Reason (the worktree manifest records item $RecordedItemNumber)"
+    }
+
+    return [pscustomobject]@{
+        Allow = $Allow
+        Reason = $text
+        ItemNumber = $ItemNumber
+        RecordedItemNumber = $RecordedItemNumber
+    }
 }
 
 # Answers whether a worktree's plan was ever implemented, which is a different question from
@@ -1143,32 +1294,88 @@ function Test-WorktreePlanWasImplemented {
     param(
         [Parameter(Mandatory)][string] $MainCheckout,
         [string] $ItemNumber,
-        [string] $BaseRef
+        [string] $BaseRef,
+        [string] $WorktreeName
     )
+
+    $recorded = $ItemNumber
 
     # A manifest that is there but could not be read is not a worktree with nothing to judge. The
     # guard has no answer, and a guard with no answer refuses.
     if ($ItemNumber -eq $WorktreeBacklogItemUnreadable) {
-        return [pscustomobject]@{ Allow = $false; Reason = 'the worktree manifest could not be read' }
+        return New-WorktreePlanVerdict -Allow $false -Reason 'the worktree manifest could not be read'
     }
 
     # No recorded number means a worktree created with -Name, or one created before the manifest
     # carried the key. Nothing can be judged, so nothing is refused.
+    #
+    # This stays ahead of the slug route on purpose. A worktree with nothing recorded is removable
+    # by contract, and a slug that happens to match some open item must not turn that allow into a
+    # refusal.
     if ([string]::IsNullOrWhiteSpace($ItemNumber)) {
-        return [pscustomobject]@{ Allow = $true; Reason = 'no backlog item is recorded for this worktree' }
+        return New-WorktreePlanVerdict -Allow $true -Reason 'no backlog item is recorded for this worktree'
+    }
+
+    # The recorded number goes stale. A renumber is a hand `git mv` plus a heading edit, and
+    # nothing rewrites the manifest, so the guard used to judge somebody else's item. The worktree
+    # directory name carries the title slug, which a renumber never changes, so the slug resolves
+    # the item the worktree really serves.
+    #
+    # The lookup's three answers lead to three different decisions, and collapsing any two of them
+    # is how this guard fails open:
+    #
+    #   found    - judge that item.
+    #   absent   - no item carries this slug, so there is nothing here to judge. Fall back to the
+    #              recorded number, which is exactly the old behaviour. A slug that matches nothing
+    #              must never skip a check the guard would otherwise make.
+    #   unusable - the slug DID name this worktree's item and the lookup could not deliver it.
+    #              Refuse. Falling back here judges a DIFFERENT item, and a stale recorded item
+    #              saying "Plan: none" would then allow the very removal this guard exists to stop.
+    $itemLines = $null
+    $judged = $ItemNumber
+
+    # Both lookups below read this one snapshot, so a fetch that moves the base mid-run cannot make
+    # them disagree. It is taken here, after the empty-number allow, so a worktree with nothing
+    # recorded still costs no git call.
+    $inventory = $null
+    if ($BaseRef) {
+        $inventory = Get-BacklogInventoryFromRef -MainCheckout $MainCheckout -BaseRef $BaseRef
+        if ($inventory.Status -ne 'ok') {
+            return New-WorktreePlanVerdict -Allow $false -Reason "the base '$BaseRef' $($inventory.Detail)" `
+                -ItemNumber '' -RecordedItemNumber $recorded
+        }
+    }
+
+    $slug = Get-WorktreeSlugFromName -WorktreeName $WorktreeName
+    if ($slug) {
+        $bySlug = if ($inventory) {
+            Get-BacklogItemLinesFromRefBySlug -MainCheckout $MainCheckout -Inventory $inventory -Slug $slug
+        } else {
+            Get-BacklogItemLinesFromWorkingTreeBySlug -MainCheckout $MainCheckout -Slug $slug
+        }
+        if ($bySlug.Status -eq 'found') {
+            $judged = $bySlug.ItemNumber
+            $itemLines = $bySlug.Lines
+        } elseif ($bySlug.Status -eq 'unusable') {
+            # ItemNumber names the item that was judged, so it carries the lookup's own answer and
+            # nothing else. One item found and unreadable names that item. An ambiguous or
+            # unresolvable lookup selected none, and it reports none: filling in the recorded number
+            # there would blame an item the guard never opened.
+            return New-WorktreePlanVerdict -Allow $false -Reason $bySlug.Detail `
+                -ItemNumber $bySlug.ItemNumber -RecordedItemNumber $recorded
+        }
     }
 
     # A supplied base is the authority, and it decides alone. Falling back to the working tree when
     # the base cannot answer throws away the reason the base was resolved: a stale local item saying
     # "Plan: none" would then allow the very removal this guard exists to stop. So the base answers
     # or the worktree is kept. The working tree is read only when no base was supplied at all.
-    $itemLines = $null
-    if ($BaseRef) {
-        $fromRef = Get-BacklogItemLinesFromRef -MainCheckout $MainCheckout -BaseRef $BaseRef -ItemNumber $ItemNumber
+    if ($null -eq $itemLines -and $inventory) {
+        $fromRef = Get-BacklogItemLinesFromRef -MainCheckout $MainCheckout -Inventory $inventory -ItemNumber $ItemNumber
         if ($fromRef.Status -ne 'found') {
             $wording = if ($fromRef.Status -eq 'absent') { "backlog item $ItemNumber is not in '$BaseRef'" }
                        else { "the base '$BaseRef' $($fromRef.Detail)" }
-            return [pscustomobject]@{ Allow = $false; Reason = $wording }
+            return New-WorktreePlanVerdict -Allow $false -Reason $wording -ItemNumber $judged -RecordedItemNumber $recorded
         }
         $itemLines = $fromRef.Lines
     }
@@ -1183,25 +1390,25 @@ function Test-WorktreePlanWasImplemented {
         }
 
         if (-not $itemPath) {
-            return [pscustomobject]@{ Allow = $false; Reason = "backlog item $ItemNumber could not be found" }
+            return New-WorktreePlanVerdict -Allow $false -Reason "backlog item $ItemNumber could not be found" -ItemNumber $judged -RecordedItemNumber $recorded
         }
 
         try {
             $itemLines = @(Get-Content -LiteralPath $itemPath -ErrorAction Stop)
         } catch {
-            return [pscustomobject]@{ Allow = $false; Reason = "backlog item $ItemNumber could not be read" }
+            return New-WorktreePlanVerdict -Allow $false -Reason "backlog item $ItemNumber could not be read" -ItemNumber $judged -RecordedItemNumber $recorded
         }
     }
 
     $planBullet = $itemLines | Where-Object { $_ -match '^\s*-\s*Plan:\s*(?<rest>.+)$' } | Select-Object -First 1
     if (-not $planBullet) {
-        return [pscustomobject]@{ Allow = $true; Reason = "backlog item $ItemNumber names no plan" }
+        return New-WorktreePlanVerdict -Allow $true -Reason "backlog item $judged names no plan" -ItemNumber $judged -RecordedItemNumber $recorded
     }
 
     $null = $planBullet -match '^\s*-\s*Plan:\s*(?<rest>.+)$'
     $rest = $Matches.rest.Trim()
     if ($rest -match '^none\b') {
-        return [pscustomobject]@{ Allow = $true; Reason = "backlog item $ItemNumber states it has no plan" }
+        return New-WorktreePlanVerdict -Allow $true -Reason "backlog item $judged states it has no plan" -ItemNumber $judged -RecordedItemNumber $recorded
     }
 
     # Both forms exist in the backlog today: with backticks and without, and with or without a
@@ -1209,32 +1416,26 @@ function Test-WorktreePlanWasImplemented {
     # rather than read, because an ordinary file has no unticked step and would read as done.
     $planRelative = Get-BacklogPlanRelativePath -BulletRest $rest
     if (-not $planRelative) {
-        return [pscustomobject]@{
-            Allow = $false
-            Reason = "backlog item $ItemNumber names a plan outside $WorktreePlansFolder"
-        }
+        return New-WorktreePlanVerdict -Allow $false -Reason "backlog item $judged names a plan outside $WorktreePlansFolder" -ItemNumber $judged -RecordedItemNumber $recorded
     }
 
     $planPath = Resolve-BacklogPlanPath -MainCheckout $MainCheckout -PlanRelative $planRelative
     if (-not $planPath) {
-        return [pscustomobject]@{ Allow = $false; Reason = "the plan for item $ItemNumber could not be read" }
+        return New-WorktreePlanVerdict -Allow $false -Reason "the plan for item $judged could not be read" -ItemNumber $judged -RecordedItemNumber $recorded
     }
 
     try {
         $planText = Get-Content -Raw -LiteralPath $planPath -ErrorAction Stop
     } catch {
-        return [pscustomobject]@{ Allow = $false; Reason = "the plan for item $ItemNumber could not be read" }
+        return New-WorktreePlanVerdict -Allow $false -Reason "the plan for item $judged could not be read" -ItemNumber $judged -RecordedItemNumber $recorded
     }
 
     $ticked = [regex]::Matches($planText, '(?m)^\s*-\s*\[x\]', 'IgnoreCase').Count
     $unticked = [regex]::Matches($planText, '(?m)^\s*-\s*\[ \]').Count
 
     if ($unticked -gt 0 -and $ticked -eq 0) {
-        return [pscustomobject]@{
-            Allow = $false
-            Reason = "the plan for item $ItemNumber was never implemented ($unticked steps, none ticked)"
-        }
+        return New-WorktreePlanVerdict -Allow $false -Reason "the plan for item $judged was never implemented ($unticked steps, none ticked)" -ItemNumber $judged -RecordedItemNumber $recorded
     }
 
-    return [pscustomobject]@{ Allow = $true; Reason = "the plan for item $ItemNumber has $ticked ticked steps" }
+    return New-WorktreePlanVerdict -Allow $true -Reason "the plan for item $judged has $ticked ticked steps" -ItemNumber $judged -RecordedItemNumber $recorded
 }

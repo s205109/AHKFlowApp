@@ -70,7 +70,11 @@ function Get-EligibleMergedWorktrees {
         [Parameter(Mandatory)][string] $RepoRoot,
         [string] $MainRef = 'main',
         [string] $ExcludePath,
-        [object[]] $MergedPullRequests
+        [object[]] $MergedPullRequests,
+        # Optional on purpose. Roughly thirty tests call this function with -RepoRoot and -MainRef
+        # only, and a diagnostics file must never change a verdict: when this is absent the plan
+        # guard's allow-path note is skipped and nothing else differs.
+        [string] $DiagnosticsLogPath
     )
 
     $repoRootFull = ([System.IO.Path]::GetFullPath($RepoRoot)).TrimEnd('\', '/')
@@ -143,14 +147,31 @@ function Get-EligibleMergedWorktrees {
         # backlog stage stamps while no code was ever written.
         # -BaseRef is the same base the merged check just used, so the item is read from what
         # merged rather than from whatever a local pull last left on disk.
+        # -WorktreeName: the recorded number goes stale across a renumber, so the guard resolves
+        # the item from the worktree's own name and keeps the recorded number as the fallback.
         $planVerdict = Test-WorktreePlanWasImplemented -MainCheckout $RepoRoot `
-            -ItemNumber (Get-ManifestBacklogItem -WorktreePath $wtFull) -BaseRef $MainRef
+            -ItemNumber (Get-ManifestBacklogItem -WorktreePath $wtFull) -BaseRef $MainRef `
+            -WorktreeName $wtFull
         if (-not $planVerdict.Allow) {
             Write-Stderr "cleanup: keeping '$wtFull' because $($planVerdict.Reason)."
-            # The sweep never hands this one over, so the sweep owns its outcome line.
+            # The sweep never hands this one over, so the sweep owns its outcome line. It carries
+            # the guard's own reason: one fixed sentence for every refusal sent an investigation to
+            # the wrong backlog item, because the real reason only ever reached stderr.
             Write-SweepOutcome -RepoRoot $RepoRoot -WorktreePath $wtFull `
-                -Message 'Kept: the plan was never implemented.'
+                -Message ('Kept: ' + (Format-WorktreeLogReason -Text $planVerdict.Reason) + '.')
             continue
+        }
+
+        # The guard allowed removal while the manifest names one item and the worktree name names
+        # another. That is a stale recorded number, not a reason to keep anything, so it goes to
+        # diagnostics and never to the outcome line.
+        if ($DiagnosticsLogPath -and $planVerdict.ItemNumber -and $planVerdict.RecordedItemNumber -and
+            $planVerdict.ItemNumber -ne $planVerdict.RecordedItemNumber) {
+            try {
+                Write-WorktreeDiagnostic -LogPath $DiagnosticsLogPath -Worktree (Split-Path -Leaf $wtFull) `
+                    -Message ("Plan guard judged backlog item $($planVerdict.ItemNumber); " +
+                        "the worktree manifest records item $($planVerdict.RecordedItemNumber).")
+            } catch { }
         }
 
         $status = & git -C $wtFull status --porcelain 2>$null
@@ -431,7 +452,13 @@ function Invoke-MergedWorktreeCleanup {
         [object[]] $MergedPullRequests
     )
 
-    $eligible = Get-EligibleMergedWorktrees -RepoRoot $RepoRoot -MainRef $MainRef -ExcludePath $ExcludePath -MergedPullRequests $MergedPullRequests
+    # Built before eligibility, not after. The plan guard's allow path writes a diagnostic from
+    # inside Get-EligibleMergedWorktrees, and building the same path twice is how two writers of
+    # one file drift apart.
+    $removalLog = Join-Path $RepoRoot '.claude\worktrees\worktree-removal.log'
+    $diagnosticsLog = Get-WorktreeDiagnosticsPath -OutcomeLogPath $removalLog
+
+    $eligible = Get-EligibleMergedWorktrees -RepoRoot $RepoRoot -MainRef $MainRef -ExcludePath $ExcludePath -MergedPullRequests $MergedPullRequests -DiagnosticsLogPath $diagnosticsLog
     foreach ($wt in $eligible) {
         Write-Stderr "cleanup: eligible merged worktree: $($wt.Path) [$($wt.Branch)]"
     }
@@ -493,8 +520,6 @@ function Invoke-MergedWorktreeCleanup {
     }
 
     # Reached only for Clean or an accepted Prompt.
-    $removalLog = Join-Path $RepoRoot '.claude\worktrees\worktree-removal.log'
-    $diagnosticsLog = Get-WorktreeDiagnosticsPath -OutcomeLogPath $removalLog
     foreach ($wt in $eligible) {
         Write-Stderr "cleanup: removing merged worktree: $($wt.Path) [$($wt.Branch)]"
         # Diagnostics, not an outcome. The watcher this hands over to writes "Removed." or

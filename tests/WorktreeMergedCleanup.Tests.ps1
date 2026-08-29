@@ -1984,6 +1984,162 @@ try {
     Remove-TempTree $repo
 }
 
+# --- Test: a kept worktree's outcome line carries the guard's own reason ------------------
+# A source scan can show that a call site looks right. It cannot show that the log a human reads
+# holds the reason that applied. Both writers used to log one fixed sentence, "Kept: the plan was
+# never implemented.", whatever the verdict was, and that sentence sent an investigation to the
+# wrong backlog item. So this drives the real sweep and reads the real log.
+
+# A repo whose worktree manifests are ignored, so writing one does not make the worktree dirty.
+# The plan gate runs before the clean check, but the removal path after it needs a clean tree.
+function New-PlanGuardRepo {
+    param([string] $ScriptsSource)
+
+    $repo = New-WorktreeToolingRepo -ScriptsSource $ScriptsSource
+    Set-Content -LiteralPath (Join-Path $repo '.gitignore') -Value 'scripts/.env.worktree' -Encoding utf8
+    New-Item -ItemType Directory -Path (Join-Path $repo 'docs\superpowers\plans') -Force | Out-Null
+    Invoke-TestGit $repo @('add', '-A') | Out-Null
+    Invoke-TestGit $repo @('commit', '-m', 'ignore worktree manifests') | Out-Null
+    return $repo
+}
+
+# Seeds the backlog item a worktree's own name points at, and records a different number in the
+# worktree's manifest. That is the shape a renumber leaves behind.
+#
+# The item is committed on main because the sweep reads it from the resolved base. The plan file
+# is written to disk only: the guard resolves it against the main checkout, not against a ref.
+function Set-PlanGuardFixture {
+    param(
+        [string] $RepoDir,
+        [string] $WorktreePath,
+        [string] $RecordedNumber,
+        [string] $ItemNumber,
+        [string] $ItemFolder = 'backlog',
+        [string] $PlanBullet,
+        [string] $PlanBody
+    )
+
+    $slug = (Split-Path -Leaf $WorktreePath).Substring(3)
+    $itemDir = Join-Path $RepoDir $ItemFolder
+    New-Item -ItemType Directory -Path $itemDir -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $itemDir "$ItemNumber-$slug.md") `
+        -Value "# $ItemNumber - $slug`n`n- Plan: $PlanBullet" -Encoding utf8
+
+    if ($PlanBody) {
+        Set-Content -LiteralPath (Join-Path $RepoDir "docs\superpowers\plans\plan-$ItemNumber.md") -Value $PlanBody -Encoding utf8
+    }
+
+    Invoke-TestGit $RepoDir @('add', '-A') | Out-Null
+    Invoke-TestGit $RepoDir @('commit', '-m', "seed backlog item $ItemNumber") | Out-Null
+
+    $scriptsDirInWorktree = Join-Path $WorktreePath 'scripts'
+    New-Item -ItemType Directory -Path $scriptsDirInWorktree -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $scriptsDirInWorktree '.env.worktree') `
+        -Value "AHKFLOW_BACKLOG_ITEM=$RecordedNumber" -Encoding utf8
+}
+
+# Reads the outcome lines for one worktree leaf, waiting until at least one exists.
+function Get-OutcomeLinesFor {
+    param([string] $RepoDir, [string] $Leaf, [int] $TimeoutMs = 20000)
+
+    $log = Join-Path $RepoDir '.claude\worktrees\worktree-removal.log'
+    $deadline = [DateTime]::UtcNow.AddMilliseconds($TimeoutMs)
+    $mine = @()
+    while ([DateTime]::UtcNow -lt $deadline) {
+        if (Test-Path -LiteralPath $log) {
+            $mine = @(Get-Content -LiteralPath $log -ErrorAction SilentlyContinue |
+                Where-Object { $_ -match ('\s' + [regex]::Escape($Leaf) + '\s') })
+            if ($mine.Count -ge 1) { break }
+        }
+        Start-Sleep -Milliseconds 250
+    }
+    return , $mine
+}
+
+$repo = New-PlanGuardRepo -ScriptsSource $scriptsDir
+try {
+    # Two kept worktrees, two different refusal reasons, one sweep.
+    $outside = Add-TestWorktree -RepoDir $repo -BranchName 'feat-plan-outside'
+    Set-PlanGuardFixture -RepoDir $repo -WorktreePath $outside -RecordedNumber '118' -ItemNumber '140' `
+        -PlanBullet '<path, or "none - reason">'
+
+    $untouched = Add-TestWorktree -RepoDir $repo -BranchName 'feat-plan-untouched'
+    Set-PlanGuardFixture -RepoDir $repo -WorktreePath $untouched -RecordedNumber '118' -ItemNumber '141' `
+        -PlanBullet '`docs/superpowers/plans/plan-141.md`' -PlanBody "- [ ] Step 1`n- [ ] Step 2"
+
+    $res = Invoke-CleanupChild -RepoDir $repo -ExtraArgs @('-Cleanup')
+
+    $outsideLeaf = Split-Path -Leaf $outside
+    $outsideLines = Get-OutcomeLinesFor -RepoDir $repo -Leaf $outsideLeaf
+    Assert-Equal 1 $outsideLines.Count "'$outsideLeaf' must have exactly one outcome line, got: $($outsideLines -join ' || '). Stderr: $($res.Stderr)"
+    Assert-True ($outsideLines[0] -match 'Kept: backlog item 140 names a plan outside docs/superpowers/plans') `
+        "The kept line must carry the guard's own reason, got '$($outsideLines[0])'"
+    Assert-True ($outsideLines[0] -match 'records item 118') `
+        "The kept line must name the stale recorded number too, got '$($outsideLines[0])'"
+
+    $untouchedLeaf = Split-Path -Leaf $untouched
+    $untouchedLines = Get-OutcomeLinesFor -RepoDir $repo -Leaf $untouchedLeaf
+    Assert-Equal 1 $untouchedLines.Count "'$untouchedLeaf' must have exactly one outcome line, got: $($untouchedLines -join ' || ')"
+    Assert-True ($untouchedLines[0] -match 'the plan for item 141 was never implemented \(2 steps, none ticked\)') `
+        "A second refusal must read differently, got '$($untouchedLines[0])'"
+
+    # The two reasons must not collapse back into one sentence.
+    Assert-True ($outsideLines[0] -ne $untouchedLines[0]) 'Two different refusals must produce two different lines'
+    foreach ($line in @($outsideLines[0], $untouchedLines[0])) {
+        Assert-True (-not ($line -match 'Kept: the plan was never implemented\.')) `
+            "The old fixed sentence must be gone, got '$line'"
+    }
+
+    Assert-True (Test-Path -LiteralPath $outside) 'A refused worktree stays on disk'
+    Assert-True (Test-Path -LiteralPath $untouched) 'A refused worktree stays on disk'
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- Test: the sweep removes a worktree whose recorded number is stale --------------------
+# This is the worktree that started backlog 122: its manifest records somebody else's open item,
+# its own item shipped into backlog/done with an implemented plan, and every sweep refused it.
+# Nothing edits the manifest -- the guard stops believing it instead.
+$repo = New-PlanGuardRepo -ScriptsSource $scriptsDir
+try {
+    $stale = Add-TestWorktree -RepoDir $repo -BranchName 'feat-renumbered'
+    Set-PlanGuardFixture -RepoDir $repo -WorktreePath $stale -RecordedNumber '118' -ItemNumber '120' `
+        -ItemFolder 'backlog\done' -PlanBullet '`docs/superpowers/plans/plan-120.md`' -PlanBody "- [x] Step 1"
+
+    # The item the stale number names: still open, and its pointer is the unfilled template. Judging
+    # it refuses, so a removal here proves the guard judged the other one.
+    Set-Content -LiteralPath (Join-Path $repo 'backlog\118-a-different-title.md') `
+        -Value "# 118 - other`n`n- Plan: <path, or ""none - reason"">" -Encoding utf8
+    Invoke-TestGit $repo @('add', '-A') | Out-Null
+    Invoke-TestGit $repo @('commit', '-m', 'seed the item the stale number names') | Out-Null
+
+    $manifestPath = Join-Path $stale 'scripts\.env.worktree'
+    $manifestBefore = Get-Content -Raw -LiteralPath $manifestPath
+
+    $res = Invoke-CleanupChild -RepoDir $repo -ExtraArgs @('-Cleanup')
+    Assert-True (Wait-ForWorktreeCleaned -RepoDir $repo -WorktreePath $stale) `
+        "A worktree whose own item shipped must be removed. Stderr: $($res.Stderr)"
+
+    # The manifest is never repaired. Reading it correctly is the whole fix.
+    Assert-True (-not (Test-Path -LiteralPath $manifestPath)) 'The worktree folder is gone, manifest and all'
+    Assert-True ($manifestBefore -match 'AHKFLOW_BACKLOG_ITEM=118') 'The fixture really did record the stale number'
+
+    $leaf = Split-Path -Leaf $stale
+    $lines = Get-OutcomeLinesFor -RepoDir $repo -Leaf $leaf
+    Assert-Equal 1 $lines.Count "'$leaf' must have exactly one outcome line, got: $($lines -join ' || ')"
+    Assert-True ($lines[0] -match '\sRemoved\.$') "The outcome line must be the normal removal line, got '$($lines[0])'"
+
+    # The disagreement is a diagnostic, never an outcome. A human who wonders why 118 was in the
+    # manifest can find both numbers there.
+    $diagnostics = Get-Content -Raw -LiteralPath (Join-Path $repo '.claude\worktrees\worktree-removal-diagnostics.log')
+    Assert-True ($diagnostics -match 'Plan guard judged backlog item 120') `
+        "The diagnostics must name the item that was judged. Log: $diagnostics"
+    Assert-True ($diagnostics -match 'records item 118') `
+        "The diagnostics must name the recorded number too. Log: $diagnostics"
+} finally {
+    Remove-TempTree $repo
+}
+
 # A handover that cannot start must still say what happened to the worktree.
 $sweepSource = Get-Content -Raw -LiteralPath (Join-Path $scriptsDir 'cleanup-merged-worktrees.ps1')
 Assert-True ($sweepSource -match '(?m)^function Write-SweepOutcome \{') 'cleanup-merged-worktrees.ps1 must define Write-SweepOutcome'

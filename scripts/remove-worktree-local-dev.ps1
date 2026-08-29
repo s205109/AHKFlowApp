@@ -145,16 +145,18 @@ if (-not (Get-Variable -Name WorktreeBacklogItemUnreadable -Scope Script -ErrorA
 
 if (-not (Get-Command Test-WorktreePlanWasImplemented -ErrorAction SilentlyContinue)) {
     function Test-WorktreePlanWasImplemented {
-        param([string] $MainCheckout, [string] $ItemNumber, [string] $BaseRef)
+        # -WorktreeName is accepted and ignored. The fallback resolves no item at all, so it has
+        # no slug route to run; the parameter is here only so a call site never fails to bind.
+        param([string] $MainCheckout, [string] $ItemNumber, [string] $BaseRef, [string] $WorktreeName)
         # An unreadable manifest is checked before the empty case, so a read failure never borrows
         # the legacy worktree's free pass.
         if ($ItemNumber -eq $WorktreeBacklogItemUnreadable) {
-            return [pscustomobject]@{ Allow = $false; Reason = 'the worktree manifest could not be read' }
+            return [pscustomobject]@{ Allow = $false; Reason = 'the worktree manifest could not be read'; ItemNumber = ''; RecordedItemNumber = '' }
         }
         if ([string]::IsNullOrWhiteSpace($ItemNumber)) {
-            return [pscustomobject]@{ Allow = $true; Reason = 'no backlog item is recorded for this worktree' }
+            return [pscustomobject]@{ Allow = $true; Reason = 'no backlog item is recorded for this worktree'; ItemNumber = ''; RecordedItemNumber = '' }
         }
-        return [pscustomobject]@{ Allow = $false; Reason = 'the plan check could not run' }
+        return [pscustomobject]@{ Allow = $false; Reason = 'the plan check could not run'; ItemNumber = $ItemNumber; RecordedItemNumber = $ItemNumber }
     }
 }
 
@@ -637,15 +639,15 @@ function Test-WorktreeClean {
 
 # The gate's refusal: guidance in diagnostics, one Kept line in the outcome log.
 #
-# -NoOutcome is for a caller that already wrote its own outcome line and wants only the
-# guidance. Two lines on one attempt is the defect this whole split exists to prevent.
+# This is the only writer of that line, for every reason the gate refuses. Two lines on one
+# attempt is the defect the two-file split exists to prevent, and a second writer with its own
+# fixed wording is how the plan gate came to report a reason nobody had checked.
 function Write-UnmergedPreserveGuidance {
     param(
         [string] $WorktreeFull,
         [string] $MainCheckout,
         [string] $BranchName,
-        [string] $Reason,
-        [switch] $NoOutcome
+        [string] $Reason
     )
 
     Write-DiagnosticLog "Worktree was preserved (not removed): $Reason"
@@ -666,9 +668,7 @@ function Write-UnmergedPreserveGuidance {
     Write-DiagnosticLog 'To bypass this gate and remove now regardless of merge/clean status, set AHKFLOW_WORKTREE_FORCE_REMOVE=1 before exiting Claude Code.'
     Write-DiagnosticLog "Details were logged to: $script:DiagnosticsPath"
 
-    if (-not $NoOutcome) {
-        Write-Outcome ('Kept: ' + (Format-WorktreeLogReason -Text $Reason) + '.')
-    }
+    Write-Outcome ('Kept: ' + (Format-WorktreeLogReason -Text $Reason) + '.')
 }
 
 function Write-BranchDeleteGuidance {
@@ -968,16 +968,30 @@ function Invoke-HookMode {
         # repository the public branch never carries. Asked last, and handed $baseRef, so it reads
         # the item from the same base the merge gate just decided against. Reading the working tree
         # instead would refuse a branch that merged on GitHub while the local checkout is behind.
+        # -WorktreeName: the recorded number goes stale across a renumber, so the guard resolves
+        # the item from the worktree's own name and keeps the recorded number as the fallback.
         $planVerdict = Test-WorktreePlanWasImplemented -MainCheckout $mainCheckoutFromGit `
-            -ItemNumber (Get-ManifestBacklogItem -WorktreePath $worktreeFull) -BaseRef $baseRef
+            -ItemNumber (Get-ManifestBacklogItem -WorktreePath $worktreeFull) -BaseRef $baseRef `
+            -WorktreeName $worktreeFull
         if (-not $planVerdict.Allow) {
             Write-DiagnosticLog "plan gate: $($planVerdict.Reason)"
-            Write-Outcome 'Kept: the plan was never implemented.'
-            # -NoOutcome: this path already wrote its line, and two lines on one attempt is the
-            # defect this whole split exists to prevent.
+            # No outcome line here. Write-UnmergedPreserveGuidance writes 'Kept: <reason>.' with
+            # the guard's own reason, so this path still puts exactly one line on one attempt.
+            # The line it used to write here said 'the plan was never implemented' whatever the
+            # real verdict was, which sent one investigation to the wrong backlog item.
             Write-UnmergedPreserveGuidance -WorktreeFull $worktreeFull -MainCheckout $mainCheckoutFromGit `
-                -BranchName $branchName -Reason $planVerdict.Reason -NoOutcome
+                -BranchName $branchName -Reason $planVerdict.Reason
             return
+        }
+
+        # The guard allowed removal while the manifest names one item and the worktree name names
+        # another. That is a stale recorded number, not a reason to keep anything, so it goes to
+        # diagnostics and never to the outcome line. The sweep writes the same sentence, so one
+        # search finds the case whichever writer handled it.
+        if ($planVerdict.ItemNumber -and $planVerdict.RecordedItemNumber -and
+            $planVerdict.ItemNumber -ne $planVerdict.RecordedItemNumber) {
+            Write-DiagnosticLog ("Plan guard judged backlog item $($planVerdict.ItemNumber); " +
+                "the worktree manifest records item $($planVerdict.RecordedItemNumber).")
         }
     }
 
