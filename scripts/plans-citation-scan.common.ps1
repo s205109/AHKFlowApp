@@ -3,7 +3,7 @@
 #
 # This lives in its own file so a test can ask the question with a fixture path. The alternative -
 # hiding the real docs/superpowers for the length of a test - is refused: every worktree links to
-# that folder (`docs/development/workflow.md:719`, "Two paths stay refused").
+# that folder (`docs/development/workflow.md:733`, "Two paths stay refused").
 #
 # It declares 5.1 because .githooks/pre-push falls back to Windows PowerShell when pwsh is absent
 # (`.githooks/pre-push:10-11`, "command -v powershell"), and pre-push-quick-checks.ps1 dot-sources
