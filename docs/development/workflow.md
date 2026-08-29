@@ -107,6 +107,17 @@ into a sibling worktree, so there is no file-move shortcut. The full route is in
 
 The post-merge sweep removes the round worktree. The next round starts fresh.
 
+**Name the round generically.** The worktree is `wt-backlog-housekeeping` and the branch is
+`chore/wt-backlog-housekeeping`. A round holds several unrelated chores, so a name taken from
+one of them is wrong the moment the second chore arrives. `chore/` is the type prefix, because
+a round is neither one feature nor one fix. Create it with
+`pwsh ./scripts/new-worktree.ps1 -Name wt-backlog-housekeeping -BranchName chore/wt-backlog-housekeeping`.
+Pass `-Name`, not `-Title`: `-Title` derives the name from a backlog item, and a round has no item.
+
+Only one round is open at a time, so the fixed name is also the way to find it. When
+`git worktree list` already shows `wt-backlog-housekeeping`, that is the open round — use it
+instead of creating another.
+
 ### Writing the round's `Stage:` line
 
 `gh pr edit --body-file` replaces the whole body. So a transition must read the body,
@@ -270,6 +281,9 @@ A housekeeping round files no backlog item at all, so none of this applies to it
 **The worktree is not optional.** `.githooks/pre-commit` refuses a commit on `main` for every
 session, so trivial work needs the housekeeping worktree exactly as tracked work needs its own.
 `AHKFLOW_ALLOW_MAIN=1` is the deliberate escape.
+
+The housekeeping worktree has a fixed generic name, `wt-backlog-housekeeping` on branch
+`chore/wt-backlog-housekeeping`. Section 2 says why, and gives the command that creates it.
 
 **Creating the worktree is half the step. Entering it is the other half.** A session that creates
 a worktree and stays in the main checkout reaches it with a `cd` on every command, and nothing
