@@ -92,5 +92,5 @@ working in, so that I do not have to notice it silently restarted on `main`.
   `4f51230b`. Worktree `.claude/worktrees/wt-pickup-should-switch-the-sessio-d716af02`, created
   with `scripts/new-worktree.ps1` and then entered with the native `EnterWorktree` tool.
 - Draft pull request: https://github.com/s205109/AHKFlowApp/pull/364.
-- Spec: <path, or "none - reason">
+- Spec: `docs/superpowers/specs/2026-08-29-pickup-enters-the-worktree-design-118.md`
 - Plan: <path, or "none - reason">
