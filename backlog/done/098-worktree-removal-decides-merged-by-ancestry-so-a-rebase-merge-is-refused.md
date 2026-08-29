@@ -90,7 +90,7 @@ Backlog 094 fixed which base both scripts read; it left the ancestry test alone 
 
 - Found while implementing backlog 094, which needed the removal gate to read the same base
 - The Cleanup warning that pointed at this item is gone. Stage 10 now describes the shared rule
-  instead (`docs/development/workflow.md:563`, "**Any merge button is fine.** Both scripts decide with one rule: did this branch's own work reach")
+  instead (`docs/development/workflow.md:585`, "**Any merge button is fine.** Both scripts decide with one rule: did this branch's own work reach")
 - The shared rule lands in `scripts/worktree-git.common.ps1`, which the removal script already
   dot-sources (`scripts/remove-worktree-local-dev.ps1:87`, "$gitHelperPath = Join-Path $PSScriptRoot 'worktree-git.common.ps1'").
   The watcher runs from a copy in `%TEMP%` where that helper is absent, so it needs a fallback
