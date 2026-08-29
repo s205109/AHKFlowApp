@@ -14,11 +14,9 @@ each row names the words the bullet starts with rather than a line number.
 | `conflicts` | The bullet and the linked stage disagree. `workflow.md` wins; fix the bullet. |
 | `wrong stage` | The bullet is right, but its anchor names a stage that does not own the rule. |
 
-The review is finished when every row reads `links-only`. All 17 rows do. One row carries more
-than its verdict: row 11 states a rule `workflow.md` does not own, which a verdict about
-wording cannot settle. The open question at the end of this file is that gap, and it is still
-open — a `links-only` verdict on row 11 says the bullet defers correctly, not that the source
-covers the case.
+The review is finished when every row reads `links-only`. Every live row does. Row 11 is struck
+through: backlog 118 deleted the bullet it tracked, and the gap it recorded is closed. Rows 18
+to 22 are the bullets backlog 118 added.
 
 **The test used here.** A bullet may say what to do in one sentence. It may not carry the
 reasoning from `workflow.md`, its worked examples, or a second copy of a stage's narrative. A rule is
@@ -44,14 +42,19 @@ of catching it.
 
 | # | Bullet begins | Links to | Verdict |
 |---|---|---|---|
-| 10 | Create the worktree first | stage-1-pickup | `links-only` |
-| 11 | Prefer `scripts/new-worktree.ps1` over the native | stage-1-pickup | `links-only` — new, see the open question below |
-| 12 | Write and commit the spec | stage-2-design | `links-only` — was `wrong stage`, fixed |
-| 13 | Write and commit the plan | stage-3-plan | `links-only` — split out of row 12 |
-| 14 | Switch into the worktree for code | stage-4-execute | `links-only` |
-| 15 | Edit and commit a plan a grilling round changed | stage-3-plan | `links-only` — was `wrong stage`, fixed |
+| 10 | Create the worktree first | stage-1-pickup | `links-only` — backlog 118 added the entry step |
+| 11 | ~~Prefer `scripts/new-worktree.ps1` over the native~~ | — | removed by backlog 118. The route now uses both, in order |
+| 12 | Write the spec from inside the worktree | stage-2-design | `links-only` — was `wrong stage`, fixed |
+| 13 | Write the plan from inside the worktree | stage-3-plan | `links-only` — split out of row 12 |
+| 14 | Write and commit code, tests, docs | stage-4-execute | `links-only` |
+| 15 | Edit a plan a grilling round changed | stage-3-plan | `links-only` — was `wrong stage`, fixed |
 | 16 | Commit plans with `git -C docs/superpowers commit` | stage-3-plan | `links-only` — was `conflicts`, fixed |
 | 17 | Write inside the worktree's `docs/superpowers/` link | stage-1-pickup | `links-only` |
+| 18 | Both steps are needed, and in that order | stage-1-pickup | `links-only` — new in backlog 118 |
+| 19 | Enter with `path` | stage-1-pickup | `links-only` — new in backlog 118 |
+| 20 | Step outside the worktree to commit | stage-3-plan | `links-only` — new in backlog 118 |
+| 21 | Write a plan or a spec without the native | stage-3-plan | `links-only` — new in backlog 118 |
+| 22 | Keep shell commands short | stage-4-execute | `links-only` — new in backlog 118 |
 
 ## What changed, and why
 
@@ -96,21 +99,23 @@ The `git -C` form is still the one to use, because it names the repository the c
 to and does not depend on where the shell happens to be. The false claim about the guard is
 gone.
 
-## Open question for workflow.md
+## Closed question for workflow.md
 
-**Row 11 records a gap this review is not allowed to close.** `workflow.md` says both the file
-edit and the plans-repo commit run from the worktree, and cites the repository guard. That is
-true of this repository's guard. It is not the whole picture for Claude Code: in a session
-started with `-w`, `--worktree`, or the `EnterWorktree` tool, the harness's own isolation
-refuses `Edit` and `Write` under `docs/superpowers/` and tells the agent to edit "the worktree
-copy", which cannot exist for that path. `docs/agents/cross-agent-git-guardrails.md` records
-the measurement and `backlog/blocked/058-native-edit-refusal-names-missing-worktree-copy.md`
-tracks the upstream report.
+**Row 11 recorded a gap this review was not allowed to close. Backlog 118 closed it.**
 
-So a session that follows `.claude/CLAUDE.md` and starts its worktree with `EnterWorktree`
-cannot write the plan the same file tells it to write. `.claude/CLAUDE.md` now warns about it.
-workflow.md still does not mention the case.
+The gap was this. `workflow.md` said both the file edit and the plans-repository commit run from
+the worktree, and cited this repository's guard. That was true of this repository's guard. It was
+not the whole picture for Claude Code: in a session started with `-w`, `--worktree`, or the
+`EnterWorktree` tool, the harness's own isolation refuses `Edit` and `Write` under
+`docs/superpowers/` and tells the agent to edit "the worktree copy", which cannot exist for that
+path. So a session that entered its worktree could not write the plan the same file told it to
+write.
 
-**This is a question for workflow.md, and it is open.** An alignment pass may not edit `workflow.md`;
-changing workflow.md here would mean measuring alignment against a document the same pass moved.
-Decide the wording at Design, in a round of its own.
+Backlog 118 measured the case again on Claude Code `2.1.251`, found the refusal unchanged, and
+found it wider than recorded: the harness also refuses every command that sends git into
+`docs/superpowers/`. It then made entering the worktree part of Pickup and wrote both facts into
+`workflow.md` and `.claude/CLAUDE.md`, with the route around them. The decision and its
+consequences are in `docs/adr/0012-pickup-enters-the-worktree.md`.
+
+`backlog/blocked/058-native-edit-refusal-names-missing-worktree-copy.md` stays blocked. Its
+remaining step is the report to Anthropic, which is a separate piece of work.

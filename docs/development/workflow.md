@@ -32,7 +32,7 @@ an exit string in every place in the same commit, and regenerate the PDF with
 | # | Stage | Exit condition |
 |---|---|---|
 | 0 | Intake | Item filed with the script, summary written, Difficulty set |
-| 1 | Pickup | Location chosen by Difficulty, base confirmed and stated, PR route in place |
+| 1 | Pickup | Location chosen by Difficulty, session inside it, base confirmed and stated, PR route in place |
 | 2 | Design | Spec committed, terms and ADRs written, plain summary confirmed |
 | 3 | Plan | Plan committed, grilled, fabrication-checked |
 | 4 | Execute | All planned work committed, tracking current, stage push done |
@@ -263,20 +263,20 @@ A housekeeping round files no backlog item at all, so none of this applies to it
 
 - **Entry** — item chosen
 - **Who** — Sonnet, default effort
-- **Technique** — `scripts/new-worktree.ps1 -BaseRef` to recreate the worktree when the base was wrong, or the housekeeping worktree
-- **Action** — choose the execution location by Difficulty: a dedicated worktree for `moderate` and `complex`, the housekeeping worktree for `trivial`. Confirm branch and base, and state both. For a tracked item: push the branch, open the draft pull request, and **only then** stamp the Stage the Difficulty jump names — publishing the next Stage before the pull request exists would claim an exit condition that is still false. Until that stamp lands the item keeps `Stage: 1-pickup`, and the worktree is the pointer. For a housekeeping round: no item, so no Stage stamp and no push here. The round worktree is the pointer, and the route is the round pull request opened at Execute close
-- **Exit** — Location chosen by Difficulty, base confirmed and stated, PR route in place
+- **Technique** — `scripts/new-worktree.ps1` to create, then move the session into it with `path`. In Claude Code that move is the native `EnterWorktree` tool; Codex, Copilot, and plain git have no such tool and start with the working directory in the worktree. `-BaseRef` recreates the worktree when the base was wrong. Trivial work uses the housekeeping worktree
+- **Action** — choose the execution location by Difficulty: a dedicated worktree for `moderate` and `complex`, the housekeeping worktree for `trivial`. **Then move the session into it**, so the location survives a resume. Confirm branch and base, and state both. For a tracked item: push the branch, open the draft pull request, and **only then** stamp the Stage the Difficulty jump names — publishing the next Stage before the pull request exists would claim an exit condition that is still false. Until that stamp lands the item keeps `Stage: 1-pickup`, and the worktree is the pointer. For a housekeeping round: no item, so no Stage stamp and no push here. The round worktree is the pointer, and the route is the round pull request opened at Execute close
+- **Exit** — Location chosen by Difficulty, session inside it, base confirmed and stated, PR route in place
 - **Next** — `2-design/3-plan/4-execute`
 - **Context** — safe to clear
 - **Review** — not reviewed
 
 | Edge | Condition | Target |
 |---|---|---|
-| success | location chosen, base stated, PR in place; jump by Difficulty | 2-design/3-plan/4-execute |
+| success | location chosen and entered, base stated, PR in place; jump by Difficulty | 2-design/3-plan/4-execute |
 | failure | wrong base discovered; recreate the worktree with `-BaseRef` | stay |
 | blocked | prerequisite outside the repository; for a round, the one blocked change is filed as its own item and only that item moves | blocked/ |
 | not applicable | cannot occur: every item chooses a location | none |
-| resume | worktree exists; re-confirm branch and base, then continue at the recorded Stage for a tracked item, or from the round's commit log and PR state for a round | stay |
+| resume | worktree exists; check the session is inside it and enter it if not, re-confirm branch and base, then continue at the recorded Stage for a tracked item, or from the round's commit log and PR state for a round | stay |
 
 **The worktree is not optional.** `.githooks/pre-commit` refuses a commit on `main` for every
 session, so trivial work needs the housekeeping worktree exactly as tracked work needs its own.
@@ -284,6 +284,30 @@ session, so trivial work needs the housekeeping worktree exactly as tracked work
 
 The housekeeping worktree has a fixed generic name, `wt-backlog-housekeeping` on branch
 `chore/wt-backlog-housekeeping`. Section 2 says why, and gives the command that creates it.
+
+**Creating the worktree is half the step. Entering it is the other half.** A session that creates
+a worktree and stays in the main checkout reaches it with a `cd` on every command, and nothing
+records where the work lives. A resumed session then starts again on `main`. That same session is
+also unguarded: this repository's write isolation decides from the working directory, so while the
+session sits in main the guard treats it as a main-checkout session and never fires.
+
+So Pickup creates with `scripts/new-worktree.ps1`, then the session moves into it by `path`. In
+Claude Code that move is the native `EnterWorktree` tool, and the harness records it, so a
+resumed session comes back inside the worktree on its own. Codex, Copilot, and plain git have
+no such tool: they run with the working directory set to the worktree, and this repository's
+own write guard, which reads the working directory, isolates them.
+
+Enter with `path`, never create with `name`. Creating through the tool runs the same script, but it
+cannot pass `-Title`, which keeps the worktree name equal to the backlog item's, and it cannot pass
+`-BaseRef`, which stacks work on an unmerged branch.
+
+**Entering costs one thing: the plans repository moves out of reach.** `docs/superpowers` links back
+to the main checkout, so once the session is entered Claude Code refuses every command that sends
+git there. `AHKFLOW_ALLOW_MAIN=1` does not lift that — the refusal is the harness, not this
+repository. Writing a plan or a spec still works, but not with the native `Edit` and `Write` tools;
+write it from the shell, or write it elsewhere and copy it in. To commit it, step outside: leave the
+worktree and keep it, commit, then enter the same path again. The decision and its full
+consequences are in [`../adr/0012-pickup-enters-the-worktree.md`](../adr/0012-pickup-enters-the-worktree.md).
 
 **Pickup makes two pushes, and they are different things.** The first publishes the branch
 so `gh pr create` has something to open a pull request against; nothing is stamped yet. The
@@ -359,7 +383,7 @@ create a PR" as "before you mark it ready". <!-- gate-wording:ignore -->
 | failure | spec rejected; revise with the objections | stay |
 | blocked | external decision or platform gap | blocked/ |
 | not applicable | reclassification at entry: no spec needed; set Difficulty `moderate` and say so. `trivial` is not available here — a filed item is never trivial | 3-plan |
-| resume | re-read spec and review state, continue grilling or submit | stay |
+| resume | confirm the session is inside the worktree and enter it if not; re-read spec and review state; continue grilling or submit | stay |
 
 <a id="stage-3-plan"></a>
 
@@ -388,7 +412,7 @@ holds a folder, so a backlog item cannot name a personal plan.
 | failure | grilling or fabrication check fails; revise | stay |
 | blocked | plan exposes an external dependency | blocked/ |
 | not applicable | cannot occur for a filed item: every tracked item gets a committed plan, however small the work. Only a housekeeping round skips Plan, and a round never enters it | none |
-| resume | plan exists; if execution started, take Plan's success edge and use Execute's resume there; else re-read and submit | stay |
+| resume | confirm the session is inside the worktree and enter it if not; plan exists; if execution started, take Plan's success edge and use Execute's resume there; else re-read and submit | stay |
 
 <a id="stage-4-execute"></a>
 
@@ -502,7 +526,7 @@ holds a folder, so a backlog item cannot name a personal plan.
 - **Entry** — review closed
 - **Who** — Sonnet, default effort
 - **Technique** — `gh pr ready`, then merge
-- **Action** — close the records, **push**, then flip the pull request to ready, wait for CI, merge. Tracked work: `git mv` the item to `backlog/done/`, delete `PLAN-PROGRESS.md`, set `Stage: 9-ship` — one commit, pushed before the ready flip. The boxes were ticked at Document; Ship only confirms they are, and fixes any that Review changed. A round: nothing extra to close, so nothing to push. Freeze the item's plan and spec in the same closure: a standalone `citation-check:ignore-file` directive at the top of each, with a second comment line saying why. A shipped plan records the tree as it was, and the citation check would otherwise re-audit it against a tree that has moved. That commit belongs to the plans repository, so it is a second commit: `git -C docs/superpowers commit`, staging the files by name. Reopening an item reverses this: delete those two lines before any other work, because a reopened plan makes live claims again
+- **Action** — close the records, **push**, then flip the pull request to ready, wait for CI, merge. Tracked work: `git mv` the item to `backlog/done/`, delete `PLAN-PROGRESS.md`, set `Stage: 9-ship` — one commit, pushed before the ready flip. The boxes were ticked at Document; Ship only confirms they are, and fixes any that Review changed. A round: nothing extra to close, so nothing to push. Freeze the item's plan and spec in the same closure: a standalone `citation-check:ignore-file` directive at the top of each, with a second comment line saying why. A shipped plan records the tree as it was, and the citation check would otherwise re-audit it against a tree that has moved. That commit belongs to the plans repository, so it is a second commit, and an entered session makes it with the step-outside cycle: `ExitWorktree` with `keep`, `git -C docs/superpowers commit` staging the files by name, then `EnterWorktree` with the same `path`. Reopening an item reverses this: delete those two lines before any other work, because a reopened plan makes live claims again
 - **Exit** — Records closed, PR ready, CI green, merged
 - **Next** — `10-cleanup`
 - **Context** — keep until the pull request description is final; safe after merge
@@ -723,19 +747,29 @@ wins. The others are evidence.
 private plans repo (`git -C docs/superpowers commit`), then the Stage-field update to the
 public work branch. The public Stage commit is the authoritative transition marker.
 
-**Both the plans-repo commit and the file edit run from the worktree.** Measured, not
-assumed: `git -C <path>/docs/superpowers commit` is allowed from a worktree session, through
-the symlink or the absolute path, because the guard gates commands that could change the
-*protected checkout's* HEAD, index, or working tree — and the plans repo is a different
-repository. `Edit`, `Write`, and shell writes under that path are allowed for the same reason
-(`agent-worktree-guard.common.ps1:2041-2066`).
+**The file edit runs inside the worktree. The commit does not.** Writing the plan or the
+spec works from inside the worktree, but only from the shell. The native `Edit` and `Write`
+tools are refused under `docs/superpowers/`. Committing the file is refused too, once the
+session has entered the worktree: Claude Code then refuses every command that sends git into
+`docs/superpowers/`. `AHKFLOW_ALLOW_MAIN=1` does not lift that refusal, because it comes from
+the harness and not from this repository.
 
-Two paths stay refused. The folder root itself, because renaming or deleting `docs/superpowers`
-breaks the link every worktree depends on. And `docs/superpowers/.git`, because destroying it
-destroys history that was never pushed.
+So an entered session commits the artifact with the step-outside cycle. Leave the worktree
+and keep it (`ExitWorktree` with `keep`), run `git -C docs/superpowers commit` staging the
+files by name, then enter the same path again (`EnterWorktree` with `path`). An agent that
+never entered a worktree — Codex or Copilot — commits in place, because the harness isolation
+reads a session flag those agents do not set.
 
-So Design and Plan finish inside the worktree: write the artifact there, then commit it with
-`git -C docs/superpowers commit`.
+If the session stops between the exit and the re-enter, the next resume starts in the main
+checkout. The Design and Plan resume edges check for this and re-enter the worktree first.
+When you resume at any other stage, re-enter the worktree yourself before any other work.
+
+Two paths stay refused for every session. The folder root itself, because renaming or
+deleting `docs/superpowers` breaks the link every worktree depends on. And
+`docs/superpowers/.git`, because destroying it destroys history that was never pushed.
+
+So Design and Plan write the artifact inside the worktree, then commit it from the main
+checkout with `git -C docs/superpowers commit` and re-enter.
 
 **Push boundaries.** Push at every pre-merge stage completion that has a live branch and a
 transition commit — stages 1 to 9. A tracked item's Pickup push is the first push and opens

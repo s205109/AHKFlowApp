@@ -204,16 +204,16 @@
       <summary><span class="num">1</span>Pickup</summary>
       <div class="body">
         <p class="field"><b>Entry:</b> item chosen</p>
-        <p class="field"><b>Who:</b> Sonnet, default effort &middot; <b>Technique:</b> <code>scripts/new-worktree.ps1 -BaseRef</code> to recreate the worktree when the base was wrong, or the housekeeping worktree</p>
-        <p class="field"><b>Action:</b> choose the execution location by Difficulty — a dedicated worktree for <code>moderate</code> and <code>complex</code>, the housekeeping worktree for <code>trivial</code>. Confirm branch and base, and state both. Tracked item: push the branch, open the draft pull request, and <b>only then</b> stamp the Stage the Difficulty jump names; until that stamp lands the item keeps <code>Stage: 1-pickup</code> and the worktree is the pointer. Housekeeping round: no item, so no Stage stamp and no push here</p>
-        <p class="field exit" data-exit="Location chosen by Difficulty, base confirmed and stated, PR route in place"><b>Exit:</b> Location chosen by Difficulty, base confirmed and stated, PR route in place</p>
+        <p class="field"><b>Who:</b> Sonnet, default effort &middot; <b>Technique:</b> <code>scripts/new-worktree.ps1</code> to create, then move the session into it with <code>path</code>. In Claude Code that move is the native <code>EnterWorktree</code> tool; Codex, Copilot, and plain git have no such tool and start with the working directory in the worktree. <code>-BaseRef</code> recreates the worktree when the base was wrong. Trivial work uses the housekeeping worktree</p>
+        <p class="field"><b>Action:</b> choose the execution location by Difficulty — a dedicated worktree for <code>moderate</code> and <code>complex</code>, the housekeeping worktree for <code>trivial</code>. <b>Then move the session into it</b>, so the location survives a resume. Confirm branch and base, and state both. Tracked item: push the branch, open the draft pull request, and <b>only then</b> stamp the Stage the Difficulty jump names; until that stamp lands the item keeps <code>Stage: 1-pickup</code> and the worktree is the pointer. Housekeeping round: no item, so no Stage stamp and no push here</p>
+        <p class="field exit" data-exit="Location chosen by Difficulty, session inside it, base confirmed and stated, PR route in place"><b>Exit:</b> Location chosen by Difficulty, session inside it, base confirmed and stated, PR route in place</p>
         <p class="field note"><b>Context:</b> safe to clear &middot; <b>Review:</b> not reviewed</p>
         <ul class="edges">
-          <li class="e-success" data-next="success:2-design/3-plan/4-execute"><span class="badge"><span class="glyph">&#10003;</span>success</span> location chosen, base stated, PR in place; jump by Difficulty <span class="target">&rarr; 2-design/3-plan/4-execute</span></li>
+          <li class="e-success" data-next="success:2-design/3-plan/4-execute"><span class="badge"><span class="glyph">&#10003;</span>success</span> location chosen and entered, base stated, PR in place; jump by Difficulty <span class="target">&rarr; 2-design/3-plan/4-execute</span></li>
           <li class="e-failure" data-next="failure:stay"><span class="badge"><span class="glyph">&#10007;</span>failure</span> wrong base discovered; recreate the worktree with <code>-BaseRef</code> <span class="target">&rarr; stay</span></li>
           <li class="e-blocked" data-next="blocked:blocked/"><span class="badge"><span class="glyph">&#9632;</span>blocked</span> prerequisite outside the repository; for a round, the one blocked change is filed as its own item and only that item moves <span class="target">&rarr; blocked/</span></li>
           <li class="e-na" data-next="not applicable:none"><span class="badge"><span class="glyph">&#8212;</span>not applicable</span> cannot occur: every item chooses a location <span class="target">&rarr; none</span></li>
-          <li class="e-resume" data-next="resume:stay"><span class="badge"><span class="glyph">&#8635;</span>resume</span> worktree exists; re-confirm branch and base, then continue at the recorded Stage for a tracked item, or from the round's commit log and PR state for a round <span class="target">&rarr; stay</span></li>
+          <li class="e-resume" data-next="resume:stay"><span class="badge"><span class="glyph">&#8635;</span>resume</span> worktree exists; check the session is inside it and enter it if not, re-confirm branch and base, then continue at the recorded Stage for a tracked item, or from the round's commit log and PR state for a round <span class="target">&rarr; stay</span></li>
         </ul>
       </div>
     </details>
@@ -233,7 +233,7 @@
           <li class="e-failure" data-next="failure:stay"><span class="badge"><span class="glyph">&#10007;</span>failure</span> spec rejected; revise with the objections <span class="target">&rarr; stay</span></li>
           <li class="e-blocked" data-next="blocked:blocked/"><span class="badge"><span class="glyph">&#9632;</span>blocked</span> external decision or platform gap <span class="target">&rarr; blocked/</span></li>
           <li class="e-na" data-next="not applicable:3-plan"><span class="badge"><span class="glyph">&#8212;</span>not applicable</span> reclassification at entry: no spec needed; set Difficulty <code>moderate</code> and say so. <code>trivial</code> is not available here — a filed item is never trivial <span class="target">&rarr; 3-plan</span></li>
-          <li class="e-resume" data-next="resume:stay"><span class="badge"><span class="glyph">&#8635;</span>resume</span> re-read spec and review state, continue grilling or submit <span class="target">&rarr; stay</span></li>
+          <li class="e-resume" data-next="resume:stay"><span class="badge"><span class="glyph">&#8635;</span>resume</span> confirm the session is inside the worktree and enter it if not; re-read spec and review state; continue grilling or submit <span class="target">&rarr; stay</span></li>
         </ul>
       </div>
     </details>
@@ -253,7 +253,7 @@
           <li class="e-failure" data-next="failure:stay"><span class="badge"><span class="glyph">&#10007;</span>failure</span> grilling or fabrication check fails; revise <span class="target">&rarr; stay</span></li>
           <li class="e-blocked" data-next="blocked:blocked/"><span class="badge"><span class="glyph">&#9632;</span>blocked</span> plan exposes an external dependency <span class="target">&rarr; blocked/</span></li>
           <li class="e-na" data-next="not applicable:none"><span class="badge"><span class="glyph">&#8212;</span>not applicable</span> cannot occur for a filed item: every tracked item gets a committed plan, however small the work. Only a housekeeping round skips Plan, and a round never enters it <span class="target">&rarr; none</span></li>
-          <li class="e-resume" data-next="resume:stay"><span class="badge"><span class="glyph">&#8635;</span>resume</span> plan exists; if execution started, take Plan's success edge and use Execute's resume there; else re-read and submit <span class="target">&rarr; stay</span></li>
+          <li class="e-resume" data-next="resume:stay"><span class="badge"><span class="glyph">&#8635;</span>resume</span> confirm the session is inside the worktree and enter it if not; plan exists; if execution started, take Plan's success edge and use Execute's resume there; else re-read and submit <span class="target">&rarr; stay</span></li>
         </ul>
       </div>
     </details>

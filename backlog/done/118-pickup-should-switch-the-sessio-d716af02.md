@@ -5,8 +5,8 @@
 - **Epic**: Agent worktree lifecycle
 - **Type**: Bug
 - **Interfaces**: CLI
-- **Difficulty**: to-be-determined
-- **Stage**: 0-intake
+- **Difficulty**: moderate
+- **Stage**: 9-ship
 
 ## Summary
 
@@ -63,14 +63,22 @@ working in, so that I do not have to notice it silently restarted on `main`.
 
 ## Acceptance criteria
 
-- [ ] A written measurement says whether the `058` `Edit`/`Write` refusal still fires under
+- [x] A written measurement says whether the `058` `Edit`/`Write` refusal still fires under
       `docs/superpowers/` on the installed Claude Code version, with the version recorded.
-- [ ] A written measurement says whether a resumed session returns to a worktree entered with
-      `EnterWorktree`.
-- [ ] One of the three candidate fixes is chosen, with the reason the other two were not.
-- [ ] The chosen fix is implemented, and a session that picks up an item can no longer end that
-      pickup with its working directory in the main checkout.
-- [ ] `.claude/CLAUDE.md` and `docs/development/workflow.md` describe the route that is actually
+      It still fires, word for word, on `2.1.251`.
+- [x] A written measurement says whether a resumed session returns to a worktree entered with
+      `EnterWorktree`. It does.
+- [x] One of the three candidate fixes is chosen, with the reason the other two were not.
+      Candidate 1. See `docs/adr/0012-pickup-enters-the-worktree.md`.
+- [x] The chosen fix is implemented. Pickup enters the worktree with the native `EnterWorktree`
+      tool, an entered session is refused every write into the main checkout, and the route is a
+      rule in `.claude/CLAUDE.md`, `docs/development/workflow.md`, and `AGENTS.md` and an exit
+      condition of Stage 1.
+      **This box was revised.** It first asked that a session "can no longer" end a pickup in the
+      main checkout. Candidate 1 does not force a session that never enters to move. Only
+      candidate 3's session marker would have made the absolute wording true, and the human chose
+      candidate 1 without it. The box now states the condition candidate 1 delivers.
+- [x] `.claude/CLAUDE.md` and `docs/development/workflow.md` describe the route that is actually
       taken, and no longer describe one that was abandoned.
 
 ## Out of scope
@@ -88,5 +96,10 @@ working in, so that I do not have to notice it silently restarted on `main`.
   [`docs/agents/cross-agent-git-guardrails.md`](../docs/agents/cross-agent-git-guardrails.md).
 - This file was renumbered from 117 by hand. `scripts/new-backlog-item.ps1` picked 117 because
   it reads the working tree, and the real 117 lives on an unmerged branch. Worth its own item.
-- Spec: <path, or "none - reason">
-- Plan: <path, or "none - reason">
+- Pickup: branch `fix/wt-pickup-should-switch-the-sessio-d716af02`, based on `main` at
+  `4f51230b`. Worktree `.claude/worktrees/wt-pickup-should-switch-the-sessio-d716af02`, created
+  with `scripts/new-worktree.ps1` and then entered with the native `EnterWorktree` tool.
+- Draft pull request: https://github.com/s205109/AHKFlowApp/pull/364.
+- Spec: `docs/superpowers/specs/2026-08-29-pickup-enters-the-worktree-design-118.md`
+- Plan: `docs/superpowers/plans/2026-08-29-pickup-enters-the-worktree-plan-118.md`
+- Decision: candidate 1, "Enter for real". Recorded in `docs/adr/0012-pickup-enters-the-worktree.md`.

@@ -21,12 +21,19 @@ third acceptance box: file a report with Anthropic. That report was deliberately
 - Or Anthropic changes the refusal wording in a later Claude Code release. Then re-run the check
   below, record the new text, and close the item as fixed upstream.
 
-**Evidence freshness.** The probes ran against Claude Code `2.1.224`. That is still the installed
-version as of 2026-08-07, so the recorded messages have not gone stale. Re-check before filing:
+**Evidence freshness.** The probes ran against Claude Code `2.1.224`. Backlog 118 re-measured them
+on `2.1.251` on 2026-08-29 and found the refusal unchanged, word for word, so the recorded messages
+have not gone stale. Re-check before filing:
 
 ```powershell
 claude --version
 ```
+
+**Backlog 118 also found the behaviour is wider than this item records.** The same isolation refuses
+a shell command that sends git outside the worktree, which puts `docs/superpowers` out of reach of
+an entered session entirely. That widens what an upstream report should say. Evidence:
+`docs/superpowers/specs/2026-08-29-pickup-enters-the-worktree-design-118.md`. This item stays
+blocked either way — the remaining step is still the report.
 
 **Neighbouring upstream reports**, none of which covers this wording bug:
 
