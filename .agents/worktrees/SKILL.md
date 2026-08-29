@@ -9,7 +9,7 @@ AHKFlowApp worktrees carry local-dev isolation — per-worktree ports, database,
 
 ## Creating
 
-**Claude Code:** use the native worktree feature. It fires the `WorktreeCreate` hook (`.claude/settings.json`) which runs `new-worktree.ps1` for you.
+**Claude Code:** run `new-worktree.ps1` directly (see below), and pass `-Title` so the worktree name matches the backlog item. Then move the session into the worktree with the native `EnterWorktree` tool, passing the `path` the script printed. Do not create the worktree through the native tool. That route fires the `WorktreeCreate` hook, which runs the same script, but the hook contract carries only a name, so it cannot pass `-Title` or `-BaseRef`, and it leaves a worktree the exit prompt offers to delete. Reasons in full: [docs/adr/0012-pickup-enters-the-worktree.md](../../docs/adr/0012-pickup-enters-the-worktree.md).
 
 **Codex, Copilot, plain git, or any non-hook path:** run the script directly from the main checkout:
 
@@ -137,9 +137,11 @@ Two limits are deliberate.
 
 #### Claude Code in-conversation native creation: ask once, then remember
 
-Applies when *you* create a brand-new worktree in direct response to a conversation
-request via `EnterWorktree` with `name`. Entering an existing worktree with `path` never
-triggers this.
+The primary route is `new-worktree.ps1` followed by `EnterWorktree` with `path`, per
+[docs/adr/0012-pickup-enters-the-worktree.md](../../docs/adr/0012-pickup-enters-the-worktree.md).
+This section applies only to the discouraged fallback: creating a brand-new worktree via
+`EnterWorktree` with `name` in direct response to a conversation request. Entering an
+existing worktree with `path` never triggers this.
 
 `EnterWorktree` fires the `WorktreeCreate` hook, which runs the resolver above: with a
 recognized `AHKFLOW_WORKTREE_CLEANUP` env value or the config set (`true`/`false`) it acts
