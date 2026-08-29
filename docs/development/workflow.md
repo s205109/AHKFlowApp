@@ -32,7 +32,7 @@ an exit string in every place in the same commit, and regenerate the PDF with
 | # | Stage | Exit condition |
 |---|---|---|
 | 0 | Intake | Item filed with the script, summary written, Difficulty set |
-| 1 | Pickup | Location chosen by Difficulty, base confirmed and stated, PR route in place |
+| 1 | Pickup | Location chosen by Difficulty, session inside it, base confirmed and stated, PR route in place |
 | 2 | Design | Spec committed, terms and ADRs written, plain summary confirmed |
 | 3 | Plan | Plan committed, grilled, fabrication-checked |
 | 4 | Execute | All planned work committed, tracking current, stage push done |
@@ -252,24 +252,46 @@ A housekeeping round files no backlog item at all, so none of this applies to it
 
 - **Entry** — item chosen
 - **Who** — Sonnet, default effort
-- **Technique** — `scripts/new-worktree.ps1 -BaseRef` to recreate the worktree when the base was wrong, or the housekeeping worktree
-- **Action** — choose the execution location by Difficulty: a dedicated worktree for `moderate` and `complex`, the housekeeping worktree for `trivial`. Confirm branch and base, and state both. For a tracked item: push the branch, open the draft pull request, and **only then** stamp the Stage the Difficulty jump names — publishing the next Stage before the pull request exists would claim an exit condition that is still false. Until that stamp lands the item keeps `Stage: 1-pickup`, and the worktree is the pointer. For a housekeeping round: no item, so no Stage stamp and no push here. The round worktree is the pointer, and the route is the round pull request opened at Execute close
-- **Exit** — Location chosen by Difficulty, base confirmed and stated, PR route in place
+- **Technique** — `scripts/new-worktree.ps1` to create, then the agent's native `EnterWorktree` tool with `path` to move the session into it. `-BaseRef` recreates the worktree when the base was wrong. Trivial work uses the housekeeping worktree
+- **Action** — choose the execution location by Difficulty: a dedicated worktree for `moderate` and `complex`, the housekeeping worktree for `trivial`. **Then move the session into it**, so the location survives a resume. Confirm branch and base, and state both. For a tracked item: push the branch, open the draft pull request, and **only then** stamp the Stage the Difficulty jump names — publishing the next Stage before the pull request exists would claim an exit condition that is still false. Until that stamp lands the item keeps `Stage: 1-pickup`, and the worktree is the pointer. For a housekeeping round: no item, so no Stage stamp and no push here. The round worktree is the pointer, and the route is the round pull request opened at Execute close
+- **Exit** — Location chosen by Difficulty, session inside it, base confirmed and stated, PR route in place
 - **Next** — `2-design/3-plan/4-execute`
 - **Context** — safe to clear
 - **Review** — not reviewed
 
 | Edge | Condition | Target |
 |---|---|---|
-| success | location chosen, base stated, PR in place; jump by Difficulty | 2-design/3-plan/4-execute |
+| success | location chosen and entered, base stated, PR in place; jump by Difficulty | 2-design/3-plan/4-execute |
 | failure | wrong base discovered; recreate the worktree with `-BaseRef` | stay |
 | blocked | prerequisite outside the repository; for a round, the one blocked change is filed as its own item and only that item moves | blocked/ |
 | not applicable | cannot occur: every item chooses a location | none |
-| resume | worktree exists; re-confirm branch and base, then continue at the recorded Stage for a tracked item, or from the round's commit log and PR state for a round | stay |
+| resume | worktree exists; check the session is inside it and enter it if not, re-confirm branch and base, then continue at the recorded Stage for a tracked item, or from the round's commit log and PR state for a round | stay |
 
 **The worktree is not optional.** `.githooks/pre-commit` refuses a commit on `main` for every
 session, so trivial work needs the housekeeping worktree exactly as tracked work needs its own.
 `AHKFLOW_ALLOW_MAIN=1` is the deliberate escape.
+
+**Creating the worktree is half the step. Entering it is the other half.** A session that creates
+a worktree and stays in the main checkout reaches it with a `cd` on every command, and nothing
+records where the work lives. A resumed session then starts again on `main`. That same session is
+also unguarded: this repository's write isolation decides from the working directory, so while the
+session sits in main the guard treats it as a main-checkout session and never fires.
+
+So Pickup creates with `scripts/new-worktree.ps1` and then enters with the native `EnterWorktree`
+tool, passing the `path` the script printed. Entering is what the harness records, and a resumed
+session comes back inside the worktree on its own.
+
+Enter with `path`, never create with `name`. Creating through the tool runs the same script, but it
+cannot pass `-Title`, which keeps the worktree name equal to the backlog item's, and it cannot pass
+`-BaseRef`, which stacks work on an unmerged branch.
+
+**Entering costs one thing: the plans repository moves out of reach.** `docs/superpowers` links back
+to the main checkout, so once the session is entered Claude Code refuses every command that sends
+git there. `AHKFLOW_ALLOW_MAIN=1` does not lift that — the refusal is the harness, not this
+repository. Writing a plan or a spec still works, but not with the native `Edit` and `Write` tools;
+write it from the shell, or write it elsewhere and copy it in. To commit it, step outside: leave the
+worktree and keep it, commit, then enter the same path again. The decision and its full
+consequences are in [`../adr/0012-pickup-enters-the-worktree.md`](../adr/0012-pickup-enters-the-worktree.md).
 
 **Pickup makes two pushes, and they are different things.** The first publishes the branch
 so `gh pr create` has something to open a pull request against; nothing is stamped yet. The
