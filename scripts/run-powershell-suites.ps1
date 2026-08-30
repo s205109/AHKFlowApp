@@ -37,10 +37,6 @@ $PSNativeCommandUseErrorActionPreference = $false
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 
-# Every run prints progress lines, so a test over a folder of fake suites checks the same code
-# path a real run uses. Only a real run against tests/ keeps the timings: the seconds a fake
-# suite takes would otherwise poison the estimate that the next real run reads.
-$keepTimings = -not $PSBoundParameters.ContainsKey('SuiteRoot')
 . "$PSScriptRoot\progress.common.ps1"
 
 if ([string]::IsNullOrWhiteSpace($SuiteRoot)) {
@@ -57,6 +53,11 @@ if (-not (Test-Path -LiteralPath $SuiteRoot -PathType Container)) {
 }
 
 $SuiteRoot = (Resolve-Path -LiteralPath $SuiteRoot).ProviderPath
+
+# Every run prints progress lines, so a test over a folder of fake suites checks the same code
+# path a real run uses. Only a run over the repository's own suites keeps the timings.
+$keepTimings = Test-ProgressTimingsWanted -SuiteRoot $SuiteRoot -DefaultSuiteRoot (Join-Path $repoRoot 'tests')
+
 $discovered = @(Get-ChildItem -LiteralPath $SuiteRoot -Filter '*.Tests.ps1' -File | Sort-Object Name)
 
 # An exclusion that names a file which no longer exists is a rename nobody finished. Fail on it,

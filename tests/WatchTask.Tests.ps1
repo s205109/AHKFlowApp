@@ -256,6 +256,41 @@ finally {
 # text that completes the line adds no new line to the file. A watcher that tracks how many lines
 # it has printed skips that text and the reader never sees it.
 
+# Reads what a job has printed so far without consuming it, so a case can wait for the watcher
+# to reach a known point instead of guessing with a sleep.
+function Get-JobOutputSoFar {
+    param([Parameter(Mandatory)][object] $Job)
+
+    return ((Receive-Job -Job $Job -Keep 2>$null) | Out-String)
+}
+
+function Wait-ForJobOutput {
+    param(
+        [Parameter(Mandatory)][object] $Job,
+        [Parameter(Mandatory)][string] $Pattern,
+        [int] $TimeoutSeconds = 30
+    )
+
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    while ((Get-Date) -lt $deadline) {
+        if ((Get-JobOutputSoFar -Job $Job) -match $Pattern) { return $true }
+        Start-Sleep -Milliseconds 200
+    }
+
+    return $false
+}
+
+# The last line that carries text. The follow path ends with exactly 'Exit code: N'; the
+# already-finished path ends with a sentence that also contains those words, so only comparing
+# the whole line tells the two apart.
+function Get-LastNonEmptyLine {
+    param([Parameter(Mandatory)][AllowEmptyString()][string] $Text)
+
+    $lines = @($Text -split "`r?`n" | Where-Object { $_.Trim().Length -gt 0 })
+    if ($lines.Count -eq 0) { return '' }
+    return $lines[-1].Trim()
+}
+
 $root = New-WatchTestRoot
 $job = $null
 try {
@@ -266,35 +301,103 @@ try {
 
     [System.IO.File]::WriteAllText($livePath, "FIRST-LINE`n")
 
+    # No Out-String inside the job. That would hold every line back until the watcher exited,
+    # and then no case could wait for the watcher to reach a known point.
     $job = Start-Job -ScriptBlock {
         param($exe, $script, $searchRoot)
-        & $exe -NoProfile -File $script -Root $searchRoot -Tail 40 2>&1 | Out-String
+        & $exe -NoProfile -File $script -Root $searchRoot -Tail 40 2>&1
     } -ArgumentList $hostExe, $watchScript, $root
 
-    # Let the watcher find the file and print what is already there.
-    Start-Sleep -Seconds 2
+    # Wait for the watcher to print what was already there. The file holds no exit marker yet, so
+    # reaching this point proves the watcher is in the follow loop rather than on the finished
+    # path. A fixed sleep proves nothing: a slow start would let the whole file arrive first.
+    $entered = Wait-ForJobOutput -Job $job -Pattern 'FIRST-LINE'
+    Assert-True $entered 'Follow: the watcher must print the existing text and start following within 30s.'
 
     # A line written in two pieces. The file gains no extra line when the second piece lands.
     [System.IO.File]::AppendAllText($livePath, 'SPLIT-LINE-START')
-    Start-Sleep -Seconds 2
+    Start-Sleep -Milliseconds 800
     [System.IO.File]::AppendAllText($livePath, "-AND-END`n")
-    Start-Sleep -Seconds 2
+
+    $joined = Wait-ForJobOutput -Job $job -Pattern 'SPLIT-LINE-START-AND-END'
+    Assert-True $joined 'Follow: a line written in two pieces must be printed in full, in the follow loop.'
 
     [System.IO.File]::AppendAllText($livePath, "LAST-LINE`n[exited with code 3]`n")
 
     $finished = Wait-Job -Job $job -Timeout 30
     Assert-True ($null -ne $finished) 'Follow: the watcher must stop by itself when the exit marker arrives, but it was still running after 30s.'
 
-    $output = if ($finished) { (Receive-Job -Job $job) | Out-String } else { '' }
+    $output = Get-JobOutputSoFar -Job $job
 
     Assert-True ($output -match 'FIRST-LINE') "Follow: the text already in the file must be printed. Output: $output"
     Assert-True ($output -match 'SPLIT-LINE-START-AND-END') "Follow: a line written in two pieces must be printed in full. Output: $output"
     Assert-True ($output -match 'LAST-LINE') "Follow: a line appended after that must be printed. Output: $output"
-    Assert-True ($output -match 'Exit code: 3') "Follow: the exit code must be the last thing printed. Output: $output"
+
+    $lastLine = Get-LastNonEmptyLine -Text $output
+    Assert-True ($lastLine -eq 'Exit code: 3') "Follow: the last line must be exactly 'Exit code: 3', got '$lastLine'. Output: $output"
 }
 finally {
     if ($job) { Remove-Job -Job $job -Force -ErrorAction SilentlyContinue }
     Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+# --- A task that finishes between the scan and the tail still ends the watch ---
+#
+# Get-WatchTaskRecord reads whether a task is running, and Watch-Record tails the file after
+# that. A task that finishes in between leaves the record saying "running" while the initial
+# tail already prints and consumes the exit marker. The follow loop only sees text added later,
+# so it would wait for a line that can never arrive.
+#
+# The case builds that exact state rather than racing for it: a record that says running,
+# against a file that already carries the marker.
+
+$job = $null
+$stalePath = Join-Path ([System.IO.Path]::GetTempPath()) ("watch-task-stale-$([guid]::NewGuid()).output")
+try {
+    [System.IO.File]::WriteAllText($stalePath, "ALREADY-DONE`n[exited with code 3]`n")
+
+    $job = Start-Job -ScriptBlock {
+        param($exe, $script, $path)
+        # Out-Null drops the exit code Watch-Record returns, which the real script passes to
+        # 'exit'. Left in, it would become the last line and hide what the watcher printed.
+        & $exe -NoProfile -Command @"
+. '$script'
+`$record = [pscustomobject]@{ Path = '$path'; LastWrite = (Get-Date); Running = `$true; ExitCode = `$null }
+Watch-Record -Record `$record -Tail 40 | Out-Null
+"@ 2>&1
+    } -ArgumentList $hostExe, $watchScript, $stalePath
+
+    $finished = Wait-Job -Job $job -Timeout 20
+    Assert-True ($null -ne $finished) 'Stale running: the watcher must stop when the file already holds the marker, but it was still running after 20s.'
+
+    $output = Get-JobOutputSoFar -Job $job
+    Assert-True ($output -match 'ALREADY-DONE') "Stale running: the text already in the file must be printed. Output: $output"
+
+    $lastLine = Get-LastNonEmptyLine -Text $output
+    Assert-True ($lastLine -eq 'Exit code: 3') "Stale running: the last line must be exactly 'Exit code: 3', got '$lastLine'. Output: $output"
+}
+finally {
+    if ($job) { Remove-Job -Job $job -Force -ErrorAction SilentlyContinue }
+    Remove-Item -LiteralPath $stalePath -Force -ErrorAction SilentlyContinue
+}
+
+# --- The same stale record with -NoFollow does not claim the task is still running ---
+
+$stalePath = Join-Path ([System.IO.Path]::GetTempPath()) ("watch-task-stale-nofollow-$([guid]::NewGuid()).output")
+try {
+    [System.IO.File]::WriteAllText($stalePath, "ALREADY-DONE`n[exited with code 5]`n")
+
+    $output = & $hostExe -NoProfile -Command @"
+. '$watchScript'
+`$record = [pscustomobject]@{ Path = '$stalePath'; LastWrite = (Get-Date); Running = `$true; ExitCode = `$null }
+Watch-Record -Record `$record -Tail 40 -NoFollow | Out-Null
+"@ 2>&1 | Out-String
+
+    Assert-True ($output -notmatch 'still running') "Stale running with -NoFollow: the watcher must not say the task is still running. Output: $output"
+    Assert-True ($output -match 'Exit code: 5') "Stale running with -NoFollow: the exit code must be reported. Output: $output"
+}
+finally {
+    Remove-Item -LiteralPath $stalePath -Force -ErrorAction SilentlyContinue
 }
 
 # --- Report ---

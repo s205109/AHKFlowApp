@@ -55,6 +55,37 @@ function Format-ProgressDuration {
     return ('{0}m{1:d2}s' -f $minutes, $rest)
 }
 
+function Test-ProgressTimingsWanted {
+    <#
+      Whether a run should keep its timings.
+
+      Only a run over the repository's own suites should, because the seconds a fake suite takes
+      would poison the estimate the next real run reads. The question is which folder the run
+      covers, not whether the caller passed an argument: naming the real folder is still a real
+      run, and testing for the argument alone treated it as a fixture and stored nothing.
+
+      Both paths are resolved first, so a trailing slash, a relative path, or different case all
+      still count as the same folder.
+    #>
+    param(
+        [Parameter(Mandatory)][AllowEmptyString()][string] $SuiteRoot,
+        [Parameter(Mandatory)][AllowEmptyString()][string] $DefaultSuiteRoot
+    )
+
+    if ([string]::IsNullOrWhiteSpace($SuiteRoot) -or [string]::IsNullOrWhiteSpace($DefaultSuiteRoot)) {
+        return $false
+    }
+
+    if (-not (Test-Path -LiteralPath $SuiteRoot) -or -not (Test-Path -LiteralPath $DefaultSuiteRoot)) {
+        return $false
+    }
+
+    $left = (Resolve-Path -LiteralPath $SuiteRoot).ProviderPath.TrimEnd('\', '/')
+    $right = (Resolve-Path -LiteralPath $DefaultSuiteRoot).ProviderPath.TrimEnd('\', '/')
+
+    return $left.Equals($right, [System.StringComparison]::OrdinalIgnoreCase)
+}
+
 function Get-ProgressHistoryPath {
     param(
         [Parameter(Mandatory)][string] $RepoRoot,

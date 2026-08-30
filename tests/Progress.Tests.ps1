@@ -196,12 +196,16 @@ finally {
 # never stop the runner that reads it.
 
 $badValues = @{
-    'NaN'          = 'NaN'
-    'Infinity'     = 'Infinity'
-    '-Infinity'    = '-Infinity'
-    'a negative'   = '-5'
-    'far too big'  = '1e400'
-    'not a number' = 'banana'
+    'NaN'                    = 'NaN'
+    'Infinity'               = 'Infinity'
+    '-Infinity'              = '-Infinity'
+    'a negative'             = '-5'
+    'larger than a Double'   = '1e400'
+    'not a number'           = 'banana'
+
+    # 1e400 above parses as Infinity, so it never reaches the one-year limit. This value is a
+    # real number, one second past that limit, which is the only way to check the limit itself.
+    'one second past a year' = '31536001'
 }
 
 foreach ($case in $badValues.GetEnumerator()) {
@@ -231,6 +235,62 @@ foreach ($case in $badValues.GetEnumerator()) {
     finally {
         Remove-Item -LiteralPath $root -Recurse -Force
     }
+}
+
+# --- The value exactly on the one-year limit is still used ---
+#
+# The case above rejects one second past the limit. Without this one, moving the limit to zero
+# would keep every test green.
+
+$root = New-ProgressTestRoot
+try {
+    $folder = Join-Path $root 'TestResults\progress'
+    New-Item -ItemType Directory -Path $folder -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $folder 'demo.json') -Encoding UTF8 -Value '{ "a.Tests.ps1": 31536000 }'
+
+    $tracker = New-ProgressTracker -RunnerKey 'demo' -RepoRoot $root -Unit @('a.Tests.ps1')
+    $line = Get-StartLine -Tracker $tracker -Name 'a.Tests.ps1'
+
+    Assert-True ($line -notmatch 'no history') "On the limit: the value must be used, got: $line"
+    Assert-True ($line -notmatch 'remaining unknown') "On the limit: the estimate must be a number, got: $line"
+}
+finally {
+    Remove-Item -LiteralPath $root -Recurse -Force
+}
+
+# --- Timings are kept for the repository's own suites, whether or not the caller named them ---
+#
+# The decision used to test whether -SuiteRoot was passed, so naming the real folder ran the real
+# suites and then stored nothing.
+
+$root = New-ProgressTestRoot
+try {
+    $realSuites = Join-Path $root 'tests'
+    $fakeSuites = Join-Path $root 'fake-suites'
+    New-Item -ItemType Directory -Path $realSuites -Force | Out-Null
+    New-Item -ItemType Directory -Path $fakeSuites -Force | Out-Null
+
+    Assert-True (Test-ProgressTimingsWanted -SuiteRoot $realSuites -DefaultSuiteRoot $realSuites) `
+        'Timings wanted: the repository''s own suites must keep their timings.'
+    Assert-True (-not (Test-ProgressTimingsWanted -SuiteRoot $fakeSuites -DefaultSuiteRoot $realSuites)) `
+        'Timings wanted: a folder of fake suites must not keep timings.'
+
+    # The same folder named a different way is still the same folder.
+    Assert-True (Test-ProgressTimingsWanted -SuiteRoot ($realSuites + '\') -DefaultSuiteRoot $realSuites) `
+        'Timings wanted: a trailing separator must not change the answer.'
+    Assert-True (Test-ProgressTimingsWanted -SuiteRoot $realSuites.ToUpperInvariant() -DefaultSuiteRoot $realSuites) `
+        'Timings wanted: a different case must not change the answer.'
+    Assert-True (Test-ProgressTimingsWanted -SuiteRoot (Join-Path (Join-Path $realSuites '..') 'tests') -DefaultSuiteRoot $realSuites) `
+        'Timings wanted: a path that walks up and back must not change the answer.'
+
+    # Nothing to compare against is not a reason to write into the store.
+    Assert-True (-not (Test-ProgressTimingsWanted -SuiteRoot $realSuites -DefaultSuiteRoot (Join-Path $root 'missing'))) `
+        'Timings wanted: a default folder that does not exist must not keep timings.'
+    Assert-True (-not (Test-ProgressTimingsWanted -SuiteRoot '' -DefaultSuiteRoot $realSuites)) `
+        'Timings wanted: an empty suite root must not keep timings.'
+}
+finally {
+    Remove-Item -LiteralPath $root -Recurse -Force
 }
 
 # --- Runner keys for Fast and Integration do not collide ---

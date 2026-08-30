@@ -10,12 +10,16 @@
   human never has to be handed a path.
 
   It finds the run like this:
-    1. It mangles this repository's main checkout root into the folder name Claude Code uses,
-       then globs that name followed by '*'. The trailing '*' picks up the repository's
-       worktrees, because a worktree's folder name is the main name with its own path appended.
+    1. It asks git for every checkout this repository has, main and worktrees, and mangles each
+       into the folder name Claude Code uses. A folder belongs to the repository when its name
+       is one of those, or starts with one of those followed by '-', which is how a session
+       started in a subdirectory is still found. A folder that a neighbouring directory claims
+       more closely is refused, because the mangling turns a path separator and a literal '-'
+       into the same character.
     2. Among <match>\<session id>\tasks\<task id>.output, a file is running when its content
        does not end with a '[exited with code N]' line. This needs no state of its own.
-    3. It picks the newest running file by last write time and tails it. The tail stops on its
+    3. It picks the newest running file by last write time and tails it, following by byte
+       offset so a line written in two pieces is printed once, in full. The tail stops on its
        own when '[exited with code N]' appears, and prints the exit code last.
 
   With no running task it prints the newest finished task's last lines, its exit code, and its
@@ -415,7 +419,20 @@ function Show-Tail {
         $reader.Carry = ''
     }
 
-    return $reader
+    # Whether the text just consumed already ends the task. The caller needs this because it
+    # decided the task was running before this function read anything, and the marker it would
+    # otherwise wait for has now been read and printed here.
+    $exitCode = $null
+    for ($i = $lines.Count - 1; $i -ge 0; $i--) {
+        if ($lines[$i].Trim().Length -eq 0) { continue }
+        if ($lines[$i] -match $script:ExitMarker) { $exitCode = [int] $Matches[1] }
+        break
+    }
+
+    return [pscustomobject]@{
+        Reader   = $reader
+        ExitCode = $exitCode
+    }
 }
 
 function Watch-Record {
@@ -429,11 +446,24 @@ function Watch-Record {
     Write-Host ''
 
     $following = $Record.Running -and -not $NoFollow
-    $reader = Show-Tail -Path $Record.Path -Count $Tail -KeepPartial:$following
+
+    # Not named $tail. Variable names ignore case here, so that would overwrite the $Tail
+    # parameter, which is typed [int], and the assignment would throw.
+    $initial = Show-Tail -Path $Record.Path -Count $Tail -KeepPartial:$following
+    $reader = $initial.Reader
 
     if (-not $Record.Running) {
         Write-Host ''
         Write-Host "This task has already finished. Exit code: $($Record.ExitCode)"
+        return 0
+    }
+
+    # The scan read the running flag before the tail above ran. A task that finished in between
+    # leaves that flag stale, and the marker has already been printed and consumed here, so the
+    # follow loop would wait for a line that can never arrive.
+    if ($null -ne $initial.ExitCode) {
+        Write-Host ''
+        Write-Host "Exit code: $($initial.ExitCode)"
         return 0
     }
 
