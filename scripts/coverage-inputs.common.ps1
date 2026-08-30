@@ -64,3 +64,17 @@ function Get-AhkFlowMissingCoverageInput {
 
     return @($missing)
 }
+
+function Remove-AhkFlowCoverageArtifacts {
+    param(
+        [Parameter(Mandatory = $true)][string]$CoverageResultsRoot,
+        [Parameter(Mandatory = $true)][string]$CoverageReportDirectory
+    )
+
+    if (Test-Path -LiteralPath $CoverageResultsRoot) {
+        Remove-Item -LiteralPath $CoverageResultsRoot -Recurse -Force
+    }
+    if (Test-Path -LiteralPath $CoverageReportDirectory) {
+        Remove-Item -LiteralPath $CoverageReportDirectory -Recurse -Force
+    }
+}

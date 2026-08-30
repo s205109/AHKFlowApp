@@ -44,8 +44,9 @@ try {
         throw "python command not found. Install Python or rerun with -SkipThresholdCheck if you only need the HTML report."
     }
 
-    if (Test-Path TestResults)   { Remove-Item -Recurse -Force TestResults }
-    if (Test-Path $coverageReportDirectory) { Remove-Item -Recurse -Force $coverageReportDirectory }
+    Remove-AhkFlowCoverageArtifacts `
+        -CoverageResultsRoot $coverageResultsRoot `
+        -CoverageReportDirectory $coverageReportDirectory
 
     dotnet restore
     if ($LASTEXITCODE -ne 0) { throw "dotnet restore failed" }

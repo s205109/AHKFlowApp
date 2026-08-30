@@ -114,6 +114,10 @@ function Read-ProgressHistory {
         }
 
         $parsed = $raw | ConvertFrom-Json -ErrorAction Stop
+        if ($parsed -isnot [System.Management.Automation.PSCustomObject]) {
+            return $history
+        }
+
         $invariant = [System.Globalization.CultureInfo]::InvariantCulture
         $numberStyles = [System.Globalization.NumberStyles]::Float
         foreach ($property in $parsed.PSObject.Properties) {

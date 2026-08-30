@@ -131,6 +131,35 @@ Invoke-TestCase 'A project folder that was never created counts as missing' {
     }
 }
 
+Invoke-TestCase 'Coverage cleanup preserves progress history' {
+    $root = Join-Path ([System.IO.Path]::GetTempPath()) ('ahkflow-coverage-cleanup-' + [guid]::NewGuid().ToString('N'))
+    try {
+        $coverageResults = Join-Path $root 'TestResults\coverage'
+        $progressResults = Join-Path $root 'TestResults\progress'
+        $coverageReport = Join-Path $root 'CoverageReport'
+        New-Item -ItemType Directory -Path $coverageResults -Force | Out-Null
+        New-Item -ItemType Directory -Path $progressResults -Force | Out-Null
+        New-Item -ItemType Directory -Path $coverageReport -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $coverageResults 'old.xml') -Value '<coverage />' -Encoding utf8
+        Set-Content -LiteralPath (Join-Path $progressResults 'test-fast.Fast.json') -Value '{"a":1}' -Encoding utf8
+        Set-Content -LiteralPath (Join-Path $coverageReport 'old.html') -Value '<html />' -Encoding utf8
+
+        Remove-AhkFlowCoverageArtifacts `
+            -CoverageResultsRoot $coverageResults `
+            -CoverageReportDirectory $coverageReport
+
+        Assert-True (-not (Test-Path -LiteralPath $coverageResults)) 'Expected stale coverage inputs to be removed.'
+        Assert-True (-not (Test-Path -LiteralPath $coverageReport)) 'Expected the stale coverage report to be removed.'
+        Assert-True (Test-Path -LiteralPath (Join-Path $progressResults 'test-fast.Fast.json')) `
+            'Expected coverage cleanup to preserve progress history.'
+    }
+    finally {
+        if (Test-Path -LiteralPath $root) {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
 Invoke-TestCase 'The expected project list comes from the solution and coverlet' {
     $projects = @(Get-AhkFlowCoverageProject -RepoRoot $repoRoot)
     $names = @($projects | ForEach-Object { $_.Name })

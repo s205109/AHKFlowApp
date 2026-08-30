@@ -17,13 +17,13 @@
        more closely is refused, because the mangling turns a path separator and a literal '-'
        into the same character.
     2. Among <match>\<session id>\tasks\<task id>.output, a file is running when its content
-       does not end with a '[exited with code N]' line. This needs no state of its own.
+       does not end with '[exited with code N]' or '[killed]'. This needs no state of its own.
     3. It picks the newest running file by last write time and tails it, following by byte
        offset so a line written in two pieces is printed once, in full. The tail stops on its
-       own when '[exited with code N]' appears, and prints the exit code last.
+       own when a terminal marker is the last line, and prints the exit code or killed state last.
 
-  With no running task it prints the newest finished task's last lines, its exit code, and its
-  path, then exits 0. With more than one running it tails the newest and names the count.
+  With no running task it prints the newest stopped task's last lines, terminal state, and path,
+  then exits 0. With more than one running it tails the newest and names the count.
 
 .PARAMETER List
   Print the recent tasks with their state, age, and index, then exit.
@@ -57,6 +57,10 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 $script:ExitMarker = '^\[exited with code (-?\d+)\]\s*$'
+$script:KilledMarker = '^\[killed\]\s*$'
+$script:TaskStateReadLength = 8192
+$script:TailReadLength = 65536
+$script:MaxTailReadFailures = 4
 
 function ConvertTo-ClaudeProjectFolder {
     <#
@@ -210,10 +214,59 @@ function Test-WatchTaskFolderName {
     return $true
 }
 
+function Read-FileEndText {
+    param(
+        [Parameter(Mandatory)][string] $Path,
+        [Parameter(Mandatory)][int] $Count
+    )
+
+    $stream = $null
+    try {
+        $stream = [System.IO.FileStream]::new(
+            $Path,
+            [System.IO.FileMode]::Open,
+            [System.IO.FileAccess]::Read,
+            ([System.IO.FileShare]::ReadWrite -bor [System.IO.FileShare]::Delete))
+    }
+    catch {
+        return $null
+    }
+
+    try {
+        $want = [int][Math]::Min([long] $Count, $stream.Length)
+        if ($want -le 0) {
+            return [pscustomobject]@{ Text = ''; BytesRead = 0 }
+        }
+
+        $stream.Position = $stream.Length - $want
+        $buffer = [byte[]]::new($want)
+        $read = $stream.Read($buffer, 0, $want)
+        if ($read -le 0) {
+            return [pscustomobject]@{ Text = ''; BytesRead = 0 }
+        }
+
+        return [pscustomobject]@{
+            Text      = [System.Text.Encoding]::UTF8.GetString($buffer, 0, $read)
+            BytesRead = $read
+        }
+    }
+    catch {
+        return $null
+    }
+    finally {
+        if ($stream) { $stream.Dispose() }
+    }
+}
+
 function Get-TaskState {
     param([Parameter(Mandatory)][string] $Path)
 
-    $lines = @(Get-Content -LiteralPath $Path -ErrorAction SilentlyContinue)
+    $end = Read-FileEndText -Path $Path -Count $script:TaskStateReadLength
+    if ($null -eq $end) {
+        return $null
+    }
+
+    $lines = @($end.Text -split "`n" | ForEach-Object { $_.TrimEnd("`r") })
     $lastNonEmpty = $null
     for ($i = $lines.Count - 1; $i -ge 0; $i--) {
         if ($lines[$i].Trim().Length -gt 0) {
@@ -223,10 +276,13 @@ function Get-TaskState {
     }
 
     if ($lastNonEmpty -and $lastNonEmpty -match $script:ExitMarker) {
-        return [pscustomobject]@{ Running = $false; ExitCode = [int] $Matches[1] }
+        return [pscustomobject]@{ Running = $false; ExitCode = [int] $Matches[1]; BytesRead = $end.BytesRead }
+    }
+    if ($lastNonEmpty -and $lastNonEmpty -match $script:KilledMarker) {
+        return [pscustomobject]@{ Running = $false; ExitCode = $null; BytesRead = $end.BytesRead }
     }
 
-    return [pscustomobject]@{ Running = $true; ExitCode = $null }
+    return [pscustomobject]@{ Running = $true; ExitCode = $null; BytesRead = $end.BytesRead }
 }
 
 function Get-WatchTaskRecord {
@@ -265,11 +321,13 @@ function Get-WatchTaskRecord {
             Sort-Object LastWriteTime -Descending |
             ForEach-Object {
                 $state = Get-TaskState -Path $_.FullName
-                [pscustomobject]@{
-                    Path      = $_.FullName
-                    LastWrite = $_.LastWriteTime
-                    Running   = $state.Running
-                    ExitCode  = $state.ExitCode
+                if ($null -ne $state) {
+                    [pscustomobject]@{
+                        Path      = $_.FullName
+                        LastWrite = $_.LastWriteTime
+                        Running   = $state.Running
+                        ExitCode  = $state.ExitCode
+                    }
                 }
             }
     )
@@ -305,6 +363,11 @@ function New-TailReader {
         Offset  = $Offset
         Carry   = $Carry
         Decoder = ([System.Text.UTF8Encoding]::new($false)).GetDecoder()
+        LastReadBytes   = 0
+        InitialReadBytes = 0
+        ReadSucceeded  = $true
+        ReadError      = $null
+        AtEnd          = $false
 
         # The start of the file as last seen. A task output file only ever grows, so this text
         # never changes while the reader follows one file. When it does change, the file is a
@@ -374,52 +437,12 @@ function Get-FileEndExitCode {
     #>
     param([Parameter(Mandatory)][string] $Path)
 
-    $stream = $null
-    try {
-        $stream = [System.IO.FileStream]::new(
-            $Path,
-            [System.IO.FileMode]::Open,
-            [System.IO.FileAccess]::Read,
-            ([System.IO.FileShare]::ReadWrite -bor [System.IO.FileShare]::Delete))
-    }
-    catch {
+    $state = Get-TaskState -Path $Path
+    if ($null -eq $state -or $state.Running) {
         return $null
     }
 
-    try {
-        $want = [int][Math]::Min([long] 8192, $stream.Length)
-        if ($want -le 0) {
-            return $null
-        }
-
-        $stream.Position = $stream.Length - $want
-        $buffer = [byte[]]::new($want)
-        $read = $stream.Read($buffer, 0, $want)
-        if ($read -le 0) {
-            return $null
-        }
-
-        # The first character can be cut in half when the file is longer than this window. Only
-        # the last line matters here, so that does no harm.
-        $text = [System.Text.Encoding]::UTF8.GetString($buffer, 0, $read)
-
-        # Initialised, because this script runs under Set-StrictMode and a window of blank lines
-        # would otherwise leave the variable undefined and throw.
-        $last = $null
-        foreach ($line in ($text -split "`n" | ForEach-Object { $_.TrimEnd("`r") })) {
-            if ($line.Trim().Length -eq 0) { continue }
-            $last = $line
-        }
-
-        if ($last -and $last -match $script:ExitMarker) {
-            return [int] $Matches[1]
-        }
-
-        return $null
-    }
-    finally {
-        if ($stream) { $stream.Dispose() }
-    }
+    return $state.ExitCode
 }
 
 function Read-TailText {
@@ -432,6 +455,11 @@ function Read-TailText {
     #>
     param([Parameter(Mandatory)][object] $Reader)
 
+    $Reader.LastReadBytes = 0
+    $Reader.ReadSucceeded = $true
+    $Reader.ReadError = $null
+    $Reader.AtEnd = $false
+
     $stream = $null
     try {
         $stream = [System.IO.FileStream]::new(
@@ -441,6 +469,8 @@ function Read-TailText {
             ([System.IO.FileShare]::ReadWrite -bor [System.IO.FileShare]::Delete))
     }
     catch {
+        $Reader.ReadSucceeded = $false
+        $Reader.ReadError = $_.Exception.Message
         return ''
     }
 
@@ -466,17 +496,22 @@ function Read-TailText {
 
         $available = $stream.Length - $Reader.Offset
         if ($available -le 0) {
+            $Reader.AtEnd = $true
             return ''
         }
 
         $stream.Position = $Reader.Offset
-        $buffer = [byte[]]::new($available)
+        $want = [int][Math]::Min([long] $script:TailReadLength, $available)
+        $buffer = [byte[]]::new($want)
         $read = $stream.Read($buffer, 0, $buffer.Length)
         if ($read -le 0) {
+            $Reader.AtEnd = $true
             return ''
         }
 
         $Reader.Offset += $read
+        $Reader.LastReadBytes = $read
+        $Reader.AtEnd = $Reader.Offset -ge $stream.Length
 
         $chars = [char[]]::new($Reader.Decoder.GetCharCount($buffer, 0, $read, $false))
         $written = $Reader.Decoder.GetChars($buffer, 0, $read, $chars, 0, $false)
@@ -485,6 +520,113 @@ function Read-TailText {
         }
 
         return ([string]::new($chars, 0, $written))
+    }
+    catch {
+        $Reader.ReadSucceeded = $false
+        $Reader.ReadError = $_.Exception.Message
+        $Reader.AtEnd = $false
+        return ''
+    }
+    finally {
+        if ($stream) { $stream.Dispose() }
+    }
+}
+
+function Read-InitialTailText {
+    <#
+      Reads backwards in fixed-size blocks until it has enough line breaks for the initial tail.
+      The reader is left at the file end so follow mode continues without a gap or repeat.
+    #>
+    param(
+        [Parameter(Mandatory)][object] $Reader,
+        [Parameter(Mandatory)][int] $LineCount
+    )
+
+    $Reader.InitialReadBytes = 0
+    $Reader.ReadSucceeded = $true
+    $Reader.ReadError = $null
+    $Reader.AtEnd = $false
+
+    $stream = $null
+    try {
+        $stream = [System.IO.FileStream]::new(
+            $Reader.Path,
+            [System.IO.FileMode]::Open,
+            [System.IO.FileAccess]::Read,
+            ([System.IO.FileShare]::ReadWrite -bor [System.IO.FileShare]::Delete))
+    }
+    catch {
+        $Reader.ReadSucceeded = $false
+        $Reader.ReadError = $_.Exception.Message
+        return ''
+    }
+
+    try {
+        $end = $stream.Length
+        $position = $end
+        $newlines = 0
+        $chunks = [System.Collections.Generic.List[byte[]]]::new()
+        $total = 0
+
+        # One extra newline lets us discard a partial first line when the read starts mid-file.
+        $wantedNewlines = $LineCount + 1
+        while ($position -gt 0 -and $newlines -lt $wantedNewlines) {
+            $want = [int][Math]::Min([long] $script:TailReadLength, $position)
+            $position -= $want
+            $stream.Position = $position
+
+            $chunk = [byte[]]::new($want)
+            $read = $stream.Read($chunk, 0, $want)
+            if ($read -le 0) { break }
+
+            if ($read -lt $want) {
+                $exact = [byte[]]::new($read)
+                [System.Array]::Copy($chunk, $exact, $read)
+                $chunk = $exact
+            }
+
+            $chunks.Add($chunk)
+            $total += $read
+            foreach ($value in $chunk) {
+                if ($value -eq 10) { $newlines++ }
+            }
+        }
+
+        $Reader.Offset = $end
+        $Reader.Head = Read-FileHead -Stream $stream -Count $script:TailHeadLength
+        $Reader.InitialReadBytes = $total
+        $Reader.AtEnd = $true
+
+        if ($total -le 0) {
+            return ''
+        }
+
+        $buffer = [byte[]]::new($total)
+        $destination = 0
+        for ($i = $chunks.Count - 1; $i -ge 0; $i--) {
+            $chunk = $chunks[$i]
+            [System.Array]::Copy($chunk, 0, $buffer, $destination, $chunk.Length)
+            $destination += $chunk.Length
+        }
+
+        $chars = [char[]]::new($Reader.Decoder.GetCharCount($buffer, 0, $buffer.Length, $false))
+        $written = $Reader.Decoder.GetChars($buffer, 0, $buffer.Length, $chars, 0, $false)
+        $text = if ($written -gt 0) { [string]::new($chars, 0, $written) } else { '' }
+
+        if ($position -gt 0) {
+            $firstBreak = $text.IndexOf("`n")
+            if ($firstBreak -ge 0) {
+                $text = $text.Substring($firstBreak + 1)
+            }
+        }
+
+        return $text
+    }
+    catch {
+        $Reader.ReadSucceeded = $false
+        $Reader.ReadError = $_.Exception.Message
+        $Reader.AtEnd = $false
+        return ''
     }
     finally {
         if ($stream) { $stream.Dispose() }
@@ -533,7 +675,11 @@ function Show-Tail {
     )
 
     $reader = New-TailReader -Path $Path
-    $lines = @(Split-TailLine -Reader $reader -Text (Read-TailText -Reader $reader))
+    $text = Read-InitialTailText -Reader $reader -LineCount $Count
+    if (-not $reader.ReadSucceeded) {
+        throw "Task output could no longer be read: $Path. $($reader.ReadError)"
+    }
+    $lines = @(Split-TailLine -Reader $reader -Text $text)
 
     $start = [Math]::Max(0, $lines.Count - $Count)
     for ($i = $start; $i -lt $lines.Count; $i++) {
@@ -567,13 +713,18 @@ function Show-Tail {
     }
 
     $exitCode = $null
+    $killed = $false
     if ($null -ne $lastText -and $lastText -match $script:ExitMarker) {
         $exitCode = [int] $Matches[1]
+    }
+    elseif ($null -ne $lastText -and $lastText -match $script:KilledMarker) {
+        $killed = $true
     }
 
     return [pscustomobject]@{
         Reader   = $reader
         ExitCode = $exitCode
+        Killed   = $killed
     }
 }
 
@@ -591,12 +742,23 @@ function Watch-Record {
 
     # Not named $tail. Variable names ignore case here, so that would overwrite the $Tail
     # parameter, which is typed [int], and the assignment would throw.
-    $initial = Show-Tail -Path $Record.Path -Count $Tail -KeepPartial:$following
+    try {
+        $initial = Show-Tail -Path $Record.Path -Count $Tail -KeepPartial:$following
+    }
+    catch {
+        Write-Host $_.Exception.Message
+        return 1
+    }
     $reader = $initial.Reader
 
     if (-not $Record.Running) {
         Write-Host ''
-        Write-Host "This task has already finished. Exit code: $($Record.ExitCode)"
+        if ($null -eq $Record.ExitCode) {
+            Write-Host 'This task has already stopped. State: killed'
+        }
+        else {
+            Write-Host "This task has already finished. Exit code: $($Record.ExitCode)"
+        }
         return 0
     }
 
@@ -608,6 +770,11 @@ function Watch-Record {
         Write-Host "Exit code: $($initial.ExitCode)"
         return 0
     }
+    if ($initial.Killed) {
+        Write-Host ''
+        Write-Host 'State: killed'
+        return 0
+    }
 
     if ($NoFollow) {
         Write-Host ''
@@ -615,48 +782,74 @@ function Watch-Record {
         return 0
     }
 
+    $readFailures = 0
     while ($true) {
-        Start-Sleep -Milliseconds 500
-
         $text = Read-TailText -Reader $reader
+        if (-not $reader.ReadSucceeded) {
+            $readFailures++
+            if ($readFailures -ge $script:MaxTailReadFailures) {
+                Write-Host ''
+                Write-Host "Task output could no longer be read after $readFailures attempts: $($reader.Path)"
+                return 1
+            }
+
+            Start-Sleep -Milliseconds 500
+            continue
+        }
 
         foreach ($line in @(Split-TailLine -Reader $reader -Text $text)) {
             Write-Host $line
+        }
 
-            if ($line -match $script:ExitMarker) {
+        if ($reader.AtEnd) {
+            $state = Get-TaskState -Path $reader.Path
+            if ($null -eq $state) {
+                $readFailures++
+                if ($readFailures -ge $script:MaxTailReadFailures) {
+                    Write-Host ''
+                    Write-Host "Task output could no longer be read after $readFailures attempts: $($reader.Path)"
+                    return 1
+                }
+            }
+            else {
+                $readFailures = 0
+            }
+
+            if ($null -ne $state -and -not $state.Running) {
+                if ($reader.Carry.Trim().Length -gt 0) {
+                    Write-Host $reader.Carry
+                    $reader.Carry = ''
+                }
+
+                # No text from the reader but a terminal file end means its byte offset went
+                # stale. Show the real end so the caller is not left with a silent gap.
+                if ($text.Length -eq 0) {
+                    Write-Host ''
+                    Write-Host 'The file changed while it was being followed, so some of its output is not above.'
+                    Write-Host 'Its last lines:'
+                    Write-Host ''
+                    try {
+                        Show-Tail -Path $reader.Path -Count $Tail | Out-Null
+                    }
+                    catch {
+                        Write-Host $_.Exception.Message
+                        return 1
+                    }
+                }
+
                 Write-Host ''
-                Write-Host "Exit code: $($Matches[1])"
+                if ($null -eq $state.ExitCode) {
+                    Write-Host 'State: killed'
+                }
+                else {
+                    Write-Host "Exit code: $($state.ExitCode)"
+                }
                 return 0
             }
         }
 
-        # Nothing new arrived. That is normal in a quiet moment, but it is also what a stale byte
-        # offset looks like: a file replaced by one of the same length, whose start also matches,
-        # is not something the reader can tell apart from the file it was already following, so
-        # the offset survives and no new text ever comes.
-        #
-        # So the end of the wait never depends on the reader being right. Ask the file itself.
         if ($text.Length -eq 0) {
-            $ended = Get-FileEndExitCode -Path $reader.Path
-            if ($null -ne $ended) {
-                Write-Host ''
-                Write-Host 'The file changed while it was being followed, so some of its output is not above.'
-                Write-Host 'Its last lines:'
-                Write-Host ''
-                Show-Tail -Path $reader.Path -Count $Tail | Out-Null
-                Write-Host ''
-                Write-Host "Exit code: $ended"
-                return 0
-            }
-        }
-
-        # The marker is normally a line of its own, but a task that ends without a final newline
-        # would leave it in the carry, and waiting for a newline that never comes would hang.
-        if ($reader.Carry -match $script:ExitMarker) {
-            Write-Host $reader.Carry
-            Write-Host ''
-            Write-Host "Exit code: $($Matches[1])"
-            return 0
+            Start-Sleep -Milliseconds 500
         }
     }
 }
@@ -704,7 +897,15 @@ function Invoke-WatchTask {
             $rowIndex++
             [pscustomobject]@{
                 Index = $rowIndex
-                State = if ($record.Running) { 'running' } else { "exited $($record.ExitCode)" }
+                State = if ($record.Running) {
+                    'running'
+                }
+                elseif ($null -eq $record.ExitCode) {
+                    'killed'
+                }
+                else {
+                    "exited $($record.ExitCode)"
+                }
                 Age   = Format-Age -When $record.LastWrite
                 Path  = $record.Path
             }
@@ -725,12 +926,23 @@ function Invoke-WatchTask {
 
     if ($running.Count -eq 0) {
         $newest = $records[0]
-        Write-Host 'No task is running now. Showing the newest finished task.'
+        Write-Host 'No task is running now. Showing the newest stopped task.'
         Write-Host ''
-        Show-Tail -Path $newest.Path -Count $Tail | Out-Null
+        try {
+            Show-Tail -Path $newest.Path -Count $Tail | Out-Null
+        }
+        catch {
+            Write-Host $_.Exception.Message
+            return 1
+        }
         Write-Host ''
         Write-Host "Path: $($newest.Path)"
-        Write-Host "Exit code: $($newest.ExitCode)"
+        if ($null -eq $newest.ExitCode) {
+            Write-Host 'State: killed'
+        }
+        else {
+            Write-Host "Exit code: $($newest.ExitCode)"
+        }
         return 0
     }
 

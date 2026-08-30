@@ -237,6 +237,34 @@ foreach ($case in $badValues.GetEnumerator()) {
     }
 }
 
+# --- Valid JSON with the wrong top-level shape is treated as no history ---
+
+$shapeCases = @(
+    @{ Name = 'an array';          Json = '[10, 20]'; Unit = 'Count' }
+    @{ Name = 'a string';          Json = '"text"';   Unit = 'Length' }
+    @{ Name = 'a number';          Json = '42';       Unit = 'unit' }
+    @{ Name = 'null';              Json = 'null';     Unit = 'unit' }
+    @{ Name = 'truncated JSON';    Json = '{"unit":'; Unit = 'unit' }
+)
+
+foreach ($case in $shapeCases) {
+    $root = New-ProgressTestRoot
+    try {
+        $folder = Join-Path $root 'TestResults\progress'
+        New-Item -ItemType Directory -Path $folder -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $folder 'demo.json') -Encoding UTF8 -Value $case.Json
+
+        $tracker = New-ProgressTracker -RunnerKey 'demo' -RepoRoot $root -Unit @($case.Unit)
+        $line = Get-StartLine -Tracker $tracker -Name $case.Unit
+
+        Assert-True ($line -match 'remaining unknown') "History shape ($($case.Name)): a non-object must be ignored, got: $line"
+        Assert-True ($line -match '1 unit has no history') "History shape ($($case.Name)): the unit must count as unknown, got: $line"
+    }
+    finally {
+        Remove-Item -LiteralPath $root -Recurse -Force
+    }
+}
+
 # --- The value exactly on the one-year limit is still used ---
 #
 # The case above rejects one second past the limit. Without this one, moving the limit to zero

@@ -153,13 +153,54 @@ try {
     $finishedFile = New-FakeTaskOutput -Root $root -ProjectFolder 'proj' -LastWrite (Get-Date) -Lines @(
         'building', 'done', '', '[exited with code 2]', ''
     )
+    $killedFile = New-FakeTaskOutput -Root $root -ProjectFolder 'proj' -LastWrite (Get-Date) -Lines @(
+        'building', '[killed]'
+    )
 
     $runningState = Get-TaskState -Path $runningFile
     $finishedState = Get-TaskState -Path $finishedFile
+    $killedState = Get-TaskState -Path $killedFile
 
     Assert-True ($runningState.Running -eq $true) 'Detection: a file with no exit line is running.'
     Assert-True ($finishedState.Running -eq $false) 'Detection: a file ending with the exit line is finished.'
     Assert-True ($finishedState.ExitCode -eq 2) "Detection: the exit code is read from the line, got: $($finishedState.ExitCode)"
+    Assert-True ($killedState.Running -eq $false) 'Detection: a file ending with [killed] is no longer running.'
+    Assert-True ($null -eq $killedState.ExitCode) 'Detection: a killed task has no exit code.'
+}
+finally {
+    Remove-Item -LiteralPath $root -Recurse -Force
+}
+
+# --- Discovery and tailing inspect bounded pieces of a large log ---
+
+$root = New-WatchTestRoot
+try {
+    $largePath = Join-Path $root 'large.output'
+    $content = ("PADDING-LINE`n" * 20000) + "LAST-LINE`n[exited with code 0]`n"
+    [System.IO.File]::WriteAllText($largePath, $content)
+    $length = (Get-Item -LiteralPath $largePath).Length
+
+    $state = Get-TaskState -Path $largePath
+    $stateBytes = $state.PSObject.Properties['BytesRead']
+    Assert-True ($null -ne $stateBytes) 'Bounded state: the state result must report how many bytes it inspected.'
+    if ($null -ne $stateBytes) {
+        Assert-True ($stateBytes.Value -lt $length) "Bounded state: discovery must inspect only the file end. Read $($stateBytes.Value) of $length bytes."
+    }
+
+    $reader = New-TailReader -Path $largePath
+    Read-TailText -Reader $reader | Out-Null
+    $followBytes = $reader.PSObject.Properties['LastReadBytes']
+    Assert-True ($null -ne $followBytes) 'Bounded follow: the reader must report the size of its last read.'
+    if ($null -ne $followBytes) {
+        Assert-True ($followBytes.Value -lt $length) "Bounded follow: one poll must read a fixed-size chunk. Read $($followBytes.Value) of $length bytes."
+    }
+
+    $initial = Show-Tail -Path $largePath -Count 2
+    $initialBytes = $initial.Reader.PSObject.Properties['InitialReadBytes']
+    Assert-True ($null -ne $initialBytes) 'Bounded initial tail: the reader must report how many bytes it read to find the last lines.'
+    if ($null -ne $initialBytes) {
+        Assert-True ($initialBytes.Value -lt $length) "Bounded initial tail: finding two lines must not read the complete log. Read $($initialBytes.Value) of $length bytes."
+    }
 }
 finally {
     Remove-Item -LiteralPath $root -Recurse -Force
@@ -183,6 +224,9 @@ try {
     $newestRunning = New-FakeTaskOutput -Root $root -ProjectFolder "$prefix-c" -LastWrite (Get-Date).AddMinutes(-1) -Lines @(
         'newest running run', 'NEWEST-RUNNING-MARKER'
     )
+    New-FakeTaskOutput -Root $root -ProjectFolder "$prefix-d" -LastWrite (Get-Date) -Lines @(
+        'newer killed run', '[killed]'
+    ) | Out-Null
 
     $result = Invoke-WatchScript -ScriptArgs @('-Root', $root, '-NoFollow')
 
@@ -384,6 +428,74 @@ finally {
     Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
 }
 
+# --- An exit-marker-shaped output line does not end the watch unless it is last ---
+
+$root = New-WatchTestRoot
+$job = $null
+try {
+    $session = [guid]::NewGuid().ToString()
+    $tasksDir = Join-Path (Join-Path (Join-Path $root "$prefix-marker") $session) 'tasks'
+    New-Item -ItemType Directory -Path $tasksDir -Force | Out-Null
+    $markerPath = Join-Path $tasksDir 'task.output'
+    [System.IO.File]::WriteAllText($markerPath, "STARTED`n")
+
+    $job = Start-Job -ScriptBlock {
+        param($exe, $script, $searchRoot)
+        & $exe -NoProfile -File $script -Root $searchRoot -Tail 40 2>&1
+    } -ArgumentList $hostExe, $watchScript, $root
+
+    $entered = Wait-ForJobOutput -Job $job -Pattern 'STARTED'
+    Assert-True $entered 'Trailing marker: the watcher must start following within 30s.'
+
+    [System.IO.File]::AppendAllText($markerPath, "[exited with code 5]`nAFTER-NONTERMINAL-MARKER`n")
+    $continued = Wait-ForJobOutput -Job $job -Pattern 'AFTER-NONTERMINAL-MARKER' -TimeoutSeconds 5
+    Assert-True $continued 'Trailing marker: output after a marker-shaped line must still be shown.'
+
+    [System.IO.File]::AppendAllText($markerPath, "[exited with code 6]`n")
+    $finished = Wait-Job -Job $job -Timeout 20
+    Assert-True ($null -ne $finished) 'Trailing marker: the final marker must stop the watcher.'
+
+    $output = Get-JobOutputSoFar -Job $job
+    Assert-True ($output -match 'AFTER-NONTERMINAL-MARKER') "Trailing marker: later output must not be hidden. Output: $output"
+    $lastLine = Get-LastNonEmptyLine -Text $output
+    Assert-True ($lastLine -eq 'Exit code: 6') "Trailing marker: the trailing marker must supply the verdict, got '$lastLine'. Output: $output"
+}
+finally {
+    if ($job) { Remove-Job -Job $job -Force -ErrorAction SilentlyContinue }
+    Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+# --- A selected output file that disappears ends with a visible failure ---
+
+$root = New-WatchTestRoot
+$job = $null
+try {
+    $session = [guid]::NewGuid().ToString()
+    $tasksDir = Join-Path (Join-Path (Join-Path $root "$prefix-deleted") $session) 'tasks'
+    New-Item -ItemType Directory -Path $tasksDir -Force | Out-Null
+    $deletedPath = Join-Path $tasksDir 'task.output'
+    [System.IO.File]::WriteAllText($deletedPath, "BEFORE-DELETION`n")
+
+    $job = Start-Job -ScriptBlock {
+        param($exe, $script, $searchRoot)
+        & $exe -NoProfile -File $script -Root $searchRoot -Tail 40 2>&1
+    } -ArgumentList $hostExe, $watchScript, $root
+
+    $entered = Wait-ForJobOutput -Job $job -Pattern 'BEFORE-DELETION'
+    Assert-True $entered 'Deleted file: the watcher must start following within 30s.'
+    Remove-Item -LiteralPath $deletedPath -Force
+
+    $finished = Wait-Job -Job $job -Timeout 8
+    Assert-True ($null -ne $finished) 'Deleted file: the watcher must not wait forever after its file disappears.'
+
+    $output = Get-JobOutputSoFar -Job $job
+    Assert-True ($output -match 'could no longer be read') "Deleted file: the watcher must explain why it stopped. Output: $output"
+}
+finally {
+    if ($job) { Remove-Job -Job $job -Force -ErrorAction SilentlyContinue }
+    Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+}
+
 # --- A task that finishes between the scan and the tail still ends the watch ---
 #
 # Get-WatchTaskRecord reads whether a task is running, and Watch-Record tails the file after
@@ -495,9 +607,8 @@ try {
     $entered = Wait-ForJobOutput -Job $job -Pattern 'ORIGINAL-LINE'
     Assert-True $entered 'Replaced file: the watcher must read the original file and start following within 30s.'
 
-    # The replacement is longer than the original, and its marker sits at the very front, well
-    # before the point the reader had reached.
-    $replacement = "[exited with code 7]`n" + ("REPLACEMENT-LINE`n" * 40)
+    # The replacement is longer than the original, and its marker sits after new output.
+    $replacement = ("REPLACEMENT-LINE`n" * 40) + "[exited with code 7]`n"
     Assert-True ($replacement.Length -gt $original.Length) 'Replaced file: the replacement must be longer, or the case is not testing what it claims.'
     Set-FileContentInPlace -Path $replacedPath -Text $replacement
 
