@@ -305,7 +305,60 @@ function New-TailReader {
         Offset  = $Offset
         Carry   = $Carry
         Decoder = ([System.Text.UTF8Encoding]::new($false)).GetDecoder()
+
+        # The start of the file as last seen. A task output file only ever grows, so this text
+        # never changes while the reader follows one file. When it does change, the file is a
+        # different one and the byte offset means nothing any more.
+        Head    = $null
     }
+}
+
+# How much of the start of the file the reader remembers, to tell a replacement from an append.
+$script:TailHeadLength = 256
+
+function Read-FileHead {
+    <#
+      The first $Count bytes of an open file, or fewer when the file is shorter.
+    #>
+    param(
+        [Parameter(Mandatory)][System.IO.FileStream] $Stream,
+        [Parameter(Mandatory)][int] $Count
+    )
+
+    $want = [int][Math]::Min([long] $Count, $Stream.Length)
+    if ($want -le 0) {
+        return [byte[]]::new(0)
+    }
+
+    $Stream.Position = 0
+    $buffer = [byte[]]::new($want)
+    $read = $Stream.Read($buffer, 0, $want)
+    if ($read -eq $want) {
+        return $buffer
+    }
+
+    $exact = [byte[]]::new([Math]::Max(0, $read))
+    [System.Array]::Copy($buffer, $exact, $exact.Length)
+    return $exact
+}
+
+function Test-SameHead {
+    <#
+      Whether one file start is still the start of the other. The two can differ in length,
+      because the file grows between reads, so only the part they share is compared. Same start,
+      same file; a different byte means the file was replaced.
+    #>
+    param(
+        [Parameter(Mandatory)][AllowEmptyCollection()][byte[]] $Left,
+        [Parameter(Mandatory)][AllowEmptyCollection()][byte[]] $Right
+    )
+
+    $shared = [Math]::Min($Left.Length, $Right.Length)
+    for ($i = 0; $i -lt $shared; $i++) {
+        if ($Left[$i] -ne $Right[$i]) { return $false }
+    }
+
+    return $true
 }
 
 function Read-TailText {
@@ -331,11 +384,23 @@ function Read-TailText {
     }
 
     try {
-        if ($stream.Length -lt $Reader.Offset) {
-            # The file was replaced or truncated. Start again rather than read from a stale spot.
+        # A shorter file was truncated. A file whose start has changed was replaced, and that one
+        # can be the same size or longer, so the length alone would say nothing was wrong and the
+        # reader would carry on from the old spot, never reading what came before it.
+        $head = Read-FileHead -Stream $stream -Count $script:TailHeadLength
+        $replaced = ($stream.Length -lt $Reader.Offset) -or
+                    ($null -ne $Reader.Head -and -not (Test-SameHead -Left $Reader.Head -Right $head))
+
+        if ($replaced) {
             $Reader.Offset = 0
             $Reader.Carry = ''
             $Reader.Decoder.Reset()
+            $Reader.Head = $head
+        }
+        elseif ($null -eq $Reader.Head -or $head.Length -gt $Reader.Head.Length) {
+            # Keep the longest start seen so far. A file that was still short on the first read
+            # gives little to compare against, and it grows as the run writes more.
+            $Reader.Head = $head
         }
 
         $available = $stream.Length - $Reader.Offset
@@ -414,7 +479,9 @@ function Show-Tail {
         Write-Host $lines[$i]
     }
 
+    $printedPartial = ''
     if (-not $KeepPartial -and $reader.Carry.Length -gt 0) {
+        $printedPartial = $reader.Carry
         Write-Host $reader.Carry
         $reader.Carry = ''
     }
@@ -422,11 +489,25 @@ function Show-Tail {
     # Whether the text just consumed already ends the task. The caller needs this because it
     # decided the task was running before this function read anything, and the marker it would
     # otherwise wait for has now been read and printed here.
+    #
+    # The last text printed is the unfinished tail when there is one, not the last complete line.
+    # A task killed mid-write leaves the marker with no newline after it, and reading only
+    # complete lines missed that and called the task still running.
+    $lastText = $null
+    if ($printedPartial.Trim().Length -gt 0) {
+        $lastText = $printedPartial
+    }
+    else {
+        for ($i = $lines.Count - 1; $i -ge 0; $i--) {
+            if ($lines[$i].Trim().Length -eq 0) { continue }
+            $lastText = $lines[$i]
+            break
+        }
+    }
+
     $exitCode = $null
-    for ($i = $lines.Count - 1; $i -ge 0; $i--) {
-        if ($lines[$i].Trim().Length -eq 0) { continue }
-        if ($lines[$i] -match $script:ExitMarker) { $exitCode = [int] $Matches[1] }
-        break
+    if ($null -ne $lastText -and $lastText -match $script:ExitMarker) {
+        $exitCode = [int] $Matches[1]
     }
 
     return [pscustomobject]@{

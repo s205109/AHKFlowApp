@@ -299,7 +299,11 @@ try {
     New-Item -ItemType Directory -Path $tasksDir -Force | Out-Null
     $livePath = Join-Path $tasksDir 'task.output'
 
-    [System.IO.File]::WriteAllText($livePath, "FIRST-LINE`n")
+    # The unfinished half of the split line is already in the file before the watcher starts, so
+    # the watcher must read it during its first tail. Nothing here depends on when a poll lands:
+    # a sleep between two appends would prove nothing, because a poll arriving after both of them
+    # sees one complete line and a line counter would look correct.
+    [System.IO.File]::WriteAllText($livePath, "FIRST-LINE`nSPLIT-LINE-START")
 
     # No Out-String inside the job. That would hold every line back until the watcher exited,
     # and then no case could wait for the watcher to reach a known point.
@@ -314,13 +318,12 @@ try {
     $entered = Wait-ForJobOutput -Job $job -Pattern 'FIRST-LINE'
     Assert-True $entered 'Follow: the watcher must print the existing text and start following within 30s.'
 
-    # A line written in two pieces. The file gains no extra line when the second piece lands.
-    [System.IO.File]::AppendAllText($livePath, 'SPLIT-LINE-START')
-    Start-Sleep -Milliseconds 800
+    # The text that finishes the line adds no new line to the file, so a watcher that counts
+    # lines has nothing to notice and drops it.
     [System.IO.File]::AppendAllText($livePath, "-AND-END`n")
 
     $joined = Wait-ForJobOutput -Job $job -Pattern 'SPLIT-LINE-START-AND-END'
-    Assert-True $joined 'Follow: a line written in two pieces must be printed in full, in the follow loop.'
+    Assert-True $joined 'Follow: a line written in two pieces must be printed in full.'
 
     [System.IO.File]::AppendAllText($livePath, "LAST-LINE`n[exited with code 3]`n")
 
@@ -332,6 +335,12 @@ try {
     Assert-True ($output -match 'FIRST-LINE') "Follow: the text already in the file must be printed. Output: $output"
     Assert-True ($output -match 'SPLIT-LINE-START-AND-END') "Follow: a line written in two pieces must be printed in full. Output: $output"
     Assert-True ($output -match 'LAST-LINE') "Follow: a line appended after that must be printed. Output: $output"
+
+    # A watcher that counts lines prints the unfinished half as a line of its own, and then never
+    # prints the rest. Checking whole lines catches that; a substring check cannot, because the
+    # finished line contains the unfinished one.
+    $ownLine = @($output -split "`r?`n" | Where-Object { $_.Trim() -eq 'SPLIT-LINE-START' })
+    Assert-True ($ownLine.Count -eq 0) "Follow: the unfinished half must never be printed as a line of its own. Output: $output"
 
     $lastLine = Get-LastNonEmptyLine -Text $output
     Assert-True ($lastLine -eq 'Exit code: 3') "Follow: the last line must be exactly 'Exit code: 3', got '$lastLine'. Output: $output"
@@ -395,6 +404,72 @@ Watch-Record -Record `$record -Tail 40 -NoFollow | Out-Null
 
     Assert-True ($output -notmatch 'still running') "Stale running with -NoFollow: the watcher must not say the task is still running. Output: $output"
     Assert-True ($output -match 'Exit code: 5') "Stale running with -NoFollow: the exit code must be reported. Output: $output"
+}
+finally {
+    Remove-Item -LiteralPath $stalePath -Force -ErrorAction SilentlyContinue
+}
+
+# --- A file replaced by a longer one is read again from the start ---
+#
+# The reader remembers how many bytes it has consumed. A file that is replaced rather than
+# appended to can be the same size or longer, so the byte count alone says nothing is wrong, and
+# the reader carries on from the old spot. Everything before that spot is never read, and when
+# the exit marker is in there the watcher waits for a line that has already been and gone.
+
+$root = New-WatchTestRoot
+$job = $null
+try {
+    $session = [guid]::NewGuid().ToString()
+    $tasksDir = Join-Path (Join-Path (Join-Path $root "$prefix-replaced") $session) 'tasks'
+    New-Item -ItemType Directory -Path $tasksDir -Force | Out-Null
+    $replacedPath = Join-Path $tasksDir 'task.output'
+
+    $original = "ORIGINAL-LINE`n" * 30
+    [System.IO.File]::WriteAllText($replacedPath, $original)
+
+    $job = Start-Job -ScriptBlock {
+        param($exe, $script, $searchRoot)
+        & $exe -NoProfile -File $script -Root $searchRoot -Tail 100 2>&1
+    } -ArgumentList $hostExe, $watchScript, $root
+
+    $entered = Wait-ForJobOutput -Job $job -Pattern 'ORIGINAL-LINE'
+    Assert-True $entered 'Replaced file: the watcher must read the original file and start following within 30s.'
+
+    # The replacement is longer than the original, and its marker sits at the very front, well
+    # before the point the reader had reached.
+    $replacement = "[exited with code 7]`n" + ("REPLACEMENT-LINE`n" * 40)
+    Assert-True ($replacement.Length -gt $original.Length) 'Replaced file: the replacement must be longer, or the case is not testing what it claims.'
+    [System.IO.File]::WriteAllText($replacedPath, $replacement)
+
+    $finished = Wait-Job -Job $job -Timeout 25
+    Assert-True ($null -ne $finished) 'Replaced file: the watcher must notice the replacement and stop, but it was still running after 25s.'
+
+    $output = Get-JobOutputSoFar -Job $job
+    Assert-True ($output -match 'Exit code: 7') "Replaced file: the marker in the replacement must be found. Output: $output"
+}
+finally {
+    if ($job) { Remove-Job -Job $job -Force -ErrorAction SilentlyContinue }
+    Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+# --- A task that ends without a final newline is still reported as finished ---
+#
+# The marker is normally a line of its own. A task killed mid-write can leave it with no newline
+# after it, which makes it the unfinished text at the end of the file rather than a complete
+# line. -NoFollow printed that text and then said the task was still running.
+
+$stalePath = Join-Path ([System.IO.Path]::GetTempPath()) ("watch-task-nonewline-$([guid]::NewGuid()).output")
+try {
+    [System.IO.File]::WriteAllText($stalePath, "ALREADY-DONE`n[exited with code 5]")
+
+    $output = & $hostExe -NoProfile -Command @"
+. '$watchScript'
+`$record = [pscustomobject]@{ Path = '$stalePath'; LastWrite = (Get-Date); Running = `$true; ExitCode = `$null }
+Watch-Record -Record `$record -Tail 40 -NoFollow | Out-Null
+"@ 2>&1 | Out-String
+
+    Assert-True ($output -notmatch 'still running') "No final newline: the watcher must not say the task is still running. Output: $output"
+    Assert-True ($output -match 'Exit code: 5') "No final newline: the exit code must be reported. Output: $output"
 }
 finally {
     Remove-Item -LiteralPath $stalePath -Force -ErrorAction SilentlyContinue

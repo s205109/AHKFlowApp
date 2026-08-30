@@ -22,9 +22,14 @@
 # scope, and test-fast.ps1 does not run under strict mode. The two test suites for this module
 # set strict mode themselves, so the functions are still checked under it.
 
-# A number this module is willing to treat as a unit's seconds. One year is far past any real
+# A number this module is willing to treat as one unit's seconds. One year is far past any real
 # test suite, so a value above it is a broken file rather than a slow run.
 $script:MaxProgressSeconds = 31536000.0
+
+# The largest total the line will print. A run adds up the seconds of every unit still to come,
+# and enough units can legitimately total more than one year, so the unit limit above is the
+# wrong ceiling for a total. This one exists only to keep the Int32 conversion below in range.
+$script:MaxProgressTotalSeconds = 2147483647.0
 
 function Test-ProgressSeconds {
     param([double] $Seconds)
@@ -38,12 +43,11 @@ function Test-ProgressSeconds {
 function Format-ProgressDuration {
     param([double] $Seconds)
 
-    # Clamped, so a caller that computed a total from several remembered values cannot push an
-    # unusable number into the Int32 conversion below.
-    if (-not (Test-ProgressSeconds -Seconds $Seconds)) {
-        $Seconds = [Math]::Max(0.0, [Math]::Min($script:MaxProgressSeconds, $Seconds))
-        if ([double]::IsNaN($Seconds)) { $Seconds = 0.0 }
-    }
+    # Held inside the range the Int32 conversion below can take, and no tighter. The one-year
+    # limit belongs to a single unit, where the file is read; using it here would quietly print
+    # one year for any run whose units add up to more than that.
+    if ([double]::IsNaN($Seconds)) { $Seconds = 0.0 }
+    $Seconds = [Math]::Max(0.0, [Math]::Min($script:MaxProgressTotalSeconds, $Seconds))
 
     $whole = [int][Math]::Round([Math]::Max(0.0, $Seconds))
     if ($whole -lt 60) {

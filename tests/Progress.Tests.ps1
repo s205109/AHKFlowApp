@@ -252,7 +252,33 @@ try {
     $line = Get-StartLine -Tracker $tracker -Name 'a.Tests.ps1'
 
     Assert-True ($line -notmatch 'no history') "On the limit: the value must be used, got: $line"
-    Assert-True ($line -notmatch 'remaining unknown') "On the limit: the estimate must be a number, got: $line"
+    # 31536000 seconds is 525600 minutes exactly. Checking the number, not just that some number
+    # appeared, is what catches a clamp that quietly replaces the real total.
+    Assert-True ($line -match 'remaining ~525600m00s') "On the limit: the estimate must be the value itself, got: $line"
+}
+finally {
+    Remove-Item -LiteralPath $root -Recurse -Force
+}
+
+# --- A total larger than one year is printed, not clamped back to one year ---
+#
+# The one-year limit belongs to a single unit. Several units, each inside that limit, can add up
+# to more, and the line used to print one year for any such run.
+
+$root = New-ProgressTestRoot
+try {
+    $folder = Join-Path $root 'TestResults\progress'
+    New-Item -ItemType Directory -Path $folder -Force | Out-Null
+    # Two units of 20,000,000 seconds each. Both are inside the one-year unit limit; the total is
+    # 40,000,000, which is not. That is 666666 minutes and 40 seconds.
+    Set-Content -LiteralPath (Join-Path $folder 'demo.json') -Encoding UTF8 `
+        -Value '{ "a.Tests.ps1": 20000000, "b.Tests.ps1": 20000000 }'
+
+    $tracker = New-ProgressTracker -RunnerKey 'demo' -RepoRoot $root -Unit @('a.Tests.ps1', 'b.Tests.ps1')
+    $line = Get-StartLine -Tracker $tracker -Name 'a.Tests.ps1'
+
+    Assert-True ($line -match 'remaining ~666666m40s') "Over a year: the total must be printed in full, got: $line"
+    Assert-True ($line -notmatch '525600m') "Over a year: the total must not be clamped back to one year, got: $line"
 }
 finally {
     Remove-Item -LiteralPath $root -Recurse -Force
