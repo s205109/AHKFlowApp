@@ -162,6 +162,31 @@ Invoke-TestCase 'All suites pass -> exit code 0' {
     }
 }
 
+Invoke-TestCase 'The driver prints a progress line per suite and saves no timings for a fixture run' {
+    $root = New-SuiteFixture
+    $timingsPath = Join-Path $repoRoot 'TestResults\progress\run-powershell-suites.json'
+    $before = if (Test-Path -LiteralPath $timingsPath) { (Get-Item -LiteralPath $timingsPath).LastWriteTimeUtc } else { $null }
+
+    try {
+        Add-FakeSuite -Root $root -Name '01-pass.Tests.ps1' -Ending 'pass'
+        Add-FakeSuite -Root $root -Name '02-pass.Tests.ps1' -Ending 'pass'
+
+        $result = Invoke-Driver -SuiteRoot $root
+
+        Assert-True ($result.Output -match '\[1/2\] 01-pass\.Tests\.ps1') "Expected a progress line for the first suite. Output: $($result.Output)"
+        Assert-True ($result.Output -match '\[2/2\] 02-pass\.Tests\.ps1') "Expected a progress line for the second suite. Output: $($result.Output)"
+
+        # A fixture run reads no history, so it can only report the time left as unknown. That is
+        # also what proves it did not reach the real store.
+        Assert-True ($result.Output -match 'remaining unknown') "A fixture run must report the remaining time as unknown. Output: $($result.Output)"
+
+        $after = if (Test-Path -LiteralPath $timingsPath) { (Get-Item -LiteralPath $timingsPath).LastWriteTimeUtc } else { $null }
+        Assert-True ($before -eq $after) 'A run over fake suites must not write the real timings file.'
+    } finally {
+        Remove-SuiteFixture -Root $root
+    }
+}
+
 Invoke-TestCase 'A suite that exits 1 fails the run' {
     $root = New-SuiteFixture
     try {

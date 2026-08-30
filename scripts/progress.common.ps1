@@ -22,8 +22,28 @@
 # scope, and test-fast.ps1 does not run under strict mode. The two test suites for this module
 # set strict mode themselves, so the functions are still checked under it.
 
+# A number this module is willing to treat as a unit's seconds. One year is far past any real
+# test suite, so a value above it is a broken file rather than a slow run.
+$script:MaxProgressSeconds = 31536000.0
+
+function Test-ProgressSeconds {
+    param([double] $Seconds)
+
+    if ([double]::IsNaN($Seconds) -or [double]::IsInfinity($Seconds)) { return $false }
+    if ($Seconds -lt 0.0) { return $false }
+    if ($Seconds -gt $script:MaxProgressSeconds) { return $false }
+    return $true
+}
+
 function Format-ProgressDuration {
     param([double] $Seconds)
+
+    # Clamped, so a caller that computed a total from several remembered values cannot push an
+    # unusable number into the Int32 conversion below.
+    if (-not (Test-ProgressSeconds -Seconds $Seconds)) {
+        $Seconds = [Math]::Max(0.0, [Math]::Min($script:MaxProgressSeconds, $Seconds))
+        if ([double]::IsNaN($Seconds)) { $Seconds = 0.0 }
+    }
 
     $whole = [int][Math]::Round([Math]::Max(0.0, $Seconds))
     if ($whole -lt 60) {
@@ -63,9 +83,19 @@ function Read-ProgressHistory {
         $numberStyles = [System.Globalization.NumberStyles]::Float
         foreach ($property in $parsed.PSObject.Properties) {
             $number = 0.0
-            if ([double]::TryParse([string]$property.Value, $numberStyles, $invariant, [ref] $number)) {
-                $history[$property.Name] = $number
+            if (-not [double]::TryParse([string]$property.Value, $numberStyles, $invariant, [ref] $number)) {
+                continue
             }
+
+            # Double.TryParse accepts 'NaN', 'Infinity', and a number too large for a Double,
+            # and it accepts a negative. Each of those either stops the estimate outright, when
+            # it is converted to an Int32, or quietly makes it wrong. A timings file is an
+            # optional convenience, so an unusable value is dropped and counts as no history.
+            if (-not (Test-ProgressSeconds -Seconds $number)) {
+                continue
+            }
+
+            $history[$property.Name] = $number
         }
     }
     catch {
@@ -81,21 +111,27 @@ function New-ProgressTracker {
     param(
         [Parameter(Mandatory)][string] $RunnerKey,
         [Parameter(Mandatory)][AllowEmptyCollection()][string[]] $Unit,
-        [string] $RepoRoot
+        [string] $RepoRoot,
+
+        # Print the lines, but read no history and save none. A run over a folder of fake units
+        # uses this: the lines are still worth checking, while the timings of fake units must
+        # never reach the store that a real run reads.
+        [switch] $NoStore
     )
 
     if ([string]::IsNullOrWhiteSpace($RepoRoot)) {
         $RepoRoot = Split-Path -Parent $PSScriptRoot
     }
 
-    $historyPath = Get-ProgressHistoryPath -RepoRoot $RepoRoot -RunnerKey $RunnerKey
+    $historyPath = if ($NoStore) { $null } else { Get-ProgressHistoryPath -RepoRoot $RepoRoot -RunnerKey $RunnerKey }
+    $history = if ($NoStore) { @{} } else { Read-ProgressHistory -Path $historyPath }
 
     return [pscustomobject]@{
         RunnerKey    = $RunnerKey
         Unit         = [string[]] $Unit
         RepoRoot     = $RepoRoot
         HistoryPath  = $historyPath
-        History      = (Read-ProgressHistory -Path $historyPath)
+        History      = $history
         Completed    = [ordered]@{}
         Index        = 0
         CurrentName  = $null
@@ -198,6 +234,11 @@ function Stop-ProgressUnit {
 
 function Save-ProgressTimings {
     param([Parameter(Mandatory)][object] $Tracker)
+
+    # A tracker made with -NoStore has no file to write.
+    if (-not $Tracker.HistoryPath) {
+        return
+    }
 
     if ($Tracker.Completed.Count -eq 0) {
         return

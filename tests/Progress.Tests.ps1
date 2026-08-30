@@ -138,10 +138,99 @@ try {
     $leftoverNames = ($leftovers | ForEach-Object { $_.Name }) -join ', '
     Assert-True ($leftovers.Count -eq 0) "Atomic save: no temporary file may be left behind, found: $leftoverNames"
 
-    { Get-Content -LiteralPath (Join-Path $folder 'demo.json') -Raw | ConvertFrom-Json } | ForEach-Object { $_ } | Out-Null
+    # Run the parse, do not pipe a script block. A script block piped as a value is passed
+    # along unexecuted, so the assertion it carried never ran.
+    $parsed = $null
+    $parseError = $null
+    try {
+        $parsed = Get-Content -LiteralPath (Join-Path $folder 'demo.json') -Raw | ConvertFrom-Json
+    }
+    catch {
+        $parseError = $_.Exception.Message
+    }
+
+    Assert-True ($null -eq $parseError) "Atomic save: the saved file must parse as JSON, got: $parseError"
+    Assert-True ($null -ne $parsed -and $null -ne $parsed.'a.Tests.ps1') 'Atomic save: the saved file must hold the unit it recorded.'
 }
 finally {
     Remove-Item -LiteralPath $root -Recurse -Force
+}
+
+# --- The save replaces an existing file completely, leaving nothing of the old content ---
+#
+# This proves the destination is never left holding a mix of old and new text. It does not
+# prove Move-Item specifically: once the save has finished, a replaced file and a rewritten
+# file look the same on disk, and telling them apart needs the file identity, which this
+# repository has no way to read.
+
+$root = New-ProgressTestRoot
+try {
+    # An old file that is much longer than the new one. A write that did not replace the whole
+    # file would leave the tail of this text behind.
+    Set-History -Root $root -RunnerKey 'demo' -Timings @{
+        'old-one.Tests.ps1'   = 11
+        'old-two.Tests.ps1'   = 22
+        'old-three.Tests.ps1' = 33
+        'old-four.Tests.ps1'  = 44
+        'old-five.Tests.ps1'  = 55
+    }
+
+    $tracker = New-ProgressTracker -RunnerKey 'demo' -RepoRoot $root -Unit @('new.Tests.ps1')
+    Get-StartLine -Tracker $tracker -Name 'new.Tests.ps1' | Out-Null
+    Stop-ProgressUnit -Tracker $tracker
+    Save-ProgressTimings -Tracker $tracker
+
+    $text = Get-Content -LiteralPath (Join-Path $root 'TestResults\progress\demo.json') -Raw
+    Assert-True ($text -notmatch 'old-') "Replace: no part of the old file may survive, got: $text"
+    $saved = $text | ConvertFrom-Json
+    Assert-True ($null -ne $saved.'new.Tests.ps1') 'Replace: the new unit must be in the saved file.'
+}
+finally {
+    Remove-Item -LiteralPath $root -Recurse -Force
+}
+
+# --- A history value that is not a usable number is treated as no history ---
+#
+# Double.TryParse accepts 'NaN' and 'Infinity', and the estimate then converts the total to an
+# Int32, which throws. A timings file is an optional convenience, so a value it cannot use must
+# never stop the runner that reads it.
+
+$badValues = @{
+    'NaN'          = 'NaN'
+    'Infinity'     = 'Infinity'
+    '-Infinity'    = '-Infinity'
+    'a negative'   = '-5'
+    'far too big'  = '1e400'
+    'not a number' = 'banana'
+}
+
+foreach ($case in $badValues.GetEnumerator()) {
+    $root = New-ProgressTestRoot
+    try {
+        # Written as raw JSON so the value reaches the reader exactly as a real file would carry it.
+        $folder = Join-Path $root 'TestResults\progress'
+        New-Item -ItemType Directory -Path $folder -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $folder 'demo.json') -Encoding UTF8 `
+            -Value ('{ "a.Tests.ps1": "' + $case.Value + '", "b.Tests.ps1": 12 }')
+
+        $tracker = New-ProgressTracker -RunnerKey 'demo' -RepoRoot $root -Unit @('a.Tests.ps1', 'b.Tests.ps1')
+
+        $line = $null
+        $thrown = $null
+        try {
+            $line = Get-StartLine -Tracker $tracker -Name 'a.Tests.ps1'
+        }
+        catch {
+            $thrown = $_.Exception.Message
+        }
+
+        Assert-True ($null -eq $thrown) "Bad history ($($case.Key)): the progress line must not throw, got: $thrown"
+        Assert-True ($line -match '\(1 unit has no history\)') "Bad history ($($case.Key)): the bad value must count as no history, got: $line"
+        Assert-True ($line -match 'remaining ~12s') "Bad history ($($case.Key)): the good value must still be used, got: $line"
+    }
+    finally {
+        Remove-Item -LiteralPath $root -Recurse -Force
+    }
 }
 
 # --- Runner keys for Fast and Integration do not collide ---

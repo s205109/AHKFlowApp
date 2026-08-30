@@ -143,6 +143,11 @@ Invoke-TestCase 'All suites pass -> exit code 0' {
         $result = Invoke-Wrapper -SuiteRoot $root
         Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
         Assert-True ($result.Output -match 'All 2 suite\(s\) passed\.') "Expected the all-passed summary line. Output: $($result.Output)"
+
+        # The progress lines only appear when test-fast.ps1 loads the shared module and the
+        # runner it calls uses it. Checking them here covers the whole chain, not one link.
+        Assert-True ($result.Output -match '\[1/2\] 01-pass\.Tests\.ps1') "Expected a progress line through the wrapper. Output: $($result.Output)"
+        Assert-True ($result.Output -match '\[2/2\] 02-pass\.Tests\.ps1') "Expected a progress line for the second suite. Output: $($result.Output)"
     }
     finally {
         Remove-SuiteFixture -Root $root
