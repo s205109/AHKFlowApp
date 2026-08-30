@@ -6,7 +6,7 @@
 - **Type**: Feature
 - **Interfaces**: CLI
 - **Difficulty**: moderate
-- **Stage**: 0-intake
+- **Stage**: 4-execute
 
 ## Summary
 
@@ -87,4 +87,4 @@ Two things went wrong on 2026-08-29, and both are fixed by this item:
 - `scripts/measure-tests.ps1` already writes timings to `TestResults/measure-tests/summary.json`.
   It is a separate profiling tool and this item does not change it.
 - Spec: docs/superpowers/specs/2026-08-29-watch-long-runs-design-123.md
-- Plan: <path, or "none — reason">
+- Plan: none — built directly from the design spec, which carries the full file list, function set, and test list

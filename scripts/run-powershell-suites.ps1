@@ -36,6 +36,12 @@ Set-StrictMode -Version Latest
 $PSNativeCommandUseErrorActionPreference = $false
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
+
+# Progress lines are for a real run against tests/. A run pointed at a folder of fake suites
+# (every -SuiteRoot caller) skips them, so a test never rewrites the real timings file.
+$trackProgress = -not $PSBoundParameters.ContainsKey('SuiteRoot')
+. "$PSScriptRoot\progress.common.ps1"
+
 if ([string]::IsNullOrWhiteSpace($SuiteRoot)) {
     $SuiteRoot = Join-Path $repoRoot 'tests'
 }
@@ -81,14 +87,21 @@ $inActions = $env:GITHUB_ACTIONS -eq 'true'
 Write-Host "Running $($suites.Count) PowerShell suite(s) from $SuiteRoot"
 Write-Host "Host: $hostExe"
 
+$progress = $null
+if ($trackProgress) {
+    $progress = New-ProgressTracker -RunnerKey 'run-powershell-suites' -Unit @($suites.Name) -RepoRoot $repoRoot
+}
+
 $results = [System.Collections.Generic.List[object]]::new()
 foreach ($suite in $suites) {
     if ($inActions) { Write-Host "::group::$($suite.Name)" }
+    if ($progress) { Start-ProgressUnit -Tracker $progress -Name $suite.Name }
 
     $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
     & $hostExe -NoProfile -File $suite.FullName
     $exitCode = $LASTEXITCODE
     $stopwatch.Stop()
+    if ($progress) { Stop-ProgressUnit -Tracker $progress }
 
     if ($inActions) { Write-Host '::endgroup::' }
 
@@ -102,6 +115,8 @@ foreach ($suite in $suites) {
         Write-Failure "FAILED: $($suite.Name) (exit code $exitCode)"
     }
 }
+
+if ($progress) { Save-ProgressTimings -Tracker $progress }
 
 $failed = @($results | Where-Object { $_.ExitCode -ne 0 })
 

@@ -48,6 +48,18 @@ $sharedSqlScript = Join-Path $PSScriptRoot 'test-sql-container.common.ps1'
 . "$PSScriptRoot\Common.ps1"
 . "$PSScriptRoot\test-run-lock.common.ps1"
 . "$PSScriptRoot\code-change-filter.common.ps1"
+. "$PSScriptRoot\progress.common.ps1"
+
+function Get-ProgressUnitLabel {
+    param([Parameter(Mandatory = $true)][object]$TestRun)
+
+    $name = [System.IO.Path]::GetFileNameWithoutExtension($TestRun.Project)
+    if (-not [string]::IsNullOrWhiteSpace($TestRun.Filter)) {
+        return "$name[$($TestRun.Filter)]"
+    }
+
+    return $name
+}
 
 function New-TestRun {
     param(
@@ -233,10 +245,19 @@ try {
 
     New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
 
+    $testRuns = @(Get-TestRuns)
+    $progress = New-ProgressTracker -RunnerKey "test-fast.$Mode" -RepoRoot $repoRoot -Unit @(
+        $testRuns | ForEach-Object { Get-ProgressUnitLabel -TestRun $_ }
+    )
+
     $summaries = @()
-    foreach ($testRun in Get-TestRuns) {
+    foreach ($testRun in $testRuns) {
+        Start-ProgressUnit -Tracker $progress -Name (Get-ProgressUnitLabel -TestRun $testRun)
         $summaries += Invoke-TestRun -TestRun $testRun
+        Stop-ProgressUnit -Tracker $progress
     }
+
+    Save-ProgressTimings -Tracker $progress
 
     Write-Success "$Mode test slice completed."
     $summaries | Format-Table -AutoSize
