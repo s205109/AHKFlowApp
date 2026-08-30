@@ -361,6 +361,67 @@ function Test-SameHead {
     return $true
 }
 
+function Get-FileEndExitCode {
+    <#
+      The exit code the file ends with, or $null when it does not end with the marker.
+
+      This reads the end of the file directly and keeps no state, so it answers whatever a
+      follower believes about how far it has read. It is the check that makes the wait end even
+      when the follower's byte offset has gone stale.
+
+      Only the last few kilobytes are read, because the answer is always on the last line and a
+      long run's file can be large.
+    #>
+    param([Parameter(Mandatory)][string] $Path)
+
+    $stream = $null
+    try {
+        $stream = [System.IO.FileStream]::new(
+            $Path,
+            [System.IO.FileMode]::Open,
+            [System.IO.FileAccess]::Read,
+            ([System.IO.FileShare]::ReadWrite -bor [System.IO.FileShare]::Delete))
+    }
+    catch {
+        return $null
+    }
+
+    try {
+        $want = [int][Math]::Min([long] 8192, $stream.Length)
+        if ($want -le 0) {
+            return $null
+        }
+
+        $stream.Position = $stream.Length - $want
+        $buffer = [byte[]]::new($want)
+        $read = $stream.Read($buffer, 0, $want)
+        if ($read -le 0) {
+            return $null
+        }
+
+        # The first character can be cut in half when the file is longer than this window. Only
+        # the last line matters here, so that does no harm.
+        $text = [System.Text.Encoding]::UTF8.GetString($buffer, 0, $read)
+
+        # Initialised, because this script runs under Set-StrictMode and a window of blank lines
+        # would otherwise leave the variable undefined and throw.
+        $last = $null
+        foreach ($line in ($text -split "`n" | ForEach-Object { $_.TrimEnd("`r") })) {
+            if ($line.Trim().Length -eq 0) { continue }
+            $last = $line
+        }
+
+        if ($last -and $last -match $script:ExitMarker) {
+            return [int] $Matches[1]
+        }
+
+        return $null
+    }
+    finally {
+        if ($stream) { $stream.Dispose() }
+    }
+}
+
 function Read-TailText {
     <#
       Returns the text appended since the last call, and advances the offset. Returns an empty
@@ -557,12 +618,34 @@ function Watch-Record {
     while ($true) {
         Start-Sleep -Milliseconds 500
 
-        foreach ($line in @(Split-TailLine -Reader $reader -Text (Read-TailText -Reader $reader))) {
+        $text = Read-TailText -Reader $reader
+
+        foreach ($line in @(Split-TailLine -Reader $reader -Text $text)) {
             Write-Host $line
 
             if ($line -match $script:ExitMarker) {
                 Write-Host ''
                 Write-Host "Exit code: $($Matches[1])"
+                return 0
+            }
+        }
+
+        # Nothing new arrived. That is normal in a quiet moment, but it is also what a stale byte
+        # offset looks like: a file replaced by one of the same length, whose start also matches,
+        # is not something the reader can tell apart from the file it was already following, so
+        # the offset survives and no new text ever comes.
+        #
+        # So the end of the wait never depends on the reader being right. Ask the file itself.
+        if ($text.Length -eq 0) {
+            $ended = Get-FileEndExitCode -Path $reader.Path
+            if ($null -ne $ended) {
+                Write-Host ''
+                Write-Host 'The file changed while it was being followed, so some of its output is not above.'
+                Write-Host 'Its last lines:'
+                Write-Host ''
+                Show-Tail -Path $reader.Path -Count $Tail | Out-Null
+                Write-Host ''
+                Write-Host "Exit code: $ended"
                 return 0
             }
         }

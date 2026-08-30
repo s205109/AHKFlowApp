@@ -109,6 +109,40 @@ Assert-True (Test-WatchTaskFolderName -Name 'D--worktrees-feature' -CheckoutPath
 Assert-True (Test-WatchTaskFolderName -Name 'D--worktrees-feature-tests' -CheckoutPath $twoCheckouts) 'Folder match: a subdirectory of such a worktree must be found.'
 Assert-True (-not (Test-WatchTaskFolderName -Name 'D--worktrees-featureOLD' -CheckoutPath $twoCheckouts)) 'Folder match: a name that merely starts like a worktree must be refused.'
 
+# --- Reading the end of a file says whether the task finished, and with which code ---
+#
+# This is the check that ends the wait when the follower's byte offset has gone stale, so it must
+# hold no state and must answer from the file alone.
+
+$root = New-WatchTestRoot
+try {
+    $endCases = @(
+        @{ Name = 'a terminal marker';        Content = "a`n[exited with code 3]`n";                              Expected = 3 }
+        @{ Name = 'no final newline';         Content = "a`n[exited with code 4]";                                Expected = 4 }
+        @{ Name = 'a negative code';          Content = "a`n[exited with code -1]`n";                             Expected = -1 }
+        @{ Name = 'a running task';           Content = "a`nb`n";                                                 Expected = $null }
+        @{ Name = 'blank lines only';         Content = "`n`n   `n";                                              Expected = $null }
+        @{ Name = 'an empty file';            Content = '';                                                       Expected = $null }
+        @{ Name = 'a marker that is not last'; Content = "[exited with code 5]`nmore`n";                           Expected = $null }
+        # Longer than the window this reads, so it also proves the window looks at the end.
+        @{ Name = 'a file past the window';   Content = (("PADDING-LINE`n" * 2000) + "[exited with code 6]`n");   Expected = 6 }
+    )
+
+    $caseNumber = 0
+    foreach ($case in $endCases) {
+        $caseNumber++
+        $path = Join-Path $root "end-$caseNumber.output"
+        [System.IO.File]::WriteAllText($path, $case.Content)
+
+        $actual = Get-FileEndExitCode -Path $path
+        $same = if ($null -eq $case.Expected) { $null -eq $actual } else { $actual -eq $case.Expected }
+        Assert-True $same "End state: $($case.Name) must read as '$($case.Expected)', got '$actual'."
+    }
+}
+finally {
+    Remove-Item -LiteralPath $root -Recurse -Force
+}
+
 # --- Running versus finished detection, from file content alone ---
 
 $root = New-WatchTestRoot
@@ -409,6 +443,27 @@ finally {
     Remove-Item -LiteralPath $stalePath -Force -ErrorAction SilentlyContinue
 }
 
+# Overwrites a file from byte zero without emptying it first. WriteAllText truncates before it
+# writes, and a watcher can notice that short moment for reasons unrelated to what a case is
+# testing. This leaves the file at least as long as it was throughout.
+function Set-FileContentInPlace {
+    param(
+        [Parameter(Mandatory)][string] $Path,
+        [Parameter(Mandatory)][string] $Text
+    )
+
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($Text)
+    $stream = [System.IO.File]::Open($Path, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Write, [System.IO.FileShare]::ReadWrite)
+    try {
+        $stream.Position = 0
+        $stream.Write($bytes, 0, $bytes.Length)
+        $stream.Flush()
+    }
+    finally {
+        $stream.Dispose()
+    }
+}
+
 # --- A file replaced by a longer one is read again from the start ---
 #
 # The reader remembers how many bytes it has consumed. A file that is replaced rather than
@@ -427,6 +482,11 @@ try {
     $original = "ORIGINAL-LINE`n" * 30
     [System.IO.File]::WriteAllText($replacedPath, $original)
 
+    # The replacement below is written over the file in place, never through WriteAllText.
+    # WriteAllText empties the file first, and that short moment makes the file shorter than the
+    # bytes already read, which the watcher notices for a reason that has nothing to do with
+    # replacement. Writing in place removes that luck, so the case tests what it claims.
+
     $job = Start-Job -ScriptBlock {
         param($exe, $script, $searchRoot)
         & $exe -NoProfile -File $script -Root $searchRoot -Tail 100 2>&1
@@ -439,13 +499,63 @@ try {
     # before the point the reader had reached.
     $replacement = "[exited with code 7]`n" + ("REPLACEMENT-LINE`n" * 40)
     Assert-True ($replacement.Length -gt $original.Length) 'Replaced file: the replacement must be longer, or the case is not testing what it claims.'
-    [System.IO.File]::WriteAllText($replacedPath, $replacement)
+    Set-FileContentInPlace -Path $replacedPath -Text $replacement
 
     $finished = Wait-Job -Job $job -Timeout 25
     Assert-True ($null -ne $finished) 'Replaced file: the watcher must notice the replacement and stop, but it was still running after 25s.'
 
     $output = Get-JobOutputSoFar -Job $job
     Assert-True ($output -match 'Exit code: 7') "Replaced file: the marker in the replacement must be found. Output: $output"
+}
+finally {
+    if ($job) { Remove-Job -Job $job -Force -ErrorAction SilentlyContinue }
+    Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+# --- A replacement that looks identical from the outside still ends the watch ---
+#
+# Comparing the start of the file cannot separate every replacement from an append. A file of the
+# same length, whose first bytes are also the same, looks untouched from every angle the reader
+# has, so its saved byte offset survives and no new text ever arrives.
+#
+# The watcher must not depend on catching that. When nothing new arrives it asks the file itself
+# whether it has ended, so the wait always ends whatever the reader believes.
+
+$root = New-WatchTestRoot
+$job = $null
+try {
+    $session = [guid]::NewGuid().ToString()
+    $tasksDir = Join-Path (Join-Path (Join-Path $root "$prefix-samesize") $session) 'tasks'
+    New-Item -ItemType Directory -Path $tasksDir -Force | Out-Null
+    $samePath = Join-Path $tasksDir 'task.output'
+
+    # A shared start longer than the reader remembers, so the prefix check can never tell these
+    # two apart. Both files are exactly the same length.
+    $sharedStart = "SAME-PREFIX-LINE`n" * 20
+    $marker = "[exited with code 9]`n"
+    $original = $sharedStart + ('X' * ($marker.Length - 1)) + "`n"
+    $replacement = $sharedStart + $marker
+
+    Assert-True ($original.Length -eq $replacement.Length) 'Same-size replacement: both files must be the same length, or the case is not testing what it claims.'
+    Assert-True ($sharedStart.Length -gt 256) 'Same-size replacement: the shared start must be longer than the part the reader remembers.'
+
+    [System.IO.File]::WriteAllText($samePath, $original)
+
+    $job = Start-Job -ScriptBlock {
+        param($exe, $script, $searchRoot)
+        & $exe -NoProfile -File $script -Root $searchRoot -Tail 100 2>&1
+    } -ArgumentList $hostExe, $watchScript, $root
+
+    $entered = Wait-ForJobOutput -Job $job -Pattern 'SAME-PREFIX-LINE'
+    Assert-True $entered 'Same-size replacement: the watcher must read the original file and start following within 30s.'
+
+    Set-FileContentInPlace -Path $samePath -Text $replacement
+
+    $finished = Wait-Job -Job $job -Timeout 25
+    Assert-True ($null -ne $finished) 'Same-size replacement: the watcher must still stop, but it was running after 25s.'
+
+    $output = Get-JobOutputSoFar -Job $job
+    Assert-True ($output -match 'Exit code: 9') "Same-size replacement: the exit code must be reported. Output: $output"
 }
 finally {
     if ($job) { Remove-Job -Job $job -Force -ErrorAction SilentlyContinue }
