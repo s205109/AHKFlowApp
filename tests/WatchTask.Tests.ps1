@@ -1046,6 +1046,114 @@ finally {
     Remove-Item -LiteralPath $swapPath -Force -ErrorAction SilentlyContinue
 }
 
+# --- A replacement arriving after the catch-up read is still printed before its verdict ---
+#
+# The catch-up read runs first, then the state is read again. A new run can replace the file
+# between those two steps. The state then describes the replacement while nothing of the
+# replacement has been read, and the fallback tail does not cover it, because that only runs when
+# the whole iteration read nothing at all. The watcher printed the replacement's exit code over
+# the old task's output.
+#
+# The case builds that window. Get-TaskState is replaced in a child session: its first call adds
+# a late line to the old file and reports the old task finished with code 7, and its second call
+# replaces the file and reports code 9.
+
+$job = $null
+$latePath = Join-Path ([System.IO.Path]::GetTempPath()) ("watch-task-late-swap-$([guid]::NewGuid()).output")
+try {
+    [System.IO.File]::WriteAllText($latePath, "OLD-LINE`n")
+
+    $job = Start-Job -ScriptBlock {
+        param($exe, $script, $path)
+        & $exe -NoProfile -Command @"
+. '$script'
+
+`$script:stateCalls = 0
+function Get-TaskState {
+    param([Parameter(Mandatory)][string] `$Path)
+
+    `$script:stateCalls++
+    if (`$script:stateCalls -eq 1) {
+        [System.IO.File]::AppendAllText(`$Path, ('LATE-LINE' + [char]10))
+        return [pscustomobject]@{ Running = `$false; ExitCode = 7; BytesRead = 0 }
+    }
+    if (`$script:stateCalls -eq 2) {
+        Remove-Item -LiteralPath `$Path -Force
+        [System.IO.File]::WriteAllText(`$Path, ('NEW-RUN-LINE' + [char]10 + '[exited with code 9]' + [char]10))
+    }
+    return [pscustomobject]@{ Running = `$false; ExitCode = 9; BytesRead = 0 }
+}
+
+`$record = [pscustomobject]@{ Path = '$path'; LastWrite = (Get-Date); Running = `$true; ExitCode = `$null }
+Watch-Record -Record `$record -Tail 40 | Out-Null
+"@ 2>&1
+    } -ArgumentList $hostExe, $watchScript, $latePath
+
+    $finished = Wait-Job -Job $job -Timeout 25
+    Assert-True ($null -ne $finished) 'Late swap: the watcher must stop, but it was still running after 25s.'
+
+    $output = Get-JobOutputSoFar -Job $job
+    Assert-True ($output -match 'LATE-LINE') "Late swap: the old file's last line must be printed. Output: $output"
+    Assert-True ($output -match 'NEW-RUN-LINE') `
+        "Late swap: the replacement's output must be printed before its exit code. Output: $output"
+
+    $lastLine = Get-LastNonEmptyLine -Text $output
+    Assert-True ($lastLine -eq 'Exit code: 9') "Late swap: the last line must be 'Exit code: 9', got '$lastLine'. Output: $output"
+}
+finally {
+    if ($job) { Remove-Job -Job $job -Force -ErrorAction SilentlyContinue }
+    Remove-Item -LiteralPath $latePath -Force -ErrorAction SilentlyContinue
+}
+
+# --- A state read that keeps failing after catch-up ends the watch instead of spinning ---
+#
+# The state is read twice per pass: once to notice the task ended, once after the catch-up read.
+# The first read resets the failure count on every success, so it cannot bound a failure that
+# only happens on the second read. The second read needs its own count, or the loop repeats with
+# no sleep and no end.
+#
+# The stub answers by call order. The odd calls are the first read and report the task finished.
+# The even calls are the read after catch-up and fail.
+
+$job = $null
+$settlePath = Join-Path ([System.IO.Path]::GetTempPath()) ("watch-task-settle-$([guid]::NewGuid()).output")
+try {
+    [System.IO.File]::WriteAllText($settlePath, "ONLY-LINE`n")
+
+    $job = Start-Job -ScriptBlock {
+        param($exe, $script, $path)
+        & $exe -NoProfile -Command @"
+. '$script'
+
+`$script:stateCalls = 0
+function Get-TaskState {
+    param([Parameter(Mandatory)][string] `$Path)
+
+    `$script:stateCalls++
+    if (`$script:stateCalls % 2 -eq 1) {
+        return [pscustomobject]@{ Running = `$false; ExitCode = 5; BytesRead = 0 }
+    }
+    return `$null
+}
+
+`$record = [pscustomobject]@{ Path = '$path'; LastWrite = (Get-Date); Running = `$true; ExitCode = `$null }
+exit (Watch-Record -Record `$record -Tail 40)
+"@ 2>&1
+    } -ArgumentList $hostExe, $watchScript, $settlePath
+
+    $finished = Wait-Job -Job $job -Timeout 25
+    Assert-True ($null -ne $finished) `
+        'Settle failure: a state read that keeps failing must end the watch, but it was still running after 25s.'
+
+    $output = Get-JobOutputSoFar -Job $job
+    Assert-True ($output -match 'could no longer be read') `
+        "Settle failure: the watcher must say the file could no longer be read. Output: $output"
+}
+finally {
+    if ($job) { Remove-Job -Job $job -Force -ErrorAction SilentlyContinue }
+    Remove-Item -LiteralPath $settlePath -Force -ErrorAction SilentlyContinue
+}
+
 # --- Report ---
 
 if ($failures.Count -gt 0) {

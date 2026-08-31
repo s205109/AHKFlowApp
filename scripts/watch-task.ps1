@@ -63,6 +63,11 @@ $script:TailReadLength = 65536
 $script:MaxTailTextBytes = 1048576
 $script:MaxTailReadFailures = 4
 
+# How many times the follow loop reads to the file's end and asks for its state again before it
+# reports what it has. Each round costs one read of a file that has already stopped growing, and
+# a round only repeats when a new run replaced the file inside the last one.
+$script:MaxSettleRounds = 5
+
 function ConvertTo-ClaudeProjectFolder {
     <#
       The rule is inferred from the folder names Claude Code writes, not from documentation.
@@ -900,6 +905,7 @@ function Watch-Record {
 
     $tailReadFailures = 0
     $stateReadFailures = 0
+    $settleReadFailures = 0
     while ($true) {
         $text = Read-TailText -Reader $reader
         if (-not $reader.ReadSucceeded) {
@@ -935,25 +941,54 @@ function Watch-Record {
 
             if ($null -ne $state -and -not $state.Running) {
                 # The state above was read after the tail read returned, so the run can have
-                # written its last lines in between. One more read at least, then more until the
-                # reader reaches the end again. The task is over, so the file stops growing.
+                # written its last lines in between. Read to the file's end, then ask the file
+                # for its state again.
+                #
+                # A new run can replace the file between those two steps, and the replacement
+                # then decides the verdict while none of it has been read. So repeat the pair
+                # until a whole round reads nothing. Only then do the lines printed above and
+                # the state reported below belong to the same file.
                 $caughtUp = 0
+                $settled = $null
+                $settleRounds = 0
                 do {
-                    $more = Read-TailText -Reader $reader
-                    if (-not $reader.ReadSucceeded -or $more.Length -eq 0) { break }
+                    $settleRounds++
+                    $roundBytes = 0
+                    do {
+                        $more = Read-TailText -Reader $reader
+                        if (-not $reader.ReadSucceeded -or $more.Length -eq 0) { break }
 
-                    foreach ($line in @(Split-TailLine -Reader $reader -Text $more)) {
-                        Write-Host $line
+                        foreach ($line in @(Split-TailLine -Reader $reader -Text $more)) {
+                            Write-Host $line
+                        }
+                        $roundBytes += $more.Length
+                    } while (-not $reader.AtEnd)
+                    $caughtUp += $roundBytes
+
+                    $settled = Get-TaskState -Path $reader.Path
+                } while ($roundBytes -gt 0 -and
+                         $null -ne $settled -and
+                         -not $settled.Running -and
+                         $settleRounds -lt $script:MaxSettleRounds)
+
+                # This read keeps its own failure count. The count above resets on every read
+                # that works, so it can never bound a file that reads there and fails here.
+                if ($null -eq $settled) {
+                    $settleReadFailures++
+                    if ($settleReadFailures -ge $script:MaxTailReadFailures) {
+                        Write-Host ''
+                        Write-Host "Task output could no longer be read after $settleReadFailures attempts: $($reader.Path)"
+                        return 1
                     }
-                    $caughtUp += $more.Length
-                } while (-not $reader.AtEnd)
 
-                # The catch-up above can find a replacement file and read it from the start. The
-                # state read before it belongs to the file that was there then, so ask again. A
-                # replacement that is still running keeps the watch going, and the carry stays in
-                # the reader because its last line is not finished yet.
-                $settled = Get-TaskState -Path $reader.Path
-                if ($null -eq $settled -or $settled.Running) {
+                    Start-Sleep -Milliseconds 500
+                    continue
+                }
+                $settleReadFailures = 0
+
+                # A replacement that is still running keeps the watch going. The carry stays in
+                # the reader, because its last line is not finished yet.
+                if ($settled.Running) {
                     continue
                 }
                 $state = $settled
