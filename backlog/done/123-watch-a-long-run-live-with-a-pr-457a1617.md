@@ -40,52 +40,54 @@ Two things went wrong on 2026-08-29, and both are fixed by this item:
       (`scripts/watch-task.ps1:40`, "param(")
 - [x] Run with no arguments, it tails the newest still-running task output file for this
       repository, including files that belong to any of the repository's worktrees.
-      (`scripts/watch-task.ps1:1102`, "$running = @(");
+      (`scripts/watch-task.ps1:1149`, "$running = @(");
       (`scripts/watch-task.ps1:104`, "function Get-RepositoryCheckoutPath").
       The mechanism changed during review —
       see the note under **Notes / dependencies**.
 - [x] It decides that a task is still running when the file ends with neither
       `[exited with code N]` nor `[killed]`, and needs no state of its own to do so.
-      (`scripts/watch-task.ps1:287`, "$lastNonEmpty -match $script:ExitMarker");
-      (`scripts/watch-task.ps1:290`, "$lastNonEmpty -match $script:KilledMarker")
+      (`scripts/watch-task.ps1:299`, "$lastNonEmpty -match $script:ExitMarker");
+      (`scripts/watch-task.ps1:302`, "$lastNonEmpty -match $script:KilledMarker")
 - [x] It stops on its own when a terminal marker is the file's last line. It prints the exit code
-      or killed state as its last line. (`scripts/watch-task.ps1:928`, "if ($reader.AtEnd)");
-      (`scripts/watch-task.ps1:942`, "-not $state.Running");
-      (`scripts/watch-task.ps1:1019`, "State: killed");
-      (`scripts/watch-task.ps1:1022`, "Exit code:")
+      or killed state as its last line. (`scripts/watch-task.ps1:952`, "if ($reader.AtEnd)");
+      (`scripts/watch-task.ps1:966`, "-not $state.Running");
+      (`scripts/watch-task.ps1:1066`, "State: killed");
+      (`scripts/watch-task.ps1:1069`, "Exit code:")
 - [x] With no running task, it prints the newest stopped task's last lines, path, and terminal
-      state, and exits 0. (`scripts/watch-task.ps1:1104`, "if ($running.Count -eq 0)");
-      (`scripts/watch-task.ps1:1109`, "Show-Tail -Path $newest.Path");
-      (`scripts/watch-task.ps1:1116`, "Path:")
+      state, and exits 0. (`scripts/watch-task.ps1:1151`, "if ($running.Count -eq 0)");
+      (`scripts/watch-task.ps1:1156`, "Show-Tail -Path $newest.Path");
+      (`scripts/watch-task.ps1:1163`, "Path:")
 - [x] With more than one running task, it tails the newest and prints one line naming how many
-      others are running. (`scripts/watch-task.ps1:1126`, "if ($running.Count -gt 1)")
+      others are running. (`scripts/watch-task.ps1:1173`, "if ($running.Count -gt 1)")
 - [x] `-List` prints the recent tasks with their state, age, and index. `-Index` selects one.
-      (`scripts/watch-task.ps1:1071`, "if ($List)");
-      (`scripts/watch-task.ps1:1094`, "if ($Index -gt 0)")
+      (`scripts/watch-task.ps1:1118`, "if ($List)");
+      (`scripts/watch-task.ps1:1141`, "if ($Index -gt 0)")
 - [x] `-Root` points the script at another search root, so a test can build a fake tree.
-      (`scripts/watch-task.ps1:1050`, "$searchRoot = if")
+      (`scripts/watch-task.ps1:1097`, "$searchRoot = if")
 - [x] `scripts/progress.common.ps1` exposes functions to create a tracker over a named list of
       units, start a unit, stop a unit, and save the run's timings.
-      (`scripts/progress.common.ps1:149`, "function New-ProgressTracker");
-      (`scripts/progress.common.ps1:247`, "function Start-ProgressUnit");
-      (`scripts/progress.common.ps1:260`, "function Stop-ProgressUnit");
-      (`scripts/progress.common.ps1:274`, "function Save-ProgressTimings")
+      (`scripts/progress.common.ps1:153`, "function New-ProgressTracker");
+      (`scripts/progress.common.ps1:251`, "function Start-ProgressUnit");
+      (`scripts/progress.common.ps1:264`, "function Stop-ProgressUnit");
+      (`scripts/progress.common.ps1:278`, "function Save-ProgressTimings")
 - [x] Before each unit, the tracker prints one line carrying the unit's position, the unit's
       name, the elapsed time, and the estimated time left.
-      (`scripts/progress.common.ps1:257`, "Write-Host (Get-ProgressLine");
-      (`scripts/progress.common.ps1:244`, "elapsed $elapsed")
+      (`scripts/progress.common.ps1:261`, "Write-Host (Get-ProgressLine");
+      (`scripts/progress.common.ps1:248`, "elapsed $elapsed")
 - [x] The estimate comes from the previous run's per-unit seconds, read from
       `TestResults/progress/<runner key>.json`.
       (`scripts/progress.common.ps1:99`, "TestResults\progress")
 - [x] A unit with no remembered time is left out of the estimate and counted in a note on the
       same line. When no unit has a remembered time, the line says the remaining time is
       unknown instead of printing a number.
-      (`scripts/progress.common.ps1:209`, "$Tracker.History.Contains");
-      (`scripts/progress.common.ps1:221`, "unknown$noHistoryNote")
+      (`scripts/progress.common.ps1:213`, "$Tracker.History.Contains");
+      (`scripts/progress.common.ps1:225`, "unknown$noHistoryNote")
 - [x] A unit records its seconds only when it finishes, so an interrupted run adds nothing.
-      (`scripts/progress.common.ps1:269`, "$Tracker.Completed")
-- [x] The timings file is written once, at the end of the run, through a temporary file that is
-      then moved into place. (`scripts/progress.common.ps1:303`, "Move-Item -LiteralPath $temp")
+      (`scripts/progress.common.ps1:273`, "$Tracker.Completed")
+- [x] The timings file is written once, at the end of the run, through a temporary file that then
+      replaces the destination in one step.
+      (`scripts/progress.common.ps1:315`, "[System.IO.File]::Replace($temp");
+      (`scripts/progress.common.ps1:318`, "[System.IO.File]::Move($temp")
 - [x] `scripts/run-powershell-suites.ps1` prints a progress line per suite through that module.
       (`scripts/run-powershell-suites.ps1:97`, "Start-ProgressUnit -Tracker $progress")
 - [x] `scripts/test-fast.ps1` prints a progress line per test project through that module, and
@@ -142,10 +144,10 @@ Two things went wrong on 2026-08-29, and both are fixed by this item:
   one folder name no longer let either one claim it. The byte bound now caps a single line, not
   the whole initial tail. Output written while the terminal state is read is now printed. The
   unfinished last line now counts toward `-Tail` instead of arriving on top of it.
-  (`scripts/watch-task.ps1:218`, "-ge $best");
-  (`scripts/watch-task.ps1:679`, "$lineCapReached = $position");
-  (`scripts/watch-task.ps1:803`, "$wantedLines = if");
-  (`scripts/watch-task.ps1:965`, "while (-not $reader.AtEnd)")
+  (`scripts/watch-task.ps1:230`, "-ge $best");
+  (`scripts/watch-task.ps1:691`, "$lineCapReached = $position");
+  (`scripts/watch-task.ps1:826`, "$wantedLines = if");
+  (`scripts/watch-task.ps1:994`, "while (-not $reader.AtEnd)")
 - `TestResults/` is already ignored by `.gitignore`, so the timings file never reaches a diff.
 - `scripts/measure-tests.ps1` already writes timings to `TestResults/measure-tests/summary.json`.
   It is a separate profiling tool and this item does not change it.
