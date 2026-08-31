@@ -139,21 +139,23 @@ Assert-True (
 
 # --- Reading the end of a file says whether the task finished, and with which code ---
 #
-# This is the check that ends the wait when the follower's byte offset has gone stale, so it must
-# hold no state and must answer from the file alone.
+# Get-TaskState is the check that ends the wait when the follower's byte offset has gone stale, so
+# it must hold no state and must answer from the file alone. A killed task and a finished task both
+# report Running as false, and only the exit code tells them apart.
 
 $root = New-WatchTestRoot
 try {
     $endCases = @(
-        @{ Name = 'a terminal marker';        Content = "a`n[exited with code 3]`n";                              Expected = 3 }
-        @{ Name = 'no final newline';         Content = "a`n[exited with code 4]";                                Expected = 4 }
-        @{ Name = 'a negative code';          Content = "a`n[exited with code -1]`n";                             Expected = -1 }
-        @{ Name = 'a running task';           Content = "a`nb`n";                                                 Expected = $null }
-        @{ Name = 'blank lines only';         Content = "`n`n   `n";                                              Expected = $null }
-        @{ Name = 'an empty file';            Content = '';                                                       Expected = $null }
-        @{ Name = 'a marker that is not last'; Content = "[exited with code 5]`nmore`n";                           Expected = $null }
+        @{ Name = 'a terminal marker';         Content = "a`n[exited with code 3]`n";                            Running = $false; ExitCode = 3 }
+        @{ Name = 'no final newline';          Content = "a`n[exited with code 4]";                              Running = $false; ExitCode = 4 }
+        @{ Name = 'a negative code';           Content = "a`n[exited with code -1]`n";                           Running = $false; ExitCode = -1 }
+        @{ Name = 'a killed marker';           Content = "a`n[killed]`n";                                        Running = $false; ExitCode = $null }
+        @{ Name = 'a running task';            Content = "a`nb`n";                                               Running = $true;  ExitCode = $null }
+        @{ Name = 'blank lines only';          Content = "`n`n   `n";                                            Running = $true;  ExitCode = $null }
+        @{ Name = 'an empty file';             Content = '';                                                     Running = $true;  ExitCode = $null }
+        @{ Name = 'a marker that is not last'; Content = "[exited with code 5]`nmore`n";                          Running = $true;  ExitCode = $null }
         # Longer than the window this reads, so it also proves the window looks at the end.
-        @{ Name = 'a file past the window';   Content = (("PADDING-LINE`n" * 2000) + "[exited with code 6]`n");   Expected = 6 }
+        @{ Name = 'a file past the window';    Content = (("PADDING-LINE`n" * 2000) + "[exited with code 6]`n"); Running = $false; ExitCode = 6 }
     )
 
     $caseNumber = 0
@@ -162,9 +164,15 @@ try {
         $path = Join-Path $root "end-$caseNumber.output"
         [System.IO.File]::WriteAllText($path, $case.Content)
 
-        $actual = Get-FileEndExitCode -Path $path
-        $same = if ($null -eq $case.Expected) { $null -eq $actual } else { $actual -eq $case.Expected }
-        Assert-True $same "End state: $($case.Name) must read as '$($case.Expected)', got '$actual'."
+        $state = Get-TaskState -Path $path
+        Assert-True ($null -ne $state) "End state: $($case.Name) must be readable."
+        if ($null -eq $state) { continue }
+
+        Assert-True ($state.Running -eq $case.Running) `
+            "End state: $($case.Name) must read as Running '$($case.Running)', got '$($state.Running)'."
+
+        $sameCode = if ($null -eq $case.ExitCode) { $null -eq $state.ExitCode } else { $state.ExitCode -eq $case.ExitCode }
+        Assert-True $sameCode "End state: $($case.Name) must read as '$($case.ExitCode)', got '$($state.ExitCode)'."
     }
 }
 finally {
@@ -246,6 +254,39 @@ try {
 
     Assert-True ($printed.Count -eq 15) "Large lines: -Tail 15 must print 15 lines, got $($printed.Count): $($starts -join ' ')"
     Assert-True (($starts -join ' ') -eq $expected) "Large lines: the 15 printed lines must be L01 to L15, got: $($starts -join ' ')"
+}
+finally {
+    Remove-Item -LiteralPath $root -Recurse -Force
+}
+
+# --- The byte bound holds when a newline breaks the block alignment ---
+#
+# The scan reads backwards in 64 KiB blocks and checks the bound before each one. While every
+# block is full the running count lands on a multiple of 64 KiB, so it meets the bound exactly.
+# A newline inside a block resets that count to the newline's position, and the count can then
+# stop one byte short of the bound. The scan read another whole block on top of the 1 MiB it
+# promised.
+#
+# The file below places the last newline 64 KiB + 1 bytes from the end. Counted back from the
+# end, that newline is the last byte of the second block, so the count restarts at 65535 and
+# every later block adds 65536.
+
+$root = New-WatchTestRoot
+try {
+    $skewPath = Join-Path $root 'skew.output'
+    $trailingLine = 64 * 1024
+    [System.IO.File]::WriteAllText($skewPath, (('A' * 1500000) + "`n" + ('X' * $trailingLine)))
+
+    $reader = New-TailReader -Path $skewPath
+    Read-InitialTailText -Reader $reader -LineCount 2 | Out-Null
+
+    # The trailing line and the newline before it are a second line, so they are not part of the
+    # over-long line's allowance. Everything else read belongs to that one line.
+    $overLongBytes = $reader.InitialReadBytes - $trailingLine - 1
+
+    Assert-True $reader.InitialTruncated 'Skewed cap: a 1.5 MB line must still reach the initial read limit.'
+    Assert-True ($overLongBytes -le (1024 * 1024)) `
+        "Skewed cap: the over-long line must contribute at most 1 MiB, got $overLongBytes bytes."
 }
 finally {
     Remove-Item -LiteralPath $root -Recurse -Force
@@ -939,6 +980,70 @@ Watch-Record -Record `$record -Tail 40 | Out-Null
 finally {
     if ($job) { Remove-Job -Job $job -Force -ErrorAction SilentlyContinue }
     Remove-Item -LiteralPath $gapPath -Force -ErrorAction SilentlyContinue
+}
+
+# --- A replacement that arrives during the catch-up read is not judged by the old file ---
+#
+# The follow loop reads a terminal state, then reads on to the file end so no late output is lost.
+# A new run can replace the file inside that window. The catch-up read notices the replacement and
+# prints it, so the watcher must ask the file again what its state is. Reporting the state captured
+# before the catch-up would print the old task's exit code over the new task's output, and stop
+# following a run that is still going.
+#
+# The case builds that window rather than racing for it. Get-TaskState is replaced in a child
+# session: its first call replaces the file and reports the old task finished with code 7, its
+# second call reports the replacement still running, and its third appends the replacement's own
+# marker and reports code 9.
+
+$job = $null
+$swapPath = Join-Path ([System.IO.Path]::GetTempPath()) ("watch-task-swap-$([guid]::NewGuid()).output")
+try {
+    [System.IO.File]::WriteAllText($swapPath, "OLD-LINE`n")
+
+    $job = Start-Job -ScriptBlock {
+        param($exe, $script, $path)
+        & $exe -NoProfile -Command @"
+. '$script'
+
+`$script:stateCalls = 0
+function Get-TaskState {
+    param([Parameter(Mandatory)][string] `$Path)
+
+    `$script:stateCalls++
+    if (`$script:stateCalls -eq 1) {
+        Remove-Item -LiteralPath `$Path -Force
+        [System.IO.File]::WriteAllText(`$Path, ('NEW-RUN-LINE' + [char]10))
+        return [pscustomobject]@{ Running = `$false; ExitCode = 7; BytesRead = 0 }
+    }
+    if (`$script:stateCalls -eq 2) {
+        return [pscustomobject]@{ Running = `$true; ExitCode = `$null; BytesRead = 0 }
+    }
+    if (`$script:stateCalls -eq 3) {
+        [System.IO.File]::AppendAllText(`$Path, ('NEW-RUN-END' + [char]10 + '[exited with code 9]' + [char]10))
+    }
+    return [pscustomobject]@{ Running = `$false; ExitCode = 9; BytesRead = 0 }
+}
+
+`$record = [pscustomobject]@{ Path = '$path'; LastWrite = (Get-Date); Running = `$true; ExitCode = `$null }
+Watch-Record -Record `$record -Tail 40 | Out-Null
+"@ 2>&1
+    } -ArgumentList $hostExe, $watchScript, $swapPath
+
+    $finished = Wait-Job -Job $job -Timeout 25
+    Assert-True ($null -ne $finished) 'Catch-up swap: the watcher must stop, but it was still running after 25s.'
+
+    $output = Get-JobOutputSoFar -Job $job
+    Assert-True ($output -match 'NEW-RUN-LINE') "Catch-up swap: the replacement's output must be printed. Output: $output"
+    Assert-True ($output -match 'NEW-RUN-END') "Catch-up swap: the watcher must keep following the replacement. Output: $output"
+    Assert-True (-not ($output -match 'Exit code: 7')) `
+        "Catch-up swap: the old file's exit code must not be reported over the replacement. Output: $output"
+
+    $lastLine = Get-LastNonEmptyLine -Text $output
+    Assert-True ($lastLine -eq 'Exit code: 9') "Catch-up swap: the last line must be 'Exit code: 9', got '$lastLine'. Output: $output"
+}
+finally {
+    if ($job) { Remove-Job -Job $job -Force -ErrorAction SilentlyContinue }
+    Remove-Item -LiteralPath $swapPath -Force -ErrorAction SilentlyContinue
 }
 
 # --- Report ---

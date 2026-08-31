@@ -481,27 +481,6 @@ function Set-TailReaderCheckpoint {
         -Count $script:TailHeadLength
 }
 
-function Get-FileEndExitCode {
-    <#
-      The exit code the file ends with, or $null when it does not end with the marker.
-
-      This reads the end of the file directly and keeps no state, so it answers whatever a
-      follower believes about how far it has read. It is the check that makes the wait end even
-      when the follower's byte offset has gone stale.
-
-      Only the last few kilobytes are read, because the answer is always on the last line and a
-      long run's file can be large.
-    #>
-    param([Parameter(Mandatory)][string] $Path)
-
-    $state = Get-TaskState -Path $Path
-    if ($null -eq $state -or $state.Running) {
-        return $null
-    }
-
-    return $state.ExitCode
-}
-
 function Read-TailText {
     <#
       Returns the text appended since the last call, and advances the offset. Returns an empty
@@ -655,7 +634,12 @@ function Read-InitialTailText {
         while ($position -gt 0 -and
                $newlines -lt $wantedNewlines -and
                $sinceNewline -lt $script:MaxTailTextBytes) {
-            $want = [int][Math]::Min([long] $script:TailReadLength, [long] $position)
+            # The read is bounded by what is left of this line's allowance as well as by the
+            # block size. Checking the allowance only before a fixed-size block let a line that
+            # stopped one byte short of the bound pull in another whole block, so the scan read
+            # more than the 1 MiB it says it read.
+            $allowance = [long] $script:MaxTailTextBytes - [long] $sinceNewline
+            $want = [int][Math]::Min([Math]::Min([long] $script:TailReadLength, [long] $position), $allowance)
             $position -= $want
             $stream.Position = $position
 
@@ -963,6 +947,16 @@ function Watch-Record {
                     }
                     $caughtUp += $more.Length
                 } while (-not $reader.AtEnd)
+
+                # The catch-up above can find a replacement file and read it from the start. The
+                # state read before it belongs to the file that was there then, so ask again. A
+                # replacement that is still running keeps the watch going, and the carry stays in
+                # the reader because its last line is not finished yet.
+                $settled = Get-TaskState -Path $reader.Path
+                if ($null -eq $settled -or $settled.Running) {
+                    continue
+                }
+                $state = $settled
 
                 if ($reader.Carry.Trim().Length -gt 0) {
                     Write-Host $reader.Carry
