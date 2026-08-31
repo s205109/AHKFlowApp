@@ -347,6 +347,38 @@ finally {
     Remove-Item -LiteralPath $root -Recurse -Force
 }
 
+# --- The progress module runs under Windows PowerShell 5.1 ---
+
+$windowsPowerShell = Get-Command powershell.exe -ErrorAction SilentlyContinue
+if ($windowsPowerShell) {
+    $root = New-ProgressTestRoot
+    try {
+        Set-History -Root $root -RunnerKey 'windows-powershell' -Timings @{ 'unit' = 12; 'old' = 99 }
+        $modulePath = Join-Path $repoRoot 'scripts\progress.common.ps1'
+        $output = & $windowsPowerShell.Source -NoProfile -Command @"
+`$ErrorActionPreference = 'Stop'
+. '$modulePath'
+`$tracker = New-ProgressTracker -RunnerKey 'windows-powershell' -RepoRoot '$root' -Unit @('unit')
+`$line = (Start-ProgressUnit -Tracker `$tracker -Name 'unit' 6>&1 | Out-String)
+if (`$line -notmatch 'remaining ~12s') { throw "History was not read: `$line" }
+Stop-ProgressUnit -Tracker `$tracker
+Save-ProgressTimings -Tracker `$tracker
+`$saved = Get-Content -LiteralPath (Join-Path '$root' 'TestResults\progress\windows-powershell.json') -Raw | ConvertFrom-Json
+if (`$null -eq `$saved.unit) { throw 'The completed unit was not saved.' }
+if (`$null -ne `$saved.PSObject.Properties['old']) { throw 'The old file was not replaced.' }
+"@ 2>&1 | Out-String
+        $exitCode = $LASTEXITCODE
+
+        Assert-True ($exitCode -eq 0) "Windows PowerShell 5.1: module behavior must pass. Exit: $exitCode. Output: $output"
+    }
+    finally {
+        Remove-Item -LiteralPath $root -Recurse -Force
+    }
+}
+else {
+    Write-Host 'Windows PowerShell 5.1 check skipped: powershell.exe is not available.' -ForegroundColor Yellow
+}
+
 # --- Runner keys for Fast and Integration do not collide ---
 
 $root = New-ProgressTestRoot

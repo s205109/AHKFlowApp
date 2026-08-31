@@ -113,7 +113,7 @@ Make sure no other test run is active, then run this script again.
     }
 
     reportgenerator `
-        -reports:"TestResults/**/coverage.cobertura.xml" `
+        -reports:"$coverageResultsRoot/**/coverage.cobertura.xml" `
         -targetdir:"CoverageReport" `
         -reporttypes:"Html;MarkdownSummaryGithub;JsonSummary;Cobertura"
     if ($LASTEXITCODE -ne 0) { throw "reportgenerator failed" }

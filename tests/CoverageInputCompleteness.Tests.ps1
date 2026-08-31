@@ -160,6 +160,17 @@ Invoke-TestCase 'Coverage cleanup preserves progress history' {
     }
 }
 
+Invoke-TestCase 'ReportGenerator reads only the current coverage result folder' {
+    $runCoverage = Get-Content -LiteralPath (Join-Path $repoRoot 'scripts\run-coverage.ps1') -Raw
+    $reportLines = @($runCoverage -split "`r?`n" | Where-Object { $_ -match '^\s*-reports:' })
+
+    Assert-True ($reportLines.Count -eq 1) "Expected one ReportGenerator input, got: $($reportLines -join ' | ')"
+    Assert-True ($reportLines[0] -match '\$coverageResultsRoot') `
+        "Expected ReportGenerator input under the cleaned coverage folder. Got: $($reportLines[0])"
+    Assert-True ($reportLines[0] -notmatch 'TestResults/\*\*/') `
+        "A broad TestResults glob can merge stale reports outside coverage. Got: $($reportLines[0])"
+}
+
 Invoke-TestCase 'The expected project list comes from the solution and coverlet' {
     $projects = @(Get-AhkFlowCoverageProject -RepoRoot $repoRoot)
     $names = @($projects | ForEach-Object { $_.Name })
