@@ -283,11 +283,6 @@ function Save-ProgressTimings {
         return
     }
 
-    $folder = Split-Path -Parent $Tracker.HistoryPath
-    if (-not (Test-Path -LiteralPath $folder -PathType Container)) {
-        New-Item -ItemType Directory -Path $folder -Force | Out-Null
-    }
-
     $payload = [ordered]@{}
     foreach ($entry in $Tracker.Completed.GetEnumerator()) {
         $payload[$entry.Key] = $entry.Value
@@ -298,6 +293,20 @@ function Save-ProgressTimings {
     # Write once, through a temporary file that is then moved into place, so two runs at once
     # cannot leave a half-written file. Last writer wins, which is acceptable for an estimate.
     $temp = "$($Tracker.HistoryPath).$PID.tmp"
-    Set-Content -LiteralPath $temp -Value $json -Encoding UTF8
-    Move-Item -LiteralPath $temp -Destination $Tracker.HistoryPath -Force
+    try {
+        $folder = Split-Path -Parent $Tracker.HistoryPath
+        if (-not (Test-Path -LiteralPath $folder -PathType Container)) {
+            New-Item -ItemType Directory -Path $folder -Force | Out-Null
+        }
+
+        Set-Content -LiteralPath $temp -Value $json -Encoding UTF8
+        Move-Item -LiteralPath $temp -Destination $Tracker.HistoryPath -Force
+    }
+    catch {
+        # This runs after the tests have already passed, and the file it writes is only an
+        # estimate for the next run. Read-ProgressHistory treats an unreadable file as no
+        # history, so a file we cannot write must not turn a green run into a failed one.
+        Write-Warning "Could not save progress timings to $($Tracker.HistoryPath). $($_.Exception.Message)"
+        Remove-Item -LiteralPath $temp -Force -ErrorAction SilentlyContinue
+    }
 }

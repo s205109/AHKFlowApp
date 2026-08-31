@@ -407,6 +407,54 @@ finally {
     Remove-Item -LiteralPath $root -Recurse -Force
 }
 
+# --- A timings file that cannot be written does not fail the run ---
+#
+# Save-ProgressTimings runs after the tests have already passed. Timings are an estimate for the
+# next run, and Read-ProgressHistory already treats them as optional. Letting a write error escape
+# turned a green test run into a failing runner, and stopped the summary that comes after the save.
+#
+# The destination file is held open with no sharing, so the move into place fails for a real
+# reason rather than a stubbed one.
+
+$root = New-ProgressTestRoot
+$lockStream = $null
+try {
+    $folder = Join-Path $root 'TestResults\progress'
+    New-Item -ItemType Directory -Path $folder -Force | Out-Null
+    $historyPath = Join-Path $folder 'locked.json'
+    Set-Content -LiteralPath $historyPath -Value '{}' -Encoding UTF8
+
+    $lockStream = [System.IO.File]::Open(
+        $historyPath,
+        [System.IO.FileMode]::Open,
+        [System.IO.FileAccess]::ReadWrite,
+        [System.IO.FileShare]::None)
+
+    $tracker = New-ProgressTracker -RunnerKey 'locked' -RepoRoot $root -Unit @('a.Tests.ps1')
+    Get-StartLine -Tracker $tracker -Name 'a.Tests.ps1' | Out-Null
+    Stop-ProgressUnit -Tracker $tracker
+
+    $threw = $false
+    $warnings = $null
+    try {
+        Save-ProgressTimings -Tracker $tracker -WarningVariable warnings 3>$null
+    }
+    catch {
+        $threw = $true
+    }
+
+    Assert-True (-not $threw) 'Locked timings: a file that cannot be written must not fail the run.'
+    Assert-True ($warnings.Count -ge 1) 'Locked timings: the failure must be reported as a warning, not swallowed.'
+
+    $leftovers = @(Get-ChildItem -LiteralPath $folder -Filter '*.tmp' -File | ForEach-Object { $_.Name })
+    Assert-True ($leftovers.Count -eq 0) `
+        "Locked timings: the temporary file must be cleaned up, found: $($leftovers -join ', ')"
+}
+finally {
+    if ($lockStream) { $lockStream.Dispose() }
+    Remove-Item -LiteralPath $root -Recurse -Force
+}
+
 # --- Report ---
 
 if ($failures.Count -gt 0) {
