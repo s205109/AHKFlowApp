@@ -69,8 +69,8 @@ SOFTWARE.
 The following skills are adapted from `mattpocock/skills` (MIT), pinned at commit
 `6acc160e4e0cd062dbbbd7a1b26ae92855edf07e` — the baseline for future selective merges:
 
-- `mp-grilling`, `mp-grill-me`, `mp-domain-modeling`, `mp-grill-with-docs`, `mp-handoff`,
-  `mp-triage`, `mp-prototype`, `mp-research`, `mp-wait-what`, `mp-writing-for-agents`
+- `mp-grilling`, `mp-grill-me`, `mp-domain-modeling`, `mp-grill-with-docs`,
+  `mp-triage`, `mp-prototype`, `mp-research`, `mp-writing-for-agents`
 
 Adapted, not vendored unchanged (same fork policy as `dck-*`): internal cross-skill references
 are rewritten to the `mp-` folder names, and long descriptions are trimmed to this repo's
@@ -83,6 +83,13 @@ which domain-doc layout the repo uses, then writes the answers to `docs/agents/i
 `docs/agents/triage-labels.md`, and `docs/agents/domain.md`. Those three files are the lasting
 artifact and they stay. The skill itself had no second job, so keeping it only spent a slot in every
 agent's skill list. Restore it from git history if the repo ever changes issue tracker.
+
+`mp-handoff` and `mp-wait-what` were vendored the same way and are now retired. Both were
+human-only shortcuts (`disable-model-invocation: true`), and both were vendored unchanged apart
+from the `mp-` name, so neither carried an adaptation worth keeping. No rule, doc, script, or
+test named either one. The upstream plugin serves both at user level, so the repository copies
+only spent a slot in every agent's skill list. Restore them from git history if the upstream
+plugin ever stops being available here.
 
 `mp-prototype` and `mp-research` are adapted further than the other six, because upstream names
 concrete tools this repo does not have. In `mp-prototype`'s `UI.md`, the JavaScript examples are
@@ -104,9 +111,6 @@ reader must decode twice; skill descriptions are capped at 140 characters by
 `scripts/agents/setup-cross-agent-skills.ps1`; and the three projected skill locations are generated,
 with `.claude/skills/README.md` as the authority on adding or retiring one. Its companion file
 `SKILL-MECHANICS.md` is vendored unchanged apart from the `mp-` cross-reference.
-
-`mp-wait-what` is vendored unchanged apart from the `mp-` name. It already points at `CONTEXT.md`,
-which is this repo's domain-term glossary, so no adaptation was needed.
 
 Where an upstream rewrite introduces a new term, the adaptation explains the term in plain words
 rather than rewriting the sentence around it. `AGENTS.md` **Plain English** asks for exactly that —
