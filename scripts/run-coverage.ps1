@@ -44,8 +44,9 @@ try {
         throw "python command not found. Install Python or rerun with -SkipThresholdCheck if you only need the HTML report."
     }
 
-    if (Test-Path TestResults)   { Remove-Item -Recurse -Force TestResults }
-    if (Test-Path $coverageReportDirectory) { Remove-Item -Recurse -Force $coverageReportDirectory }
+    Remove-AhkFlowCoverageArtifacts `
+        -CoverageResultsRoot $coverageResultsRoot `
+        -CoverageReportDirectory $coverageReportDirectory
 
     dotnet restore
     if ($LASTEXITCODE -ne 0) { throw "dotnet restore failed" }
@@ -112,7 +113,7 @@ Make sure no other test run is active, then run this script again.
     }
 
     reportgenerator `
-        -reports:"TestResults/**/coverage.cobertura.xml" `
+        -reports:"$coverageResultsRoot/**/coverage.cobertura.xml" `
         -targetdir:"CoverageReport" `
         -reporttypes:"Html;MarkdownSummaryGithub;JsonSummary;Cobertura"
     if ($LASTEXITCODE -ne 0) { throw "reportgenerator failed" }

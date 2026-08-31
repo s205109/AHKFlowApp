@@ -162,6 +162,78 @@ Invoke-TestCase 'All suites pass -> exit code 0' {
     }
 }
 
+Invoke-TestCase 'The driver prints a progress line per suite and saves no timings for a fixture run' {
+    $root = New-SuiteFixture
+    $timingsPath = Join-Path $repoRoot 'TestResults\progress\run-powershell-suites.json'
+    $before = if (Test-Path -LiteralPath $timingsPath) { (Get-Item -LiteralPath $timingsPath).LastWriteTimeUtc } else { $null }
+
+    try {
+        Add-FakeSuite -Root $root -Name '01-pass.Tests.ps1' -Ending 'pass'
+        Add-FakeSuite -Root $root -Name '02-pass.Tests.ps1' -Ending 'pass'
+
+        $result = Invoke-Driver -SuiteRoot $root
+
+        Assert-True ($result.Output -match '\[1/2\] 01-pass\.Tests\.ps1') "Expected a progress line for the first suite. Output: $($result.Output)"
+        Assert-True ($result.Output -match '\[2/2\] 02-pass\.Tests\.ps1') "Expected a progress line for the second suite. Output: $($result.Output)"
+
+        # A fixture run reads no history, so it can only report the time left as unknown. That is
+        # also what proves it did not reach the real store.
+        Assert-True ($result.Output -match 'remaining unknown') "A fixture run must report the remaining time as unknown. Output: $($result.Output)"
+
+        $after = if (Test-Path -LiteralPath $timingsPath) { (Get-Item -LiteralPath $timingsPath).LastWriteTimeUtc } else { $null }
+        Assert-True ($before -eq $after) 'A run over fake suites must not write the real timings file.'
+    } finally {
+        Remove-SuiteFixture -Root $root
+    }
+}
+
+Invoke-TestCase 'A run over the repository''s own tests folder saves its timings' {
+    # A copy of the runner in a temporary tree, so the case can be a real run against "the
+    # repository's own tests folder" without running the 47 real suites, and without writing
+    # into the store the real runs read.
+    #
+    # This is the other half of the case above. That one proves a fixture run stores nothing;
+    # this one proves a real run still does. The decision used to test whether -SuiteRoot was
+    # passed, so naming the real folder ran the real suites and then stored nothing.
+    $fakeRepo = Join-Path ([System.IO.Path]::GetTempPath()) ('ahkflow-suiterepo-' + [guid]::NewGuid().ToString('N'))
+    try {
+        New-Item -ItemType Directory -Path (Join-Path $fakeRepo 'scripts') -Force | Out-Null
+        New-Item -ItemType Directory -Path (Join-Path $fakeRepo 'tests') -Force | Out-Null
+        New-Item -ItemType Directory -Path (Join-Path $fakeRepo 'markers') -Force | Out-Null
+
+        foreach ($name in @('run-powershell-suites.ps1', 'progress.common.ps1')) {
+            Copy-Item -LiteralPath (Join-Path $repoRoot "scripts/$name") -Destination (Join-Path $fakeRepo "scripts/$name")
+        }
+
+        Add-FakeSuite -Root $fakeRepo -Name '01-pass.Tests.ps1' -Ending 'pass'
+        Move-Item -LiteralPath (Join-Path $fakeRepo '01-pass.Tests.ps1') -Destination (Join-Path $fakeRepo 'tests/01-pass.Tests.ps1')
+
+        $driver = Join-Path $fakeRepo 'scripts/run-powershell-suites.ps1'
+        $timings = Join-Path $fakeRepo 'TestResults/progress/run-powershell-suites.json'
+
+        # -Command, not -File. An empty -Exclude cannot cross a -File boundary, where every
+        # argument arrives as a string, and the default exclusion names a suite this tree has not
+        # got, which the runner refuses.
+        $noRootCommand = "& '$driver' -Exclude @(); exit `$LASTEXITCODE"
+        $namedRootCommand = "& '$driver' -SuiteRoot '$(Join-Path $fakeRepo 'tests')' -Exclude @(); exit `$LASTEXITCODE"
+
+        # No -SuiteRoot at all: the runner falls back to its own tests folder.
+        $out = & $script:HostExe -NoProfile -Command $noRootCommand 2>&1 | Out-String
+        Assert-True (Test-Path -LiteralPath $timings) "A run with no -SuiteRoot must save its timings. Output: $out"
+
+        Remove-Item -LiteralPath $timings -Force
+
+        # The same folder, named explicitly. Still a real run, so it must still save.
+        $out = & $script:HostExe -NoProfile -Command $namedRootCommand 2>&1 | Out-String
+        Assert-True (Test-Path -LiteralPath $timings) "Naming the repository's own tests folder must still save timings. Output: $out"
+
+        $saved = Get-Content -LiteralPath $timings -Raw | ConvertFrom-Json
+        Assert-True ($null -ne $saved.'01-pass.Tests.ps1') 'The saved timings must name the suite that ran.'
+    } finally {
+        Remove-Item -LiteralPath $fakeRepo -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
 Invoke-TestCase 'A suite that exits 1 fails the run' {
     $root = New-SuiteFixture
     try {

@@ -52,6 +52,12 @@ The lines below are rules; each links to the stage that owns the narrative.
 - Verifying finished work is governed by **Verification After Implementation** in AGENTS.md. Invoke the `playwright-cli` skill via the Skill tool when that routing calls for a browser drive.
 - Before claiming a tool or capability is unavailable, check `.claude/skills/` and available skills. Never assume browser automation is missing — `playwright-cli` is installed.
 
+### Watch a background run
+
+- A background command must let its output reach stdout. Never redirect a run's output to another
+  file and echo only an exit code. The task output file is the log the human tails.
+- Hand over the watch command by name, `pwsh ./scripts/watch-task.ps1`, never a temporary path.
+
 ## Out of Scope
 
 - Runtime execution of AutoHotkey scripts — intentionally excluded (the app generates `.ahk` files, never runs them)

@@ -131,6 +131,65 @@ Invoke-TestCase 'A project folder that was never created counts as missing' {
     }
 }
 
+Invoke-TestCase 'Coverage cleanup preserves progress history' {
+    $root = Join-Path ([System.IO.Path]::GetTempPath()) ('ahkflow-coverage-cleanup-' + [guid]::NewGuid().ToString('N'))
+    try {
+        $coverageResults = Join-Path $root 'TestResults\coverage'
+        $progressResults = Join-Path $root 'TestResults\progress'
+        $coverageReport = Join-Path $root 'CoverageReport'
+        New-Item -ItemType Directory -Path $coverageResults -Force | Out-Null
+        New-Item -ItemType Directory -Path $progressResults -Force | Out-Null
+        New-Item -ItemType Directory -Path $coverageReport -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $coverageResults 'old.xml') -Value '<coverage />' -Encoding utf8
+        Set-Content -LiteralPath (Join-Path $progressResults 'test-fast.Fast.json') -Value '{"a":1}' -Encoding utf8
+        Set-Content -LiteralPath (Join-Path $coverageReport 'old.html') -Value '<html />' -Encoding utf8
+
+        Remove-AhkFlowCoverageArtifacts `
+            -CoverageResultsRoot $coverageResults `
+            -CoverageReportDirectory $coverageReport
+
+        Assert-True (-not (Test-Path -LiteralPath $coverageResults)) 'Expected stale coverage inputs to be removed.'
+        Assert-True (-not (Test-Path -LiteralPath $coverageReport)) 'Expected the stale coverage report to be removed.'
+        Assert-True (Test-Path -LiteralPath (Join-Path $progressResults 'test-fast.Fast.json')) `
+            'Expected coverage cleanup to preserve progress history.'
+    }
+    finally {
+        if (Test-Path -LiteralPath $root) {
+            Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+Invoke-TestCase 'ReportGenerator reads only the current coverage result folder' {
+    $runCoveragePath = Join-Path $repoRoot 'scripts\run-coverage.ps1'
+    $runCoverage = Get-Content -LiteralPath $runCoveragePath -Raw
+    $reportLines = @($runCoverage -split "`r?`n" | Where-Object { $_ -match '^\s*-reports:' })
+
+    Assert-True ($reportLines.Count -eq 1) "Expected one ReportGenerator input, got: $($reportLines -join ' | ')"
+    Assert-True ($reportLines[0] -match '\$coverageResultsRoot') `
+        "Expected ReportGenerator input under the cleaned coverage folder. Got: $($reportLines[0])"
+    Assert-True ($reportLines[0] -notmatch 'TestResults/\*\*/') `
+        "A broad TestResults glob can merge stale reports outside coverage. Got: $($reportLines[0])"
+
+    # Naming the variable is not enough. Pointing it at all of TestResults would keep the line
+    # above passing and bring stale reports back, so the assignment is resolved and checked.
+    $ast = [System.Management.Automation.Language.Parser]::ParseFile($runCoveragePath, [ref] $null, [ref] $null)
+    $assignments = @($ast.FindAll({
+                param($node)
+                $node -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+                $node.Left.Extent.Text -eq '$coverageResultsRoot'
+            }, $true))
+
+    Assert-True ($assignments.Count -eq 1) "Expected one `$coverageResultsRoot assignment, got $($assignments.Count)."
+
+    # A stand-in root on a drive that exists. Join-Path resolves the drive qualifier, so a made-up
+    # drive letter fails before the path is built.
+    $standInRoot = Join-Path ([System.IO.Path]::GetTempPath()) 'ahkflow-coverage-root-check'
+    $resolved = & ([scriptblock]::Create("param(`$repoRoot) $($assignments[0].Right.Extent.Text)")) $standInRoot
+    Assert-True ($resolved -eq (Join-Path $standInRoot 'TestResults\coverage')) `
+        "Expected the coverage root to resolve to TestResults\coverage, got: $resolved"
+}
+
 Invoke-TestCase 'The expected project list comes from the solution and coverlet' {
     $projects = @(Get-AhkFlowCoverageProject -RepoRoot $repoRoot)
     $names = @($projects | ForEach-Object { $_.Name })

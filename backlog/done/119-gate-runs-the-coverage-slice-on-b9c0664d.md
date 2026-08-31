@@ -39,9 +39,9 @@ The five Gate steps on that branch:
 
 The Gate is defined at (`docs/development/testing-workflow.md:24`, "dotnet build AHKFlowApp.slnx --configuration Release").
 
-Coverage mode hands off to `run-coverage.ps1` (`scripts/test-fast.ps1:199`, "& (Join-Path $PSScriptRoot 'run-coverage.ps1') -Configuration $Configuration").
+Coverage mode hands off to `run-coverage.ps1` (`scripts/test-fast.ps1:211`, "& (Join-Path $PSScriptRoot 'run-coverage.ps1') -Configuration $Configuration").
 That script starts a real SQL Server container, then runs `dotnet test` per project with coverlet
-instrumentation (`scripts/run-coverage.ps1:79`, "dotnet test $project.Path --configuration $Configuration").
+instrumentation (`scripts/run-coverage.ps1:80`, "dotnet test $project.Path --configuration $Configuration").
 
 The PowerShell slice is a separate cost and is not in scope here. Four suites are 59% of its 611
 seconds: `WorktreeMergedCleanup` 118.6 s, `AgentWorktreeGuard` 111.7 s, `CitationFreshness` 93 s,

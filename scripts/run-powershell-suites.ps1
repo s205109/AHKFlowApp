@@ -36,6 +36,9 @@ Set-StrictMode -Version Latest
 $PSNativeCommandUseErrorActionPreference = $false
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
+
+. "$PSScriptRoot\progress.common.ps1"
+
 if ([string]::IsNullOrWhiteSpace($SuiteRoot)) {
     $SuiteRoot = Join-Path $repoRoot 'tests'
 }
@@ -50,6 +53,11 @@ if (-not (Test-Path -LiteralPath $SuiteRoot -PathType Container)) {
 }
 
 $SuiteRoot = (Resolve-Path -LiteralPath $SuiteRoot).ProviderPath
+
+# Every run prints progress lines, so a test over a folder of fake suites checks the same code
+# path a real run uses. Only a run over the repository's own suites keeps the timings.
+$keepTimings = Test-ProgressTimingsWanted -SuiteRoot $SuiteRoot -DefaultSuiteRoot (Join-Path $repoRoot 'tests')
+
 $discovered = @(Get-ChildItem -LiteralPath $SuiteRoot -Filter '*.Tests.ps1' -File | Sort-Object Name)
 
 # An exclusion that names a file which no longer exists is a rename nobody finished. Fail on it,
@@ -81,14 +89,18 @@ $inActions = $env:GITHUB_ACTIONS -eq 'true'
 Write-Host "Running $($suites.Count) PowerShell suite(s) from $SuiteRoot"
 Write-Host "Host: $hostExe"
 
+$progress = New-ProgressTracker -RunnerKey 'run-powershell-suites' -Unit @($suites.Name) -RepoRoot $repoRoot -NoStore:(-not $keepTimings)
+
 $results = [System.Collections.Generic.List[object]]::new()
 foreach ($suite in $suites) {
     if ($inActions) { Write-Host "::group::$($suite.Name)" }
+    Start-ProgressUnit -Tracker $progress -Name $suite.Name
 
     $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
     & $hostExe -NoProfile -File $suite.FullName
     $exitCode = $LASTEXITCODE
     $stopwatch.Stop()
+    Stop-ProgressUnit -Tracker $progress
 
     if ($inActions) { Write-Host '::endgroup::' }
 
@@ -102,6 +114,8 @@ foreach ($suite in $suites) {
         Write-Failure "FAILED: $($suite.Name) (exit code $exitCode)"
     }
 }
+
+Save-ProgressTimings -Tracker $progress
 
 $failed = @($results | Where-Object { $_.ExitCode -ne 0 })
 
