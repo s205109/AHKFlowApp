@@ -159,9 +159,9 @@ finally {
 # --- The save replaces an existing file completely, leaving nothing of the old content ---
 #
 # This proves the destination is never left holding a mix of old and new text. It does not
-# prove Move-Item specifically: once the save has finished, a replaced file and a rewritten
-# file look the same on disk, and telling them apart needs the file identity, which this
-# repository has no way to read.
+# prove which replacement call was used: once the save has finished, a replaced file and a
+# rewritten file look the same on disk, and telling them apart needs the file identity, which
+# this repository has no way to read.
 
 $root = New-ProgressTestRoot
 try {
@@ -454,6 +454,25 @@ finally {
     if ($lockStream) { $lockStream.Dispose() }
     Remove-Item -LiteralPath $root -Recurse -Force
 }
+
+# --- A history path the filesystem itself rejects counts as no history ---
+#
+# Test-Path does not always answer with $true or $false. A path holding a null character makes
+# it throw, and every runner that reads history sets $ErrorActionPreference = 'Stop', so a check
+# left outside the try would end a green run over a file that is only an optional convenience.
+
+$threw = $false
+$badPathHistory = $null
+try {
+    $badPathHistory = Read-ProgressHistory -Path "C:\progress`0broken.json"
+}
+catch {
+    $threw = $true
+}
+
+Assert-True (-not $threw) 'Bad history path: a path Test-Path rejects must not throw out of Read-ProgressHistory.'
+Assert-True ($null -ne $badPathHistory -and $badPathHistory.Count -eq 0) `
+    'Bad history path: a path that cannot be checked must count as no history.'
 
 # --- Report ---
 

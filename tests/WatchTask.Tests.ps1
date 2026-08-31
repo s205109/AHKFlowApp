@@ -1154,6 +1154,163 @@ finally {
     Remove-Item -LiteralPath $settlePath -Force -ErrorAction SilentlyContinue
 }
 
+# --- A worktree whose name is not plain ASCII is still found ---
+#
+# git writes its paths as UTF-8 bytes. PowerShell decodes a native command's output with
+# [Console]::OutputEncoding, which on Windows is the OEM code page, so those bytes come back as
+# the wrong characters and the folder they name is never matched. The checkout list is what the
+# watcher uses to decide which task file belongs to this repository, so a worktree missing from
+# it can never be watched.
+
+$gitExe = Get-Command git -ErrorAction SilentlyContinue
+if ($gitExe) {
+    $gitRoot = Join-Path ([System.IO.Path]::GetTempPath()) "watch-task-git-$([guid]::NewGuid())"
+    $gitMain = Join-Path $gitRoot 'main'
+    # Built from the code point so this file stays plain ASCII on disk.
+    $gitAccented = Join-Path $gitRoot ('wt-caf' + [char]0xE9)
+    try {
+        New-Item -ItemType Directory -Path $gitMain -Force | Out-Null
+        & $gitExe.Source -C $gitMain init -q . 2>&1 | Out-Null
+        & $gitExe.Source -C $gitMain commit -q --allow-empty -m 'init' 2>&1 | Out-Null
+        & $gitExe.Source -C $gitMain worktree add -q $gitAccented -b accented 2>&1 | Out-Null
+
+        $checkouts = @(Get-RepositoryCheckoutPath -MainRoot $gitMain)
+        Assert-True ($checkouts -contains $gitAccented) `
+            "Accented worktree: it must be in the checkout list, got: $($checkouts -join ' | ')"
+    }
+    finally {
+        Remove-Item -LiteralPath $gitRoot -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+else {
+    Write-Host 'Accented worktree check skipped: git is not available.' -ForegroundColor Yellow
+}
+
+# --- A catch-up read that fails is retried, not read as a file with nothing left ---
+#
+# The catch-up read after the task ends returns an empty string both when the file holds nothing
+# more and when the read itself failed. Treating the two the same lets the watcher take the
+# state and print the verdict while the run's last lines are still on disk, unread.
+#
+# The case makes that read fail once. Read-TailText is wrapped in a child session: its second
+# call reports a failure, every other call does the real read. Get-TaskState adds a late line on
+# its first call and reports the task finished, so there is output the failed read would skip.
+
+$job = $null
+$catchUpPath = Join-Path ([System.IO.Path]::GetTempPath()) ("watch-task-catchup-$([guid]::NewGuid()).output")
+try {
+    [System.IO.File]::WriteAllText($catchUpPath, "ONLY-LINE`n")
+
+    $job = Start-Job -ScriptBlock {
+        param($exe, $script, $path)
+        & $exe -NoProfile -Command @"
+. '$script'
+
+`$script:realRead = `${function:Read-TailText}
+`$script:readCalls = 0
+function Read-TailText {
+    param([Parameter(Mandatory)][object] `$Reader)
+
+    `$script:readCalls++
+    if (`$script:readCalls -eq 2) {
+        `$Reader.ReadSucceeded = `$false
+        `$Reader.ReadError = 'stubbed failure'
+        `$Reader.AtEnd = `$false
+        return ''
+    }
+
+    return (& `$script:realRead -Reader `$Reader)
+}
+
+`$script:stateCalls = 0
+function Get-TaskState {
+    param([Parameter(Mandatory)][string] `$Path)
+
+    `$script:stateCalls++
+    if (`$script:stateCalls -eq 1) {
+        [System.IO.File]::AppendAllText(`$Path, ('LATE-LINE' + [char]10))
+    }
+    return [pscustomobject]@{ Running = `$false; ExitCode = 7; BytesRead = 0 }
+}
+
+`$record = [pscustomobject]@{ Path = '$path'; LastWrite = (Get-Date); Running = `$true; ExitCode = `$null }
+exit (Watch-Record -Record `$record -Tail 40)
+"@ 2>&1
+    } -ArgumentList $hostExe, $watchScript, $catchUpPath
+
+    $finished = Wait-Job -Job $job -Timeout 25
+    Assert-True ($null -ne $finished) 'Catch-up failure: the watcher must stop, but it was still running after 25s.'
+
+    $output = Get-JobOutputSoFar -Job $job
+    Assert-True ($output -match 'LATE-LINE') `
+        "Catch-up failure: the line written before the failed read must still be printed. Output: $output"
+
+    # The fallback re-tail only runs when the whole pass read nothing. Seeing it here means the
+    # failed read was taken for an empty file and the verdict was printed over unread output.
+    Assert-True ($output -notmatch 'was being followed') `
+        "Catch-up failure: a failed read must be retried, not answered with the missing-output notice. Output: $output"
+
+    $lastLine = Get-LastNonEmptyLine -Text $output
+    Assert-True ($lastLine -eq 'Exit code: 7') "Catch-up failure: the last line must be 'Exit code: 7', got '$lastLine'. Output: $output"
+}
+finally {
+    if ($job) { Remove-Job -Job $job -Force -ErrorAction SilentlyContinue }
+    Remove-Item -LiteralPath $catchUpPath -Force -ErrorAction SilentlyContinue
+}
+
+# --- A tail that starts inside a UTF-8 character drops the orphan bytes, not the text ---
+#
+# The initial read walks backwards from the end and stops on a byte bound, which can land in the
+# middle of a multi-byte character. The decoder turns the leftover bytes of that character into a
+# replacement character, and the watcher would print it. The bytes before the first newline are
+# normally dropped anyway, so this only shows on a line longer than the bound, where the read is
+# all there is to show.
+#
+# The cap is lowered so the file stays small. The first read is a calibration: it says how many
+# bytes back from the end the cut lands, and the real file then puts a two-byte character across
+# that exact point.
+
+$utf8Path = Join-Path ([System.IO.Path]::GetTempPath()) ("watch-task-utf8-$([guid]::NewGuid()).output")
+$previousCap = $script:MaxTailTextBytes
+try {
+    $script:MaxTailTextBytes = 4096
+
+    $length = 6000
+    $ascii = [byte[]]::new($length)
+    for ($i = 0; $i -lt $length; $i++) { $ascii[$i] = [byte][char]'A' }
+    $ascii[$length - 1] = 10
+    [System.IO.File]::WriteAllBytes($utf8Path, $ascii)
+
+    $calibration = New-TailReader -Path $utf8Path
+    Read-InitialTailText -Reader $calibration -LineCount 40 | Out-Null
+    Assert-True ($calibration.InitialTruncated) `
+        'Split character: the calibration file must be long enough for the byte bound to stop the read.'
+
+    $cut = $length - $calibration.InitialReadBytes
+    Assert-True ($cut -gt 0) "Split character: the cut must fall inside the file, got offset $cut."
+
+    # 'e' with an acute accent is two bytes in UTF-8. Its first byte goes one before the cut, so
+    # the read starts on its second byte and has no character start to work from.
+    $bytes = [byte[]]::new($length)
+    [System.Array]::Copy($ascii, $bytes, $length)
+    $bytes[$cut - 1] = 0xC3
+    $bytes[$cut] = 0xA9
+    [System.IO.File]::WriteAllBytes($utf8Path, $bytes)
+
+    $reader = New-TailReader -Path $utf8Path
+    $text = Read-InitialTailText -Reader $reader -LineCount 40
+
+    Assert-True ($reader.ReadSucceeded) 'Split character: the read must succeed.'
+    Assert-True ($text.IndexOf([char]0xFFFD) -lt 0) `
+        'Split character: a tail starting inside a UTF-8 character must not print a replacement character.'
+    Assert-True ($text.TrimEnd("`r", "`n").EndsWith('A')) `
+        'Split character: the text after the orphan bytes must still be shown.'
+}
+finally {
+    $script:MaxTailTextBytes = $previousCap
+    Remove-Item -LiteralPath $utf8Path -Force -ErrorAction SilentlyContinue
+}
+
 # --- Report ---
 
 if ($failures.Count -gt 0) {

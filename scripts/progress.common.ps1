@@ -103,11 +103,15 @@ function Read-ProgressHistory {
     param([Parameter(Mandatory)][string] $Path)
 
     $history = @{}
-    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
-        return $history
-    }
 
     try {
+        # Inside the try with the read. Test-Path itself throws on some paths, and the caller
+        # runs with $ErrorActionPreference = 'Stop', so a check left outside would end the run
+        # over a file that is only an optional convenience.
+        if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+            return $history
+        }
+
         $raw = Get-Content -LiteralPath $Path -Raw -ErrorAction Stop
         if ([string]::IsNullOrWhiteSpace($raw)) {
             return $history
@@ -300,7 +304,19 @@ function Save-ProgressTimings {
         }
 
         Set-Content -LiteralPath $temp -Value $json -Encoding UTF8
-        Move-Item -LiteralPath $temp -Destination $Tracker.HistoryPath -Force
+
+        # Not Move-Item -Force. Over an existing file that deletes the destination first and
+        # then moves, so a run stopped between the two steps leaves no timings file at all.
+        # File.Replace is one operation, and File.Move covers the first run, when there is no
+        # destination to replace.
+        if ([System.IO.File]::Exists($Tracker.HistoryPath)) {
+            # [NullString]::Value asks for no backup file. Plain $null cannot: PowerShell passes
+            # it to a [string] parameter as an empty string, which File.Replace then rejects.
+            [System.IO.File]::Replace($temp, $Tracker.HistoryPath, [NullString]::Value)
+        }
+        else {
+            [System.IO.File]::Move($temp, $Tracker.HistoryPath)
+        }
     }
     catch {
         # This runs after the tests have already passed, and the file it writes is only an

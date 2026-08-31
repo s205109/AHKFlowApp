@@ -115,7 +115,19 @@ function Get-RepositoryCheckoutPath {
     $paths.Add($MainRoot)
 
     try {
-        $lines = @(& git -C $MainRoot worktree list --porcelain 2>$null)
+        # git writes paths as UTF-8 bytes. PowerShell decodes a native command's output with
+        # [Console]::OutputEncoding, which on Windows is the OEM code page, so a worktree whose
+        # name is not plain ASCII comes back mangled and its folder is then never matched.
+        # The porcelain path itself is never quoted, so only the decoding has to be fixed.
+        $previousEncoding = [Console]::OutputEncoding
+        try {
+            [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+            $lines = @(& git -C $MainRoot worktree list --porcelain 2>$null)
+        }
+        finally {
+            [Console]::OutputEncoding = $previousEncoding
+        }
+
         if ($LASTEXITCODE -eq 0) {
             foreach ($line in $lines) {
                 if ($line -match '^worktree\s+(.+)$') {
@@ -700,8 +712,19 @@ function Read-InitialTailText {
             $destination += $chunk.Length
         }
 
-        $chars = [char[]]::new($Reader.Decoder.GetCharCount($buffer, 0, $buffer.Length, $false))
-        $written = $Reader.Decoder.GetChars($buffer, 0, $buffer.Length, $chars, 0, $false)
+        # A read that started mid-file can start inside one UTF-8 character, and the decoder
+        # turns those orphan bytes into a replacement character. Skipping them costs at most
+        # the three continuation bytes of the character whose start is not in this read.
+        $from = 0
+        if ($position -gt 0) {
+            while ($from -lt $buffer.Length -and ($buffer[$from] -band 0xC0) -eq 0x80) {
+                $from++
+            }
+        }
+
+        $count = $buffer.Length - $from
+        $chars = [char[]]::new($Reader.Decoder.GetCharCount($buffer, $from, $count, $false))
+        $written = $Reader.Decoder.GetChars($buffer, $from, $count, $chars, 0, $false)
         $text = if ($written -gt 0) { [string]::new($chars, 0, $written) } else { '' }
 
         # A read that started mid-file opens with the tail of a line whose start is not here, so
@@ -906,6 +929,7 @@ function Watch-Record {
     $tailReadFailures = 0
     $stateReadFailures = 0
     $settleReadFailures = 0
+    $catchUpReadFailures = 0
     while ($true) {
         $text = Read-TailText -Reader $reader
         if (-not $reader.ReadSucceeded) {
@@ -951,12 +975,17 @@ function Watch-Record {
                 $caughtUp = 0
                 $settled = $null
                 $settleRounds = 0
+                $catchUpFailed = $false
                 do {
                     $settleRounds++
                     $roundBytes = 0
                     do {
                         $more = Read-TailText -Reader $reader
-                        if (-not $reader.ReadSucceeded -or $more.Length -eq 0) { break }
+                        if (-not $reader.ReadSucceeded) {
+                            $catchUpFailed = $true
+                            break
+                        }
+                        if ($more.Length -eq 0) { break }
 
                         foreach ($line in @(Split-TailLine -Reader $reader -Text $more)) {
                             Write-Host $line
@@ -965,11 +994,29 @@ function Watch-Record {
                     } while (-not $reader.AtEnd)
                     $caughtUp += $roundBytes
 
+                    if ($catchUpFailed) { break }
                     $settled = Get-TaskState -Path $reader.Path
                 } while ($roundBytes -gt 0 -and
                          $null -ne $settled -and
                          -not $settled.Running -and
                          $settleRounds -lt $script:MaxSettleRounds)
+
+                # A catch-up read that failed is not the same as a file with nothing left to
+                # read. Its lines are still on disk, unread. Taking the state now would print
+                # the verdict over output that never reached the screen, so the whole pass is
+                # retried instead, under a failure count of its own.
+                if ($catchUpFailed) {
+                    $catchUpReadFailures++
+                    if ($catchUpReadFailures -ge $script:MaxTailReadFailures) {
+                        Write-Host ''
+                        Write-Host "Task output could no longer be read after $catchUpReadFailures attempts: $($reader.Path)"
+                        return 1
+                    }
+
+                    Start-Sleep -Milliseconds 500
+                    continue
+                }
+                $catchUpReadFailures = 0
 
                 # This read keeps its own failure count. The count above resets on every read
                 # that works, so it can never bound a file that reads there and fails here.
