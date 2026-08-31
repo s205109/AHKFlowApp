@@ -21,10 +21,16 @@ in about 80 seconds instead of 618, so that running them stops being a reason to
 
 ## Acceptance criteria
 
-- [ ] `tests/powershell-suites.json` names all 49 suite files, each with `jobs`, `execution`,
-      and `baselineSeconds`.
+- [ ] `tests/powershell-suites.json` holds one entry for every `tests/*.Tests.ps1` file in the
+      repository, each with `jobs`, `execution`, and `baselineSeconds`. The criterion is
+      one-to-one against what the runner discovers, never a fixed count: this item divides one
+      suite into three and adds a tracker suite, so the total moves from 49 to 52.
+- [ ] Every discovered suite file appears in the manifest exactly once, and no two entries share
+      a `name`.
 - [ ] The runner fails before it starts any child process when a suite file is missing from the
       manifest, when a manifest entry names no file, or when a metadata value is unknown.
+- [ ] `baselineSeconds` is either `null` or a finite number greater than zero. Zero, a negative
+      number, `NaN`, and infinity each fail the manifest.
 - [ ] Every `execution: exclusive` entry carries a non-empty `reason`, and a test fails an entry
       that does not.
 - [ ] A test fails when the manifest's `invariants` set and the suite list in
@@ -34,8 +40,14 @@ in about 80 seconds instead of 618, so that running them stops being a reason to
       whose `jobs` contains `suites`.
 - [ ] `-Suite <wildcard[]>` selects a subset. An unmatched wildcard fails, and no successful run
       reports zero suites.
-- [ ] `-MaxParallel` defaults to the processor count capped at eight, and an environment
-      variable overrides that default.
+- [ ] `-MaxParallel` defaults to the processor count capped at eight.
+      `AHKFLOW_SUITE_MAX_PARALLEL` overrides that default. An explicit `-MaxParallel` wins over
+      the variable, and the variable wins over the default.
+- [ ] An unset or blank `AHKFLOW_SUITE_MAX_PARALLEL` is ignored, and the default applies. A
+      value that is not a whole number, or is below one, fails the run with a message that names
+      the variable and the value. A misconfigured worker count must not run silently at the
+      default.
+- [ ] A targeted `-Suite` run keeps the timing history of every suite it did not select.
 - [ ] A suite marked `exclusive` never runs at the same time as another suite.
 - [ ] Each suite's output prints as one block after that suite ends. The output of two suites
       never interleaves.
@@ -58,8 +70,9 @@ in about 80 seconds instead of 618, so that running them stops being a reason to
 - Named profiles. One selection is left, so the runner needs no profile name for it.
 - Dividing `tests/CitationFreshness.Tests.ps1`.
 - Removing the second run of the five invariant suites. Backlog 127 owns that question.
-- Making `scripts/ci/check-repo-invariants.ps1` call this runner. Backlog 127 owns it, because
-  that job runs on Linux and the runner cannot run there yet.
+- Making `scripts/ci/check-repo-invariants.ps1` call this runner. Backlog 127 owns it. That job
+  runs on Linux, and nobody has run this runner on Linux, so the delegation belongs with the
+  item that proves it works there.
 - Any change to `.github/workflows/ci.yml`. The job calls the runner with no arguments, which
   still means every suite.
 - Which PowerShell version the production worktree and hook scripts support.
@@ -92,11 +105,17 @@ in about 80 seconds instead of 618, so that running them stops being a reason to
   name, and no machine-level environment writes. The port strings in
   `tests/AgentWorktreeGuard.Tests.ps1`, `tests/WorktreeJsonEdit.Tests.ps1`, and
   `tests/WorktreeLocalDevSetup.Tests.ps1` are text comparisons, not listening sockets.
-- The runner cannot run on Linux today. Two paths use a backslash, which is an ordinary
-  character in a Linux file name
-  (`scripts/run-powershell-suites.ps1:40`, ". "$PSScriptRoot\progress.common.ps1"") and
-  (`scripts/progress.common.ps1:99`, "    return (Join-Path (Join-Path $RepoRoot 'TestResults\progress') "$RunnerKey.json")").
-  Backlog 127 owns both.
+- `Save-ProgressTimings` rebuilds the store from the units one run completed and then replaces
+  the file whole (`scripts/progress.common.ps1:290`, "    $payload = [ordered]@{}"). A tracker
+  starts with no completed units (`scripts/progress.common.ps1:178`, "        Completed    = [ordered]@{}"),
+  so a one-suite `-Suite` run would delete every other suite's history. The merging save is the
+  one change this item makes to that 5.1 module, and it must stay inside 5.1.
+- Nobody has ever run the runner on Linux, so whether it works there is unknown. An earlier
+  draft of this item claimed that two backslash paths stop it from starting. That claim was
+  wrong. Microsoft documents the opposite: "Paths given to cmdlets are now slash-agnostic (both
+  `/` and `\` work as directory separators)". See
+  [PowerShell differences on non-Windows platforms](https://learn.microsoft.com/powershell/scripting/whats-new/unix-support?view=powershell-7.6#filesystem-support-for-linux-and-macos).
+  Backlog 127 runs it on Linux and fixes whatever actually fails.
 - The runner takes no `-Profile` parameter because **Profile** is an app term
   (`CONTEXT.md:104`, "**Profile**:"), and `dotnet run --launch-profile` is a second meaning
   already in use.

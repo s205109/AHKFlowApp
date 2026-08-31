@@ -26,13 +26,20 @@ cannot cost time.
       `CitationFreshness`, and `SkillParity` depend on the path separator, on letter case in
       paths, or on the line ending.
 - [ ] One place in the repository states which platform each suite runs on, and why.
-- [ ] `tests/powershell-suites.json` carries a `platform` field. Every value comes from a run,
-      not from a guess.
-- [ ] `scripts/run-powershell-suites.ps1` and `scripts/progress.common.ps1` build every path
-      with `Join-Path` or a forward slash.
-- [ ] A test proves the runner starts and selects suites on Linux.
-- [ ] `scripts/ci/check-repo-invariants.ps1` calls `scripts/run-powershell-suites.ps1`, so the
-      repository holds one parallel implementation and not two.
+- [ ] `tests/powershell-suites.json` carries a `platform` field. It is an array of strings, and
+      the only allowed values are `windows` and `linux`. A suite that runs on both carries both,
+      as `["windows","linux"]`. The array is never empty, and a test fails an unknown value.
+- [ ] Every `platform` value is backed by a recorded run, not by a guess. The item records, for
+      each value, the command, the operating system, the commit, the date, and the result — or
+      names a CI run whose log shows the same.
+- [ ] Someone runs `scripts/run-powershell-suites.ps1` on Linux and records what happens. Any
+      path or host defect it actually hits is fixed. No path is rewritten on suspicion alone.
+- [ ] A test proves the runner starts, reads the manifest, and selects suites on Linux.
+- [ ] `scripts/ci/check-repo-invariants.ps1` calls `scripts/run-powershell-suites.ps1` with a
+      selection that resolves to exactly the manifest's `invariants` set. A bare call would
+      select every suite in the `suites` job, which is not what that job is for.
+- [ ] A test fails when the invariant job would run any suite outside the manifest's
+      `invariants` set, or would miss one inside it.
 - [ ] The five suites still run on Windows, or the item names the evidence that made that run
       unnecessary.
 
@@ -57,6 +64,14 @@ cannot cost time.
 - Backlog 126 divides the slowest suite. After it ships, re-measure the four-worker case before
   using the numbers above.
 - `scripts/progress.common.ps1` declares `#Requires -Version 5.1`, and `scripts/test-fast.ps1`
-  dot-sources it and declares the same. A path fix there must stay inside 5.1.
-- Backlog 126 leaves `scripts/ci/check-repo-invariants.ps1` alone for this reason: the runner
-  cannot start on Linux today, and that job runs on Linux.
+  dot-sources it and declares the same. Any fix there must stay inside 5.1.
+- Backlog 126 leaves `scripts/ci/check-repo-invariants.ps1` alone because that job runs on
+  Linux and nobody has run the runner there. That is an unknown, not a known defect.
+- An earlier draft of 126 claimed two backslash paths stop the runner from starting on Linux.
+  The claim was wrong, and it is withdrawn. Microsoft documents that "Paths given to cmdlets are
+  now slash-agnostic (both `/` and `\` work as directory separators)". See
+  [PowerShell differences on non-Windows platforms](https://learn.microsoft.com/powershell/scripting/whats-new/unix-support?view=powershell-7.6#filesystem-support-for-linux-and-macos).
+  Start this item by running the thing, not by rewriting paths.
+- Dot-sourcing is not a cmdlet, so the documented rule above does not settle
+  `. "$PSScriptRoot\progress.common.ps1"` by itself. That is one more reason to run it and
+  read the result rather than reason about it.
