@@ -80,7 +80,7 @@ in about 80 seconds instead of 618, so that running them stops being a reason to
 ## Notes / dependencies
 
 - Spec: `docs/superpowers/specs/2026-08-31-powershell-suite-performance-design-126.md`
-- Plan: none — Stage 3 writes it, and this line then names the file.
+- Plan: `docs/superpowers/plans/2026-08-31-powershell-suite-performance-plan-126.md`
 - The recorded sequential baseline is 617.9 seconds across 48 suites. The per-suite numbers are
   preserved in the spec's appendix, because worktree result folders are temporary.
 - A parallel run ends when the slowest suite ends, not when the work is done.

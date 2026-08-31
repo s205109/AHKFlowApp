@@ -75,3 +75,12 @@ cannot cost time.
 - Dot-sourcing is not a cmdlet, so the documented rule above does not settle
   `. "$PSScriptRoot\progress.common.ps1"` by itself. That is one more reason to run it and
   read the result rather than reason about it.
+- Backlog 126 gives the runner one selection argument, `-Suite <wildcard[]>`, and it matches only
+  suites inside the `suites` job. That cannot express "exactly the `invariants` set" without
+  naming all five suites again, which is the duplication the manifest exists to remove. So this
+  item most likely adds a second selector, `-Job invariants`, rather than passing five wildcards.
+  Decide that when you pick the item up, and write the reason down either way.
+- The manifest 126 ships has four fields: `name`, `jobs`, `execution`, and `baselineSeconds`, plus
+  `reason` on an `exclusive` entry. The `platform` field this item requires is new work, and the
+  manifest reader must learn to validate it. Its plan is
+  `docs/superpowers/plans/2026-08-31-powershell-suite-performance-plan-126.md`.
