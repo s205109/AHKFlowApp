@@ -161,7 +161,8 @@ Invoke-TestCase 'Coverage cleanup preserves progress history' {
 }
 
 Invoke-TestCase 'ReportGenerator reads only the current coverage result folder' {
-    $runCoverage = Get-Content -LiteralPath (Join-Path $repoRoot 'scripts\run-coverage.ps1') -Raw
+    $runCoveragePath = Join-Path $repoRoot 'scripts\run-coverage.ps1'
+    $runCoverage = Get-Content -LiteralPath $runCoveragePath -Raw
     $reportLines = @($runCoverage -split "`r?`n" | Where-Object { $_ -match '^\s*-reports:' })
 
     Assert-True ($reportLines.Count -eq 1) "Expected one ReportGenerator input, got: $($reportLines -join ' | ')"
@@ -169,6 +170,24 @@ Invoke-TestCase 'ReportGenerator reads only the current coverage result folder' 
         "Expected ReportGenerator input under the cleaned coverage folder. Got: $($reportLines[0])"
     Assert-True ($reportLines[0] -notmatch 'TestResults/\*\*/') `
         "A broad TestResults glob can merge stale reports outside coverage. Got: $($reportLines[0])"
+
+    # Naming the variable is not enough. Pointing it at all of TestResults would keep the line
+    # above passing and bring stale reports back, so the assignment is resolved and checked.
+    $ast = [System.Management.Automation.Language.Parser]::ParseFile($runCoveragePath, [ref] $null, [ref] $null)
+    $assignments = @($ast.FindAll({
+                param($node)
+                $node -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+                $node.Left.Extent.Text -eq '$coverageResultsRoot'
+            }, $true))
+
+    Assert-True ($assignments.Count -eq 1) "Expected one `$coverageResultsRoot assignment, got $($assignments.Count)."
+
+    # A stand-in root on a drive that exists. Join-Path resolves the drive qualifier, so a made-up
+    # drive letter fails before the path is built.
+    $standInRoot = Join-Path ([System.IO.Path]::GetTempPath()) 'ahkflow-coverage-root-check'
+    $resolved = & ([scriptblock]::Create("param(`$repoRoot) $($assignments[0].Right.Extent.Text)")) $standInRoot
+    Assert-True ($resolved -eq (Join-Path $standInRoot 'TestResults\coverage')) `
+        "Expected the coverage root to resolve to TestResults\coverage, got: $resolved"
 }
 
 Invoke-TestCase 'The expected project list comes from the solution and coverlet' {
