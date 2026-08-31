@@ -69,6 +69,18 @@ function Invoke-WatchScript {
     return [pscustomobject]@{ Output = $output; ExitCode = $LASTEXITCODE }
 }
 
+# The lines a function printed with Write-Host, taken from the information stream and separated
+# from whatever the function also returned. Callers pass @(Show-Tail ... 6>&1).
+function Get-ShownLine {
+    param([Parameter(Mandatory)][AllowEmptyCollection()][object[]] $Record)
+
+    return @(
+        $Record |
+            Where-Object { $_ -is [System.Management.Automation.InformationRecord] } |
+            ForEach-Object { [string] $_.MessageData.Message }
+    )
+}
+
 # --- The project folder name mangling, pinned against real observed names ---
 
 Assert-True (
@@ -109,6 +121,22 @@ Assert-True (Test-WatchTaskFolderName -Name 'D--worktrees-feature' -CheckoutPath
 Assert-True (Test-WatchTaskFolderName -Name 'D--worktrees-feature-tests' -CheckoutPath $twoCheckouts) 'Folder match: a subdirectory of such a worktree must be found.'
 Assert-True (-not (Test-WatchTaskFolderName -Name 'D--worktrees-featureOLD' -CheckoutPath $twoCheckouts)) 'Folder match: a name that merely starts like a worktree must be refused.'
 
+# Two different directories can mangle to the very same folder name, because '.' and a path
+# separator both become '-'. The name then says nothing about which one owns the folder, so the
+# checkout must not claim it either.
+$dottedCheckout = @('C:\repo\App.foo')
+$dottedNeighbour = @('C:\repo\App-foo')
+
+Assert-True (
+    -not (Test-WatchTaskFolderName -Name 'C--repo-App-foo' -CheckoutPath $dottedCheckout -NeighbourPath $dottedNeighbour)
+) 'Folder match: a name a neighbour claims exactly as closely must be refused.'
+Assert-True (
+    -not (Test-WatchTaskFolderName -Name 'C--repo-App-foo-scripts' -CheckoutPath $dottedCheckout -NeighbourPath $dottedNeighbour)
+) 'Folder match: a subdirectory name under an exact collision must be refused too.'
+Assert-True (
+    Test-WatchTaskFolderName -Name 'C--repo-App-foo' -CheckoutPath $dottedCheckout
+) 'Folder match: with no colliding neighbour the checkout still owns its own name.'
+
 # --- Reading the end of a file says whether the task finished, and with which code ---
 #
 # This is the check that ends the wait when the follower's byte offset has gone stale, so it must
@@ -138,6 +166,86 @@ try {
         $same = if ($null -eq $case.Expected) { $null -eq $actual } else { $actual -eq $case.Expected }
         Assert-True $same "End state: $($case.Name) must read as '$($case.Expected)', got '$actual'."
     }
+}
+finally {
+    Remove-Item -LiteralPath $root -Recurse -Force
+}
+
+# --- A large unfinished line has a fixed memory bound and a visible truncation notice ---
+
+$root = New-WatchTestRoot
+try {
+    $singleLinePath = Join-Path $root 'single-line.output'
+    [System.IO.File]::WriteAllText($singleLinePath, ('X' * (2 * 1024 * 1024)))
+
+    $reader = New-TailReader -Path $singleLinePath
+    Read-InitialTailText -Reader $reader -LineCount 2 | Out-Null
+    $initialTruncated = $reader.PSObject.Properties['InitialTruncated']
+    Assert-True ($null -ne $initialTruncated) 'Single line: the initial reader must report whether its byte limit truncated output.'
+    if ($null -ne $initialTruncated) {
+        Assert-True $initialTruncated.Value 'Single line: a 2 MiB unfinished line must reach the initial read limit.'
+        Assert-True ($reader.InitialReadBytes -le (1024 * 1024)) "Single line: the initial read must stay within 1 MiB, got $($reader.InitialReadBytes) bytes."
+    }
+
+    $shown = Show-Tail -Path $singleLinePath -Count 2 6>&1 | Out-String
+    Assert-True ($shown -match 'truncated') 'Single line: the initial tail must say that it omitted part of the unfinished line.'
+
+    $reader = New-TailReader -Path $singleLinePath
+    $followOutput = [System.Collections.Generic.List[string]]::new()
+    do {
+        $text = Read-TailText -Reader $reader
+        foreach ($line in @(Split-TailLine -Reader $reader -Text $text)) {
+            $followOutput.Add($line)
+        }
+    } while (-not $reader.AtEnd)
+
+    $carryBytes = [System.Text.Encoding]::UTF8.GetByteCount($reader.Carry)
+    Assert-True ($carryBytes -le (1024 * 1024)) "Single line: unfinished follow text must stay within 1 MiB, got $carryBytes bytes."
+    Assert-True (($followOutput -join "`n") -match 'truncated') 'Single line: follow mode must emit a truncation notice.'
+}
+finally {
+    Remove-Item -LiteralPath $root -Recurse -Force
+}
+
+# --- The unfinished last line counts toward -Tail ---
+#
+# A task that is no longer running has its last, newline-less line printed. That line is one of
+# the lines the caller asked for, not a free extra on top of them.
+
+$root = New-WatchTestRoot
+try {
+    $partialPath = Join-Path $root 'partial.output'
+    [System.IO.File]::WriteAllText($partialPath, "one`ntwo`nthree")
+
+    $printed = Get-ShownLine -Record @(Show-Tail -Path $partialPath -Count 2 6>&1)
+    Assert-True (($printed -join '|') -eq 'two|three') "Tail count: -Tail 2 over three lines must print 'two' and 'three', got: $($printed -join '|')"
+}
+finally {
+    Remove-Item -LiteralPath $root -Recurse -Force
+}
+
+# --- A tail of large complete lines is not cut short ---
+#
+# The byte bound exists for one line that never ends. Capping the whole initial read instead made
+# -Tail return fewer lines than it was asked for, and blamed an unfinished line that did not exist.
+
+$root = New-WatchTestRoot
+try {
+    $bigLinesPath = Join-Path $root 'big-lines.output'
+    $builder = [System.Text.StringBuilder]::new()
+    for ($i = 1; $i -le 15; $i++) {
+        [void] $builder.Append(('L{0:d2}-' -f $i))
+        [void] $builder.Append('X' * (100 * 1024))
+        [void] $builder.Append("`n")
+    }
+    [System.IO.File]::WriteAllText($bigLinesPath, $builder.ToString())
+
+    $printed = Get-ShownLine -Record @(Show-Tail -Path $bigLinesPath -Count 15 6>&1)
+    $starts = @($printed | ForEach-Object { $_.Substring(0, [Math]::Min(4, $_.Length)) })
+    $expected = @(1..15 | ForEach-Object { 'L{0:d2}-' -f $_ }) -join ' '
+
+    Assert-True ($printed.Count -eq 15) "Large lines: -Tail 15 must print 15 lines, got $($printed.Count): $($starts -join ' ')"
+    Assert-True (($starts -join ' ') -eq $expected) "Large lines: the 15 printed lines must be L01 to L15, got: $($starts -join ' ')"
 }
 finally {
     Remove-Item -LiteralPath $root -Recurse -Force
@@ -428,6 +536,45 @@ finally {
     Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
 }
 
+# --- A successful read resets earlier read failures ---
+
+$retryPath = Join-Path ([System.IO.Path]::GetTempPath()) ("watch-task-retries-$([guid]::NewGuid()).output")
+try {
+    [System.IO.File]::WriteAllText($retryPath, "START`n")
+    $output = & $hostExe -NoProfile -Command @"
+. '$watchScript'
+`$script:readCall = 0
+function Read-TailText {
+    param([object] `$Reader)
+    `$script:readCall++
+    `$Reader.ReadError = `$null
+    if (`$script:readCall -in @(1, 3, 5, 7)) {
+        `$Reader.ReadSucceeded = `$false
+        `$Reader.AtEnd = `$false
+        return ''
+    }
+
+    `$Reader.ReadSucceeded = `$true
+    `$Reader.AtEnd = `$script:readCall -ge 8
+    return "RECOVERED-`$script:readCall``n"
+}
+function Get-TaskState {
+    param([string] `$Path)
+    return [pscustomobject]@{ Running = `$false; ExitCode = 0; BytesRead = 1 }
+}
+`$record = [pscustomobject]@{ Path = '$retryPath'; LastWrite = (Get-Date); Running = `$true; ExitCode = `$null }
+exit (Watch-Record -Record `$record -Tail 40)
+"@ 2>&1 | Out-String
+    $exitCode = $LASTEXITCODE
+
+    Assert-True ($exitCode -eq 0) "Read retries: separated failures must not end the watch. Exit: $exitCode. Output: $output"
+    Assert-True ($output -notmatch 'could no longer be read') "Read retries: each success must reset the failure count. Output: $output"
+    Assert-True ($output -match 'Exit code: 0') "Read retries: the eventual terminal state must be reported. Output: $output"
+}
+finally {
+    Remove-Item -LiteralPath $retryPath -Force -ErrorAction SilentlyContinue
+}
+
 # --- An exit-marker-shaped output line does not end the watch unless it is last ---
 
 $root = New-WatchTestRoot
@@ -459,6 +606,71 @@ try {
     Assert-True ($output -match 'AFTER-NONTERMINAL-MARKER') "Trailing marker: later output must not be hidden. Output: $output"
     $lastLine = Get-LastNonEmptyLine -Text $output
     Assert-True ($lastLine -eq 'Exit code: 6') "Trailing marker: the trailing marker must supply the verdict, got '$lastLine'. Output: $output"
+}
+finally {
+    if ($job) { Remove-Job -Job $job -Force -ErrorAction SilentlyContinue }
+    Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+# Overwrites a file from byte zero without emptying it first. WriteAllText truncates before it
+# writes, and a watcher can notice that short moment for reasons unrelated to what a case is
+# testing. This leaves the file at least as long as it was throughout.
+function Set-FileContentInPlace {
+    param(
+        [Parameter(Mandatory)][string] $Path,
+        [Parameter(Mandatory)][string] $Text
+    )
+
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($Text)
+    $stream = [System.IO.File]::Open($Path, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Write, [System.IO.FileShare]::ReadWrite)
+    try {
+        $stream.Position = 0
+        $stream.Write($bytes, 0, $bytes.Length)
+        $stream.Flush()
+    }
+    finally {
+        $stream.Dispose()
+    }
+}
+
+# --- A longer replacement with the same remembered start is read from the beginning ---
+
+$root = New-WatchTestRoot
+$job = $null
+try {
+    $session = [guid]::NewGuid().ToString()
+    $tasksDir = Join-Path (Join-Path (Join-Path $root "$prefix-checkpoint") $session) 'tasks'
+    New-Item -ItemType Directory -Path $tasksDir -Force | Out-Null
+    $checkpointPath = Join-Path $tasksDir 'task.output'
+
+    $sharedStart = "SHARED-PREFIX-LINE`n" * 20
+    $original = $sharedStart + ("ORIGINAL-FILLER-LINE`n" * 20)
+    [System.IO.File]::WriteAllText($checkpointPath, $original)
+
+    $job = Start-Job -ScriptBlock {
+        param($exe, $script, $searchRoot)
+        & $exe -NoProfile -File $script -Root $searchRoot -Tail 100 2>&1
+    } -ArgumentList $hostExe, $watchScript, $root
+
+    $entered = Wait-ForJobOutput -Job $job -Pattern 'ORIGINAL-FILLER-LINE'
+    Assert-True $entered 'Checkpoint replacement: the watcher must consume the original file.'
+
+    $changedBeforeOffset = 'REPLACEMENT-BEFORE-OLD-OFFSET'
+    $replacementStart = $sharedStart + "$changedBeforeOffset`n"
+    $paddingLength = $original.Length - $replacementStart.Length + 100
+    $replacement = $replacementStart + ('R' * $paddingLength) + "`nREPLACEMENT-SUFFIX`n[exited with code 11]`n"
+    Assert-True ($sharedStart.Length -gt 256) 'Checkpoint replacement: the shared start must exceed the head check.'
+    Assert-True ($replacement.IndexOf($changedBeforeOffset) -lt $original.Length) 'Checkpoint replacement: changed output must sit before the old offset.'
+    Assert-True ($replacement.Length -gt $original.Length) 'Checkpoint replacement: the replacement must extend past the old offset.'
+
+    Set-FileContentInPlace -Path $checkpointPath -Text $replacement
+
+    $finished = Wait-Job -Job $job -Timeout 20
+    Assert-True ($null -ne $finished) 'Checkpoint replacement: the terminal replacement must stop the watcher.'
+
+    $output = Get-JobOutputSoFar -Job $job
+    Assert-True ($output -match $changedBeforeOffset) "Checkpoint replacement: changed output before the old offset must not be lost. Output: $output"
+    Assert-True ((Get-LastNonEmptyLine -Text $output) -eq 'Exit code: 11') "Checkpoint replacement: the final exit code must be reported. Output: $output"
 }
 finally {
     if ($job) { Remove-Job -Job $job -Force -ErrorAction SilentlyContinue }
@@ -553,27 +765,6 @@ Watch-Record -Record `$record -Tail 40 -NoFollow | Out-Null
 }
 finally {
     Remove-Item -LiteralPath $stalePath -Force -ErrorAction SilentlyContinue
-}
-
-# Overwrites a file from byte zero without emptying it first. WriteAllText truncates before it
-# writes, and a watcher can notice that short moment for reasons unrelated to what a case is
-# testing. This leaves the file at least as long as it was throughout.
-function Set-FileContentInPlace {
-    param(
-        [Parameter(Mandatory)][string] $Path,
-        [Parameter(Mandatory)][string] $Text
-    )
-
-    $bytes = [System.Text.Encoding]::UTF8.GetBytes($Text)
-    $stream = [System.IO.File]::Open($Path, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Write, [System.IO.FileShare]::ReadWrite)
-    try {
-        $stream.Position = 0
-        $stream.Write($bytes, 0, $bytes.Length)
-        $stream.Flush()
-    }
-    finally {
-        $stream.Dispose()
-    }
 }
 
 # --- A file replaced by a longer one is read again from the start ---
@@ -694,6 +885,60 @@ Watch-Record -Record `$record -Tail 40 -NoFollow | Out-Null
 }
 finally {
     Remove-Item -LiteralPath $stalePath -Force -ErrorAction SilentlyContinue
+}
+
+# --- Output written while the terminal state is read is still printed ---
+#
+# The follow loop reads new text, and then asks the file whether the task has ended. A run that
+# wrote its last lines between those two steps had them dropped: the state said the task was over,
+# and the watcher stopped without ever reading the bytes that arrived in the gap.
+#
+# The case builds that gap rather than racing for it. Get-TaskState is replaced in a child session:
+# its first call appends more output and reports the task still running, and its second call
+# appends the final lines and reports the task finished.
+
+$job = $null
+$gapPath = Join-Path ([System.IO.Path]::GetTempPath()) ("watch-task-gap-$([guid]::NewGuid()).output")
+try {
+    [System.IO.File]::WriteAllText($gapPath, "FIRST-LINE`n")
+
+    $job = Start-Job -ScriptBlock {
+        param($exe, $script, $path)
+        & $exe -NoProfile -Command @"
+. '$script'
+
+`$script:stateCalls = 0
+function Get-TaskState {
+    param([Parameter(Mandatory)][string] `$Path)
+
+    `$script:stateCalls++
+    if (`$script:stateCalls -eq 1) {
+        [System.IO.File]::AppendAllText(`$Path, ('SECOND-LINE' + [char]10))
+        return [pscustomobject]@{ Running = `$true; ExitCode = `$null; BytesRead = 0 }
+    }
+
+    [System.IO.File]::AppendAllText(`$Path, ('FINAL-LINE' + [char]10 + '[exited with code 8]' + [char]10))
+    return [pscustomobject]@{ Running = `$false; ExitCode = 8; BytesRead = 0 }
+}
+
+`$record = [pscustomobject]@{ Path = '$path'; LastWrite = (Get-Date); Running = `$true; ExitCode = `$null }
+Watch-Record -Record `$record -Tail 40 | Out-Null
+"@ 2>&1
+    } -ArgumentList $hostExe, $watchScript, $gapPath
+
+    $finished = Wait-Job -Job $job -Timeout 25
+    Assert-True ($null -ne $finished) 'Late append: the watcher must stop, but it was still running after 25s.'
+
+    $output = Get-JobOutputSoFar -Job $job
+    Assert-True ($output -match 'SECOND-LINE') "Late append: the text read before the state check must be printed. Output: $output"
+    Assert-True ($output -match 'FINAL-LINE') "Late append: the text written during the state check must not be lost. Output: $output"
+
+    $lastLine = Get-LastNonEmptyLine -Text $output
+    Assert-True ($lastLine -eq 'Exit code: 8') "Late append: the last line must be 'Exit code: 8', got '$lastLine'. Output: $output"
+}
+finally {
+    if ($job) { Remove-Job -Job $job -Force -ErrorAction SilentlyContinue }
+    Remove-Item -LiteralPath $gapPath -Force -ErrorAction SilentlyContinue
 }
 
 # --- Report ---

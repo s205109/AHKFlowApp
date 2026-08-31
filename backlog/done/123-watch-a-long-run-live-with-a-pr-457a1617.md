@@ -40,30 +40,30 @@ Two things went wrong on 2026-08-29, and both are fixed by this item:
       (`scripts/watch-task.ps1:40`, "param(")
 - [x] Run with no arguments, it tails the newest still-running task output file for this
       repository, including files that belong to any of the repository's worktrees.
-      (`scripts/watch-task.ps1:925`, "$running = @(");
-      (`scripts/watch-task.ps1:98`, "function Get-RepositoryCheckoutPath").
+      (`scripts/watch-task.ps1:1073`, "$running = @(");
+      (`scripts/watch-task.ps1:99`, "function Get-RepositoryCheckoutPath").
       The mechanism changed during review —
       see the note under **Notes / dependencies**.
 - [x] It decides that a task is still running when the file ends with neither
       `[exited with code N]` nor `[killed]`, and needs no state of its own to do so.
-      (`scripts/watch-task.ps1:278`, "$lastNonEmpty -match $script:ExitMarker");
-      (`scripts/watch-task.ps1:281`, "$lastNonEmpty -match $script:KilledMarker")
+      (`scripts/watch-task.ps1:282`, "$lastNonEmpty -match $script:ExitMarker");
+      (`scripts/watch-task.ps1:285`, "$lastNonEmpty -match $script:KilledMarker")
 - [x] It stops on its own when a terminal marker is the file's last line. It prints the exit code
-      or killed state as its last line. (`scripts/watch-task.ps1:804`, "if ($reader.AtEnd)");
-      (`scripts/watch-task.ps1:818`, "-not $state.Running");
-      (`scripts/watch-task.ps1:842`, "State: killed");
-      (`scripts/watch-task.ps1:845`, "Exit code:")
+      or killed state as its last line. (`scripts/watch-task.ps1:938`, "if ($reader.AtEnd)");
+      (`scripts/watch-task.ps1:952`, "-not $state.Running");
+      (`scripts/watch-task.ps1:990`, "State: killed");
+      (`scripts/watch-task.ps1:993`, "Exit code:")
 - [x] With no running task, it prints the newest stopped task's last lines, path, and terminal
-      state, and exits 0. (`scripts/watch-task.ps1:927`, "if ($running.Count -eq 0)");
-      (`scripts/watch-task.ps1:932`, "Show-Tail -Path $newest.Path");
-      (`scripts/watch-task.ps1:939`, "Path:")
+      state, and exits 0. (`scripts/watch-task.ps1:1075`, "if ($running.Count -eq 0)");
+      (`scripts/watch-task.ps1:1080`, "Show-Tail -Path $newest.Path");
+      (`scripts/watch-task.ps1:1087`, "Path:")
 - [x] With more than one running task, it tails the newest and prints one line naming how many
-      others are running. (`scripts/watch-task.ps1:949`, "if ($running.Count -gt 1)")
+      others are running. (`scripts/watch-task.ps1:1097`, "if ($running.Count -gt 1)")
 - [x] `-List` prints the recent tasks with their state, age, and index. `-Index` selects one.
-      (`scripts/watch-task.ps1:894`, "if ($List)");
-      (`scripts/watch-task.ps1:917`, "if ($Index -gt 0)")
+      (`scripts/watch-task.ps1:1042`, "if ($List)");
+      (`scripts/watch-task.ps1:1065`, "if ($Index -gt 0)")
 - [x] `-Root` points the script at another search root, so a test can build a fake tree.
-      (`scripts/watch-task.ps1:873`, "$searchRoot = if")
+      (`scripts/watch-task.ps1:1021`, "$searchRoot = if")
 - [x] `scripts/progress.common.ps1` exposes functions to create a tracker over a named list of
       units, start a unit, stop a unit, and save the run's timings.
       (`scripts/progress.common.ps1:149`, "function New-ProgressTracker");
@@ -95,10 +95,10 @@ Two things went wrong on 2026-08-29, and both are fixed by this item:
 - [x] `tests/WatchTask.Tests.ps1` covers the project-folder name mangling for a main checkout
       and for a worktree, running against finished detection, newest-running selection, and the
       case where nothing is running.
-      (`tests/WatchTask.Tests.ps1:72`, "project folder name mangling");
-      (`tests/WatchTask.Tests.ps1:146`, "Running versus finished detection");
-      (`tests/WatchTask.Tests.ps1:214`, "Newest-running selection");
-      (`tests/WatchTask.Tests.ps1:242`, "nothing-is-running path")
+      (`tests/WatchTask.Tests.ps1:84`, "project folder name mangling");
+      (`tests/WatchTask.Tests.ps1:254`, "Running versus finished detection");
+      (`tests/WatchTask.Tests.ps1:322`, "Newest-running selection");
+      (`tests/WatchTask.Tests.ps1:350`, "nothing-is-running path")
 - [x] `tests/Progress.Tests.ps1` covers the estimate with full, partial, and absent history, and
       the atomic save. (`tests/Progress.Tests.ps1:58`, "estimate with full history");
       (`tests/Progress.Tests.ps1:75`, "estimate with partial history");
@@ -134,6 +134,18 @@ Two things went wrong on 2026-08-29, and both are fixed by this item:
   (`scripts/run-coverage.ps1:47`, "Remove-AhkFlowCoverageArtifacts")
 - The final review also added bounded log reads, terminal `[killed]` handling, a bounded failure
   path when a selected output file disappears, and object-only history parsing.
+- A second independent review capped newline-free output at 1 MiB, made read retries consecutive,
+  limited ReportGenerator to the cleaned coverage folder, and checked replacements at the last
+  consumed offset. (`scripts/watch-task.ps1:63`, "$script:MaxTailTextBytes");
+  (`scripts/run-coverage.ps1:116`, "$coverageResultsRoot/**/coverage.cobertura.xml")
+- A third review found four more watcher defects, all now fixed. Two directories that mangle to
+  one folder name no longer let either one claim it. The byte bound now caps a single line, not
+  the whole initial tail. Output written while the terminal state is read is now printed. The
+  unfinished last line now counts toward `-Tail` instead of arriving on top of it.
+  (`scripts/watch-task.ps1:213`, "-ge $best");
+  (`scripts/watch-task.ps1:690`, "$lineCapReached = $position");
+  (`scripts/watch-task.ps1:814`, "$wantedLines = if");
+  (`scripts/watch-task.ps1:965`, "while (-not $reader.AtEnd)")
 - `TestResults/` is already ignored by `.gitignore`, so the timings file never reaches a diff.
 - `scripts/measure-tests.ps1` already writes timings to `TestResults/measure-tests/summary.json`.
   It is a separate profiling tool and this item does not change it.

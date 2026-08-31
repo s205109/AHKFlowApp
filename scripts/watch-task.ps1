@@ -14,8 +14,8 @@
        into the folder name Claude Code uses. A folder belongs to the repository when its name
        is one of those, or starts with one of those followed by '-', which is how a session
        started in a subdirectory is still found. A folder that a neighbouring directory claims
-       more closely is refused, because the mangling turns a path separator and a literal '-'
-       into the same character.
+       as closely, or more closely, is refused, because the mangling turns a path separator and
+       a literal '-' into the same character.
     2. Among <match>\<session id>\tasks\<task id>.output, a file is running when its content
        does not end with '[exited with code N]' or '[killed]'. This needs no state of its own.
     3. It picks the newest running file by last write time and tails it, following by byte
@@ -60,6 +60,7 @@ $script:ExitMarker = '^\[exited with code (-?\d+)\]\s*$'
 $script:KilledMarker = '^\[killed\]\s*$'
 $script:TaskStateReadLength = 8192
 $script:TailReadLength = 65536
+$script:MaxTailTextBytes = 1048576
 $script:MaxTailReadFailures = 4
 
 function ConvertTo-ClaudeProjectFolder {
@@ -168,7 +169,10 @@ function Test-WatchTaskFolderName {
       name alone cannot say whether 'AHKFlowApp-tools' is a subdirectory of this repository or a
       different repository sitting beside it. The rule settles that by longest match against real
       directories: a folder belongs to the checkout whose mangled name is the longest one it
-      starts with, and it is rejected when some other real directory claims it more closely.
+      starts with, and it is rejected when some other real directory claims it as closely or
+      more closely. Two real directories can mangle to one name, such as 'App.foo' beside
+      'App-foo'. An equal claim is that case, and then the name says nothing about which of the
+      two owns the folder.
 
       This is pure so the suite can pin it with names alone.
     #>
@@ -206,7 +210,7 @@ function Test-WatchTaskFolderName {
     }
 
     foreach ($path in $NeighbourPath) {
-        if ((Get-ClaimLength -Path $path) -gt $best) {
+        if ((Get-ClaimLength -Path $path) -ge $best) {
             return $false
         }
     }
@@ -365,9 +369,14 @@ function New-TailReader {
         Decoder = ([System.Text.UTF8Encoding]::new($false)).GetDecoder()
         LastReadBytes   = 0
         InitialReadBytes = 0
+        InitialTruncated = $false
+        CarryTruncated = $false
         ReadSucceeded  = $true
         ReadError      = $null
         AtEnd          = $false
+        FileIdentity   = $null
+        CheckpointOffset = 0
+        Checkpoint     = $null
 
         # The start of the file as last seen. A task output file only ever grows, so this text
         # never changes while the reader follows one file. When it does change, the file is a
@@ -422,6 +431,54 @@ function Test-SameHead {
     }
 
     return $true
+}
+
+function Test-SameBytes {
+    param(
+        [Parameter(Mandatory)][AllowEmptyCollection()][byte[]] $Left,
+        [Parameter(Mandatory)][AllowEmptyCollection()][byte[]] $Right
+    )
+
+    if ($Left.Length -ne $Right.Length) { return $false }
+    for ($i = 0; $i -lt $Left.Length; $i++) {
+        if ($Left[$i] -ne $Right[$i]) { return $false }
+    }
+
+    return $true
+}
+
+function Read-FileCheckpoint {
+    param(
+        [Parameter(Mandatory)][System.IO.FileStream] $Stream,
+        [Parameter(Mandatory)][long] $EndOffset,
+        [Parameter(Mandatory)][int] $Count
+    )
+
+    $end = [Math]::Min($EndOffset, $Stream.Length)
+    if ($end -le 0) { return [byte[]]::new(0) }
+
+    $want = [int][Math]::Min([long] $Count, $end)
+    $Stream.Position = $end - $want
+    $buffer = [byte[]]::new($want)
+    $read = $Stream.Read($buffer, 0, $want)
+    if ($read -eq $want) { return $buffer }
+
+    $exact = [byte[]]::new([Math]::Max(0, $read))
+    [System.Array]::Copy($buffer, $exact, $exact.Length)
+    return $exact
+}
+
+function Set-TailReaderCheckpoint {
+    param(
+        [Parameter(Mandatory)][object] $Reader,
+        [Parameter(Mandatory)][System.IO.FileStream] $Stream
+    )
+
+    $Reader.CheckpointOffset = $Reader.Offset
+    $Reader.Checkpoint = Read-FileCheckpoint `
+        -Stream $Stream `
+        -EndOffset $Reader.CheckpointOffset `
+        -Count $script:TailHeadLength
 }
 
 function Get-FileEndExitCode {
@@ -479,24 +536,42 @@ function Read-TailText {
         # can be the same size or longer, so the length alone would say nothing was wrong and the
         # reader would carry on from the old spot, never reading what came before it.
         $head = Read-FileHead -Stream $stream -Count $script:TailHeadLength
+        $fileIdentity = [System.IO.File]::GetCreationTimeUtc($Reader.Path).Ticks
+        $identityChanged = $null -ne $Reader.FileIdentity -and $Reader.FileIdentity -ne $fileIdentity
+        $checkpointChanged = $false
+        if ($null -ne $Reader.Checkpoint -and $stream.Length -ge $Reader.CheckpointOffset) {
+            $currentCheckpoint = Read-FileCheckpoint `
+                -Stream $stream `
+                -EndOffset $Reader.CheckpointOffset `
+                -Count $script:TailHeadLength
+            $checkpointChanged = -not (Test-SameBytes -Left $Reader.Checkpoint -Right $currentCheckpoint)
+        }
+
         $replaced = ($stream.Length -lt $Reader.Offset) -or
+                    $identityChanged -or
+                    $checkpointChanged -or
                     ($null -ne $Reader.Head -and -not (Test-SameHead -Left $Reader.Head -Right $head))
 
         if ($replaced) {
             $Reader.Offset = 0
             $Reader.Carry = ''
+            $Reader.CarryTruncated = $false
             $Reader.Decoder.Reset()
             $Reader.Head = $head
+            $Reader.CheckpointOffset = 0
+            $Reader.Checkpoint = $null
         }
         elseif ($null -eq $Reader.Head -or $head.Length -gt $Reader.Head.Length) {
             # Keep the longest start seen so far. A file that was still short on the first read
             # gives little to compare against, and it grows as the run writes more.
             $Reader.Head = $head
         }
+        $Reader.FileIdentity = $fileIdentity
 
         $available = $stream.Length - $Reader.Offset
         if ($available -le 0) {
             $Reader.AtEnd = $true
+            Set-TailReaderCheckpoint -Reader $Reader -Stream $stream
             return ''
         }
 
@@ -512,6 +587,7 @@ function Read-TailText {
         $Reader.Offset += $read
         $Reader.LastReadBytes = $read
         $Reader.AtEnd = $Reader.Offset -ge $stream.Length
+        Set-TailReaderCheckpoint -Reader $Reader -Stream $stream
 
         $chars = [char[]]::new($Reader.Decoder.GetCharCount($buffer, 0, $read, $false))
         $written = $Reader.Decoder.GetChars($buffer, 0, $read, $chars, 0, $false)
@@ -543,6 +619,7 @@ function Read-InitialTailText {
     )
 
     $Reader.InitialReadBytes = 0
+    $Reader.InitialTruncated = $false
     $Reader.ReadSucceeded = $true
     $Reader.ReadError = $null
     $Reader.AtEnd = $false
@@ -568,10 +645,17 @@ function Read-InitialTailText {
         $chunks = [System.Collections.Generic.List[byte[]]]::new()
         $total = 0
 
+        # How many bytes the scan has read that belong to the line it is still inside. The byte
+        # bound applies to one line, not to the whole read, so a tail of large complete lines
+        # still returns every line the caller asked for.
+        $sinceNewline = 0
+
         # One extra newline lets us discard a partial first line when the read starts mid-file.
         $wantedNewlines = $LineCount + 1
-        while ($position -gt 0 -and $newlines -lt $wantedNewlines) {
-            $want = [int][Math]::Min([long] $script:TailReadLength, $position)
+        while ($position -gt 0 -and
+               $newlines -lt $wantedNewlines -and
+               $sinceNewline -lt $script:MaxTailTextBytes) {
+            $want = [int][Math]::Min([long] $script:TailReadLength, [long] $position)
             $position -= $want
             $stream.Position = $position
 
@@ -587,15 +671,33 @@ function Read-InitialTailText {
 
             $chunks.Add($chunk)
             $total += $read
-            foreach ($value in $chunk) {
-                if ($value -eq 10) { $newlines++ }
+
+            # The bytes before the earliest newline in this chunk continue the line that newline
+            # ends, so they are what the next round keeps counting.
+            $firstBreak = -1
+            for ($i = 0; $i -lt $chunk.Length; $i++) {
+                if ($chunk[$i] -eq 10) {
+                    $newlines++
+                    if ($firstBreak -lt 0) { $firstBreak = $i }
+                }
             }
+
+            if ($firstBreak -ge 0) { $sinceNewline = $firstBreak }
+            else { $sinceNewline += $chunk.Length }
         }
+
+        # The scan stopped part-way through one line that is longer than the bound allows.
+        $lineCapReached = $position -gt 0 -and
+                          $newlines -lt $wantedNewlines -and
+                          $sinceNewline -ge $script:MaxTailTextBytes
 
         $Reader.Offset = $end
         $Reader.Head = Read-FileHead -Stream $stream -Count $script:TailHeadLength
         $Reader.InitialReadBytes = $total
+        $Reader.InitialTruncated = $lineCapReached
         $Reader.AtEnd = $true
+        $Reader.FileIdentity = [System.IO.File]::GetCreationTimeUtc($Reader.Path).Ticks
+        Set-TailReaderCheckpoint -Reader $Reader -Stream $stream
 
         if ($total -le 0) {
             return ''
@@ -613,10 +715,13 @@ function Read-InitialTailText {
         $written = $Reader.Decoder.GetChars($buffer, 0, $buffer.Length, $chars, 0, $false)
         $text = if ($written -gt 0) { [string]::new($chars, 0, $written) } else { '' }
 
-        if ($position -gt 0) {
-            $firstBreak = $text.IndexOf("`n")
-            if ($firstBreak -ge 0) {
-                $text = $text.Substring($firstBreak + 1)
+        # A read that started mid-file opens with the tail of a line whose start is not here, so
+        # that fragment is dropped. The one exception is the over-long line the bound stopped on.
+        # It is all that is left to show, and the caller says so.
+        if ($position -gt 0 -and -not $lineCapReached) {
+            $lineStart = $text.IndexOf("`n")
+            if ($lineStart -ge 0) {
+                $text = $text.Substring($lineStart + 1)
             }
         }
 
@@ -653,6 +758,24 @@ function Split-TailLine {
 
         $lines.Add($Reader.Carry.Substring(0, $break).TrimEnd("`r"))
         $Reader.Carry = $Reader.Carry.Substring($break + 1)
+        $Reader.CarryTruncated = $false
+    }
+
+    $carryBytes = [System.Text.Encoding]::UTF8.GetBytes($Reader.Carry)
+    if ($carryBytes.Length -gt $script:MaxTailTextBytes) {
+        $start = $carryBytes.Length - $script:MaxTailTextBytes
+        while ($start -lt $carryBytes.Length -and ($carryBytes[$start] -band 0xC0) -eq 0x80) {
+            $start++
+        }
+
+        $Reader.Carry = [System.Text.Encoding]::UTF8.GetString(
+            $carryBytes,
+            $start,
+            $carryBytes.Length - $start)
+        if (-not $Reader.CarryTruncated) {
+            $lines.Add('Unfinished line truncated: showing its last 1 MiB.')
+            $Reader.CarryTruncated = $true
+        }
     }
 
     # Returned unrolled. Every caller wraps the call in @(), which re-collects it.
@@ -679,15 +802,24 @@ function Show-Tail {
     if (-not $reader.ReadSucceeded) {
         throw "Task output could no longer be read: $Path. $($reader.ReadError)"
     }
+    if ($reader.InitialTruncated) {
+        Write-Host 'Initial tail truncated: one line is longer than 1 MiB. Showing its last 1 MiB and nothing before it.'
+        $reader.CarryTruncated = $true
+    }
     $lines = @(Split-TailLine -Reader $reader -Text $text)
 
-    $start = [Math]::Max(0, $lines.Count - $Count)
+    # The unfinished last line is printed when the task is over, and it is one of the lines the
+    # caller asked for. It takes a slot rather than arriving as an extra on top of them.
+    $printPartial = (-not $KeepPartial) -and $reader.Carry.Length -gt 0
+    $wantedLines = if ($printPartial) { $Count - 1 } else { $Count }
+
+    $start = [Math]::Max(0, $lines.Count - $wantedLines)
     for ($i = $start; $i -lt $lines.Count; $i++) {
         Write-Host $lines[$i]
     }
 
     $printedPartial = ''
-    if (-not $KeepPartial -and $reader.Carry.Length -gt 0) {
+    if ($printPartial) {
         $printedPartial = $reader.Carry
         Write-Host $reader.Carry
         $reader.Carry = ''
@@ -782,20 +914,22 @@ function Watch-Record {
         return 0
     }
 
-    $readFailures = 0
+    $tailReadFailures = 0
+    $stateReadFailures = 0
     while ($true) {
         $text = Read-TailText -Reader $reader
         if (-not $reader.ReadSucceeded) {
-            $readFailures++
-            if ($readFailures -ge $script:MaxTailReadFailures) {
+            $tailReadFailures++
+            if ($tailReadFailures -ge $script:MaxTailReadFailures) {
                 Write-Host ''
-                Write-Host "Task output could no longer be read after $readFailures attempts: $($reader.Path)"
+                Write-Host "Task output could no longer be read after $tailReadFailures attempts: $($reader.Path)"
                 return 1
             }
 
             Start-Sleep -Milliseconds 500
             continue
         }
+        $tailReadFailures = 0
 
         foreach ($line in @(Split-TailLine -Reader $reader -Text $text)) {
             Write-Host $line
@@ -804,26 +938,40 @@ function Watch-Record {
         if ($reader.AtEnd) {
             $state = Get-TaskState -Path $reader.Path
             if ($null -eq $state) {
-                $readFailures++
-                if ($readFailures -ge $script:MaxTailReadFailures) {
+                $stateReadFailures++
+                if ($stateReadFailures -ge $script:MaxTailReadFailures) {
                     Write-Host ''
-                    Write-Host "Task output could no longer be read after $readFailures attempts: $($reader.Path)"
+                    Write-Host "Task output could no longer be read after $stateReadFailures attempts: $($reader.Path)"
                     return 1
                 }
             }
             else {
-                $readFailures = 0
+                $stateReadFailures = 0
             }
 
             if ($null -ne $state -and -not $state.Running) {
+                # The state above was read after the tail read returned, so the run can have
+                # written its last lines in between. One more read at least, then more until the
+                # reader reaches the end again. The task is over, so the file stops growing.
+                $caughtUp = 0
+                do {
+                    $more = Read-TailText -Reader $reader
+                    if (-not $reader.ReadSucceeded -or $more.Length -eq 0) { break }
+
+                    foreach ($line in @(Split-TailLine -Reader $reader -Text $more)) {
+                        Write-Host $line
+                    }
+                    $caughtUp += $more.Length
+                } while (-not $reader.AtEnd)
+
                 if ($reader.Carry.Trim().Length -gt 0) {
                     Write-Host $reader.Carry
                     $reader.Carry = ''
                 }
 
-                # No text from the reader but a terminal file end means its byte offset went
-                # stale. Show the real end so the caller is not left with a silent gap.
-                if ($text.Length -eq 0) {
+                # No text at all from the reader, but a terminal file end, means its byte offset
+                # went stale. Show the real end so the caller is not left with a silent gap.
+                if ($text.Length -eq 0 -and $caughtUp -eq 0) {
                     Write-Host ''
                     Write-Host 'The file changed while it was being followed, so some of its output is not above.'
                     Write-Host 'Its last lines:'
