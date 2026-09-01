@@ -96,15 +96,29 @@ in about 80 seconds instead of 618, so that running them stops being a reason to
 - Saving the timings once, after every suite ends, is what keeps an existing assertion true. It
   reads the real timings file's last-write time and requires the parent runner not to change it
   (`tests/CiPowerShellSuiteRunner.Tests.ps1:212`, "    $timingsPath = Join-Path $repoRoot 'TestResults\progress\run-powershell-suites.json'").
-- One comment claims that sequential execution protects a lock on a fixed name in the shared
-  `%TEMP%` folder
-  (`tests/WorktreeRemoveHook.Tests.ps1:615`, "# scripts/run-powershell-suites.ps1 runs suites one after another, so this lock on a file in the").
-  Backlog 118 moved the hook off that shared name, so test the claim before marking the suite
-  `exclusive`.
-- A scan of all 49 suites found no writes to global git configuration, no process kills by
-  name, and no machine-level environment writes. The port strings in
-  `tests/AgentWorktreeGuard.Tests.ps1`, `tests/WorktreeJsonEdit.Tests.ps1`, and
-  `tests/WorktreeLocalDevSetup.Tests.ps1` are text comparisons, not listening sockets.
+- **Shared-resource audit, six categories, all 49 suites. No suite is exclusive.**
+  1. *A fixed file or folder in the shared temp directory.* One hit,
+     `tests/CoverageInputCompleteness.Tests.ps1`
+     (`tests/CoverageInputCompleteness.Tests.ps1:187`, "    $standInRoot = Join-Path ([System.IO.Path]::GetTempPath()) 'ahkflow-coverage-root-check'").
+     The path is only built and compared, and never created on disk, so two suites cannot meet
+     there. The suite stays `parallel`.
+  2. *A fixed port or a listening socket.* No hit opens a socket. Every hit is a port number
+     inside text that a case compares, in `tests/AgentWorktreeGuard.Tests.ps1`,
+     `tests/WorktreeJsonEdit.Tests.ps1`, and `tests/WorktreeLocalDevSetup.Tests.ps1`. The
+     `Start-Job` hits in `tests/WatchTask.Tests.ps1` and `tests/WorktreeRemovalLog.Tests.ps1`
+     start child jobs that write into their own fixture folders.
+  3. *Killing a process by name.* No hit.
+  4. *Writes into the real repository.* No hit.
+  5. *Machine-level environment or global git configuration.* No hit.
+  6. *A lock whose safety depends on suite order.* One hit, the comment in
+     `tests/WorktreeRemoveHook.Tests.ps1`. The claim was stale, and the audit corrected it. The
+     hook now copies both helpers into a per-run directory
+     (`scripts/remove-worktree-local-dev.ps1:1040`, "            Copy-Item -LiteralPath $logSource -Destination (Join-Path $runDir 'worktree-log.common.ps1') -Force -ErrorAction Stop"),
+     so the lock on the shared name collides with nothing. No other suite writes those two
+     names: every other file that mentions them reads the repository's own `scripts/` folder,
+     or copies one into its own fixture. The comment now says that
+     (`tests/WorktreeRemoveHook.Tests.ps1:615`, "# This lock is on a file in the shared %TEMP%, and it collides with nothing. Backlog 118 moved the").
+     The suite stays `parallel`.
 - `Save-ProgressTimings` used to rebuild the store from the units one run completed and then
   replace the file whole. A tracker starts with no completed units
   (`scripts/progress.common.ps1:178`, "        Completed    = [ordered]@{}"), so a one-suite
