@@ -11,3 +11,5 @@ Task 3 | f8aa2c4e | tests: pass | reworded one backlog 126 bullet, because the m
 Task 4 | 19ff04c0 | tests: pass | no suite is exclusive; the helper-name search listed five more files than the plan predicted, and each one reads scripts/ or copies into its own fixture
 
 Task 5 | 34881d00 | tests: pass | -
+
+Task 6 | abe6d466 | tests: pass | dropped the "remaining unknown" assertion, because wave 1 prints no estimate; the last-write check already proves a fixture run stores nothing. Sequential 633.9s, parallel 205.9s, both 49 suites, before the Task 7 split
