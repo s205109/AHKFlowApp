@@ -13,3 +13,5 @@ Task 4 | 19ff04c0 | tests: pass | no suite is exclusive; the helper-name search 
 Task 5 | 34881d00 | tests: pass | -
 
 Task 6 | abe6d466 | tests: pass | dropped the "remaining unknown" assertion, because wave 1 prints no estimate; the last-write check already proves a fixture run stores nothing. Sequential 633.9s, parallel 205.9s, both 49 suites, before the Task 7 split
+
+Task 7 | a6699a27 | tests: pass | eligibility first measured 66.1s, so four whole sections moved into the sweep file; final 19.0 / 53.5 / 49.9s, 70 section headers identical before and after. One unchanged section flaked once on a git worktree bookkeeping race and passed on re-run
