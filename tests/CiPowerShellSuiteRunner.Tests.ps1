@@ -147,6 +147,82 @@ function Test-MarkerExists {
     return Test-Path -LiteralPath (Join-Path (Join-Path $Root 'markers') $Name)
 }
 
+function Add-IntervalSuite {
+    param(
+        [string] $Root,
+        [string] $Name,
+        [int] $BarrierCount = 0,
+        [string] $BarrierTag = 'all',
+        [int] $TimeoutSeconds = 10,
+        [int] $HoldMilliseconds = 300
+    )
+
+    # Two things this helper has to get right, and an earlier draft got both wrong.
+    #
+    # The clock. [datetime]::UtcNow is the wall clock, and the system may correct it backwards
+    # while the run is in flight, which reorders stamps taken in different processes.
+    # [System.Diagnostics.Stopwatch]::GetTimestamp() reads one machine-wide monotonic counter -
+    # QueryPerformanceCounter on Windows, CLOCK_MONOTONIC elsewhere - so stamps from separate
+    # processes on the same machine sort correctly. The sweep compares order only, so the
+    # counter's own unit never matters. The barrier's own timeout below measures elapsed time with
+    # the same monotonic source, for the same reason: a backward correction would otherwise stretch
+    # the wait past the point where the case still means anything.
+    #
+    # The overlap. A fixed sleep overlaps only if the runspace pool happens to fill inside it,
+    # which nothing guarantees. So a suite signs in and then waits for the rest of its barrier
+    # group before it starts its hold: the overlap is caused, not hoped for. Every member of a
+    # group is released within milliseconds of the last arrival, and all of them then hold for
+    # -HoldMilliseconds, so their windows must intersect. -BarrierCount 0 means "wait for nobody",
+    # which is what a suite that has to run alone needs. The tag keeps one group's sign-ins from
+    # releasing another group's barrier.
+    $markers = Join-Path $Root 'markers'
+    $stamp = Join-Path $markers ($Name + '.interval')
+    $signIn = Join-Path $markers ($BarrierTag + '.' + $Name + '.arrived')
+
+    $wait = @()
+    if ($BarrierCount -gt 0) {
+        # A timeout, so a runner that never parallelises fails the assertion instead of hanging.
+        # The tag is ours, never a path, so only the folder needs escaping.
+        $wait = @(
+            "`$watch = [System.Diagnostics.Stopwatch]::StartNew()"
+            "while (`$watch.Elapsed.TotalSeconds -lt $TimeoutSeconds) {"
+            "    if (@(Get-ChildItem -LiteralPath $(ConvertTo-ScriptLiteral $markers) -Filter '$BarrierTag.*.arrived' -File).Count -ge $BarrierCount) { break }"
+            '    Start-Sleep -Milliseconds 25'
+            '}'
+        )
+    }
+
+    $body = @(
+        "Set-Content -LiteralPath $(ConvertTo-ScriptLiteral $stamp) -Value ([System.Diagnostics.Stopwatch]::GetTimestamp()) -Encoding ascii"
+        "Set-Content -LiteralPath $(ConvertTo-ScriptLiteral $signIn) -Value 'here' -Encoding ascii"
+    ) + $wait + @(
+        "Start-Sleep -Milliseconds $HoldMilliseconds"
+        "Add-Content -LiteralPath $(ConvertTo-ScriptLiteral $stamp) -Value ([System.Diagnostics.Stopwatch]::GetTimestamp()) -Encoding ascii"
+    )
+    Set-Content -LiteralPath (Join-Path $Root $Name) -Value ($body -join [Environment]::NewLine) -Encoding utf8
+}
+
+function Get-PeakOverlap {
+    param([string] $Root, [string[]] $Name)
+
+    $point = [System.Collections.Generic.List[object]]::new()
+    foreach ($one in $Name) {
+        $ticks = @(Get-Content -LiteralPath (Join-Path (Join-Path $Root 'markers') ($one + '.interval')))
+        if ($ticks.Count -ne 2) { throw "Suite $one wrote $($ticks.Count) ticks, expected 2." }
+        $point.Add([pscustomobject]@{ Tick = [long] $ticks[0]; Delta = 1 })
+        $point.Add([pscustomobject]@{ Tick = [long] $ticks[1]; Delta = -1 })
+    }
+
+    # Sort ends before starts at an equal tick, so touching windows do not read as an overlap.
+    $live = 0
+    $peak = 0
+    foreach ($one in @($point | Sort-Object Tick, Delta)) {
+        $live += $one.Delta
+        if ($live -gt $peak) { $peak = $live }
+    }
+    return $peak
+}
+
 # Runs the driver as its own process and returns its exit code, everything it printed, and the
 # job summary it wrote. The child process is the point: it is exactly what the CI step measures.
 #
@@ -155,7 +231,7 @@ function Test-MarkerExists {
 # powershell-suites job summary — including the deliberate failures. Point the child at a scratch
 # file instead. Redirecting rather than clearing keeps the driver's summary-writing branch covered.
 function Invoke-Driver {
-    param([string] $SuiteRoot, [string[]] $Suite = @())
+    param([string] $SuiteRoot, [string[]] $Suite = @(), [int] $MaxParallel = 0, [hashtable] $EnvVar = @{})
 
     $suiteLiteral = if ($Suite.Count -eq 0) {
         ''
@@ -163,12 +239,24 @@ function Invoke-Driver {
         ' -Suite @(' + (($Suite | ForEach-Object { ConvertTo-ScriptLiteral $_ }) -join ',') + ')'
     }
 
+    # The binding, not the value. A case passes -MaxParallel -1 on purpose to prove the run
+    # refuses it, and a '-gt 0' test would drop that argument instead of passing it on.
+    $parallelLiteral = if ($PSBoundParameters.ContainsKey('MaxParallel')) { " -MaxParallel $MaxParallel" } else { '' }
+
     $summaryPath = Join-Path ([System.IO.Path]::GetTempPath()) ('ahkflow-suiterunner-summary-' + [guid]::NewGuid().ToString('N') + '.md')
     $previousSummary = $env:GITHUB_STEP_SUMMARY
     $env:GITHUB_STEP_SUMMARY = $summaryPath
 
+    # Saved and restored the same way the summary path is, so one case cannot leak a value into
+    # the next one.
+    $previousEnv = @{}
+    foreach ($name in $EnvVar.Keys) {
+        $previousEnv[$name] = [System.Environment]::GetEnvironmentVariable($name)
+        [System.Environment]::SetEnvironmentVariable($name, $EnvVar[$name])
+    }
+
     try {
-        $command = "& $(ConvertTo-ScriptLiteral $script:DriverPath) -SuiteRoot $(ConvertTo-ScriptLiteral $SuiteRoot)$suiteLiteral; exit `$LASTEXITCODE"
+        $command = "& $(ConvertTo-ScriptLiteral $script:DriverPath) -SuiteRoot $(ConvertTo-ScriptLiteral $SuiteRoot)$suiteLiteral$parallelLiteral; exit `$LASTEXITCODE"
         $output = & $script:HostExe -NoProfile -Command $command 2>&1 | Out-String
         $exitCode = $LASTEXITCODE
 
@@ -179,6 +267,9 @@ function Invoke-Driver {
         }
     } finally {
         $env:GITHUB_STEP_SUMMARY = $previousSummary
+        foreach ($name in $previousEnv.Keys) {
+            [System.Environment]::SetEnvironmentVariable($name, $previousEnv[$name])
+        }
         Remove-Item -LiteralPath $summaryPath -Force -ErrorAction SilentlyContinue
     }
 
@@ -219,13 +310,11 @@ Invoke-TestCase 'The driver prints a progress line per suite and saves no timing
 
         $result = Invoke-Driver -SuiteRoot $root
 
-        Assert-True ($result.Output -match '\[1/2\] 01-pass\.Tests\.ps1') "Expected a progress line for the first suite. Output: $($result.Output)"
-        Assert-True ($result.Output -match '\[2/2\] 02-pass\.Tests\.ps1') "Expected a progress line for the second suite. Output: $($result.Output)"
+        Assert-True ($result.Output -match '\[\d/2 done\] 01-pass\.Tests\.ps1') "Expected a completion line for the first suite. Output: $($result.Output)"
+        Assert-True ($result.Output -match '\[\d/2 done\] 02-pass\.Tests\.ps1') "Expected a completion line for the second suite. Output: $($result.Output)"
 
-        # A fixture run reads no history, so it can only report the time left as unknown. That is
-        # also what proves it did not reach the real store.
-        Assert-True ($result.Output -match 'remaining unknown') "A fixture run must report the remaining time as unknown. Output: $($result.Output)"
-
+        # The line's position is not fixed any more, because suites finish in whatever order they
+        # finish. The last-write check below is what proves the run did not reach the real store.
         $after = if (Test-Path -LiteralPath $timingsPath) { (Get-Item -LiteralPath $timingsPath).LastWriteTimeUtc } else { $null }
         Assert-True ($before -eq $after) 'A run over fake suites must not write the real timings file.'
     } finally {
@@ -247,7 +336,7 @@ Invoke-TestCase 'A run over the repository''s own tests folder saves its timings
         New-Item -ItemType Directory -Path (Join-Path $fakeRepo 'tests') -Force | Out-Null
         New-Item -ItemType Directory -Path (Join-Path $fakeRepo 'markers') -Force | Out-Null
 
-        foreach ($name in @('run-powershell-suites.ps1', 'progress.common.ps1', 'powershell-suites.common.ps1')) {
+        foreach ($name in @('run-powershell-suites.ps1', 'progress.common.ps1', 'progress.parallel.ps1', 'powershell-suites.common.ps1')) {
             Copy-Item -LiteralPath (Join-Path $repoRoot "scripts/$name") -Destination (Join-Path $fakeRepo "scripts/$name")
         }
 
@@ -688,6 +777,584 @@ Invoke-TestCase 'test-fast PowerShell mode still reaches the full selection' {
     $text = $ast.Extent.Text
     Assert-True ($text -notmatch '-Suite\b') 'test-fast.ps1 must not pass a -Suite argument.'
     Assert-True ($text -match "run-powershell-suites\.ps1'\) @suiteArguments") 'test-fast.ps1 must still splat only SuiteRoot.'
+}
+
+Invoke-TestCase 'A parallel run and a sequential run reach the same verdict and the same suites' {
+    $root = New-SuiteFixture
+    try {
+        Add-FakeSuite -Root $root -Name '01-pass.Tests.ps1' -Ending 'pass'
+        Add-FakeSuite -Root $root -Name '02-fail.Tests.ps1' -Ending 'exit-one'
+        Add-FakeSuite -Root $root -Name '03-dirty.Tests.ps1' -Ending 'dirty'
+        Add-FakeSuite -Root $root -Name '04-throw.Tests.ps1' -Ending 'throw'
+        Set-FixtureManifest -Root $root
+
+        $sequential = Invoke-Driver -SuiteRoot $root -MaxParallel 1
+        $parallel = Invoke-Driver -SuiteRoot $root -MaxParallel 4
+
+        Assert-True ($sequential.ExitCode -eq $parallel.ExitCode) "Verdicts differ: $($sequential.ExitCode) and $($parallel.ExitCode)."
+        Assert-True ($parallel.ExitCode -eq 1) "Expected exit code 1, got $($parallel.ExitCode). Output: $($parallel.Output)"
+        foreach ($name in @('01-pass', '02-fail', '03-dirty', '04-throw')) {
+            Assert-True ($parallel.Output -match "$name\.Tests\.ps1 \| (passed|failed)") "The table must list $name. Output: $($parallel.Output)"
+        }
+        Assert-True ($parallel.Output -match '03-dirty\.Tests\.ps1 \| passed') "A dirty exit code must still pass in parallel. Output: $($parallel.Output)"
+    } finally {
+        Remove-SuiteFixture -Root $root
+    }
+}
+
+Invoke-TestCase 'Every suite runs in parallel even after another fails' {
+    $root = New-SuiteFixture
+    try {
+        Add-FakeSuite -Root $root -Name '01-fail.Tests.ps1' -Ending 'exit-one'
+        Add-FakeSuite -Root $root -Name '02-throw.Tests.ps1' -Ending 'throw'
+        Add-FakeSuite -Root $root -Name '03-pass.Tests.ps1' -Ending 'pass'
+        Add-FakeSuite -Root $root -Name '04-dirty.Tests.ps1' -Ending 'dirty'
+        Set-FixtureManifest -Root $root
+
+        $result = Invoke-Driver -SuiteRoot $root -MaxParallel 4
+        Assert-True ($result.ExitCode -eq 1) "Expected exit code 1, got $($result.ExitCode). Output: $($result.Output)"
+        foreach ($name in @('01-fail.Tests.ps1', '02-throw.Tests.ps1', '03-pass.Tests.ps1', '04-dirty.Tests.ps1')) {
+            Assert-True (Test-MarkerExists -Root $root -Name $name) "Suite $name must still have run. Output: $($result.Output)"
+        }
+    } finally {
+        Remove-SuiteFixture -Root $root
+    }
+}
+
+Invoke-TestCase 'A suite whose host will not start becomes that suite''s failure' {
+    # The launch error itself, which no fixture run can produce: the runner always has a working
+    # pwsh, and a fixture cannot withhold it from one child. Calling Invoke-SuiteChild directly
+    # with a host that does not exist is what reaches the catch. PowerShell throws
+    # CommandNotFoundException before any process starts, so this is the real launch failure the
+    # spec asks for, not a stand-in.
+    . (Join-Path $repoRoot 'scripts/powershell-suites.common.ps1')
+
+    $result = Invoke-SuiteChild -Path (Join-Path $repoRoot 'tests/CiPowerShellSuiteRunner.Tests.ps1') -Name '01-x.Tests.ps1' -HostExe 'ahkflow-no-such-host-executable'
+
+    Assert-True ($result.ExitCode -eq 1) "A launch failure must be exit code 1, got $($result.ExitCode)."
+    Assert-True ($result.Name -eq '01-x.Tests.ps1') "The result must carry the suite name, got '$($result.Name)'."
+    Assert-True ($result.Output -match 'Could not start the suite') "The output must say the suite could not start. Output: $($result.Output)"
+}
+
+Invoke-TestCase 'A suite that cannot run at all fails alone, and the rest still run' {
+    $root = New-SuiteFixture
+    try {
+        # An unbalanced brace. pwsh -File rejects the file before it runs a single line, so this
+        # suite never starts in the sense that matters: no marker, no output of its own, and a
+        # non-zero exit code from the host. The case above covers a suite that runs and then fails;
+        # 'exit-one' and 'throw' both execute the script first, so neither covers this shape.
+        Set-Content -LiteralPath (Join-Path $root '01-nostart.Tests.ps1') -Value 'if ($true) {' -Encoding utf8
+        Add-FakeSuite -Root $root -Name '02-pass.Tests.ps1' -Ending 'pass'
+        Add-FakeSuite -Root $root -Name '03-pass.Tests.ps1' -Ending 'pass'
+        Set-FixtureManifest -Root $root
+
+        $result = Invoke-Driver -SuiteRoot $root -MaxParallel 3
+        Assert-True ($result.ExitCode -eq 1) "Expected exit code 1, got $($result.ExitCode). Output: $($result.Output)"
+        Assert-True ($result.Output -match '01-nostart\.Tests\.ps1 \| failed') "The suite that could not run must be reported as failed. Output: $($result.Output)"
+        Assert-True (-not (Test-MarkerExists -Root $root -Name '01-nostart.Tests.ps1')) 'The suite that could not run must not have run.'
+        foreach ($name in @('02-pass.Tests.ps1', '03-pass.Tests.ps1')) {
+            Assert-True (Test-MarkerExists -Root $root -Name $name) "Suite $name must still have run. Output: $($result.Output)"
+        }
+    } finally {
+        Remove-SuiteFixture -Root $root
+    }
+}
+
+Invoke-TestCase 'Two suites'' output never interleaves' {
+    $root = New-SuiteFixture
+    try {
+        # Each suite prints a start marker, waits, then prints an end marker. Run in parallel with
+        # unbuffered output the two would cross; buffered, each block prints whole.
+        foreach ($name in @('01-slow.Tests.ps1', '02-slow.Tests.ps1')) {
+            $tag = $name.Substring(0, 2)
+            $body = @(
+                "Set-Content -LiteralPath $(ConvertTo-ScriptLiteral (Join-Path (Join-Path $root 'markers') $name)) -Value 'ran' -Encoding ascii"
+                "Write-Host 'START-$tag'"
+                'Start-Sleep -Milliseconds 400'
+                "Write-Host 'END-$tag'"
+            )
+            Set-Content -LiteralPath (Join-Path $root $name) -Value ($body -join [Environment]::NewLine) -Encoding utf8
+        }
+        Set-FixtureManifest -Root $root
+
+        $result = Invoke-Driver -SuiteRoot $root -MaxParallel 2
+        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
+
+        # All four markers must be there first. Without this the sweep below runs zero times on
+        # empty output, $interleaved stays false, and the case passes having read nothing.
+        $order = @([regex]::Matches($result.Output, '(START|END)-(\d\d)') | ForEach-Object { $_.Value })
+        foreach ($marker in @('START-01', 'END-01', 'START-02', 'END-02')) {
+            Assert-True ($order -contains $marker) "Missing $marker. Output: $($result.Output)"
+        }
+        Assert-True ($order.Count -eq 4) "Expected exactly four markers, got $($order.Count): $($order -join ' ')"
+
+        # Every START must be followed by its own END before the other START appears.
+        $interleaved = $false
+        for ($i = 0; $i -lt $order.Count - 1; $i += 2) {
+            if ($order[$i] -notmatch '^START-(\d\d)$') { $interleaved = $true; break }
+            if ($order[$i + 1] -ne ('END-' + $Matches[1])) { $interleaved = $true; break }
+        }
+        Assert-True (-not $interleaved) "Output interleaved: $($order -join ' ')"
+    } finally {
+        Remove-SuiteFixture -Root $root
+    }
+}
+
+Invoke-TestCase 'The final table is sorted by suite name whatever the finish order' {
+    $root = New-SuiteFixture
+    try {
+        # The slowest suite sorts first by name, so a table in finish order would put it last.
+        $slow = @(
+            "Set-Content -LiteralPath $(ConvertTo-ScriptLiteral (Join-Path (Join-Path $root 'markers') '01-slow.Tests.ps1')) -Value 'ran' -Encoding ascii"
+            'Start-Sleep -Milliseconds 600'
+        )
+        Set-Content -LiteralPath (Join-Path $root '01-slow.Tests.ps1') -Value ($slow -join [Environment]::NewLine) -Encoding utf8
+        Add-FakeSuite -Root $root -Name '02-quick.Tests.ps1' -Ending 'pass'
+        Set-FixtureManifest -Root $root
+
+        $result = Invoke-Driver -SuiteRoot $root -MaxParallel 2
+        $first = $result.Output.IndexOf('| 01-slow.Tests.ps1 |')
+        $second = $result.Output.IndexOf('| 02-quick.Tests.ps1 |')
+        Assert-True ($first -ge 0 -and $second -ge 0) "Both suites must be in the table. Output: $($result.Output)"
+        Assert-True ($first -lt $second) "The table must be sorted by name. Output: $($result.Output)"
+    } finally {
+        Remove-SuiteFixture -Root $root
+    }
+}
+
+Invoke-TestCase 'Two suites really do run at the same time' {
+    $root = New-SuiteFixture
+    try {
+        # Barrier of two: no suite holds until a second suite is signed in beside it. A runner
+        # that runs one at a time leaves the first suite waiting until its timeout, and the peak
+        # then reads 1.
+        $names = @('01-a.Tests.ps1', '02-b.Tests.ps1', '03-c.Tests.ps1')
+        foreach ($name in $names) { Add-IntervalSuite -Root $root -Name $name -BarrierCount 2 }
+        Set-FixtureManifest -Root $root
+
+        $result = Invoke-Driver -SuiteRoot $root -MaxParallel 2
+        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
+
+        # Exactly two: below two the runner is sequential, above two it ignored -MaxParallel.
+        $peak = Get-PeakOverlap -Root $root -Name $names
+        Assert-True ($peak -eq 2) "Peak overlap must be 2 under -MaxParallel 2, got $peak."
+    } finally {
+        Remove-SuiteFixture -Root $root
+    }
+}
+
+Invoke-TestCase 'MaxParallel 1 runs nothing at the same time' {
+    $root = New-SuiteFixture
+    try {
+        # The same barrier as the case above, and for the same reason. Fixed 300 ms windows and no
+        # barrier would let a runner that ignores -MaxParallel 1 pass: start three workers more
+        # than 300 ms apart and no two windows meet, so the peak reads 1 on a broken runner.
+        #
+        # With the barrier the two implementations separate. One worker: the first suite waits for
+        # a second sign-in that cannot arrive, times out, and holds alone; the two after it find
+        # enough sign-ins already on disk and hold alone too. Peak 1. More than one worker: the
+        # barrier releases them together and the peak goes above 1.
+        #
+        # A shorter timeout than the default here. The timeout is pure cost on the passing path in
+        # this case, and it is only reached on the failing path in the case above. Five seconds is
+        # still far longer than starting a second child takes.
+        $names = @('01-a.Tests.ps1', '02-b.Tests.ps1', '03-c.Tests.ps1')
+        foreach ($name in $names) { Add-IntervalSuite -Root $root -Name $name -BarrierCount 2 -TimeoutSeconds 5 }
+        Set-FixtureManifest -Root $root
+
+        $result = Invoke-Driver -SuiteRoot $root -MaxParallel 1
+        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
+
+        $peak = Get-PeakOverlap -Root $root -Name $names
+        Assert-True ($peak -eq 1) "-MaxParallel 1 must never overlap, got $peak."
+    } finally {
+        Remove-SuiteFixture -Root $root
+    }
+}
+
+Invoke-TestCase 'An exclusive suite never overlaps another suite' {
+    $root = New-SuiteFixture
+    try {
+        # All three sign in under one tag, and the counts differ. The pair waits for two, so they
+        # are released by each other and their windows must intersect. The exclusive suite waits
+        # for all three, which is the assertion turned into behaviour: it holds its window open
+        # until the other two are alive beside it.
+        #
+        # An earlier draft gave the exclusive suite no barrier and a fixed 300 ms window. A
+        # scheduler that wrongly admitted it into the shared pool could then start the pair after
+        # that window closed, and every assertion still passed. With the three-count barrier that
+        # scheduler is caught: the pair signs in while the exclusive suite is still waiting, all
+        # three release together, and the peak reads 3.
+        #
+        # A correct scheduler pays one timeout, and only in one of the two orders. If the exclusive
+        # suite runs first it waits the full timeout, because the pair cannot start beside it, then
+        # holds alone; the pair then finds three sign-ins on disk and releases at once. If the pair
+        # runs first they release each other with no wait, and the exclusive suite afterwards finds
+        # three sign-ins already there.
+        $names = @('01-alone.Tests.ps1', '02-other.Tests.ps1', '03-other.Tests.ps1')
+        Add-IntervalSuite -Root $root -Name '01-alone.Tests.ps1' -BarrierCount 3 -BarrierTag 'pair'
+        Add-IntervalSuite -Root $root -Name '02-other.Tests.ps1' -BarrierCount 2 -BarrierTag 'pair'
+        Add-IntervalSuite -Root $root -Name '03-other.Tests.ps1' -BarrierCount 2 -BarrierTag 'pair'
+        Set-FixtureManifest -Root $root -Entry @(
+            [ordered]@{ name = '01-alone.Tests.ps1'; jobs = @('suites'); execution = 'exclusive'; reason = 'The test needs one suite that may not share.'; baselineSeconds = $null }
+            [ordered]@{ name = '02-other.Tests.ps1'; jobs = @('suites'); execution = 'parallel'; baselineSeconds = $null }
+            [ordered]@{ name = '03-other.Tests.ps1'; jobs = @('suites'); execution = 'parallel'; baselineSeconds = $null }
+        )
+
+        $result = Invoke-Driver -SuiteRoot $root -MaxParallel 3
+        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
+
+        # The two parallel suites must still overlap. Without this the case passes on a runner that
+        # simply never parallelises, which is the whole failure being guarded against.
+        $pair = Get-PeakOverlap -Root $root -Name @('02-other.Tests.ps1', '03-other.Tests.ps1')
+        Assert-True ($pair -eq 2) "The two parallel suites must overlap each other, got $pair."
+
+        $all = Get-PeakOverlap -Root $root -Name $names
+        Assert-True ($all -eq 2) "The exclusive suite must not raise peak overlap above 2, got $all."
+
+        $mine = @(Get-Content -LiteralPath (Join-Path (Join-Path $root 'markers') '01-alone.Tests.ps1.interval'))
+        $start = [long] $mine[0]
+        $end = [long] $mine[1]
+        foreach ($other in @('02-other.Tests.ps1', '03-other.Tests.ps1')) {
+            $theirs = @(Get-Content -LiteralPath (Join-Path (Join-Path $root 'markers') ($other + '.interval')))
+            $overlaps = ([long] $theirs[0]) -lt $end -and ([long] $theirs[1]) -gt $start
+            Assert-True (-not $overlaps) "$other ran inside the exclusive window."
+        }
+    } finally {
+        Remove-SuiteFixture -Root $root
+    }
+}
+
+Invoke-TestCase 'A blank AHKFLOW_SUITE_MAX_PARALLEL falls back to the default' {
+    $root = New-SuiteFixture
+    try {
+        Add-FakeSuite -Root $root -Name '01-pass.Tests.ps1' -Ending 'pass'
+        Set-FixtureManifest -Root $root
+
+        $result = Invoke-Driver -SuiteRoot $root -EnvVar @{ AHKFLOW_SUITE_MAX_PARALLEL = '   ' }
+        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
+    } finally {
+        Remove-SuiteFixture -Root $root
+    }
+}
+
+Invoke-TestCase 'A bad AHKFLOW_SUITE_MAX_PARALLEL fails the run and names the variable' {
+    $root = New-SuiteFixture
+    try {
+        Add-FakeSuite -Root $root -Name '01-pass.Tests.ps1' -Ending 'pass'
+        Set-FixtureManifest -Root $root
+
+        foreach ($bad in @('lots', '0', '-2', '2.5')) {
+            $result = Invoke-Driver -SuiteRoot $root -EnvVar @{ AHKFLOW_SUITE_MAX_PARALLEL = $bad }
+            Assert-True ($result.ExitCode -eq 1) "Value '$bad' must fail the run, got $($result.ExitCode). Output: $($result.Output)"
+            Assert-True ($result.Output -match 'AHKFLOW_SUITE_MAX_PARALLEL') "The message must name the variable. Output: $($result.Output)"
+            Assert-True ($result.Output -match [regex]::Escape($bad)) "The message must name the value. Output: $($result.Output)"
+            Assert-True (-not (Test-MarkerExists -Root $root -Name '01-pass.Tests.ps1')) "No suite may run for value '$bad'."
+            Remove-Item -LiteralPath (Join-Path (Join-Path $root 'markers') '*') -Force -ErrorAction SilentlyContinue
+        }
+    } finally {
+        Remove-SuiteFixture -Root $root
+    }
+}
+
+Invoke-TestCase 'An explicit -MaxParallel wins over the environment variable' {
+    $root = New-SuiteFixture
+    try {
+        Add-FakeSuite -Root $root -Name '01-pass.Tests.ps1' -Ending 'pass'
+        Set-FixtureManifest -Root $root
+
+        # The variable is unusable, so a run that read it would fail. The explicit value must win
+        # before the variable is even considered.
+        $result = Invoke-Driver -SuiteRoot $root -MaxParallel 2 -EnvVar @{ AHKFLOW_SUITE_MAX_PARALLEL = 'lots' }
+        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
+    } finally {
+        Remove-SuiteFixture -Root $root
+    }
+}
+
+Invoke-TestCase 'An explicit -MaxParallel below one fails the run' {
+    $root = New-SuiteFixture
+    try {
+        Add-FakeSuite -Root $root -Name '01-pass.Tests.ps1' -Ending 'pass'
+        Set-FixtureManifest -Root $root
+
+        $result = Invoke-Driver -SuiteRoot $root -MaxParallel -1
+        Assert-True ($result.ExitCode -eq 1) "Expected exit code 1, got $($result.ExitCode). Output: $($result.Output)"
+        Assert-True ($result.Output -match 'MaxParallel') "The message must name the parameter. Output: $($result.Output)"
+    } finally {
+        Remove-SuiteFixture -Root $root
+    }
+}
+
+Invoke-TestCase 'A run inside GitHub Actions wraps each suite in one pair of group markers' {
+    $root = New-SuiteFixture
+    try {
+        Add-FakeSuite -Root $root -Name '01-pass.Tests.ps1' -Ending 'pass'
+        Add-FakeSuite -Root $root -Name '02-pass.Tests.ps1' -Ending 'pass'
+        Set-FixtureManifest -Root $root
+
+        $inside = Invoke-Driver -SuiteRoot $root -EnvVar @{ GITHUB_ACTIONS = 'true' }
+        Assert-True (([regex]::Matches($inside.Output, '::group::')).Count -eq 2) "Expected two group markers. Output: $($inside.Output)"
+        Assert-True (([regex]::Matches($inside.Output, '::endgroup::')).Count -eq 2) "Expected two endgroup markers. Output: $($inside.Output)"
+
+        $outside = Invoke-Driver -SuiteRoot $root -EnvVar @{ GITHUB_ACTIONS = '' }
+        Assert-True ($outside.Output -notmatch '::group::') "A run outside Actions must emit no group markers. Output: $($outside.Output)"
+    } finally {
+        Remove-SuiteFixture -Root $root
+    }
+}
+
+Invoke-TestCase 'A targeted run keeps the stored timings of every suite it did not select' {
+    # A copy of the runner in a temporary tree, so this is a real run that saves timings without
+    # touching the store the real runs read.
+    $fakeRepo = Join-Path ([System.IO.Path]::GetTempPath()) ('ahkflow-suiterepo-' + [guid]::NewGuid().ToString('N'))
+    try {
+        New-Item -ItemType Directory -Path (Join-Path $fakeRepo 'scripts') -Force | Out-Null
+        New-Item -ItemType Directory -Path (Join-Path $fakeRepo 'tests') -Force | Out-Null
+        New-Item -ItemType Directory -Path (Join-Path $fakeRepo 'markers') -Force | Out-Null
+
+        foreach ($name in @('run-powershell-suites.ps1', 'progress.common.ps1', 'progress.parallel.ps1', 'powershell-suites.common.ps1')) {
+            Copy-Item -LiteralPath (Join-Path $repoRoot "scripts/$name") -Destination (Join-Path $fakeRepo "scripts/$name")
+        }
+
+        foreach ($name in @('01-one.Tests.ps1', '02-two.Tests.ps1')) {
+            Add-FakeSuite -Root $fakeRepo -Name $name -Ending 'pass'
+            Move-Item -LiteralPath (Join-Path $fakeRepo $name) -Destination (Join-Path $fakeRepo "tests/$name")
+        }
+
+        $manifest = [ordered]@{ suites = @(
+                [ordered]@{ name = '01-one.Tests.ps1'; jobs = @('suites'); execution = 'parallel'; baselineSeconds = $null }
+                [ordered]@{ name = '02-two.Tests.ps1'; jobs = @('suites'); execution = 'parallel'; baselineSeconds = $null }
+            ) }
+        Set-Content -LiteralPath (Join-Path $fakeRepo 'tests/powershell-suites.json') -Value ($manifest | ConvertTo-Json -Depth 6) -Encoding utf8
+
+        $driver = Join-Path $fakeRepo 'scripts/run-powershell-suites.ps1'
+        $timings = Join-Path $fakeRepo 'TestResults/progress/run-powershell-suites.json'
+
+        & $script:HostExe -NoProfile -File $driver 2>&1 | Out-Null
+        $before = Get-Content -LiteralPath $timings -Raw | ConvertFrom-Json
+        Assert-True ($null -ne $before.'01-one.Tests.ps1' -and $null -ne $before.'02-two.Tests.ps1') 'The full run must store both suites.'
+
+        & $script:HostExe -NoProfile -File $driver -Suite '01-one*' 2>&1 | Out-Null
+        $after = Get-Content -LiteralPath $timings -Raw | ConvertFrom-Json
+        Assert-True ($null -ne $after.PSObject.Properties['02-two.Tests.ps1']) 'A targeted run must keep the other suite''s history.'
+        Assert-True ($null -ne $after.PSObject.Properties['01-one.Tests.ps1']) 'A targeted run must store the suite it ran.'
+    } finally {
+        Remove-Item -LiteralPath $fakeRepo -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+Invoke-TestCase 'A stored entry whose suite file no longer exists is dropped' {
+    $fakeRepo = Join-Path ([System.IO.Path]::GetTempPath()) ('ahkflow-suiterepo-' + [guid]::NewGuid().ToString('N'))
+    try {
+        New-Item -ItemType Directory -Path (Join-Path $fakeRepo 'scripts') -Force | Out-Null
+        New-Item -ItemType Directory -Path (Join-Path $fakeRepo 'tests') -Force | Out-Null
+        New-Item -ItemType Directory -Path (Join-Path $fakeRepo 'markers') -Force | Out-Null
+        New-Item -ItemType Directory -Path (Join-Path $fakeRepo 'TestResults/progress') -Force | Out-Null
+
+        foreach ($name in @('run-powershell-suites.ps1', 'progress.common.ps1', 'progress.parallel.ps1', 'powershell-suites.common.ps1')) {
+            Copy-Item -LiteralPath (Join-Path $repoRoot "scripts/$name") -Destination (Join-Path $fakeRepo "scripts/$name")
+        }
+
+        Add-FakeSuite -Root $fakeRepo -Name '01-one.Tests.ps1' -Ending 'pass'
+        Move-Item -LiteralPath (Join-Path $fakeRepo '01-one.Tests.ps1') -Destination (Join-Path $fakeRepo 'tests/01-one.Tests.ps1')
+
+        $manifest = [ordered]@{ suites = @(
+                [ordered]@{ name = '01-one.Tests.ps1'; jobs = @('suites'); execution = 'parallel'; baselineSeconds = $null }
+            ) }
+        Set-Content -LiteralPath (Join-Path $fakeRepo 'tests/powershell-suites.json') -Value ($manifest | ConvertTo-Json -Depth 6) -Encoding utf8
+
+        $timings = Join-Path $fakeRepo 'TestResults/progress/run-powershell-suites.json'
+        Set-Content -LiteralPath $timings -Value '{ "deleted.Tests.ps1": 42 }' -Encoding utf8
+
+        & $script:HostExe -NoProfile -File (Join-Path $fakeRepo 'scripts/run-powershell-suites.ps1') 2>&1 | Out-Null
+
+        $saved = Get-Content -LiteralPath $timings -Raw | ConvertFrom-Json
+        Assert-True ($null -eq $saved.PSObject.Properties['deleted.Tests.ps1']) 'An entry whose suite file is gone must be dropped.'
+        Assert-True ($null -ne $saved.PSObject.Properties['01-one.Tests.ps1']) 'The suite that ran must be stored.'
+    } finally {
+        Remove-Item -LiteralPath $fakeRepo -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+# A storing run needs a tree the runner treats as a repository of its own, with no -NoStore. The
+# two cases above build that same shape inline; this helper is the reusable form of it. Collapsing
+# those two onto it is optional tidying, and this contract is what the new case below needs.
+# -Suite names the suites, each of which gets a plain passing body. -Body overrides the body of any
+# of them, as an array of script lines.
+function New-StoringRepoFixture {
+    param([string[]] $Suite, [hashtable] $Body = @{}, [switch] $CountSaves)
+
+    $repo = Join-Path ([System.IO.Path]::GetTempPath()) ('ahkflow-suiterepo-' + [guid]::NewGuid().ToString('N'))
+    try {
+        foreach ($folder in @('scripts', 'tests', 'markers', 'TestResults/progress')) {
+            New-Item -ItemType Directory -Path (Join-Path $repo $folder) -Force | Out-Null
+        }
+        foreach ($name in @('run-powershell-suites.ps1', 'progress.common.ps1', 'progress.parallel.ps1', 'powershell-suites.common.ps1')) {
+            Copy-Item -LiteralPath (Join-Path $repoRoot "scripts/$name") -Destination (Join-Path $repo "scripts/$name")
+        }
+
+        if ($CountSaves) {
+            # Append a counting wrapper to the *copy* of the module, so a run in this fixture
+            # records every actual call to Save-ProgressTimings. Reading the timings file proves
+            # when the save landed; this proves how many times it ran, which no reading of the file
+            # and no reading of the source can establish on its own. The real module is untouched.
+            Add-Content -LiteralPath (Join-Path $repo 'scripts/progress.common.ps1') -Value @'
+
+$global:AhkflowSaveTimingsInner = ${function:Save-ProgressTimings}
+function Save-ProgressTimings {
+    Add-Content -LiteralPath (Join-Path $PSScriptRoot '..\markers\savecalls') -Value 'called'
+    & $global:AhkflowSaveTimingsInner @args
+}
+'@
+        }
+
+        $entries = foreach ($name in $Suite) {
+            if ($Body.ContainsKey($name)) {
+                Set-Content -LiteralPath (Join-Path $repo "tests/$name") -Value ($Body[$name] -join [Environment]::NewLine) -Encoding utf8
+            } else {
+                Add-FakeSuite -Root $repo -Name $name -Ending 'pass'
+                Move-Item -LiteralPath (Join-Path $repo $name) -Destination (Join-Path $repo "tests/$name")
+            }
+            [ordered]@{ name = $name; jobs = @('suites'); execution = 'parallel'; baselineSeconds = $null }
+        }
+        $manifest = [ordered]@{ suites = @($entries) }
+        Set-Content -LiteralPath (Join-Path $repo 'tests/powershell-suites.json') -Value ($manifest | ConvertTo-Json -Depth 6) -Encoding utf8
+
+        return $repo
+    } catch {
+        # The caller's try block only starts once this function has returned, so a failure part way
+        # through here would otherwise leave the half-built tree in the temporary folder for good.
+        Remove-Item -LiteralPath $repo -Recurse -Force -ErrorAction SilentlyContinue
+        throw
+    }
+}
+
+# Invoke-Driver runs the repository's own runner against a fixture suite folder. This runs the
+# copy inside a fixture repository instead, so the run stores its timings there.
+function Invoke-DriverAt {
+    param([string] $Repo, [int] $MaxParallel = 0, [string[]] $Suite = @())
+
+    $arguments = @('-NoProfile', '-File', (Join-Path $Repo 'scripts/run-powershell-suites.ps1'))
+    if ($PSBoundParameters.ContainsKey('MaxParallel')) { $arguments += @('-MaxParallel', $MaxParallel) }
+    if ($Suite.Count -gt 0) { $arguments += @('-Suite') + $Suite }
+
+    $output = & $script:HostExe @arguments 2>&1 | Out-String
+    return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = $output }
+}
+
+Invoke-TestCase 'The timings file is written once, after the last suite ends' {
+    # The acceptance claim is "written once, after every selected suite ends". It takes three
+    # checks, and this case carries two of them. Read them together with the position case below;
+    # no single one of the three is the proof.
+    #
+    # The watcher is the behavioural half of "after". One suite finishes early; the other stays
+    # alive and looks at the timings file after it has. A runner that saves from a per-suite
+    # completion handler writes the file the moment 01-first ends, and the watcher then sees it.
+    # The grace period only ever helps that bug show itself: a correct runner cannot write the file
+    # during it, because the run has not ended, so a longer wait produces no false failure.
+    #
+    # What the watcher does not give is "after" in full. It samples at one instant, so a save
+    # landing in the gap between that sample and the watcher's own exit would pass here. The gap is
+    # milliseconds wide and it cannot be closed by sampling - any chain of watchers has a last one,
+    # with the same gap after it. The position case below closes it from the source side instead.
+    #
+    # "Once" is the call count, and neither the watcher nor the source position gives it: two saves
+    # that both land at the end look exactly like one, and a single call site can run twice. The
+    # fixture's -CountSaves wrapper records every call, so the count is read rather than inferred.
+    $fake = New-StoringRepoFixture -Suite @('01-first.Tests.ps1', '02-watcher.Tests.ps1') -CountSaves
+    try {
+        # Both bodies embed the fixture's own path, which only exists once the fixture is built, so
+        # they are written here and not above. Every embedded path goes through
+        # ConvertTo-ScriptLiteral, and the watcher times out on the monotonic counter for the same
+        # reason Add-IntervalSuite does.
+        $first = @(
+            'Start-Sleep -Milliseconds 200'
+            "Set-Content -LiteralPath $(ConvertTo-ScriptLiteral (Join-Path $fake 'markers\01-first.done')) -Value 'done' -Encoding ascii"
+        )
+        $watcher = @(
+            "`$done = $(ConvertTo-ScriptLiteral (Join-Path $fake 'markers\01-first.done'))"
+            "`$watch = [System.Diagnostics.Stopwatch]::StartNew()"
+            'while ($watch.Elapsed.TotalSeconds -lt 15 -and -not (Test-Path -LiteralPath $done)) { Start-Sleep -Milliseconds 25 }'
+            'if (-not (Test-Path -LiteralPath $done)) { throw ''01-first never finished; the watcher proved nothing.'' }'
+            'Start-Sleep -Milliseconds 1500'
+            "`$timings = $(ConvertTo-ScriptLiteral (Join-Path $fake 'TestResults\progress\run-powershell-suites.json'))"
+            "`$seen = if (Test-Path -LiteralPath `$timings) { 'present' } else { 'absent' }"
+            "Set-Content -LiteralPath $(ConvertTo-ScriptLiteral (Join-Path $fake 'markers\sawtimings')) -Value `$seen -Encoding ascii"
+        )
+        Set-Content -LiteralPath (Join-Path $fake 'tests\01-first.Tests.ps1') -Value ($first -join [Environment]::NewLine) -Encoding utf8
+        Set-Content -LiteralPath (Join-Path $fake 'tests\02-watcher.Tests.ps1') -Value ($watcher -join [Environment]::NewLine) -Encoding utf8
+
+        $timings = Join-Path $fake 'TestResults\progress\run-powershell-suites.json'
+        Assert-True (-not (Test-Path -LiteralPath $timings)) 'The fixture must start with no timings file.'
+
+        $result = Invoke-DriverAt -Repo $fake -MaxParallel 2
+        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
+
+        $sawtimings = Join-Path $fake 'markers\sawtimings'
+        Assert-True (Test-Path -LiteralPath $sawtimings) "The watcher suite never reached its sample. Output: $($result.Output)"
+        $seen = (Get-Content -Raw -LiteralPath $sawtimings).Trim()
+        Assert-True ($seen -eq 'absent') 'The timings file existed while a suite was still running; the save must land once, at the end.'
+
+        # Exactly one call, counted at run time. A per-suite save writes one line per suite, and a
+        # call site that runs twice writes two lines, whatever the file's final contents look like.
+        $saveCalls = @(Get-Content -LiteralPath (Join-Path $fake 'markers\savecalls') -ErrorAction SilentlyContinue)
+        Assert-True ($saveCalls.Count -eq 1) "Save-ProgressTimings ran $($saveCalls.Count) times; it must run exactly once per run."
+
+        Assert-True (Test-Path -LiteralPath $timings) 'The run must write the timings file when it ends.'
+        $stored = (Get-Content -Raw -LiteralPath $timings | ConvertFrom-Json)
+        foreach ($name in @('01-first.Tests.ps1', '02-watcher.Tests.ps1')) {
+            Assert-True ($stored.PSObject.Properties.Name -contains $name) "The timings file must carry $name."
+        }
+    } finally {
+        Remove-Item -LiteralPath $fake -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+Invoke-TestCase 'The one Save-ProgressTimings call sits at the top level, after the parallel loop' {
+    # Position, which is what the two runtime checks cannot give. The watcher proves the file did
+    # not exist at the instant it sampled, and the counter proves the save ran once. Neither rules
+    # out a save that lands in the gap between the watcher's sample and the watcher's exit. That
+    # gap is milliseconds wide, but it is real, and a claim of "only after every suite ends"
+    # deserves better than a narrow window.
+    #
+    # This closes it from the other side. The call is at the script's top level: not in a function,
+    # not in a script block, not in a loop. So it runs where it is written, and it is written after
+    # the parallel pipeline. That pipeline does not return until every child has been processed, so
+    # a call after it cannot run before the last suite ends. Position plus a counted single call is
+    # the whole claim.
+    $runner = Join-Path $repoRoot 'scripts/run-powershell-suites.ps1'
+    $ast = [System.Management.Automation.Language.Parser]::ParseFile($runner, [ref] $null, [ref] $null)
+
+    $calls = @($ast.FindAll({
+                param($node)
+                $node -is [System.Management.Automation.Language.CommandAst] -and
+                $node.GetCommandName() -eq 'Save-ProgressTimings'
+            }, $true))
+    Assert-True ($calls.Count -eq 1) "Expected exactly one Save-ProgressTimings call site, found $($calls.Count)."
+
+    # Walk to the root, not to the first named block. A function body has a named block of its own,
+    # so stopping there would read a call inside Show-SuiteResult as top level.
+    $nested = @()
+    $node = $calls[0].Parent
+    while ($null -ne $node) {
+        if ($node -is [System.Management.Automation.Language.FunctionDefinitionAst] -or
+            $node -is [System.Management.Automation.Language.ScriptBlockExpressionAst] -or
+            $node -is [System.Management.Automation.Language.LoopStatementAst]) {
+            $nested += $node.GetType().Name
+        }
+        $node = $node.Parent
+    }
+    Assert-True ($nested.Count -eq 0) "Save-ProgressTimings must be called at the top level of the script, but it is inside: $($nested -join ', ')."
+
+    $parallel = @($ast.FindAll({
+                param($node)
+                $node -is [System.Management.Automation.Language.CommandAst] -and
+                $node.GetCommandName() -eq 'ForEach-Object' -and
+                $node.Extent.Text -like '*-Parallel*'
+            }, $true))
+    Assert-True ($parallel.Count -eq 1) "Expected exactly one parallel pipeline, found $($parallel.Count)."
+    Assert-True ($calls[0].Extent.StartOffset -gt $parallel[0].Extent.EndOffset) 'The save must be written after the parallel loop, not before it.'
 }
 
 # --- Checks over this repository's own manifest ---

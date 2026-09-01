@@ -172,6 +172,35 @@ function Select-SuiteEntry {
     return ($selected | Sort-Object Name)
 }
 
+# Runs one suite as its own child process and returns what happened. A child that cannot start is
+# that suite's failure, not the run's, so every other suite still runs. This lives in the module
+# rather than in the runner for one reason: `Every selected suite runs, including after another
+# fails or cannot start` is an acceptance criterion, and the only way to make the host fail to
+# start is to hand this function a host path that does not exist. A test can do that to a function
+# in a dot-sourced module. It cannot do it to a function inside a script that runs on dot-source.
+function Invoke-SuiteChild {
+    param([string] $Path, [string] $Name, [string] $HostExe)
+
+    $watch = [System.Diagnostics.Stopwatch]::StartNew()
+    try {
+        $output = & $HostExe -NoProfile -File $Path 2>&1 | Out-String
+        $exitCode = $LASTEXITCODE
+    } catch {
+        # The host itself could not start. PowerShell throws CommandNotFoundException before any
+        # child process exists, so there is no exit code to read.
+        $output = "Could not start the suite: $($_.Exception.Message)"
+        $exitCode = 1
+    }
+    $watch.Stop()
+
+    return [pscustomobject]@{
+        Name     = $Name
+        ExitCode = $exitCode
+        Seconds  = $watch.Elapsed.TotalSeconds
+        Output   = $output
+    }
+}
+
 function Get-SuiteSchedule {
     <#
       The selection, ordered longest first, each entry carrying an EffectiveSeconds member.

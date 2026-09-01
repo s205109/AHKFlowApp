@@ -27,7 +27,14 @@ param(
     # Wildcards matched against suite file names, for the inner development loop. With none, the
     # run covers every suite in the 'suites' job, which is what CI and the Gate both want.
     # A value that matches nothing fails the run: a typo must never look like a green run.
-    [string[]] $Suite = @()
+    [string[]] $Suite = @(),
+
+    # How many suites may run at once. With no value the run uses the processor count, capped at
+    # eight, and AHKFLOW_SUITE_MAX_PARALLEL overrides that default. An explicit value wins over the
+    # variable. These suites wait on git child processes more than on the processor, so more workers
+    # than processors may still be faster; nobody has measured that, and the variable makes the
+    # measurement cheap.
+    [int] $MaxParallel = 0
 )
 
 $ErrorActionPreference = 'Stop'
@@ -42,6 +49,7 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 
 . "$PSScriptRoot\progress.common.ps1"
 . "$PSScriptRoot\powershell-suites.common.ps1"
+. "$PSScriptRoot\progress.parallel.ps1"
 
 if ([string]::IsNullOrWhiteSpace($SuiteRoot)) {
     $SuiteRoot = Join-Path $repoRoot 'tests'
@@ -87,6 +95,30 @@ $byName = @{}
 foreach ($file in $discovered) { $byName[$file.Name] = $file }
 $suites = @($selected | ForEach-Object { $byName[$_.Name] })
 
+$workerCount = [Math]::Min([Environment]::ProcessorCount, 8)
+
+# The explicit parameter is settled first, and the variable is then never read. "An explicit value
+# wins over the variable" has to mean this: validating the variable first would fail the run on a
+# value the caller has already overridden.
+if ($PSBoundParameters.ContainsKey('MaxParallel')) {
+    if ($MaxParallel -lt 1) {
+        Write-Failure "-MaxParallel must be a whole number of at least one. Got: $MaxParallel"
+        exit 1
+    }
+    $workerCount = $MaxParallel
+} else {
+    $envMaxParallel = $env:AHKFLOW_SUITE_MAX_PARALLEL
+    if (-not [string]::IsNullOrWhiteSpace($envMaxParallel)) {
+        $parsedMaxParallel = 0
+        if (-not [int]::TryParse($envMaxParallel.Trim(), [ref] $parsedMaxParallel) -or $parsedMaxParallel -lt 1) {
+            # Falling back to the default here would hide a misconfigured CI job for months.
+            Write-Failure "AHKFLOW_SUITE_MAX_PARALLEL must be a whole number of at least one. Got: '$envMaxParallel'"
+            exit 1
+        }
+        $workerCount = $parsedMaxParallel
+    }
+}
+
 # The suites are written for the host that runs this script, so run them under the same one.
 $hostExe = [System.Diagnostics.Process]::GetCurrentProcess().Path
 $inActions = $env:GITHUB_ACTIONS -eq 'true'
@@ -96,33 +128,87 @@ Write-Host "Host: $hostExe"
 
 $progress = New-ProgressTracker -RunnerKey 'run-powershell-suites' -Unit @($suites.Name) -RepoRoot $repoRoot -NoStore:(-not $keepTimings)
 
-$results = [System.Collections.Generic.List[object]]::new()
-# Not $suite. PowerShell treats $suite and the -Suite parameter as one variable, and that
-# parameter is typed [string[]], so a loop over it would turn each file into a string array.
-foreach ($suiteFile in $suites) {
-    if ($inActions) { Write-Host "::group::$($suiteFile.Name)" }
-    Start-ProgressUnit -Tracker $progress -Name $suiteFile.Name
+Write-Host "Workers: $workerCount"
 
-    $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-    & $hostExe -NoProfile -File $suiteFile.FullName
-    $exitCode = $LASTEXITCODE
-    $stopwatch.Stop()
-    Stop-ProgressUnit -Tracker $progress
+$schedule = @(Get-SuiteSchedule -Entry $selected -History $progress.History)
+$parallelProgress = New-ParallelProgressTracker -Tracker $progress -Schedule $schedule -MaxParallel $workerCount
+
+$results = [System.Collections.Generic.List[object]]::new()
+
+# Invoke-SuiteChild comes from powershell-suites.common.ps1, which this script already dot-sources.
+# Prints one suite's whole block, in this runspace. Buffering the child's output and printing it
+# here is what stops two suites writing over each other.
+function Show-SuiteResult {
+    param([object] $Result)
+
+    if ($inActions) { Write-Host "::group::$($Result.Name)" }
+
+    Complete-ParallelProgressUnit -Tracker $parallelProgress -Name $Result.Name -Seconds $Result.Seconds
+    Write-Host (Get-ParallelProgressLine -Tracker $parallelProgress -Name $Result.Name -Seconds $Result.Seconds)
+
+    if (-not [string]::IsNullOrWhiteSpace($Result.Output)) {
+        Write-Host $Result.Output.TrimEnd()
+    }
 
     if ($inActions) { Write-Host '::endgroup::' }
 
-    $results.Add([pscustomobject]@{
-            Name     = $suiteFile.Name
-            ExitCode = $exitCode
-            Seconds  = [math]::Round($stopwatch.Elapsed.TotalSeconds, 1)
-        })
-
-    if ($exitCode -ne 0) {
-        Write-Failure "FAILED: $($suiteFile.Name) (exit code $exitCode)"
+    if ($Result.ExitCode -ne 0) {
+        Write-Failure "FAILED: $($Result.Name) (exit code $($Result.ExitCode))"
     }
+
+    $results.Add([pscustomobject]@{
+            Name     = $Result.Name
+            ExitCode = $Result.ExitCode
+            Seconds  = [math]::Round($Result.Seconds, 1)
+        })
 }
 
-Save-ProgressTimings -Tracker $progress
+$byPath = @{}
+foreach ($file in $suites) { $byPath[$file.Name] = $file.FullName }
+
+# Exclusive suites first, one at a time. Nothing else may run while one of them does, so putting
+# them first leaves the pool's longest-first order intact afterwards.
+foreach ($item in ($schedule | Where-Object { $_.Execution -eq 'exclusive' })) {
+    Show-SuiteResult (Invoke-SuiteChild -Path $byPath[$item.Name] -Name $item.Name -HostExe $hostExe)
+}
+
+$shared = @($schedule | Where-Object { $_.Execution -ne 'exclusive' } |
+        ForEach-Object { [pscustomobject]@{ Name = $_.Name; Path = $byPath[$_.Name] } })
+
+$childText = (${function:Invoke-SuiteChild}).ToString()
+
+if ($shared.Count -gt 0) {
+    # Longest first. Starting the slowest suite last would leave it running alone at the end, which
+    # is exactly the shape that makes a parallel run no faster than a sequential one.
+    #
+    # Results reach this pipeline as each child exits, so the parent-side ForEach-Object below
+    # prints one whole block at a time.
+    $shared | ForEach-Object -ThrottleLimit $workerCount -Parallel {
+        # Rebuild the function from its text, inside this runspace. Do not pass the scriptblock
+        # itself: Microsoft documents that "Scriptblock invocation always attempts to run in its
+        # home runspace, regardless of where it's actually invoked", and a scriptblock made in the
+        # parent would therefore run back in the parent - serialising the whole run, which is the
+        # one failure this task exists to prevent. See
+        # https://learn.microsoft.com/powershell/module/microsoft.powershell.core/foreach-object?view=powershell-7.6
+        ${function:Invoke-SuiteChild} = [scriptblock]::Create($using:childText)
+
+        # Fresh runspace: opt out again so a non-zero suite exit code is data, not a throw.
+        $PSNativeCommandUseErrorActionPreference = $false
+
+        $child = Invoke-SuiteChild -Path $_.Path -Name $_.Name -HostExe $using:hostExe
+
+        [pscustomobject]@{
+            Name     = $child.Name
+            ExitCode = $child.ExitCode
+            Seconds  = $child.Seconds
+            Output   = $child.Output
+        }
+    } | ForEach-Object { Show-SuiteResult $_ }
+}
+
+# Once, after every suite has settled. A save per suite would break the case that reads this
+# file's last-write time while a child runs. -KnownUnit drops a suite that no longer exists.
+Save-ProgressTimings -Tracker $progress -KnownUnit @($discovered.Name)
 
 $failed = @($results | Where-Object { $_.ExitCode -ne 0 })
 
@@ -131,7 +217,9 @@ $lines.Add('### PowerShell suites')
 $lines.Add('')
 $lines.Add('| Suite | Result | Exit code | Duration |')
 $lines.Add('|---|---|---|---|')
-foreach ($result in $results) {
+# By name, not by finish order. A parallel run finishes in a different order every time, and a
+# table nobody can scan is no use in a CI log.
+foreach ($result in ($results | Sort-Object Name)) {
     $verdict = if ($result.ExitCode -eq 0) { 'passed' } else { 'failed' }
     $lines.Add("| $($result.Name) | $verdict | $($result.ExitCode) | $($result.Seconds)s |")
 }
