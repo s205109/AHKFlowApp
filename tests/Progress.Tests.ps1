@@ -156,23 +156,17 @@ finally {
     Remove-Item -LiteralPath $root -Recurse -Force
 }
 
-# --- The save replaces an existing file completely, leaving nothing of the old content ---
+# --- The save merges into the existing file and keeps every other unit's history ---
 #
-# This proves the destination is never left holding a mix of old and new text. It does not
-# prove which replacement call was used: once the save has finished, a replaced file and a
-# rewritten file look the same on disk, and telling them apart needs the file identity, which
-# this repository has no way to read.
+# scripts/run-powershell-suites.ps1 -Suite runs one suite. Replacing the file would delete the
+# history of every suite that run did not select, and the next full run would then schedule blind.
 
 $root = New-ProgressTestRoot
 try {
-    # An old file that is much longer than the new one. A write that did not replace the whole
-    # file would leave the tail of this text behind.
     Set-History -Root $root -RunnerKey 'demo' -Timings @{
         'old-one.Tests.ps1'   = 11
         'old-two.Tests.ps1'   = 22
         'old-three.Tests.ps1' = 33
-        'old-four.Tests.ps1'  = 44
-        'old-five.Tests.ps1'  = 55
     }
 
     $tracker = New-ProgressTracker -RunnerKey 'demo' -RepoRoot $root -Unit @('new.Tests.ps1')
@@ -180,10 +174,56 @@ try {
     Stop-ProgressUnit -Tracker $tracker
     Save-ProgressTimings -Tracker $tracker
 
-    $text = Get-Content -LiteralPath (Join-Path $root 'TestResults\progress\demo.json') -Raw
-    Assert-True ($text -notmatch 'old-') "Replace: no part of the old file may survive, got: $text"
-    $saved = $text | ConvertFrom-Json
-    Assert-True ($null -ne $saved.'new.Tests.ps1') 'Replace: the new unit must be in the saved file.'
+    $saved = Get-Content -LiteralPath (Join-Path $root 'TestResults\progress\demo.json') -Raw | ConvertFrom-Json
+    Assert-True ($null -ne $saved.'new.Tests.ps1') 'Merge: the new unit must be in the saved file.'
+    foreach ($old in @('old-one.Tests.ps1', 'old-two.Tests.ps1', 'old-three.Tests.ps1')) {
+        Assert-True ($null -ne $saved.PSObject.Properties[$old]) "Merge: $old must survive a run that did not cover it."
+    }
+    Assert-True ($saved.'old-two.Tests.ps1' -eq 22) "Merge: old-two must keep its value, got $($saved.'old-two.Tests.ps1')."
+}
+finally {
+    Remove-Item -LiteralPath $root -Recurse -Force
+}
+
+# --- A completed unit overwrites its own stored value ---
+
+$root = New-ProgressTestRoot
+try {
+    Set-History -Root $root -RunnerKey 'demo' -Timings @{ 'unit.Tests.ps1' = 99 }
+
+    $tracker = New-ProgressTracker -RunnerKey 'demo' -RepoRoot $root -Unit @('unit.Tests.ps1')
+    Get-StartLine -Tracker $tracker -Name 'unit.Tests.ps1' | Out-Null
+    Stop-ProgressUnit -Tracker $tracker
+    Save-ProgressTimings -Tracker $tracker
+
+    $saved = Get-Content -LiteralPath (Join-Path $root 'TestResults\progress\demo.json') -Raw | ConvertFrom-Json
+    Assert-True ($saved.'unit.Tests.ps1' -lt 99) "The fresh measurement must replace the old one, got $($saved.'unit.Tests.ps1')."
+}
+finally {
+    Remove-Item -LiteralPath $root -Recurse -Force
+}
+
+# --- KnownUnit drops a stored entry whose unit no longer exists ---
+#
+# A suite that is deleted or renamed must not keep a place in the store forever. The caller says
+# which units still exist; the save keeps those and drops the rest.
+
+$root = New-ProgressTestRoot
+try {
+    Set-History -Root $root -RunnerKey 'demo' -Timings @{
+        'kept.Tests.ps1' = 11
+        'gone.Tests.ps1' = 22
+    }
+
+    $tracker = New-ProgressTracker -RunnerKey 'demo' -RepoRoot $root -Unit @('new.Tests.ps1')
+    Get-StartLine -Tracker $tracker -Name 'new.Tests.ps1' | Out-Null
+    Stop-ProgressUnit -Tracker $tracker
+    Save-ProgressTimings -Tracker $tracker -KnownUnit @('kept.Tests.ps1', 'new.Tests.ps1')
+
+    $saved = Get-Content -LiteralPath (Join-Path $root 'TestResults\progress\demo.json') -Raw | ConvertFrom-Json
+    Assert-True ($null -ne $saved.PSObject.Properties['kept.Tests.ps1']) 'A unit that still exists must survive.'
+    Assert-True ($null -ne $saved.PSObject.Properties['new.Tests.ps1']) 'The unit this run completed must be saved.'
+    Assert-True ($null -eq $saved.PSObject.Properties['gone.Tests.ps1']) 'A unit that no longer exists must be dropped.'
 }
 finally {
     Remove-Item -LiteralPath $root -Recurse -Force
@@ -365,7 +405,7 @@ Stop-ProgressUnit -Tracker `$tracker
 Save-ProgressTimings -Tracker `$tracker
 `$saved = Get-Content -LiteralPath (Join-Path '$root' 'TestResults\progress\windows-powershell.json') -Raw | ConvertFrom-Json
 if (`$null -eq `$saved.unit) { throw 'The completed unit was not saved.' }
-if (`$null -ne `$saved.PSObject.Properties['old']) { throw 'The old file was not replaced.' }
+if (`$null -eq `$saved.PSObject.Properties['old']) { throw 'The merge dropped an untouched unit.' }
 "@ 2>&1 | Out-String
         $exitCode = $LASTEXITCODE
 
