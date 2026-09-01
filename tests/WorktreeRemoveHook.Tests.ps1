@@ -66,7 +66,8 @@ function Invoke-TestGit {
 }
 
 # Fresh main-checkout repo under a throwaway root. Worktrees are created as siblings
-# of the repo, matching the harness used by WorktreeMergedCleanup.Tests.ps1.
+# of the repo, matching the harness in WorktreeMergedCleanup.Common.ps1, which the three
+# merged-cleanup suites share.
 function New-TempGitRepo {
     $root = Join-Path ([System.IO.Path]::GetTempPath()) ('wtremove-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
     $repo = Join-Path $root 'repo'
