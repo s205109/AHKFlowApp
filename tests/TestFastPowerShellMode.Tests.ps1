@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+#Requires -Version 7.0
 <#
 .SYNOPSIS
 Tests for the PowerShell mode of scripts/test-fast.ps1.
@@ -13,6 +13,8 @@ cases exist to catch is a -SuiteRoot passthrough that does not work. When the pa
 the runner falls back to its own default of tests/, finds this very file, and starts it again -
 forever. So Invoke-Wrapper sets AHKFLOW_TESTFAST_MODE_TEST, and the guard at the top of this file
 turns that runaway into one failed suite with a message that names the cause.
+
+This suite declares 7.0 because scripts/run-powershell-suites.ps1, which the mode drives, needs 7.
 #>
 [CmdletBinding()]
 param()
@@ -54,18 +56,22 @@ function Invoke-TestCase {
     }
 }
 
-# The runner rejects an exclusion that names a file it cannot find, and it checks that before it
-# runs anything (scripts/run-powershell-suites.ps1:60-65). Its default exclusion is
-# CodexSkillsHashParity.Tests.ps1. The wrapper exposes no -Exclude, so every fixture must contain a
-# file with that name or the runner exits 1 before a single fake suite starts. The file is excluded,
-# so it never runs.
+# The runner reads a manifest from the folder it is pointed at, so every fixture writes one.
+# Set-FixtureManifest runs after the fake suites are in place, because it lists what it finds.
 function New-SuiteFixture {
     $root = Join-Path ([System.IO.Path]::GetTempPath()) ('ahkflow-testfast-mode-' + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $root -Force | Out-Null
-    Set-Content -LiteralPath (Join-Path $root 'CodexSkillsHashParity.Tests.ps1') `
-        -Value '# Placeholder so the runner default exclusion matches a real file. Never runs.' `
-        -Encoding utf8
     return (Resolve-Path -LiteralPath $root).Path
+}
+
+function Set-FixtureManifest {
+    param([string] $Root)
+
+    $entries = @(Get-ChildItem -LiteralPath $Root -Filter '*.Tests.ps1' -File | Sort-Object Name | ForEach-Object {
+            [ordered]@{ name = $_.Name; jobs = @('suites'); execution = 'parallel'; baselineSeconds = $null }
+        })
+    $payload = [ordered]@{ suites = @($entries) }
+    Set-Content -LiteralPath (Join-Path $Root 'powershell-suites.json') -Value ($payload | ConvertTo-Json -Depth 6) -Encoding utf8
 }
 
 function Remove-SuiteFixture {
@@ -139,6 +145,7 @@ Invoke-TestCase 'All suites pass -> exit code 0' {
     try {
         Add-FakeSuite -Root $root -Name '01-pass.Tests.ps1' -Ending 'pass'
         Add-FakeSuite -Root $root -Name '02-pass.Tests.ps1' -Ending 'pass'
+        Set-FixtureManifest -Root $root
 
         $result = Invoke-Wrapper -SuiteRoot $root
         Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
@@ -159,6 +166,7 @@ Invoke-TestCase 'A suite that exits 1 fails the run' {
     try {
         Add-FakeSuite -Root $root -Name '01-pass.Tests.ps1' -Ending 'pass'
         Add-FakeSuite -Root $root -Name '02-exit-one.Tests.ps1' -Ending 'exit-one'
+        Set-FixtureManifest -Root $root
 
         $result = Invoke-Wrapper -SuiteRoot $root
         Assert-True ($result.ExitCode -ne 0) "Expected a non-zero exit code. Output: $($result.Output)"
@@ -174,6 +182,7 @@ Invoke-TestCase 'A suite that throws fails the run' {
     try {
         Add-FakeSuite -Root $root -Name '01-pass.Tests.ps1' -Ending 'pass'
         Add-FakeSuite -Root $root -Name '02-throw.Tests.ps1' -Ending 'throw'
+        Set-FixtureManifest -Root $root
 
         $result = Invoke-Wrapper -SuiteRoot $root
         Assert-True ($result.ExitCode -ne 0) "Expected a non-zero exit code. Output: $($result.Output)"

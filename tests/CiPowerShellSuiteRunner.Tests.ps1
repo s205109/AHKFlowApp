@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+#Requires -Version 7.0
 <#
 .SYNOPSIS
 Tests for scripts/run-powershell-suites.ps1, the script that runs every PowerShell suite in CI.
@@ -11,6 +11,9 @@ the driver against it with -SuiteRoot. No case touches the repository's real tes
 The fake suites cover both endings the real suites use: an explicit 'exit', and a throw or a plain
 run off the end. One fake suite leaves $LASTEXITCODE dirty on its success path, which is the trap
 that makes an in-process exit-code check report a passing suite as failed.
+
+This suite declares 7.0 because the driver it tests does. Each case spawns the driver with the
+current host, so a 5.1 host would spawn a 5.1 child and hit the driver's own '#Requires'.
 #>
 [CmdletBinding()]
 param()
@@ -26,6 +29,9 @@ $PSNativeCommandUseErrorActionPreference = $false
 $repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 $script:DriverPath = Join-Path $repoRoot 'scripts\run-powershell-suites.ps1'
 $script:HostExe = [System.Diagnostics.Process]::GetCurrentProcess().Path
+
+# The manifest functions are tested by calling them, not by spawning one child per invalid file.
+. (Join-Path $repoRoot 'scripts\powershell-suites.common.ps1')
 
 $script:Failures = New-Object System.Collections.Generic.List[string]
 
@@ -48,10 +54,48 @@ function Invoke-TestCase {
 }
 
 function New-SuiteFixture {
-    $root = Join-Path ([System.IO.Path]::GetTempPath()) ('ahkflow-suiterunner-' + [guid]::NewGuid().ToString('N'))
+    param([string] $Infix = '')
+
+    $leaf = 'ahkflow-suiterunner-' + $Infix + [guid]::NewGuid().ToString('N')
+    $root = Join-Path ([System.IO.Path]::GetTempPath()) $leaf
     New-Item -ItemType Directory -Path $root -Force | Out-Null
     New-Item -ItemType Directory -Path (Join-Path $root 'markers') -Force | Out-Null
     return (Resolve-Path -LiteralPath $root).Path
+}
+
+function ConvertTo-ScriptLiteral {
+    param([string] $Value)
+
+    # A single-quoted PowerShell literal escapes an apostrophe by doubling it. Paths here run
+    # through the repository root and the temporary folder, and both run through the user profile
+    # name; O'Brien is a real name. A suite name may legally carry one too. Without this the
+    # generated command is a syntax error, on one person's machine only.
+    return "'" + $Value.Replace("'", "''") + "'"
+}
+
+# Every run reads a manifest from its suite root, so a fixture needs one. With no -Entry the
+# helper writes one plain parallel entry per fake suite already in the folder, so a case that
+# does not care about the manifest can ignore it. A validation case passes -Entry instead.
+function Set-FixtureManifest {
+    param(
+        [string] $Root,
+        [object[]] $Entry
+    )
+
+    if (-not $Entry) {
+        $Entry = @(Get-ChildItem -LiteralPath $Root -Filter '*.Tests.ps1' -File | Sort-Object Name | ForEach-Object {
+                [ordered]@{
+                    name            = $_.Name
+                    jobs            = @('suites')
+                    execution       = 'parallel'
+                    baselineSeconds = $null
+                }
+            })
+    }
+
+    $payload = [ordered]@{ suites = @($Entry) }
+    $json = ($payload | ConvertTo-Json -Depth 6)
+    Set-Content -LiteralPath (Join-Path $Root 'powershell-suites.json') -Value $json -Encoding utf8
 }
 
 function Remove-SuiteFixture {
@@ -79,8 +123,8 @@ function Add-FakeSuite {
 
     $markerPath = Join-Path (Join-Path $Root 'markers') $Name
     $body = New-Object System.Collections.Generic.List[string]
-    $body.Add("Set-Content -LiteralPath '$markerPath' -Value 'ran' -Encoding ascii")
-    $body.Add("Write-Host 'ran $Name'")
+    $body.Add("Set-Content -LiteralPath $(ConvertTo-ScriptLiteral $markerPath) -Value 'ran' -Encoding ascii")
+    $body.Add("Write-Host $(ConvertTo-ScriptLiteral "ran $Name")")
 
     switch ($Ending) {
         'pass' { }
@@ -111,12 +155,12 @@ function Test-MarkerExists {
 # powershell-suites job summary — including the deliberate failures. Point the child at a scratch
 # file instead. Redirecting rather than clearing keeps the driver's summary-writing branch covered.
 function Invoke-Driver {
-    param([string] $SuiteRoot, [string[]] $Exclude = @())
+    param([string] $SuiteRoot, [string[]] $Suite = @())
 
-    $excludeLiteral = if ($Exclude.Count -eq 0) {
-        '@()'
+    $suiteLiteral = if ($Suite.Count -eq 0) {
+        ''
     } else {
-        '@(' + (($Exclude | ForEach-Object { "'$_'" }) -join ',') + ')'
+        ' -Suite @(' + (($Suite | ForEach-Object { ConvertTo-ScriptLiteral $_ }) -join ',') + ')'
     }
 
     $summaryPath = Join-Path ([System.IO.Path]::GetTempPath()) ('ahkflow-suiterunner-summary-' + [guid]::NewGuid().ToString('N') + '.md')
@@ -124,7 +168,7 @@ function Invoke-Driver {
     $env:GITHUB_STEP_SUMMARY = $summaryPath
 
     try {
-        $command = "& '$script:DriverPath' -SuiteRoot '$SuiteRoot' -Exclude $excludeLiteral; exit `$LASTEXITCODE"
+        $command = "& $(ConvertTo-ScriptLiteral $script:DriverPath) -SuiteRoot $(ConvertTo-ScriptLiteral $SuiteRoot)$suiteLiteral; exit `$LASTEXITCODE"
         $output = & $script:HostExe -NoProfile -Command $command 2>&1 | Out-String
         $exitCode = $LASTEXITCODE
 
@@ -153,6 +197,7 @@ Invoke-TestCase 'All suites pass -> exit code 0' {
     try {
         Add-FakeSuite -Root $root -Name '01-pass.Tests.ps1' -Ending 'pass'
         Add-FakeSuite -Root $root -Name '02-exit-zero.Tests.ps1' -Ending 'exit-zero'
+        Set-FixtureManifest -Root $root
 
         $result = Invoke-Driver -SuiteRoot $root
         Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
@@ -170,6 +215,7 @@ Invoke-TestCase 'The driver prints a progress line per suite and saves no timing
     try {
         Add-FakeSuite -Root $root -Name '01-pass.Tests.ps1' -Ending 'pass'
         Add-FakeSuite -Root $root -Name '02-pass.Tests.ps1' -Ending 'pass'
+        Set-FixtureManifest -Root $root
 
         $result = Invoke-Driver -SuiteRoot $root
 
@@ -201,21 +247,19 @@ Invoke-TestCase 'A run over the repository''s own tests folder saves its timings
         New-Item -ItemType Directory -Path (Join-Path $fakeRepo 'tests') -Force | Out-Null
         New-Item -ItemType Directory -Path (Join-Path $fakeRepo 'markers') -Force | Out-Null
 
-        foreach ($name in @('run-powershell-suites.ps1', 'progress.common.ps1')) {
+        foreach ($name in @('run-powershell-suites.ps1', 'progress.common.ps1', 'powershell-suites.common.ps1')) {
             Copy-Item -LiteralPath (Join-Path $repoRoot "scripts/$name") -Destination (Join-Path $fakeRepo "scripts/$name")
         }
 
         Add-FakeSuite -Root $fakeRepo -Name '01-pass.Tests.ps1' -Ending 'pass'
         Move-Item -LiteralPath (Join-Path $fakeRepo '01-pass.Tests.ps1') -Destination (Join-Path $fakeRepo 'tests/01-pass.Tests.ps1')
+        Set-FixtureManifest -Root (Join-Path $fakeRepo 'tests')
 
         $driver = Join-Path $fakeRepo 'scripts/run-powershell-suites.ps1'
         $timings = Join-Path $fakeRepo 'TestResults/progress/run-powershell-suites.json'
 
-        # -Command, not -File. An empty -Exclude cannot cross a -File boundary, where every
-        # argument arrives as a string, and the default exclusion names a suite this tree has not
-        # got, which the runner refuses.
-        $noRootCommand = "& '$driver' -Exclude @(); exit `$LASTEXITCODE"
-        $namedRootCommand = "& '$driver' -SuiteRoot '$(Join-Path $fakeRepo 'tests')' -Exclude @(); exit `$LASTEXITCODE"
+        $noRootCommand = "& $(ConvertTo-ScriptLiteral $driver); exit `$LASTEXITCODE"
+        $namedRootCommand = "& $(ConvertTo-ScriptLiteral $driver) -SuiteRoot $(ConvertTo-ScriptLiteral (Join-Path $fakeRepo 'tests')); exit `$LASTEXITCODE"
 
         # No -SuiteRoot at all: the runner falls back to its own tests folder.
         $out = & $script:HostExe -NoProfile -Command $noRootCommand 2>&1 | Out-String
@@ -239,6 +283,7 @@ Invoke-TestCase 'A suite that exits 1 fails the run' {
     try {
         Add-FakeSuite -Root $root -Name '01-pass.Tests.ps1' -Ending 'pass'
         Add-FakeSuite -Root $root -Name '02-fail.Tests.ps1' -Ending 'exit-one'
+        Set-FixtureManifest -Root $root
 
         $result = Invoke-Driver -SuiteRoot $root
         Assert-True ($result.ExitCode -eq 1) "Expected exit code 1, got $($result.ExitCode). Output: $($result.Output)"
@@ -252,6 +297,7 @@ Invoke-TestCase 'A suite that throws fails the run' {
     $root = New-SuiteFixture
     try {
         Add-FakeSuite -Root $root -Name '01-throw.Tests.ps1' -Ending 'throw'
+        Set-FixtureManifest -Root $root
 
         $result = Invoke-Driver -SuiteRoot $root
         Assert-True ($result.ExitCode -eq 1) "Expected exit code 1, got $($result.ExitCode). Output: $($result.Output)"
@@ -268,6 +314,7 @@ Invoke-TestCase 'A passing suite with a dirty $LASTEXITCODE still passes' {
     $root = New-SuiteFixture
     try {
         Add-FakeSuite -Root $root -Name '01-dirty.Tests.ps1' -Ending 'dirty'
+        Set-FixtureManifest -Root $root
 
         $result = Invoke-Driver -SuiteRoot $root
         Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
@@ -284,6 +331,7 @@ Invoke-TestCase 'Every suite runs even when the first one fails' {
         Add-FakeSuite -Root $root -Name '02-throw.Tests.ps1' -Ending 'throw'
         Add-FakeSuite -Root $root -Name '03-pass.Tests.ps1' -Ending 'pass'
         Add-FakeSuite -Root $root -Name '04-dirty.Tests.ps1' -Ending 'dirty'
+        Set-FixtureManifest -Root $root
 
         $result = Invoke-Driver -SuiteRoot $root
         Assert-True ($result.ExitCode -eq 1) "Expected exit code 1, got $($result.ExitCode). Output: $($result.Output)"
@@ -303,6 +351,7 @@ Invoke-TestCase 'The summary names every failed suite and no passing one' {
         Add-FakeSuite -Root $root -Name '02-pass.Tests.ps1' -Ending 'pass'
         Add-FakeSuite -Root $root -Name '03-throw.Tests.ps1' -Ending 'throw'
         Add-FakeSuite -Root $root -Name '04-pass.Tests.ps1' -Ending 'exit-zero'
+        Set-FixtureManifest -Root $root
 
         $result = Invoke-Driver -SuiteRoot $root
         Assert-True ($result.ExitCode -eq 1) "Expected exit code 1, got $($result.ExitCode). Output: $($result.Output)"
@@ -325,6 +374,7 @@ Invoke-TestCase 'The driver writes its table to the GITHUB_STEP_SUMMARY file' {
     try {
         Add-FakeSuite -Root $root -Name '01-pass.Tests.ps1' -Ending 'pass'
         Add-FakeSuite -Root $root -Name '02-fail.Tests.ps1' -Ending 'exit-one'
+        Set-FixtureManifest -Root $root
 
         $result = Invoke-Driver -SuiteRoot $root
         Assert-True ($result.Summary -match '### PowerShell suites') "The summary file must hold the table heading. Summary: $($result.Summary)"
@@ -357,49 +407,264 @@ Invoke-TestCase 'A missing suite folder fails the run' {
     Assert-True ($result.Output -match 'Suite folder not found') "Expected the missing-folder message. Output: $($result.Output)"
 }
 
-# An exclusion naming a file that no longer exists is a rename nobody finished. Left alone, the
-# excluded suite would stop running everywhere and nothing would say so.
-Invoke-TestCase 'An exclusion that names no file fails the run' {
-    $root = New-SuiteFixture
+Invoke-TestCase 'A suite folder whose path contains an apostrophe still runs' {
+    # The driver command, the marker lines and the generated suite bodies are all built as
+    # PowerShell source text. An apostrophe that is not doubled turns that text into a syntax
+    # error. Nobody sees it until somebody whose user profile carries one runs the suite, because
+    # the temporary folder sits under the profile, so the fixture has to supply the apostrophe.
+    $root = New-SuiteFixture -Infix "o'brien"
     try {
+        Assert-True ($root.Contains("'")) "The fixture path must carry an apostrophe, got '$root'."
         Add-FakeSuite -Root $root -Name '01-pass.Tests.ps1' -Ending 'pass'
+        Add-FakeSuite -Root $root -Name "02-o'hara.Tests.ps1" -Ending 'pass'
+        Set-FixtureManifest -Root $root
 
-        $result = Invoke-Driver -SuiteRoot $root -Exclude @('NotThere.Tests.ps1')
-        Assert-True ($result.ExitCode -eq 1) "Expected exit code 1, got $($result.ExitCode). Output: $($result.Output)"
-        Assert-True ($result.Output -match 'NotThere\.Tests\.ps1') "The message must name the stale exclusion. Output: $($result.Output)"
-    } finally {
-        Remove-SuiteFixture -Root $root
-    }
-}
-
-Invoke-TestCase 'An excluded suite does not run' {
-    $root = New-SuiteFixture
-    try {
-        Add-FakeSuite -Root $root -Name '01-pass.Tests.ps1' -Ending 'pass'
-        Add-FakeSuite -Root $root -Name '02-skip.Tests.ps1' -Ending 'exit-one'
-
-        $result = Invoke-Driver -SuiteRoot $root -Exclude @('02-skip.Tests.ps1')
+        $result = Invoke-Driver -SuiteRoot $root
         Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
-        Assert-True (Test-MarkerExists -Root $root -Name '01-pass.Tests.ps1') "The included suite must have run. Output: $($result.Output)"
-        Assert-True (-not (Test-MarkerExists -Root $root -Name '02-skip.Tests.ps1')) "The excluded suite must not have run. Output: $($result.Output)"
+        foreach ($name in @('01-pass.Tests.ps1', "02-o'hara.Tests.ps1")) {
+            Assert-True (Test-MarkerExists -Root $root -Name $name) "Suite $name must have run. Output: $($result.Output)"
+        }
     } finally {
         Remove-SuiteFixture -Root $root
     }
 }
 
-# The default exclusion list is the only place a real suite can be dropped from CI by name, so it
-# is checked against the real tests folder.
-Invoke-TestCase 'Every default exclusion names a real suite file' {
-    $ast = [System.Management.Automation.Language.Parser]::ParseFile($script:DriverPath, [ref] $null, [ref] $null)
-    $excludeParam = @($ast.ParamBlock.Parameters | Where-Object { $_.Name.VariablePath.UserPath -eq 'Exclude' })
-    Assert-True ($excludeParam.Count -eq 1) 'The driver must declare exactly one -Exclude parameter.'
+Invoke-TestCase 'A missing manifest fails before any suite runs' {
+    $root = New-SuiteFixture
+    try {
+        Add-FakeSuite -Root $root -Name '01-pass.Tests.ps1' -Ending 'pass'
+        # No Set-FixtureManifest on purpose.
 
-    $defaults = @($excludeParam[0].DefaultValue.SafeGetValue())
-    Assert-True ($defaults.Count -gt 0) 'The default exclusion list must not be empty.'
-
-    foreach ($name in $defaults) {
-        Assert-True (Test-Path -LiteralPath (Join-Path $PSScriptRoot $name)) "Default exclusion '$name' does not exist in tests/."
+        $result = Invoke-Driver -SuiteRoot $root
+        Assert-True ($result.ExitCode -eq 1) "Expected exit code 1, got $($result.ExitCode). Output: $($result.Output)"
+        Assert-True ($result.Output -match 'powershell-suites\.json') "The message must name the manifest file. Output: $($result.Output)"
+        Assert-True (-not (Test-MarkerExists -Root $root -Name '01-pass.Tests.ps1')) 'No suite may run when the manifest is missing.'
+    } finally {
+        Remove-SuiteFixture -Root $root
     }
+}
+
+Invoke-TestCase 'A suite file missing from the manifest fails the run' {
+    $root = New-SuiteFixture
+    try {
+        Add-FakeSuite -Root $root -Name '01-pass.Tests.ps1' -Ending 'pass'
+        Add-FakeSuite -Root $root -Name '02-orphan.Tests.ps1' -Ending 'pass'
+        Set-FixtureManifest -Root $root -Entry @(
+            [ordered]@{ name = '01-pass.Tests.ps1'; jobs = @('suites'); execution = 'parallel'; baselineSeconds = $null }
+        )
+
+        $result = Invoke-Driver -SuiteRoot $root
+        Assert-True ($result.ExitCode -eq 1) "Expected exit code 1, got $($result.ExitCode). Output: $($result.Output)"
+        Assert-True ($result.Output -match '02-orphan\.Tests\.ps1') "The message must name the missing entry. Output: $($result.Output)"
+        Assert-True (-not (Test-MarkerExists -Root $root -Name '01-pass.Tests.ps1')) 'No suite may run when the manifest is incomplete.'
+    } finally {
+        Remove-SuiteFixture -Root $root
+    }
+}
+
+Invoke-TestCase 'A manifest entry with no suite file fails the run' {
+    $root = New-SuiteFixture
+    try {
+        Add-FakeSuite -Root $root -Name '01-pass.Tests.ps1' -Ending 'pass'
+        Set-FixtureManifest -Root $root -Entry @(
+            [ordered]@{ name = '01-pass.Tests.ps1'; jobs = @('suites'); execution = 'parallel'; baselineSeconds = $null }
+            [ordered]@{ name = 'NotThere.Tests.ps1'; jobs = @('suites'); execution = 'parallel'; baselineSeconds = $null }
+        )
+
+        $result = Invoke-Driver -SuiteRoot $root
+        Assert-True ($result.ExitCode -eq 1) "Expected exit code 1, got $($result.ExitCode). Output: $($result.Output)"
+        Assert-True ($result.Output -match 'NotThere\.Tests\.ps1') "The message must name the stale entry. Output: $($result.Output)"
+    } finally {
+        Remove-SuiteFixture -Root $root
+    }
+}
+
+Invoke-TestCase 'A duplicate manifest entry fails the run' {
+    $root = New-SuiteFixture
+    try {
+        Add-FakeSuite -Root $root -Name '01-pass.Tests.ps1' -Ending 'pass'
+        Set-FixtureManifest -Root $root -Entry @(
+            [ordered]@{ name = '01-pass.Tests.ps1'; jobs = @('suites'); execution = 'parallel'; baselineSeconds = $null }
+            [ordered]@{ name = '01-pass.Tests.ps1'; jobs = @('suites'); execution = 'parallel'; baselineSeconds = 2 }
+        )
+
+        $result = Invoke-Driver -SuiteRoot $root
+        Assert-True ($result.ExitCode -eq 1) "Expected exit code 1, got $($result.ExitCode). Output: $($result.Output)"
+        Assert-True ($result.Output -match 'more than once') "The message must say the name repeats. Output: $($result.Output)"
+    } finally {
+        Remove-SuiteFixture -Root $root
+    }
+}
+
+# Writes a manifest into a scratch folder and returns its path, so a unit case can call
+# Read-SuiteManifest without building a folder of fake suites.
+function New-ManifestFile {
+    param([object[]] $Entry)
+
+    $path = Join-Path ([System.IO.Path]::GetTempPath()) ('ahkflow-manifest-' + [guid]::NewGuid().ToString('N') + '.json')
+    $payload = [ordered]@{ suites = @($Entry) }
+    Set-Content -LiteralPath $path -Value ($payload | ConvertTo-Json -Depth 6) -Encoding utf8
+    return $path
+}
+
+Invoke-TestCase 'An unknown job value fails the manifest' {
+    $path = New-ManifestFile -Entry @(
+        [ordered]@{ name = 'a.Tests.ps1'; jobs = @('nonsense'); execution = 'parallel'; baselineSeconds = 1 }
+    )
+    try {
+        $threw = $false
+        $message = ''
+        try { Read-SuiteManifest -Path $path -DiscoveredName @('a.Tests.ps1') } catch { $threw = $true; $message = $_.Exception.Message }
+        Assert-True $threw 'An unknown job value must throw.'
+        Assert-True ($message -match 'nonsense') "The message must name the bad value. Got: $message"
+    } finally {
+        Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
+    }
+}
+
+Invoke-TestCase 'An unknown execution value fails the manifest' {
+    $path = New-ManifestFile -Entry @(
+        [ordered]@{ name = 'a.Tests.ps1'; jobs = @('suites'); execution = 'sometimes'; baselineSeconds = 1 }
+    )
+    try {
+        $threw = $false
+        $message = ''
+        try { Read-SuiteManifest -Path $path -DiscoveredName @('a.Tests.ps1') } catch { $threw = $true; $message = $_.Exception.Message }
+        Assert-True $threw 'An unknown execution value must throw.'
+        Assert-True ($message -match 'sometimes') "The message must name the bad value. Got: $message"
+    } finally {
+        Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
+    }
+}
+
+Invoke-TestCase 'An exclusive entry with no reason fails the manifest' {
+    $path = New-ManifestFile -Entry @(
+        [ordered]@{ name = 'a.Tests.ps1'; jobs = @('suites'); execution = 'exclusive'; baselineSeconds = 1 }
+    )
+    try {
+        $threw = $false
+        $message = ''
+        try { Read-SuiteManifest -Path $path -DiscoveredName @('a.Tests.ps1') } catch { $threw = $true; $message = $_.Exception.Message }
+        Assert-True $threw 'An exclusive entry with no reason must throw.'
+        Assert-True ($message -match 'reason') "The message must ask for a reason. Got: $message"
+    } finally {
+        Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
+    }
+}
+
+Invoke-TestCase 'An unusable baseline duration fails the manifest' {
+    foreach ($bad in @(0, -3, 'NaN', 'Infinity', 'soon')) {
+        $path = New-ManifestFile -Entry @(
+            [ordered]@{ name = 'a.Tests.ps1'; jobs = @('suites'); execution = 'parallel'; baselineSeconds = $bad }
+        )
+        try {
+            $threw = $false
+            try { Read-SuiteManifest -Path $path -DiscoveredName @('a.Tests.ps1') } catch { $threw = $true }
+            Assert-True $threw "baselineSeconds '$bad' must throw."
+        } finally {
+            Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+Invoke-TestCase 'A null baseline duration is allowed' {
+    $path = New-ManifestFile -Entry @(
+        [ordered]@{ name = 'a.Tests.ps1'; jobs = @('suites'); execution = 'parallel'; baselineSeconds = $null }
+    )
+    try {
+        $entries = @(Read-SuiteManifest -Path $path -DiscoveredName @('a.Tests.ps1'))
+        Assert-True ($entries.Count -eq 1) "Expected one entry, got $($entries.Count)."
+        Assert-True ($null -eq $entries[0].BaselineSeconds) 'A null baseline must survive as $null.'
+    } finally {
+        Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
+    }
+}
+
+Invoke-TestCase 'With no pattern the selection is every suite in the suites job' {
+    $entries = @(
+        [pscustomobject]@{ Name = 'a.Tests.ps1'; Jobs = @('suites'); Execution = 'parallel'; Reason = $null; BaselineSeconds = 1.0 }
+        [pscustomobject]@{ Name = 'b.Tests.ps1'; Jobs = @('invariants', 'suites'); Execution = 'parallel'; Reason = $null; BaselineSeconds = 2.0 }
+        [pscustomobject]@{ Name = 'c.Tests.ps1'; Jobs = @('codex-parity'); Execution = 'parallel'; Reason = $null; BaselineSeconds = $null }
+    )
+
+    $selected = @(Select-SuiteEntry -Entry $entries)
+    Assert-True ($selected.Count -eq 2) "Expected two suites, got $($selected.Count)."
+    Assert-True (($selected.Name -join ',') -eq 'a.Tests.ps1,b.Tests.ps1') "Got: $($selected.Name -join ',')"
+}
+
+Invoke-TestCase 'The schedule puts the longest suite first and an unknown one before all of them' {
+    $entries = @(
+        [pscustomobject]@{ Name = 'short.Tests.ps1'; Jobs = @('suites'); Execution = 'parallel'; Reason = $null; BaselineSeconds = 2.0 }
+        [pscustomobject]@{ Name = 'long.Tests.ps1'; Jobs = @('suites'); Execution = 'parallel'; Reason = $null; BaselineSeconds = 90.0 }
+        [pscustomobject]@{ Name = 'new.Tests.ps1'; Jobs = @('suites'); Execution = 'parallel'; Reason = $null; BaselineSeconds = $null }
+    )
+
+    $order = (Get-SuiteSchedule -Entry $entries -History @{}).Name -join ','
+    Assert-True ($order -eq 'new.Tests.ps1,long.Tests.ps1,short.Tests.ps1') "Got: $order"
+}
+
+Invoke-TestCase 'Local history overrides the committed baseline' {
+    $entries = @(
+        [pscustomobject]@{ Name = 'a.Tests.ps1'; Jobs = @('suites'); Execution = 'parallel'; Reason = $null; BaselineSeconds = 90.0 }
+        [pscustomobject]@{ Name = 'b.Tests.ps1'; Jobs = @('suites'); Execution = 'parallel'; Reason = $null; BaselineSeconds = 10.0 }
+    )
+
+    # History says a is now the quick one, so b must be scheduled first.
+    $order = (Get-SuiteSchedule -Entry $entries -History @{ 'a.Tests.ps1' = 1.0 }).Name -join ','
+    Assert-True ($order -eq 'b.Tests.ps1,a.Tests.ps1') "Got: $order"
+}
+
+# --- Checks over this repository's own manifest ---
+
+Invoke-TestCase 'The manifest lists every suite in tests/, exactly once' {
+    $manifestPath = Join-Path $PSScriptRoot 'powershell-suites.json'
+    Assert-True (Test-Path -LiteralPath $manifestPath) "The manifest must exist at $manifestPath."
+
+    $onDisk = @(Get-ChildItem -LiteralPath $PSScriptRoot -Filter '*.Tests.ps1' -File | ForEach-Object { $_.Name })
+    $entries = @(Read-SuiteManifest -Path $manifestPath -DiscoveredName $onDisk)
+    Assert-True ($entries.Count -eq $onDisk.Count) "Manifest holds $($entries.Count) entries for $($onDisk.Count) files."
+}
+
+# One list of invariant suites, not two. The invariant job cannot call the runner yet, because it
+# runs on Linux and nobody has run the runner there. Backlog 127 owns that. Until then this Check
+# keeps the two records in step.
+Invoke-TestCase 'The manifest invariants set matches check-repo-invariants.ps1' {
+    $manifestPath = Join-Path $PSScriptRoot 'powershell-suites.json'
+    $onDisk = @(Get-ChildItem -LiteralPath $PSScriptRoot -Filter '*.Tests.ps1' -File | ForEach-Object { $_.Name })
+    $fromManifest = @(Read-SuiteManifest -Path $manifestPath -DiscoveredName $onDisk |
+            Where-Object { $_.Jobs -contains 'invariants' } | ForEach-Object { $_.Name } | Sort-Object)
+
+    # Read the parsed assignment, not the file text. The parser drops comments, so a suite named
+    # only in a comment cannot count as the script running that suite.
+    $checkScript = Join-Path (Split-Path -Parent $PSScriptRoot) 'scripts/ci/check-repo-invariants.ps1'
+    $ast = [System.Management.Automation.Language.Parser]::ParseFile($checkScript, [ref] $null, [ref] $null)
+    $assignment = $ast.Find({
+            param($node)
+            $node -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+            $node.Left -is [System.Management.Automation.Language.VariableExpressionAst] -and
+            $node.Left.VariablePath.UserPath -eq 'suites'
+        }, $true)
+    Assert-True ($null -ne $assignment) 'check-repo-invariants.ps1 must assign a $suites variable.'
+
+    $fromScript = @($assignment.Right.FindAll({
+                param($node)
+                $node -is [System.Management.Automation.Language.StringConstantExpressionAst]
+            }, $true) | ForEach-Object { $_.Value } | Sort-Object)
+
+    Assert-True (($fromManifest -join ',') -eq ($fromScript -join ',')) `
+        "The two lists disagree. Manifest: $($fromManifest -join ','). Script: $($fromScript -join ',')."
+}
+
+# The Codex suite runs on Linux in its own job, because the bash setup script it compares against
+# refuses to run under Windows Git Bash. It is the only suite outside the suites job.
+Invoke-TestCase 'CodexSkillsHashParity is the only suite outside the suites job' {
+    $manifestPath = Join-Path $PSScriptRoot 'powershell-suites.json'
+    $onDisk = @(Get-ChildItem -LiteralPath $PSScriptRoot -Filter '*.Tests.ps1' -File | ForEach-Object { $_.Name })
+    $outside = @(Read-SuiteManifest -Path $manifestPath -DiscoveredName $onDisk |
+            Where-Object { $_.Jobs -notcontains 'suites' } | ForEach-Object { $_.Name })
+
+    Assert-True ($outside.Count -eq 1) "Expected one suite outside the suites job, got: $($outside -join ', ')"
+    Assert-True ($outside[0] -eq 'CodexSkillsHashParity.Tests.ps1') "Got: $($outside[0])"
 }
 
 Write-Host ''

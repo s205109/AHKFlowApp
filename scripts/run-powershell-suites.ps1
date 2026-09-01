@@ -1,10 +1,14 @@
-#Requires -Version 5.1
+#Requires -Version 7.0
 <#
 .SYNOPSIS
   Runs every PowerShell test suite in tests/ and fails when any of them fails.
 .DESCRIPTION
   Run it locally before a push, and read the table it prints. CI runs the same script in the
   powershell-suites job in .github/workflows/ci.yml.
+
+  This script needs PowerShell 7. Start it with pwsh, which is what every documented command
+  already does. tests/powershell-suites.json is the one record of which suites exist and which
+  CI jobs run each of them; this script reads and checks it before it starts any child process.
 
   Each suite runs as its own process. That is the whole point of this script. The suites end in
   two different ways: some call 'exit 1' on failure and 'exit 0' on success, others throw on
@@ -18,13 +22,7 @@
 
 [CmdletBinding()]
 param(
-    [string] $SuiteRoot,
-
-    # Suites that have their own CI job. CodexSkillsHashParity runs on Linux in the
-    # codex-skills-hash-parity job, because the bash setup script it compares against
-    # refuses to run under Windows Git Bash. Every name here must match a real file;
-    # the script fails when one does not.
-    [string[]] $Exclude = @('CodexSkillsHashParity.Tests.ps1')
+    [string] $SuiteRoot
 )
 
 $ErrorActionPreference = 'Stop'
@@ -38,6 +36,7 @@ $PSNativeCommandUseErrorActionPreference = $false
 $repoRoot = Split-Path -Parent $PSScriptRoot
 
 . "$PSScriptRoot\progress.common.ps1"
+. "$PSScriptRoot\powershell-suites.common.ps1"
 
 if ([string]::IsNullOrWhiteSpace($SuiteRoot)) {
     $SuiteRoot = Join-Path $repoRoot 'tests'
@@ -60,27 +59,28 @@ $keepTimings = Test-ProgressTimingsWanted -SuiteRoot $SuiteRoot -DefaultSuiteRoo
 
 $discovered = @(Get-ChildItem -LiteralPath $SuiteRoot -Filter '*.Tests.ps1' -File | Sort-Object Name)
 
-# An exclusion that names a file which no longer exists is a rename nobody finished. Fail on it,
-# or the excluded suite silently stops running everywhere.
-$discoveredNames = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
-foreach ($file in $discovered) { [void]$discoveredNames.Add($file.Name) }
-
-$staleExclusions = @($Exclude | Where-Object { -not $discoveredNames.Contains($_) })
-if ($staleExclusions.Count -gt 0) {
-    Write-Failure "These excluded suites do not exist in ${SuiteRoot}: $($staleExclusions -join ', ')"
-    Write-Host 'Update the -Exclude default in this script, or restore the file.'
-    exit 1
-}
-
-$excluded = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
-foreach ($name in $Exclude) { [void]$excluded.Add($name) }
-
-$suites = @($discovered | Where-Object { -not $excluded.Contains($_.Name) })
-if ($suites.Count -eq 0) {
+# A folder the glob finds nothing in cannot have a manifest worth reading, and the message a
+# reader needs there names the folder, not the manifest.
+if ($discovered.Count -eq 0) {
     Write-Failure "No test suites found in $SuiteRoot"
     Write-Host 'A run with nothing to run must not look green.'
     exit 1
 }
+
+$manifestPath = Join-Path $SuiteRoot 'powershell-suites.json'
+try {
+    $entries = @(Read-SuiteManifest -Path $manifestPath -DiscoveredName @($discovered.Name))
+    $selected = @(Select-SuiteEntry -Entry $entries)
+} catch {
+    # Stop before any child starts. A manifest or selection we cannot trust means the coverage this
+    # run reports would be a guess.
+    Write-Failure $_.Exception.Message
+    exit 1
+}
+
+$byName = @{}
+foreach ($file in $discovered) { $byName[$file.Name] = $file }
+$suites = @($selected | ForEach-Object { $byName[$_.Name] })
 
 # The suites are written for the host that runs this script, so run them under the same one.
 $hostExe = [System.Diagnostics.Process]::GetCurrentProcess().Path

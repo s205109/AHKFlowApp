@@ -95,7 +95,7 @@ in about 80 seconds instead of 618, so that running them stops being a reason to
   `tests/CitationFreshness.Tests.ps1` at 78.8 seconds, which becomes the new floor.
 - Saving the timings once, after every suite ends, is what keeps an existing assertion true. It
   reads the real timings file's last-write time and requires the parent runner not to change it
-  (`tests/CiPowerShellSuiteRunner.Tests.ps1:167`, "    $timingsPath = Join-Path $repoRoot 'TestResults\progress\run-powershell-suites.json'").
+  (`tests/CiPowerShellSuiteRunner.Tests.ps1:212`, "    $timingsPath = Join-Path $repoRoot 'TestResults\progress\run-powershell-suites.json'").
 - One comment claims that sequential execution protects a lock on a fixed name in the shared
   `%TEMP%` folder
   (`tests/WorktreeRemoveHook.Tests.ps1:615`, "# scripts/run-powershell-suites.ps1 runs suites one after another, so this lock on a file in the").
