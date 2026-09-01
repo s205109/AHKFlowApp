@@ -25,6 +25,7 @@
     { "name": "ProcessParity.Tests.ps1", "jobs": ["suites"], "execution": "parallel", "baselineSeconds": 13.2 },
     { "name": "ProcessWorkflow.Tests.ps1", "jobs": ["suites"], "execution": "parallel", "baselineSeconds": 0.6 },
     { "name": "Progress.Tests.ps1", "jobs": ["suites"], "execution": "parallel", "baselineSeconds": 1.4 },
+    { "name": "ProgressParallel.Tests.ps1", "jobs": ["suites"], "execution": "parallel", "baselineSeconds": null },
     { "name": "RepoInvariantsCiJob.Tests.ps1", "jobs": ["suites"], "execution": "parallel", "baselineSeconds": 0.4 },
     { "name": "RunFrontend.Tests.ps1", "jobs": ["suites"], "execution": "parallel", "baselineSeconds": 1.1 },
     { "name": "SkillLayout.Tests.ps1", "jobs": ["suites"], "execution": "parallel", "baselineSeconds": 0.4 },
