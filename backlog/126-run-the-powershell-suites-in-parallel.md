@@ -6,7 +6,7 @@
 - **Type**: Feature
 - **Interfaces**: none (test runner scripts)
 - **Difficulty**: complex
-- **Stage**: 3-plan
+- **Stage**: 7-document
 
 ## Summary
 
@@ -21,45 +21,48 @@ in about 80 seconds instead of 618, so that running them stops being a reason to
 
 ## Acceptance criteria
 
-- [ ] `tests/powershell-suites.json` holds one entry for every `tests/*.Tests.ps1` file in the
+- [x] `tests/powershell-suites.json` holds one entry for every `tests/*.Tests.ps1` file in the
       repository, each with `jobs`, `execution`, and `baselineSeconds`. The criterion is
       one-to-one against what the runner discovers, never a fixed count: this item divides one
       suite into three and adds a tracker suite, so the total moves from 49 to 52.
-- [ ] Every discovered suite file appears in the manifest exactly once, and no two entries share
+- [x] Every discovered suite file appears in the manifest exactly once, and no two entries share
       a `name`.
-- [ ] The runner fails before it starts any child process when a suite file is missing from the
+- [x] The runner fails before it starts any child process when a suite file is missing from the
       manifest, when a manifest entry names no file, or when a metadata value is unknown.
-- [ ] `baselineSeconds` is either `null` or a finite number greater than zero. Zero, a negative
+- [x] `baselineSeconds` is either `null` or a finite number greater than zero. Zero, a negative
       number, `NaN`, and infinity each fail the manifest.
-- [ ] Every `execution: exclusive` entry carries a non-empty `reason`, and a test fails an entry
+- [x] Every `execution: exclusive` entry carries a non-empty `reason`, and a test fails an entry
       that does not.
-- [ ] A test fails when the manifest's `invariants` set and the suite list in
+- [x] A test fails when the manifest's `invariants` set and the suite list in
       `scripts/ci/check-repo-invariants.ps1` disagree.
-- [ ] `scripts/run-powershell-suites.ps1` declares `#Requires -Version 7.0`.
-- [ ] The runner takes no `-Profile` parameter. With no selection argument it runs every suite
+- [x] `scripts/run-powershell-suites.ps1` declares `#Requires -Version 7.0`.
+- [x] The runner takes no `-Profile` parameter. With no selection argument it runs every suite
       whose `jobs` contains `suites`.
-- [ ] `-Suite <wildcard[]>` selects a subset. An unmatched wildcard fails, and no successful run
+- [x] `-Suite <wildcard[]>` selects a subset. An unmatched wildcard fails, and no successful run
       reports zero suites.
-- [ ] `-MaxParallel` defaults to the processor count capped at eight.
+- [x] `-MaxParallel` defaults to the processor count capped at eight.
       `AHKFLOW_SUITE_MAX_PARALLEL` overrides that default. An explicit `-MaxParallel` wins over
       the variable, and the variable wins over the default.
-- [ ] An unset or blank `AHKFLOW_SUITE_MAX_PARALLEL` is ignored, and the default applies. A
+- [x] An unset or blank `AHKFLOW_SUITE_MAX_PARALLEL` is ignored, and the default applies. A
       value that is not a whole number, or is below one, fails the run with a message that names
       the variable and the value. A misconfigured worker count must not run silently at the
       default.
-- [ ] A targeted `-Suite` run keeps the timing history of every suite it did not select.
-- [ ] A suite marked `exclusive` never runs at the same time as another suite.
-- [ ] Each suite's output prints as one block after that suite ends. The output of two suites
+- [x] A targeted `-Suite` run keeps the timing history of every suite it did not select.
+- [x] A suite marked `exclusive` never runs at the same time as another suite.
+- [x] Each suite's output prints as one block after that suite ends. The output of two suites
       never interleaves.
-- [ ] Every selected suite runs, including after another suite fails or cannot start.
-- [ ] The runner writes the timings file once, after every selected suite has ended.
-- [ ] `tests/WorktreeMergedCleanup.Tests.ps1` is three files, and none of the three takes more
+- [x] Every selected suite runs, including after another suite fails or cannot start.
+- [x] The runner writes the timings file once, after every selected suite has ended.
+- [x] `tests/WorktreeMergedCleanup.Tests.ps1` is three files, and none of the three takes more
       than 60 seconds.
 - [ ] A parallel run of every suite takes no more than 25% of the wall clock that the same
       selection takes at `-MaxParallel 1`, measured on one machine in one session.
-- [ ] A parallel run and a `-MaxParallel 1` run select the same suites and reach the same
+      **Not met: 171.2 of 620.4 seconds is 27.6%.** The suites contend for the disk, so the
+      slowest one stretches from 78.8 seconds alone to 169.4 inside the run. See the measurement
+      under `## Notes / dependencies`.
+- [x] A parallel run and a `-MaxParallel 1` run select the same suites and reach the same
       verdict.
-- [ ] `scripts/progress.parallel.ps1` declares `#Requires -Version 7.0`, and both
+- [x] `scripts/progress.parallel.ps1` declares `#Requires -Version 7.0`, and both
       `scripts/progress.common.ps1` and `scripts/test-fast.ps1` still declare
       `#Requires -Version 5.1`.
 
@@ -78,6 +81,57 @@ in about 80 seconds instead of 618, so that running them stops being a reason to
 - Which PowerShell version the production worktree and hook scripts support.
 
 ## Notes / dependencies
+
+- **Acceptance measurement, one machine, one session, 2026-09-01.** 16 processors, 8 workers,
+  52 suite files, 51 of them in the `suites` job.
+  - Sequential, `-MaxParallel 1`: **620.4 seconds**, all 51 passed.
+  - Parallel, default workers: **171.2 seconds**, all 51 passed.
+  - `pwsh .\scripts\test-fast.ps1 -Mode PowerShell`: **170.7 seconds**, all 51 passed.
+  - Parallel is **27.6%** of sequential. The limit is 25%, so that one criterion is **not met**.
+    The limit was not raised, and the box below stays unticked.
+- **Why 27.6% and not the predicted 12.8%.** The prediction assumed each suite keeps its solo
+  duration. It does not. Under eight workers the suites slow each other down, because they are
+  bound by disk and by `git` child processes rather than by the processor.
+  `tests/CitationFreshness.Tests.ps1` measures 78.8 seconds on its own and **169.4 seconds**
+  inside the parallel run. The whole run took 171.2 seconds, so that one suite is the run.
+  `tests/AgentWorktreeGuard.Tests.ps1` shows the same effect, 65.3 seconds alone against 147.9
+  in the run.
+- **The floor is `tests/CitationFreshness.Tests.ps1`.** Anyone who wants this faster has to make
+  that suite faster, or reduce how much the suites contend for the disk. A different worker count
+  cannot help: the run already equals its slowest suite. Dividing that suite is out of scope here.
+- **The three divided files, measured on their own:** `WorktreeMergedCleanup.Tests.ps1` 19.0
+  seconds, `WorktreeMergedCleanupEligibility.Tests.ps1` 53.5 seconds,
+  `WorktreeMergedCleanupSweep.Tests.ps1` 49.9 seconds. All three are under the 60-second limit.
+  The eligibility file first measured 66.1 seconds, so four whole sections moved into the sweep
+  file. No section was split, and the 70 section headers are the same set before and after.
+- **`tests/WatchTask.Tests.ps1` fails intermittently, and this item did not cause it.** The Gate's
+  PowerShell step failed once on it. The failing assertion is always the same one, "Checkpoint
+  replacement: changed output before the old offset must not be lost", and the text
+  `REPLACEMENT-BEFORE-OLD-OFFSET` is always the part that goes missing.
+  - This branch changes neither the suite nor the script it drives. `git log main..HEAD` over
+    `tests/WatchTask.Tests.ps1` and `scripts/watch-task.ps1` is empty.
+  - **A busy machine is what brings it out.** Counting every run made while investigating:
+    - Idle machine, suite started on its own: **0 failures in 16 runs** — ten in this worktree
+      and six from the main checkout.
+    - Busy machine: **4 failures in 18 runs** — one in eight parallel runs, one in five runs
+      beside ten synthetic load processes, and one in each of the two Gate runs.
+  - So the defect is older than this item, but this item makes it show. Running the suites one
+    after another left the machine quiet enough that it almost never appeared. Running them
+    together does not.
+  - Marking the suite `exclusive` does not fix it. That was tried for one measurement round and
+    it still failed, so the marking was reverted rather than kept for a benefit it does not give.
+  - Where the code points: `scripts/watch-task.ps1` reads the checkpoint bytes that decide
+    whether the file was replaced (`scripts/watch-task.ps1:539`, "            $currentCheckpoint = Read-FileCheckpoint `"),
+    and reads the file length afterwards (`scripts/watch-task.ps1:567`, "        $available = $stream.Length - $Reader.Offset").
+    A writer that finishes between those two reads is missed: the checkpoint still looks
+    unchanged, so the reader never goes back to the start, but the length is already full, so it
+    reads the new tail and stops at the terminal marker. That matches every captured failure,
+    but nobody has proved it by making the race happen on purpose.
+  - This needs its own backlog item. It is out of scope here.
+- One section that this split moved unchanged failed once, with
+  `fatal: failed to read .git/worktrees/wt-feat-done-forced/commondir`, and passed on two
+  re-runs. It is a race between the cleanup child process and the `git branch --list` call that
+  follows it. The section's text is the same as before the split, so this is not new.
 
 - Spec: `docs/superpowers/specs/2026-08-31-powershell-suite-performance-design-126.md`
 - Plan: `docs/superpowers/plans/2026-08-31-powershell-suite-performance-plan-126.md`
