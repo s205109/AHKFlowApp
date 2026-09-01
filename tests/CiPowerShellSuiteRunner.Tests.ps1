@@ -614,6 +614,82 @@ Invoke-TestCase 'Local history overrides the committed baseline' {
     Assert-True ($order -eq 'b.Tests.ps1,a.Tests.ps1') "Got: $order"
 }
 
+Invoke-TestCase 'A -Suite wildcard runs only the suites it matches' {
+    $root = New-SuiteFixture
+    try {
+        Add-FakeSuite -Root $root -Name 'Alpha.Tests.ps1' -Ending 'pass'
+        Add-FakeSuite -Root $root -Name 'Beta.Tests.ps1' -Ending 'pass'
+        Add-FakeSuite -Root $root -Name 'AlphaTwo.Tests.ps1' -Ending 'pass'
+        Set-FixtureManifest -Root $root
+
+        $result = Invoke-Driver -SuiteRoot $root -Suite @('Alpha*')
+        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
+        Assert-True (Test-MarkerExists -Root $root -Name 'Alpha.Tests.ps1') 'Alpha must have run.'
+        Assert-True (Test-MarkerExists -Root $root -Name 'AlphaTwo.Tests.ps1') 'AlphaTwo must have run.'
+        Assert-True (-not (Test-MarkerExists -Root $root -Name 'Beta.Tests.ps1')) 'Beta must not have run.'
+    } finally {
+        Remove-SuiteFixture -Root $root
+    }
+}
+
+Invoke-TestCase 'Two -Suite wildcards that overlap run each suite once' {
+    $root = New-SuiteFixture
+    try {
+        Add-FakeSuite -Root $root -Name 'Alpha.Tests.ps1' -Ending 'pass'
+        Add-FakeSuite -Root $root -Name 'Beta.Tests.ps1' -Ending 'pass'
+        Set-FixtureManifest -Root $root
+
+        $result = Invoke-Driver -SuiteRoot $root -Suite @('Alpha*', 'A*')
+        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
+        Assert-True ($result.Output -match 'All 1 suite\(s\) passed\.') "Alpha must be counted once. Output: $($result.Output)"
+    } finally {
+        Remove-SuiteFixture -Root $root
+    }
+}
+
+Invoke-TestCase 'An unmatched -Suite wildcard fails the run' {
+    $root = New-SuiteFixture
+    try {
+        Add-FakeSuite -Root $root -Name 'Alpha.Tests.ps1' -Ending 'pass'
+        Set-FixtureManifest -Root $root
+
+        $result = Invoke-Driver -SuiteRoot $root -Suite @('Nope*')
+        Assert-True ($result.ExitCode -eq 1) "Expected exit code 1, got $($result.ExitCode). Output: $($result.Output)"
+        Assert-True ($result.Output -match 'Nope\*') "The message must name the wildcard. Output: $($result.Output)"
+        Assert-True (-not (Test-MarkerExists -Root $root -Name 'Alpha.Tests.ps1')) 'No suite may run when the selection fails.'
+    } finally {
+        Remove-SuiteFixture -Root $root
+    }
+}
+
+Invoke-TestCase 'A -Suite wildcard that matches only a suite outside the suites job says so' {
+    $root = New-SuiteFixture
+    try {
+        Add-FakeSuite -Root $root -Name 'Alpha.Tests.ps1' -Ending 'pass'
+        Add-FakeSuite -Root $root -Name 'Elsewhere.Tests.ps1' -Ending 'pass'
+        Set-FixtureManifest -Root $root -Entry @(
+            [ordered]@{ name = 'Alpha.Tests.ps1'; jobs = @('suites'); execution = 'parallel'; baselineSeconds = $null }
+            [ordered]@{ name = 'Elsewhere.Tests.ps1'; jobs = @('codex-parity'); execution = 'parallel'; baselineSeconds = $null }
+        )
+
+        $result = Invoke-Driver -SuiteRoot $root -Suite @('Elsewhere*')
+        Assert-True ($result.ExitCode -eq 1) "Expected exit code 1, got $($result.ExitCode). Output: $($result.Output)"
+        Assert-True ($result.Output -match 'outside the suites job') "The message must explain the miss. Output: $($result.Output)"
+    } finally {
+        Remove-SuiteFixture -Root $root
+    }
+}
+
+Invoke-TestCase 'test-fast PowerShell mode still reaches the full selection' {
+    # The wrapper passes no selection argument, so the runner must still choose every suite in the
+    # suites job. This is the whole reason scripts/test-fast.ps1 needs no edit.
+    $wrapper = Join-Path (Split-Path -Parent $PSScriptRoot) 'scripts/test-fast.ps1'
+    $ast = [System.Management.Automation.Language.Parser]::ParseFile($wrapper, [ref] $null, [ref] $null)
+    $text = $ast.Extent.Text
+    Assert-True ($text -notmatch '-Suite\b') 'test-fast.ps1 must not pass a -Suite argument.'
+    Assert-True ($text -match "run-powershell-suites\.ps1'\) @suiteArguments") 'test-fast.ps1 must still splat only SuiteRoot.'
+}
+
 # --- Checks over this repository's own manifest ---
 
 Invoke-TestCase 'The manifest lists every suite in tests/, exactly once' {

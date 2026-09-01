@@ -22,7 +22,12 @@
 
 [CmdletBinding()]
 param(
-    [string] $SuiteRoot
+    [string] $SuiteRoot,
+
+    # Wildcards matched against suite file names, for the inner development loop. With none, the
+    # run covers every suite in the 'suites' job, which is what CI and the Gate both want.
+    # A value that matches nothing fails the run: a typo must never look like a green run.
+    [string[]] $Suite = @()
 )
 
 $ErrorActionPreference = 'Stop'
@@ -70,7 +75,7 @@ if ($discovered.Count -eq 0) {
 $manifestPath = Join-Path $SuiteRoot 'powershell-suites.json'
 try {
     $entries = @(Read-SuiteManifest -Path $manifestPath -DiscoveredName @($discovered.Name))
-    $selected = @(Select-SuiteEntry -Entry $entries)
+    $selected = @(Select-SuiteEntry -Entry $entries -Pattern $Suite)
 } catch {
     # Stop before any child starts. A manifest or selection we cannot trust means the coverage this
     # run reports would be a guess.
@@ -92,12 +97,14 @@ Write-Host "Host: $hostExe"
 $progress = New-ProgressTracker -RunnerKey 'run-powershell-suites' -Unit @($suites.Name) -RepoRoot $repoRoot -NoStore:(-not $keepTimings)
 
 $results = [System.Collections.Generic.List[object]]::new()
-foreach ($suite in $suites) {
-    if ($inActions) { Write-Host "::group::$($suite.Name)" }
-    Start-ProgressUnit -Tracker $progress -Name $suite.Name
+# Not $suite. PowerShell treats $suite and the -Suite parameter as one variable, and that
+# parameter is typed [string[]], so a loop over it would turn each file into a string array.
+foreach ($suiteFile in $suites) {
+    if ($inActions) { Write-Host "::group::$($suiteFile.Name)" }
+    Start-ProgressUnit -Tracker $progress -Name $suiteFile.Name
 
     $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-    & $hostExe -NoProfile -File $suite.FullName
+    & $hostExe -NoProfile -File $suiteFile.FullName
     $exitCode = $LASTEXITCODE
     $stopwatch.Stop()
     Stop-ProgressUnit -Tracker $progress
@@ -105,13 +112,13 @@ foreach ($suite in $suites) {
     if ($inActions) { Write-Host '::endgroup::' }
 
     $results.Add([pscustomobject]@{
-            Name     = $suite.Name
+            Name     = $suiteFile.Name
             ExitCode = $exitCode
             Seconds  = [math]::Round($stopwatch.Elapsed.TotalSeconds, 1)
         })
 
     if ($exitCode -ne 0) {
-        Write-Failure "FAILED: $($suite.Name) (exit code $exitCode)"
+        Write-Failure "FAILED: $($suiteFile.Name) (exit code $exitCode)"
     }
 }
 
