@@ -5,7 +5,7 @@
 - **Type**: Bug
 - **Interfaces**: none (developer tooling)
 - **Difficulty**: complex
-- **Stage**: 2-design
+- **Stage**: 3-plan
 
 ## Summary
 
@@ -57,3 +57,8 @@ every time, so that a red gate always means my own change broke something.
   and stops at the terminal marker. That matches every captured failure. Nobody has made the race
   happen on purpose, so treat it as a lead and not a conclusion.
 - Found by backlog 126, `backlog/126-run-the-powershell-suites-in-parallel.md`.
+- Plan: `docs/superpowers/plans/2026-09-02-watch-task-checkpoint-race-plan-129.md`
+- **Design outcome, 2026-09-02.** The lead above was right, and a second, worse race sits beside
+  it: the writer can also finish after the check and before the data read, which no reordering
+  closes. Both races are now driven on purpose by tests, with no load and no sleep. The reader
+  also has to stop re-reading its checkpoint from the file. Details in the spec and the plan.
