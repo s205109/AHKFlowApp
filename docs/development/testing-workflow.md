@@ -185,9 +185,11 @@ run takes about three minutes, where running the same suites one after another t
 
 `-MaxParallel` sets how many suites run at once. With no value the run uses the processor count,
 capped at eight. `AHKFLOW_SUITE_MAX_PARALLEL` overrides that default, and an explicit `-MaxParallel`
-overrides the variable. The run never starts more workers than it has suites to share out, so a
-number far above the suite count is capped rather than refused. The line the run prints reports the
-count it used.
+overrides the variable. Both take a whole number of at least one; anything else fails the run
+rather than being rounded. The run never starts more workers than it has suites to share out, so a
+number far above the suite count is capped rather than refused. A selection where every suite runs
+alone shares nothing, and the run reports one worker. The line the run prints reports the count it
+used.
 
 `scripts/run-powershell-suites.ps1` needs PowerShell 7, so start it with `pwsh`. `test-fast.ps1`
 still runs under Windows PowerShell 5.1: in `-Mode PowerShell` it starts the runner as its own

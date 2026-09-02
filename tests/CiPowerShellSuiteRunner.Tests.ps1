@@ -223,15 +223,46 @@ function Get-PeakOverlap {
     return $peak
 }
 
-# Runs the driver as its own process and returns its exit code, everything it printed, and the
-# job summary it wrote. The child process is the point: it is exactly what the CI step measures.
+# The one place this file starts a runner child, so no case can forget the redirect below.
 #
 # The child inherits this process's environment. Under CI that includes GITHUB_STEP_SUMMARY, so
-# without the redirect below every fake suite table here would be appended to the real
-# powershell-suites job summary — including the deliberate failures. Point the child at a scratch
-# file instead. Redirecting rather than clearing keeps the driver's summary-writing branch covered.
+# without the redirect every fake suite table here would be appended to the real powershell-suites
+# job summary — including the deliberate failures. Point the child at a scratch file instead.
+# Redirecting rather than clearing keeps the driver's summary-writing branch covered.
+#
+# Returns the child's exit code, everything it printed, and the job summary it wrote.
+function Invoke-RunnerProcess {
+    param([Parameter(Mandatory)][string[]] $ArgumentList)
+
+    $summaryPath = Join-Path ([System.IO.Path]::GetTempPath()) ('ahkflow-suiterunner-summary-' + [guid]::NewGuid().ToString('N') + '.md')
+    $previousSummary = $env:GITHUB_STEP_SUMMARY
+    $env:GITHUB_STEP_SUMMARY = $summaryPath
+
+    try {
+        $output = & $script:HostExe @ArgumentList 2>&1 | Out-String
+        $exitCode = $LASTEXITCODE
+
+        $summary = if (Test-Path -LiteralPath $summaryPath) {
+            Get-Content -LiteralPath $summaryPath -Raw
+        } else {
+            ''
+        }
+    } finally {
+        $env:GITHUB_STEP_SUMMARY = $previousSummary
+        Remove-Item -LiteralPath $summaryPath -Force -ErrorAction SilentlyContinue
+    }
+
+    return [pscustomobject]@{
+        ExitCode = $exitCode
+        Output   = $output
+        Summary  = $summary
+    }
+}
+
+# Runs the repository's own driver against a fixture suite folder, as its own process. The child
+# process is the point: it is exactly what the CI step measures.
 function Invoke-Driver {
-    param([string] $SuiteRoot, [string[]] $Suite = @(), [string] $RawSuite, [int] $MaxParallel = 0, [hashtable] $EnvVar = @{})
+    param([string] $SuiteRoot, [string[]] $Suite = @(), [string] $RawSuite, [int] $MaxParallel = 0, [string] $RawMaxParallel, [hashtable] $EnvVar = @{})
 
     # RawSuite hands the driver a literal PowerShell expression, so a case can pass '-Suite $null'.
     # That is what an unset variable becomes, and ConvertTo-ScriptLiteral would quote it into a
@@ -246,14 +277,19 @@ function Invoke-Driver {
 
     # The binding, not the value. A case passes -MaxParallel -1 on purpose to prove the run
     # refuses it, and a '-gt 0' test would drop that argument instead of passing it on.
-    $parallelLiteral = if ($PSBoundParameters.ContainsKey('MaxParallel')) { " -MaxParallel $MaxParallel" } else { '' }
+    #
+    # RawMaxParallel hands the driver a literal argument the same way RawSuite does, so a case can
+    # pass '1.5'. This helper's own [int] would round that to 2 before the driver ever saw it,
+    # which is the very conversion the driver must not perform either.
+    $parallelLiteral = if ($PSBoundParameters.ContainsKey('RawMaxParallel')) {
+        " -MaxParallel $RawMaxParallel"
+    } elseif ($PSBoundParameters.ContainsKey('MaxParallel')) {
+        " -MaxParallel $MaxParallel"
+    } else {
+        ''
+    }
 
-    $summaryPath = Join-Path ([System.IO.Path]::GetTempPath()) ('ahkflow-suiterunner-summary-' + [guid]::NewGuid().ToString('N') + '.md')
-    $previousSummary = $env:GITHUB_STEP_SUMMARY
-    $env:GITHUB_STEP_SUMMARY = $summaryPath
-
-    # Saved and restored the same way the summary path is, so one case cannot leak a value into
-    # the next one.
+    # Saved and restored so one case cannot leak a value into the next one.
     $previousEnv = @{}
     foreach ($name in $EnvVar.Keys) {
         $previousEnv[$name] = [System.Environment]::GetEnvironmentVariable($name)
@@ -262,26 +298,11 @@ function Invoke-Driver {
 
     try {
         $command = "& $(ConvertTo-ScriptLiteral $script:DriverPath) -SuiteRoot $(ConvertTo-ScriptLiteral $SuiteRoot)$suiteLiteral$parallelLiteral; exit `$LASTEXITCODE"
-        $output = & $script:HostExe -NoProfile -Command $command 2>&1 | Out-String
-        $exitCode = $LASTEXITCODE
-
-        $summary = if (Test-Path -LiteralPath $summaryPath) {
-            Get-Content -LiteralPath $summaryPath -Raw
-        } else {
-            ''
-        }
+        return Invoke-RunnerProcess -ArgumentList @('-NoProfile', '-Command', $command)
     } finally {
-        $env:GITHUB_STEP_SUMMARY = $previousSummary
         foreach ($name in $previousEnv.Keys) {
             [System.Environment]::SetEnvironmentVariable($name, $previousEnv[$name])
         }
-        Remove-Item -LiteralPath $summaryPath -Force -ErrorAction SilentlyContinue
-    }
-
-    return [pscustomobject]@{
-        ExitCode = $exitCode
-        Output   = $output
-        Summary  = $summary
     }
 }
 
@@ -356,13 +377,13 @@ Invoke-TestCase 'A run over the repository''s own tests folder saves its timings
         $namedRootCommand = "& $(ConvertTo-ScriptLiteral $driver) -SuiteRoot $(ConvertTo-ScriptLiteral (Join-Path $fakeRepo 'tests')); exit `$LASTEXITCODE"
 
         # No -SuiteRoot at all: the runner falls back to its own tests folder.
-        $out = & $script:HostExe -NoProfile -Command $noRootCommand 2>&1 | Out-String
+        $out = (Invoke-RunnerProcess -ArgumentList @('-NoProfile', '-Command', $noRootCommand)).Output
         Assert-True (Test-Path -LiteralPath $timings) "A run with no -SuiteRoot must save its timings. Output: $out"
 
         Remove-Item -LiteralPath $timings -Force
 
         # The same folder, named explicitly. Still a real run, so it must still save.
-        $out = & $script:HostExe -NoProfile -Command $namedRootCommand 2>&1 | Out-String
+        $out = (Invoke-RunnerProcess -ArgumentList @('-NoProfile', '-Command', $namedRootCommand)).Output
         Assert-True (Test-Path -LiteralPath $timings) "Naming the repository's own tests folder must still save timings. Output: $out"
 
         $saved = Get-Content -LiteralPath $timings -Raw | ConvertFrom-Json
@@ -461,8 +482,8 @@ Invoke-TestCase 'The summary names every failed suite and no passing one' {
 }
 
 # The job summary is how a failure is read in the GitHub UI, and it goes to the file named by
-# GITHUB_STEP_SUMMARY. This case also proves the redirect in Invoke-Driver works, which is what
-# keeps these fake tables out of the real job summary.
+# GITHUB_STEP_SUMMARY. This case also proves the redirect in Invoke-RunnerProcess works, which is
+# what keeps these fake tables out of the real job summary.
 Invoke-TestCase 'The driver writes its table to the GITHUB_STEP_SUMMARY file' {
     $root = New-SuiteFixture
     try {
@@ -817,29 +838,11 @@ Invoke-TestCase 'A -Suite wildcard that matches only a suite outside the suites 
     }
 }
 
-Invoke-TestCase 'test-fast PowerShell mode still reaches the full selection' {
-    # The wrapper passes no selection argument, so the runner must still choose every suite in the
-    # suites job. It forwards -SuiteRoot and nothing else.
-    #
-    # It also has to start the runner as its own pwsh process. The wrapper declares
-    # '#Requires -Version 5.1' and the runner declares 7.0, and a '#Requires' in a script called
-    # in-process is enforced against the running host, so a call in this process fails on Windows
-    # PowerShell before a single suite starts.
-    $wrapper = Join-Path (Split-Path -Parent $PSScriptRoot) 'scripts/test-fast.ps1'
-    $ast = [System.Management.Automation.Language.Parser]::ParseFile($wrapper, [ref] $null, [ref] $null)
-    $text = $ast.Extent.Text
-    Assert-True ($text -notmatch '-Suite\b') 'test-fast.ps1 must not pass a -Suite argument.'
-
-    $forward = @'
-$suiteArguments += @('-SuiteRoot', $SuiteRoot)
-'@
-    Assert-True ($text -match [regex]::Escape($forward)) 'test-fast.ps1 must forward only -SuiteRoot to the runner.'
-
-    $launch = @'
-& $runnerHost @suiteArguments
-'@
-    Assert-True ($text -match [regex]::Escape($launch)) 'test-fast.ps1 must start the runner as its own process, never call it in this one.'
-}
+# The wrapper's selection and its process boundary are proven at run time, not by reading its
+# source. tests/TestFastPowerShellMode.Tests.ps1 runs the wrapper against a two-suite fixture with
+# no selection argument and asserts both suites pass, and its Windows PowerShell 5.1 case asserts
+# the run never reports 'ScriptRequiresUnmatchedPSVersion'. A source-text case on top of that
+# breaks on harmless reformatting and passes on matching text that no longer runs.
 
 Invoke-TestCase 'A parallel run and a sequential run reach the same verdict and the same suites' {
     $root = New-SuiteFixture
@@ -1152,6 +1155,63 @@ Invoke-TestCase 'An explicit -MaxParallel below one fails the run' {
     }
 }
 
+Invoke-TestCase 'A fractional -MaxParallel fails the run' {
+    $root = New-SuiteFixture
+    try {
+        Add-FakeSuite -Root $root -Name '01-pass.Tests.ps1' -Ending 'pass'
+        Set-FixtureManifest -Root $root
+
+        # The parameter promises a whole number. An [int] parameter would not enforce that:
+        # PowerShell rounds '1.5' to 2 and '2.5' to 2 while binding, so both typos would run and
+        # neither would run the number the caller wrote. The message must quote what was typed.
+        $result = Invoke-Driver -SuiteRoot $root -RawMaxParallel '1.5'
+        Assert-True ($result.ExitCode -eq 1) "Expected exit code 1, got $($result.ExitCode). Output: $($result.Output)"
+        Assert-True ($result.Output -match 'MaxParallel') "The message must name the parameter. Output: $($result.Output)"
+        Assert-True ($result.Output -match '1\.5') "The message must quote the value as typed. Output: $($result.Output)"
+    } finally {
+        Remove-SuiteFixture -Root $root
+    }
+}
+
+Invoke-TestCase 'A -MaxParallel that carries no value fails the run' {
+    $root = New-SuiteFixture
+    try {
+        Add-FakeSuite -Root $root -Name '01-pass.Tests.ps1' -Ending 'pass'
+        Set-FixtureManifest -Root $root
+
+        # '-MaxParallel $null' is what an unset variable becomes at a call site. PowerShell binds
+        # $null to '' for a text parameter, so the run must answer with its own message. The
+        # sibling '-Suite $null' case covers the same accident on the other parameter.
+        $result = Invoke-Driver -SuiteRoot $root -RawMaxParallel '$null'
+        Assert-True ($result.ExitCode -eq 1) "Expected exit code 1, got $($result.ExitCode). Output: $($result.Output)"
+        Assert-True ($result.Output -match 'MaxParallel must be a whole number') "Expected the parameter's own message. Output: $($result.Output)"
+    } finally {
+        Remove-SuiteFixture -Root $root
+    }
+}
+
+Invoke-TestCase 'An all-exclusive selection still reports a capped worker count' {
+    $root = New-SuiteFixture
+    try {
+        # Nothing shares the pool here, so the count the run prints must still be a count it could
+        # use. Capping only when at least one suite shares would print [int]::MaxValue instead,
+        # which contradicts "the run never starts more workers than it has suites to share out".
+        Add-FakeSuite -Root $root -Name '01-alone.Tests.ps1' -Ending 'pass'
+        Add-FakeSuite -Root $root -Name '02-alone.Tests.ps1' -Ending 'pass'
+        Set-FixtureManifest -Root $root -Entry @(
+            [ordered]@{ name = '01-alone.Tests.ps1'; jobs = @('suites'); execution = 'exclusive'; reason = 'The case needs a selection that shares nothing.'; baselineSeconds = $null }
+            [ordered]@{ name = '02-alone.Tests.ps1'; jobs = @('suites'); execution = 'exclusive'; reason = 'The case needs a selection that shares nothing.'; baselineSeconds = $null }
+        )
+
+        $result = Invoke-Driver -SuiteRoot $root -MaxParallel 2147483647
+        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
+        Assert-True ($result.Output -match 'All 2 suite\(s\) passed\.') "Expected the all-passed summary line. Output: $($result.Output)"
+        Assert-True ($result.Output -match 'Workers: 1\b') "An all-exclusive run must report one worker. Output: $($result.Output)"
+    } finally {
+        Remove-SuiteFixture -Root $root
+    }
+}
+
 Invoke-TestCase 'A -MaxParallel far above the suite count still runs the suites' {
     $root = New-SuiteFixture
     try {
@@ -1220,7 +1280,7 @@ Invoke-TestCase 'A targeted run keeps the stored timings of every suite it did n
         $driver = Join-Path $fakeRepo 'scripts/run-powershell-suites.ps1'
         $timings = Join-Path $fakeRepo 'TestResults/progress/run-powershell-suites.json'
 
-        & $script:HostExe -NoProfile -File $driver 2>&1 | Out-Null
+        Invoke-RunnerProcess -ArgumentList @('-NoProfile', '-File', $driver) | Out-Null
         $before = Get-Content -LiteralPath $timings -Raw | ConvertFrom-Json
         Assert-True ($null -ne $before.'01-one.Tests.ps1' -and $null -ne $before.'02-two.Tests.ps1') 'The full run must store both suites.'
 
@@ -1232,8 +1292,8 @@ Invoke-TestCase 'A targeted run keeps the stored timings of every suite it did n
         $seeded = [ordered]@{ '01-one.Tests.ps1' = 4242.4; '02-two.Tests.ps1' = 8484.8 }
         Set-Content -LiteralPath $timings -Value (([pscustomobject] $seeded) | ConvertTo-Json) -Encoding UTF8
 
-        & $script:HostExe -NoProfile -File $driver -Suite '01-one*' 2>&1 | Out-Null
-        Assert-True ($LASTEXITCODE -eq 0) "The targeted run must succeed, got exit code $LASTEXITCODE."
+        $targeted = Invoke-RunnerProcess -ArgumentList @('-NoProfile', '-File', $driver, '-Suite', '01-one*')
+        Assert-True ($targeted.ExitCode -eq 0) "The targeted run must succeed, got exit code $($targeted.ExitCode). Output: $($targeted.Output)"
 
         $after = Get-Content -LiteralPath $timings -Raw | ConvertFrom-Json
         Assert-True ($null -ne $after.PSObject.Properties['02-two.Tests.ps1']) 'A targeted run must keep the other suite''s history.'
@@ -1268,7 +1328,7 @@ Invoke-TestCase 'A stored entry whose suite file no longer exists is dropped' {
         $timings = Join-Path $fakeRepo 'TestResults/progress/run-powershell-suites.json'
         Set-Content -LiteralPath $timings -Value '{ "deleted.Tests.ps1": 42 }' -Encoding utf8
 
-        & $script:HostExe -NoProfile -File (Join-Path $fakeRepo 'scripts/run-powershell-suites.ps1') 2>&1 | Out-Null
+        Invoke-RunnerProcess -ArgumentList @('-NoProfile', '-File', (Join-Path $fakeRepo 'scripts/run-powershell-suites.ps1')) | Out-Null
 
         $saved = Get-Content -LiteralPath $timings -Raw | ConvertFrom-Json
         Assert-True ($null -eq $saved.PSObject.Properties['deleted.Tests.ps1']) 'An entry whose suite file is gone must be dropped.'
@@ -1340,8 +1400,7 @@ function Invoke-DriverAt {
     if ($PSBoundParameters.ContainsKey('MaxParallel')) { $arguments += @('-MaxParallel', $MaxParallel) }
     if ($Suite.Count -gt 0) { $arguments += @('-Suite') + $Suite }
 
-    $output = & $script:HostExe @arguments 2>&1 | Out-String
-    return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = $output }
+    return Invoke-RunnerProcess -ArgumentList $arguments
 }
 
 Invoke-TestCase 'The timings file is written once, after the last suite ends' {

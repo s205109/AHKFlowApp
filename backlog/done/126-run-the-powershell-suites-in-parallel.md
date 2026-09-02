@@ -150,7 +150,7 @@ in about 80 seconds instead of 618, so that running them stops being a reason to
   `tests/CitationFreshness.Tests.ps1` at 78.8 seconds, which becomes the new floor.
 - Saving the timings once, after every suite ends, is what keeps an existing assertion true. It
   reads the real timings file's last-write time and requires the parent runner not to change it
-  (`tests/CiPowerShellSuiteRunner.Tests.ps1:308`, "    $timingsPath = Join-Path $repoRoot 'TestResults\progress\run-powershell-suites.json'").
+  (`tests/CiPowerShellSuiteRunner.Tests.ps1:329`, "    $timingsPath = Join-Path $repoRoot 'TestResults\progress\run-powershell-suites.json'").
 - **Shared-resource audit, six categories, all 49 suites. No suite is exclusive.**
   1. *A fixed file or folder in the shared temp directory.* One hit,
      `tests/CoverageInputCompleteness.Tests.ps1`

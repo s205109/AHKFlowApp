@@ -89,7 +89,7 @@ Two things went wrong on 2026-08-29, and both are fixed by this item:
       (`scripts/progress.common.ps1:354`, "[System.IO.File]::Replace($temp");
       (`scripts/progress.common.ps1:357`, "[System.IO.File]::Move($temp")
 - [x] `scripts/run-powershell-suites.ps1` prints a progress line per suite through that module.
-      (`scripts/run-powershell-suites.ps1:169`, "    Write-Host (Get-ParallelProgressLine -Tracker $parallelProgress -Name $Result.Name -Seconds $Result.Seconds)")
+      (`scripts/run-powershell-suites.ps1:176`, "    Write-Host (Get-ParallelProgressLine -Tracker $parallelProgress -Name $Result.Name -Seconds $Result.Seconds)")
 - [x] `scripts/test-fast.ps1` prints a progress line per test project through that module, and
       Fast mode and Integration mode keep separate remembered timings.
       (`scripts/test-fast.ps1:276`, "Start-ProgressUnit -Tracker $progress");

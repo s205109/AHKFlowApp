@@ -37,7 +37,7 @@ function New-TestTracker {
 
     $schedule = New-TestSchedule -Seconds $Seconds
     $inner = New-ProgressTracker -RunnerKey 'parallel-tests' -Unit @($schedule.Name) -NoStore
-    return New-ParallelProgressTracker -Tracker $inner -Schedule $schedule
+    return New-ParallelProgressTracker -Tracker $inner
 }
 
 # --- The line carries the count, the suite, its seconds, and the elapsed time ---

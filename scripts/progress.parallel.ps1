@@ -13,7 +13,7 @@
 #   . "$PSScriptRoot\progress.parallel.ps1"
 #
 # Three functions:
-#   New-ParallelProgressTracker    wrap a common tracker with the run's schedule
+#   New-ParallelProgressTracker    wrap a common tracker for a parallel run
 #   Complete-ParallelProgressUnit  record one finished suite
 #   Get-ParallelProgressLine       build the line for one finished suite
 #
@@ -25,13 +25,13 @@
 
 function New-ParallelProgressTracker {
     param(
-        [Parameter(Mandatory)][object] $Tracker,
-        [Parameter(Mandatory)][AllowEmptyCollection()][object[]] $Schedule
+        [Parameter(Mandatory)][object] $Tracker
     )
 
+    # The total comes from the wrapped tracker's own unit list. Passing the schedule in as well
+    # would carry a second copy of the same count, and two copies can disagree.
     return [pscustomobject]@{
         Inner = $Tracker
-        Total = @($Schedule).Count
         Done  = 0
     }
 }
@@ -39,7 +39,7 @@ function New-ParallelProgressTracker {
 function Complete-ParallelProgressUnit {
     <#
       Records one finished suite. Call this before Get-ParallelProgressLine, so the line reads the
-      count and the pending set as they are after this suite finished.
+      done count as it is after this suite finished.
     #>
     param(
         [Parameter(Mandatory)][object] $Tracker,
@@ -63,5 +63,5 @@ function Get-ParallelProgressLine {
 
     $elapsed = Format-ProgressDuration -Seconds $Tracker.Inner.RunWatch.Elapsed.TotalSeconds
     return ('[{0}/{1} done] {2}  {3:0.0}s  elapsed {4}' -f
-        $Tracker.Done, $Tracker.Total, $Name, $Seconds, $elapsed)
+        $Tracker.Done, $Tracker.Inner.Unit.Count, $Name, $Seconds, $elapsed)
 }

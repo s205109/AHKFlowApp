@@ -37,7 +37,11 @@ param(
     # measurement cheap.
     #
     # Whatever the value, the run never starts more workers than it has suites to share out.
-    [int] $MaxParallel = 0
+    #
+    # Bound as text on purpose. An [int] parameter would round '1.5' to 2 and '2.5' to 2 while
+    # binding, so a typo would run a number nobody asked for and the "whole number" promise below
+    # could never be checked. The environment-variable path parses its text the same way.
+    [string] $MaxParallel = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -112,11 +116,12 @@ $workerCount = [Math]::Min([Environment]::ProcessorCount, 8)
 # wins over the variable" has to mean this: validating the variable first would fail the run on a
 # value the caller has already overridden.
 if ($PSBoundParameters.ContainsKey('MaxParallel')) {
-    if ($MaxParallel -lt 1) {
-        Write-Failure "-MaxParallel must be a whole number of at least one. Got: $MaxParallel"
+    $parsedMaxParallel = 0
+    if (-not [int]::TryParse($MaxParallel.Trim(), [ref] $parsedMaxParallel) -or $parsedMaxParallel -lt 1) {
+        Write-Failure "-MaxParallel must be a whole number of at least one. Got: '$MaxParallel'"
         exit 1
     }
-    $workerCount = $MaxParallel
+    $workerCount = $parsedMaxParallel
 } else {
     $envMaxParallel = $env:AHKFLOW_SUITE_MAX_PARALLEL
     if (-not [string]::IsNullOrWhiteSpace($envMaxParallel)) {
@@ -145,15 +150,17 @@ $schedule = @(Get-SuiteSchedule -Entry $selected -History $progress.History)
 # so a very large value throws 'Array dimensions exceeded supported range' and no suite runs at all.
 # The validation above accepts any whole number of at least one, and a worker with no suite to take
 # buys nothing, so cap the count at the number of suites that share the pool.
+#
+# The floor is one, not zero. An all-exclusive selection shares nothing, and those suites still run
+# one after another, so one is the count the run really uses. Zero would misreport the run, and it
+# is not a legal -ThrottleLimit if the pool ever ran.
 $sharedCount = @($schedule | Where-Object { $_.Execution -ne 'exclusive' }).Count
-if ($sharedCount -gt 0 -and $workerCount -gt $sharedCount) {
-    $workerCount = $sharedCount
-}
+$workerCount = [Math]::Min($workerCount, [Math]::Max(1, $sharedCount))
 
 # After the cap, so the number printed is the number the run uses.
 Write-Host "Workers: $workerCount"
 
-$parallelProgress = New-ParallelProgressTracker -Tracker $progress -Schedule $schedule
+$parallelProgress = New-ParallelProgressTracker -Tracker $progress
 
 $results = [System.Collections.Generic.List[object]]::new()
 
@@ -217,14 +224,9 @@ if ($shared.Count -gt 0) {
         # Fresh runspace: opt out again so a non-zero suite exit code is data, not a throw.
         $PSNativeCommandUseErrorActionPreference = $false
 
-        $child = Invoke-SuiteChild -Path $_.Path -Name $_.Name -HostExe $using:hostExe
-
-        [pscustomobject]@{
-            Name     = $child.Name
-            ExitCode = $child.ExitCode
-            Seconds  = $child.Seconds
-            Output   = $child.Output
-        }
+        # Name, ExitCode, Seconds and Output are exactly what Show-SuiteResult reads, so the
+        # child's own object is what this runspace emits.
+        Invoke-SuiteChild -Path $_.Path -Name $_.Name -HostExe $using:hostExe
     } | ForEach-Object { Show-SuiteResult $_ }
 }
 
