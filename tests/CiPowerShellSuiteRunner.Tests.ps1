@@ -1119,7 +1119,10 @@ Invoke-TestCase 'A bad AHKFLOW_SUITE_MAX_PARALLEL fails the run and names the va
             Assert-True ($result.Output -match 'AHKFLOW_SUITE_MAX_PARALLEL') "The message must name the variable. Output: $($result.Output)"
             Assert-True ($result.Output -match [regex]::Escape($bad)) "The message must name the value. Output: $($result.Output)"
             Assert-True (-not (Test-MarkerExists -Root $root -Name '01-pass.Tests.ps1')) "No suite may run for value '$bad'."
-            Remove-Item -LiteralPath (Join-Path (Join-Path $root 'markers') '*') -Force -ErrorAction SilentlyContinue
+            # Clear the markers folder so the next value is checked from a clean state, not against
+            # a marker a regression left behind on an earlier iteration. -LiteralPath with a literal
+            # '*' matched nothing, so the reset never ran.
+            Get-ChildItem -LiteralPath (Join-Path $root 'markers') | Remove-Item -Force
         }
     } finally {
         Remove-SuiteFixture -Root $root
@@ -1393,14 +1396,22 @@ function Save-ProgressTimings {
 
 # Invoke-Driver runs the repository's own runner against a fixture suite folder. This runs the
 # copy inside a fixture repository instead, so the run stores its timings there.
+#
+# The invocation is built as a -Command string, the same way Invoke-Driver builds its own. A
+# "pwsh -File" call cannot carry a multi-value [string[]] argument: "-Suite a b" binds only "a",
+# and "-Suite a,b" binds the single string "a,b". Passing the array inside "-Suite @('a','b')"
+# is the only form that binds every pattern.
 function Invoke-DriverAt {
     param([string] $Repo, [int] $MaxParallel = 0, [string[]] $Suite = @())
 
-    $arguments = @('-NoProfile', '-File', (Join-Path $Repo 'scripts/run-powershell-suites.ps1'))
-    if ($PSBoundParameters.ContainsKey('MaxParallel')) { $arguments += @('-MaxParallel', $MaxParallel) }
-    if ($Suite.Count -gt 0) { $arguments += @('-Suite') + $Suite }
+    $command = "& $(ConvertTo-ScriptLiteral (Join-Path $Repo 'scripts/run-powershell-suites.ps1'))"
+    if ($PSBoundParameters.ContainsKey('MaxParallel')) { $command += " -MaxParallel $MaxParallel" }
+    if ($Suite.Count -gt 0) {
+        $command += ' -Suite @(' + (($Suite | ForEach-Object { ConvertTo-ScriptLiteral $_ }) -join ',') + ')'
+    }
+    $command += '; exit $LASTEXITCODE'
 
-    return Invoke-RunnerProcess -ArgumentList $arguments
+    return Invoke-RunnerProcess -ArgumentList @('-NoProfile', '-Command', $command)
 }
 
 Invoke-TestCase 'The timings file is written once, after the last suite ends' {
