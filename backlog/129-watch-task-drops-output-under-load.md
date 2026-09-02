@@ -5,7 +5,7 @@
 - **Type**: Bug
 - **Interfaces**: none (developer tooling)
 - **Difficulty**: complex
-- **Stage**: 0-intake
+- **Stage**: 2-design
 
 ## Summary
 
