@@ -193,7 +193,8 @@ For the inner development loop, target the runner instead of running everything:
 pwsh .\scripts\run-powershell-suites.ps1 -Suite 'Worktree*'
 ```
 
-A `-Suite` value that matches no suite fails the run, so a typo cannot look green.
+A `-Suite` value that matches no suite fails the run, so a typo cannot look green. A blank value
+fails too, and so does `-Suite` with no value at all. Leave the argument out to run everything.
 
 `CodexSkillsHashParity.Tests.ps1` runs only in its own Linux job. Its manifest entry says so, in
 place of the exclusion list the runner used to carry.

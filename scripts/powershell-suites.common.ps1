@@ -138,7 +138,9 @@ function Select-SuiteEntry {
 
     $inJob = @($Entry | Where-Object { $_.Jobs -contains 'suites' })
 
-    if (-not $Pattern -or $Pattern.Count -eq 0) {
+    # Test for $null, never for truthiness. PowerShell reads a one-element array as its element,
+    # so '-not @('''')' is true, and a blank wildcard would then select the whole job.
+    if ($null -eq $Pattern -or $Pattern.Count -eq 0) {
         if ($inJob.Count -eq 0) {
             throw 'No suite belongs to the suites job. A run with nothing to run must not look green.'
         }
@@ -149,6 +151,12 @@ function Select-SuiteEntry {
     $chosen = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
 
     foreach ($wildcard in $Pattern) {
+        # A caller who hands -Suite an unset variable lands here with a blank value. They asked for
+        # a subset, so a value that names nothing is a mistake, not a request for every suite.
+        if ([string]::IsNullOrWhiteSpace($wildcard)) {
+            throw '-Suite was given a blank value. Leave -Suite out to run every suite in the suites job.'
+        }
+
         $matched = @($inJob | Where-Object { $_.Name -like $wildcard })
         if ($matched.Count -eq 0) {
             # Say which kind of miss it was. A name that exists but sits outside the job is a

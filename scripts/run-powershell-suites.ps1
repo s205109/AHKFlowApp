@@ -24,9 +24,10 @@
 param(
     [string] $SuiteRoot,
 
-    # Wildcards matched against suite file names, for the inner development loop. With none, the
-    # run covers every suite in the 'suites' job, which is what CI and the Gate both want.
-    # A value that matches nothing fails the run: a typo must never look like a green run.
+    # Wildcards matched against suite file names, for the inner development loop. Leave the
+    # argument out and the run covers every suite in the 'suites' job, which is what CI and the
+    # Gate both want. A value that matches nothing fails the run: a typo must never look like a
+    # green run. So does a blank value, and so does the argument with no value at all.
     [string[]] $Suite = @(),
 
     # How many suites may run at once. With no value the run uses the processor count, capped at
@@ -83,6 +84,14 @@ if ($discovered.Count -eq 0) {
 $manifestPath = Join-Path $SuiteRoot 'powershell-suites.json'
 try {
     $entries = @(Read-SuiteManifest -Path $manifestPath -DiscoveredName @($discovered.Name))
+
+    # Leaving -Suite out is the only way to ask for the whole job. A caller who passes the argument
+    # asked for a subset, so an argument that names nothing is a mistake. '-Suite $env:FILTER' with
+    # the variable unset binds $null, and that used to run every suite.
+    if ($PSBoundParameters.ContainsKey('Suite') -and ($null -eq $Suite -or $Suite.Count -eq 0)) {
+        throw '-Suite was given no value to match. Leave -Suite out to run every suite in the suites job.'
+    }
+
     $selected = @(Select-SuiteEntry -Entry $entries -Pattern $Suite)
 } catch {
     # Stop before any child starts. A manifest or selection we cannot trust means the coverage this

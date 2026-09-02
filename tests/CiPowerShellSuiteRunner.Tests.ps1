@@ -231,9 +231,14 @@ function Get-PeakOverlap {
 # powershell-suites job summary — including the deliberate failures. Point the child at a scratch
 # file instead. Redirecting rather than clearing keeps the driver's summary-writing branch covered.
 function Invoke-Driver {
-    param([string] $SuiteRoot, [string[]] $Suite = @(), [int] $MaxParallel = 0, [hashtable] $EnvVar = @{})
+    param([string] $SuiteRoot, [string[]] $Suite = @(), [string] $RawSuite, [int] $MaxParallel = 0, [hashtable] $EnvVar = @{})
 
-    $suiteLiteral = if ($Suite.Count -eq 0) {
+    # RawSuite hands the driver a literal PowerShell expression, so a case can pass '-Suite $null'.
+    # That is what an unset variable becomes, and ConvertTo-ScriptLiteral would quote it into a
+    # string instead, which tests something else.
+    $suiteLiteral = if ($PSBoundParameters.ContainsKey('RawSuite')) {
+        " -Suite $RawSuite"
+    } elseif ($Suite.Count -eq 0) {
         ''
     } else {
         ' -Suite @(' + (($Suite | ForEach-Object { ConvertTo-ScriptLiteral $_ }) -join ',') + ')'
@@ -746,6 +751,49 @@ Invoke-TestCase 'An unmatched -Suite wildcard fails the run' {
         Assert-True ($result.ExitCode -eq 1) "Expected exit code 1, got $($result.ExitCode). Output: $($result.Output)"
         Assert-True ($result.Output -match 'Nope\*') "The message must name the wildcard. Output: $($result.Output)"
         Assert-True (-not (Test-MarkerExists -Root $root -Name 'Alpha.Tests.ps1')) 'No suite may run when the selection fails.'
+    } finally {
+        Remove-SuiteFixture -Root $root
+    }
+}
+
+Invoke-TestCase 'A blank -Suite wildcard fails the run' {
+    $root = New-SuiteFixture
+    try {
+        Add-FakeSuite -Root $root -Name 'Alpha.Tests.ps1' -Ending 'pass'
+        Add-FakeSuite -Root $root -Name 'Beta.Tests.ps1' -Ending 'pass'
+        Set-FixtureManifest -Root $root
+
+        # PowerShell reads a one-element array as its element, so an empty string used to look like
+        # "no selection argument" and quietly ran every suite. A caller who wants everything leaves
+        # -Suite out.
+        $result = Invoke-Driver -SuiteRoot $root -Suite @('')
+        Assert-True ($result.ExitCode -eq 1) "Expected exit code 1, got $($result.ExitCode). Output: $($result.Output)"
+        Assert-True ($result.Output -match 'blank') "The message must say the value is blank. Output: $($result.Output)"
+        foreach ($name in @('Alpha.Tests.ps1', 'Beta.Tests.ps1')) {
+            Assert-True (-not (Test-MarkerExists -Root $root -Name $name)) "No suite may run when the selection fails. $name ran."
+        }
+    } finally {
+        Remove-SuiteFixture -Root $root
+    }
+}
+
+Invoke-TestCase 'A -Suite argument that carries no value fails the run' {
+    $root = New-SuiteFixture
+    try {
+        Add-FakeSuite -Root $root -Name 'Alpha.Tests.ps1' -Ending 'pass'
+        Add-FakeSuite -Root $root -Name 'Beta.Tests.ps1' -Ending 'pass'
+        Set-FixtureManifest -Root $root
+
+        # '-Suite $env:FILTER' with the variable unset binds $null, and '-Suite @()' binds an empty
+        # array. Both ask for a subset and name none, so both must fail instead of running the lot.
+        foreach ($literal in @('$null', '@()')) {
+            $result = Invoke-Driver -SuiteRoot $root -RawSuite $literal
+            Assert-True ($result.ExitCode -eq 1) "Expected exit code 1 for -Suite $literal, got $($result.ExitCode). Output: $($result.Output)"
+            Assert-True ($result.Output -match 'no value to match') "The message must say the argument named nothing. Output: $($result.Output)"
+            foreach ($name in @('Alpha.Tests.ps1', 'Beta.Tests.ps1')) {
+                Assert-True (-not (Test-MarkerExists -Root $root -Name $name)) "No suite may run when -Suite $literal fails. $name ran."
+            }
+        }
     } finally {
         Remove-SuiteFixture -Root $root
     }
