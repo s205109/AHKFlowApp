@@ -217,12 +217,33 @@ try {
     }
 
     if ($Mode -eq 'PowerShell') {
-        $suiteArguments = @{}
-        if (-not [string]::IsNullOrWhiteSpace($SuiteRoot)) {
-            $suiteArguments['SuiteRoot'] = $SuiteRoot
+        # The runner needs PowerShell 7, because it runs the suites through ForEach-Object
+        # -Parallel. This wrapper still supports Windows PowerShell 5.1, and a '#Requires' in a
+        # script called in-process is enforced against the running host. So the runner always goes
+        # into a pwsh child process: calling it here would fail on 5.1 before a suite started.
+        $runnerHost = if ($PSVersionTable.PSVersion.Major -ge 7) {
+            [System.Diagnostics.Process]::GetCurrentProcess().Path
+        }
+        else {
+            $found = @(Get-Command -Name 'pwsh' -CommandType Application -ErrorAction SilentlyContinue)
+            if ($found.Count -eq 0) {
+                throw 'PowerShell mode needs pwsh (PowerShell 7). Install it, or start this script with pwsh.'
+            }
+            $found[0].Source
         }
 
-        & (Join-Path $PSScriptRoot 'run-powershell-suites.ps1') @suiteArguments
+        $suiteArguments = @('-NoProfile', '-File', (Join-Path $PSScriptRoot 'run-powershell-suites.ps1'))
+        if (-not [string]::IsNullOrWhiteSpace($SuiteRoot)) {
+            $suiteArguments += @('-SuiteRoot', $SuiteRoot)
+        }
+
+        # PowerShell 7.4 turns a non-zero exit code from a native command into a terminating error
+        # while $ErrorActionPreference is 'Stop'. The runner exits 1 for a failing suite, and that
+        # is data the check below reports. The variable does not exist in 5.1, where setting it is
+        # harmless. Windows PowerShell has no equivalent behaviour to opt out of.
+        $PSNativeCommandUseErrorActionPreference = $false
+
+        & $runnerHost @suiteArguments
         if ($LASTEXITCODE -ne 0) {
             throw 'PowerShell suites failed.'
         }

@@ -66,7 +66,8 @@ function Invoke-TestGit {
 }
 
 # Fresh main-checkout repo under a throwaway root. Worktrees are created as siblings
-# of the repo, matching the harness used by WorktreeMergedCleanup.Tests.ps1.
+# of the repo, matching the harness in WorktreeMergedCleanup.Common.ps1, which the three
+# merged-cleanup suites share.
 function New-TempGitRepo {
     $root = Join-Path ([System.IO.Path]::GetTempPath()) ('wtremove-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
     $repo = Join-Path $root 'repo'
@@ -612,8 +613,9 @@ try {
 # over the exact file watcher A held open for dot-sourcing, the copy failed, and B ran on its
 # inline fallbacks. Holding the old destination open is what that collision looks like.
 #
-# scripts/run-powershell-suites.ps1 runs suites one after another, so this lock on a file in the
-# shared %TEMP% cannot collide with another suite.
+# This lock is on a file in the shared %TEMP%, and it collides with nothing. Backlog 118 moved the
+# hook onto a per-run directory, so nothing else writes these two shared names any more. The runner
+# now runs suites at the same time, so suite order is not what makes this safe.
 #
 # Both helper destinations are locked, not just one. With only the log helper locked, putting the
 # holder probe's destination back to the shared path still passed: nothing held that name open.

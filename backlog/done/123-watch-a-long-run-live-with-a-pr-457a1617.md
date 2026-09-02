@@ -66,34 +66,34 @@ Two things went wrong on 2026-08-29, and both are fixed by this item:
       (`scripts/watch-task.ps1:1097`, "$searchRoot = if")
 - [x] `scripts/progress.common.ps1` exposes functions to create a tracker over a named list of
       units, start a unit, stop a unit, and save the run's timings.
-      (`scripts/progress.common.ps1:153`, "function New-ProgressTracker");
-      (`scripts/progress.common.ps1:251`, "function Start-ProgressUnit");
-      (`scripts/progress.common.ps1:264`, "function Stop-ProgressUnit");
-      (`scripts/progress.common.ps1:278`, "function Save-ProgressTimings")
+      (`scripts/progress.common.ps1:155`, "function New-ProgressTracker");
+      (`scripts/progress.common.ps1:253`, "function Start-ProgressUnit");
+      (`scripts/progress.common.ps1:266`, "function Stop-ProgressUnit");
+      (`scripts/progress.common.ps1:280`, "function Save-ProgressTimings")
 - [x] Before each unit, the tracker prints one line carrying the unit's position, the unit's
       name, the elapsed time, and the estimated time left.
-      (`scripts/progress.common.ps1:261`, "Write-Host (Get-ProgressLine");
-      (`scripts/progress.common.ps1:248`, "elapsed $elapsed")
+      (`scripts/progress.common.ps1:263`, "Write-Host (Get-ProgressLine");
+      (`scripts/progress.common.ps1:250`, "elapsed $elapsed")
 - [x] The estimate comes from the previous run's per-unit seconds, read from
       `TestResults/progress/<runner key>.json`.
-      (`scripts/progress.common.ps1:99`, "TestResults\progress")
+      (`scripts/progress.common.ps1:101`, "TestResults\progress")
 - [x] A unit with no remembered time is left out of the estimate and counted in a note on the
       same line. When no unit has a remembered time, the line says the remaining time is
       unknown instead of printing a number.
-      (`scripts/progress.common.ps1:213`, "$Tracker.History.Contains");
-      (`scripts/progress.common.ps1:225`, "unknown$noHistoryNote")
+      (`scripts/progress.common.ps1:215`, "$Tracker.History.Contains");
+      (`scripts/progress.common.ps1:227`, "unknown$noHistoryNote")
 - [x] A unit records its seconds only when it finishes, so an interrupted run adds nothing.
-      (`scripts/progress.common.ps1:273`, "$Tracker.Completed")
+      (`scripts/progress.common.ps1:275`, "$Tracker.Completed")
 - [x] The timings file is written once, at the end of the run, through a temporary file that then
       replaces the destination in one step.
-      (`scripts/progress.common.ps1:315`, "[System.IO.File]::Replace($temp");
-      (`scripts/progress.common.ps1:318`, "[System.IO.File]::Move($temp")
+      (`scripts/progress.common.ps1:354`, "[System.IO.File]::Replace($temp");
+      (`scripts/progress.common.ps1:357`, "[System.IO.File]::Move($temp")
 - [x] `scripts/run-powershell-suites.ps1` prints a progress line per suite through that module.
-      (`scripts/run-powershell-suites.ps1:97`, "Start-ProgressUnit -Tracker $progress")
+      (`scripts/run-powershell-suites.ps1:176`, "    Write-Host (Get-ParallelProgressLine -Tracker $parallelProgress -Name $Result.Name -Seconds $Result.Seconds)")
 - [x] `scripts/test-fast.ps1` prints a progress line per test project through that module, and
       Fast mode and Integration mode keep separate remembered timings.
-      (`scripts/test-fast.ps1:255`, "Start-ProgressUnit -Tracker $progress");
-      (`scripts/test-fast.ps1:249`, "test-fast.$Mode")
+      (`scripts/test-fast.ps1:276`, "Start-ProgressUnit -Tracker $progress");
+      (`scripts/test-fast.ps1:270`, "test-fast.$Mode")
 - [x] `tests/WatchTask.Tests.ps1` covers the project-folder name mangling for a main checkout
       and for a worktree, running against finished detection, newest-running selection, and the
       case where nothing is running.

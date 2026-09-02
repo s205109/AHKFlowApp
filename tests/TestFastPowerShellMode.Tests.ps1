@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+#Requires -Version 7.0
 <#
 .SYNOPSIS
 Tests for the PowerShell mode of scripts/test-fast.ps1.
@@ -13,6 +13,8 @@ cases exist to catch is a -SuiteRoot passthrough that does not work. When the pa
 the runner falls back to its own default of tests/, finds this very file, and starts it again -
 forever. So Invoke-Wrapper sets AHKFLOW_TESTFAST_MODE_TEST, and the guard at the top of this file
 turns that runaway into one failed suite with a message that names the cause.
+
+This suite declares 7.0 because scripts/run-powershell-suites.ps1, which the mode drives, needs 7.
 #>
 [CmdletBinding()]
 param()
@@ -54,18 +56,22 @@ function Invoke-TestCase {
     }
 }
 
-# The runner rejects an exclusion that names a file it cannot find, and it checks that before it
-# runs anything (scripts/run-powershell-suites.ps1:60-65). Its default exclusion is
-# CodexSkillsHashParity.Tests.ps1. The wrapper exposes no -Exclude, so every fixture must contain a
-# file with that name or the runner exits 1 before a single fake suite starts. The file is excluded,
-# so it never runs.
+# The runner reads a manifest from the folder it is pointed at, so every fixture writes one.
+# Set-FixtureManifest runs after the fake suites are in place, because it lists what it finds.
 function New-SuiteFixture {
     $root = Join-Path ([System.IO.Path]::GetTempPath()) ('ahkflow-testfast-mode-' + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $root -Force | Out-Null
-    Set-Content -LiteralPath (Join-Path $root 'CodexSkillsHashParity.Tests.ps1') `
-        -Value '# Placeholder so the runner default exclusion matches a real file. Never runs.' `
-        -Encoding utf8
     return (Resolve-Path -LiteralPath $root).Path
+}
+
+function Set-FixtureManifest {
+    param([string] $Root)
+
+    $entries = @(Get-ChildItem -LiteralPath $Root -Filter '*.Tests.ps1' -File | Sort-Object Name | ForEach-Object {
+            [ordered]@{ name = $_.Name; jobs = @('suites'); execution = 'parallel'; baselineSeconds = $null }
+        })
+    $payload = [ordered]@{ suites = @($entries) }
+    Set-Content -LiteralPath (Join-Path $Root 'powershell-suites.json') -Value ($payload | ConvertTo-Json -Depth 6) -Encoding utf8
 }
 
 function Remove-SuiteFixture {
@@ -106,7 +112,15 @@ function Add-FakeSuite {
 # runner would otherwise append these fake tables, deliberate failures included, to the real
 # powershell-suites job summary (scripts/run-powershell-suites.ps1:128-131).
 function Invoke-Wrapper {
-    param([string] $SuiteRoot)
+    param(
+        [string] $SuiteRoot,
+
+        # The host that runs the wrapper. Empty means this suite's own host, which is pwsh.
+        # The Windows PowerShell case below passes powershell.exe instead.
+        [string] $HostExe
+    )
+
+    if ([string]::IsNullOrWhiteSpace($HostExe)) { $HostExe = $script:HostExe }
 
     $summaryPath = Join-Path ([System.IO.Path]::GetTempPath()) ('ahkflow-testfast-mode-summary-' + [guid]::NewGuid().ToString('N') + '.md')
     $previousSummary = $env:GITHUB_STEP_SUMMARY
@@ -115,7 +129,7 @@ function Invoke-Wrapper {
     $env:AHKFLOW_TESTFAST_MODE_TEST = '1'
 
     try {
-        $output = & $script:HostExe -NoProfile -File $script:WrapperPath `
+        $output = & $HostExe -NoProfile -File $script:WrapperPath `
             -Mode PowerShell -SuiteRoot $SuiteRoot 2>&1 | Out-String
         $exitCode = $LASTEXITCODE
     }
@@ -139,6 +153,7 @@ Invoke-TestCase 'All suites pass -> exit code 0' {
     try {
         Add-FakeSuite -Root $root -Name '01-pass.Tests.ps1' -Ending 'pass'
         Add-FakeSuite -Root $root -Name '02-pass.Tests.ps1' -Ending 'pass'
+        Set-FixtureManifest -Root $root
 
         $result = Invoke-Wrapper -SuiteRoot $root
         Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
@@ -146,8 +161,8 @@ Invoke-TestCase 'All suites pass -> exit code 0' {
 
         # The progress lines only appear when test-fast.ps1 loads the shared module and the
         # runner it calls uses it. Checking them here covers the whole chain, not one link.
-        Assert-True ($result.Output -match '\[1/2\] 01-pass\.Tests\.ps1') "Expected a progress line through the wrapper. Output: $($result.Output)"
-        Assert-True ($result.Output -match '\[2/2\] 02-pass\.Tests\.ps1') "Expected a progress line for the second suite. Output: $($result.Output)"
+        Assert-True ($result.Output -match '\[\d/2 done\] 01-pass\.Tests\.ps1') "Expected a completion line through the wrapper. Output: $($result.Output)"
+        Assert-True ($result.Output -match '\[\d/2 done\] 02-pass\.Tests\.ps1') "Expected a completion line for the second suite. Output: $($result.Output)"
     }
     finally {
         Remove-SuiteFixture -Root $root
@@ -159,6 +174,7 @@ Invoke-TestCase 'A suite that exits 1 fails the run' {
     try {
         Add-FakeSuite -Root $root -Name '01-pass.Tests.ps1' -Ending 'pass'
         Add-FakeSuite -Root $root -Name '02-exit-one.Tests.ps1' -Ending 'exit-one'
+        Set-FixtureManifest -Root $root
 
         $result = Invoke-Wrapper -SuiteRoot $root
         Assert-True ($result.ExitCode -ne 0) "Expected a non-zero exit code. Output: $($result.Output)"
@@ -174,6 +190,7 @@ Invoke-TestCase 'A suite that throws fails the run' {
     try {
         Add-FakeSuite -Root $root -Name '01-pass.Tests.ps1' -Ending 'pass'
         Add-FakeSuite -Root $root -Name '02-throw.Tests.ps1' -Ending 'throw'
+        Set-FixtureManifest -Root $root
 
         $result = Invoke-Wrapper -SuiteRoot $root
         Assert-True ($result.ExitCode -ne 0) "Expected a non-zero exit code. Output: $($result.Output)"
@@ -182,6 +199,44 @@ Invoke-TestCase 'A suite that throws fails the run' {
     finally {
         Remove-SuiteFixture -Root $root
     }
+}
+
+# scripts/test-fast.ps1 declares '#Requires -Version 5.1', so Windows PowerShell must be able to
+# run every mode it offers. PowerShell mode is the one that can break: the runner it drives,
+# scripts/run-powershell-suites.ps1, declares 7.0 because it uses ForEach-Object -Parallel. A
+# '#Requires' in a script called in-process is enforced against the running host, so calling the
+# runner from this process fails on 5.1 with ScriptRequiresUnmatchedPSVersion before a single suite
+# starts. The wrapper must launch the runner as a pwsh child instead, and this case proves it does.
+function Get-WindowsPowerShellPath {
+    if (-not $IsWindows) { return $null }
+
+    $path = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    if (Test-Path -LiteralPath $path -PathType Leaf) { return $path }
+    return $null
+}
+
+$script:WindowsPowerShell = Get-WindowsPowerShellPath
+if ($script:WindowsPowerShell) {
+    Invoke-TestCase 'Windows PowerShell 5.1 can run the PowerShell mode' {
+        $root = New-SuiteFixture
+        try {
+            Add-FakeSuite -Root $root -Name '01-pass.Tests.ps1' -Ending 'pass'
+            Add-FakeSuite -Root $root -Name '02-pass.Tests.ps1' -Ending 'pass'
+            Set-FixtureManifest -Root $root
+
+            $result = Invoke-Wrapper -SuiteRoot $root -HostExe $script:WindowsPowerShell
+            Assert-True ($result.Output -notmatch 'ScriptRequiresUnmatchedPSVersion') `
+                "The wrapper must not run the 7.0 runner in a 5.1 process. Output: $($result.Output)"
+            Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
+            Assert-True ($result.Output -match 'All 2 suite\(s\) passed\.') "Expected the all-passed summary line. Output: $($result.Output)"
+        }
+        finally {
+            Remove-SuiteFixture -Root $root
+        }
+    }
+}
+else {
+    Write-Host '  SKIP  Windows PowerShell 5.1 case: powershell.exe is not on this machine.' -ForegroundColor Yellow
 }
 
 Write-Host ''

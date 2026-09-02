@@ -13,10 +13,12 @@
 #   New-ProgressTracker   create a tracker over a named list of units
 #   Start-ProgressUnit    start a unit and print its line
 #   Stop-ProgressUnit     stop the current unit and record its seconds
-#   Save-ProgressTimings  write the run's timings, once, through a temporary file
+#   Save-ProgressTimings  merge the run's timings into the store, once, through a temporary file
 #
-# This file targets 5.1 because run-powershell-suites.ps1 and test-fast.ps1 both dot-source it
-# and both declare '#Requires -Version 5.1'. A '#Requires' inside a dot-sourced file is enforced.
+# This file targets 5.1 because test-fast.ps1 dot-sources it and declares '#Requires -Version 5.1'.
+# A '#Requires' inside a dot-sourced file is enforced, so a 7.0 line here would break that wrapper.
+# run-powershell-suites.ps1 also dot-sources it, and that script declares 7.0; a lower requirement
+# in a dot-sourced file never blocks a higher host.
 #
 # It does not call Set-StrictMode. That call leaks from a dot-sourced file into the caller's
 # scope, and test-fast.ps1 does not run under strict mode. The two test suites for this module
@@ -276,7 +278,14 @@ function Stop-ProgressUnit {
 }
 
 function Save-ProgressTimings {
-    param([Parameter(Mandatory)][object] $Tracker)
+    param(
+        [Parameter(Mandatory)][object] $Tracker,
+
+        # Every unit that still exists. A stored entry this list does not name is dropped, because
+        # its unit is gone. Leave it out and nothing is dropped, which is what a runner that always
+        # covers its whole list wants.
+        [string[]] $KnownUnit = @()
+    )
 
     # A tracker made with -NoStore has no file to write.
     if (-not $Tracker.HistoryPath) {
@@ -287,9 +296,39 @@ function Save-ProgressTimings {
         return
     }
 
-    $payload = [ordered]@{}
+    # Merge, never replace. A run can cover part of the list: run-powershell-suites.ps1 -Suite runs
+    # one suite. Replacing would delete the history of every suite that run did not select, and the
+    # next full run would then have nothing to schedule with.
+    $merged = @{}
+
+    $keep = $null
+    if ($KnownUnit.Count -gt 0) {
+        $keep = [System.Collections.Generic.HashSet[string]]::new(
+            [string[]] $KnownUnit, [System.StringComparer]::OrdinalIgnoreCase)
+    }
+
+    # $Tracker.History is the store as it was read at tracker creation, already filtered to usable
+    # values by Read-ProgressHistory. Reading the file again here would add a failure path and
+    # gain nothing.
+    #
+    # Two runners started at the same time still lose one of the two updates: each merges into the
+    # history it read at start, and the last writer wins. That is the property the existing save
+    # already has and already accepts, and this file holds duration estimates for a progress line,
+    # not results. A lock here would buy nothing and would add a failure path to a cache.
+    foreach ($key in $Tracker.History.Keys) {
+        if ($keep -and -not $keep.Contains($key)) { continue }
+        $merged[$key] = $Tracker.History[$key]
+    }
+
     foreach ($entry in $Tracker.Completed.GetEnumerator()) {
-        $payload[$entry.Key] = $entry.Value
+        $merged[$entry.Key] = $entry.Value
+    }
+
+    # Sorted, so two runs that measured the same suites write the same file. A parallel run
+    # finishes its suites in a different order every time.
+    $payload = [ordered]@{}
+    foreach ($key in ($merged.Keys | Sort-Object)) {
+        $payload[$key] = $merged[$key]
     }
 
     $json = ([pscustomobject] $payload) | ConvertTo-Json -Depth 4

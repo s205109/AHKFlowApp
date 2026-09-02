@@ -225,6 +225,11 @@ _Avoid_: guard, gate, validator, linter
 The five steps that must all pass before a pull request is marked ready: build, format, PowerShell suites, coverage, and `git diff --check`.
 _Avoid_: check, guard, pipeline, CI
 
+**Suite**:
+One `tests/*.Tests.ps1` file. The runner starts each Suite as its own process and runs several at
+once, so one Suite's failure cannot stop another. `tests/powershell-suites.json` lists every Suite.
+_Avoid_: test file, test script, spec, run
+
 **Merge proof**:
 The evidence that a branch's own work reached the base, which is what lets a worktree be removed. Local git proves it when the branch SHA is a non-first parent of a merge commit on the base. A rebase merge leaves no such commit, so the proof then comes from a merged pull request whose head SHA the branch really pointed at.
 _Avoid_: merged check, merge test, ancestry

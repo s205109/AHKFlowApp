@@ -45,7 +45,7 @@ So the sweep does not list a rebase-merged worktree and hand it to a removal scr
 refuses. Both keep it. The sweep's merge proof needs the branch SHA to be a non-first parent of a
 merge commit on main (`scripts/worktree-git.common.ps1:556`, "    $parentLines = & git -C $RepoRoot rev-list --min-parents=2 --format='%P' $MainRef 2>$null"),
 and a rebase merge writes no merge commit. The sweep's existing rebase case is a **local** rebase
-followed by a merge-commit merge (`tests/WorktreeMergedCleanup.Tests.ps1:478`, "Assert-True (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-rebased') 'A branch rebased before it merged must report merged own work.'").
+followed by a merge-commit merge (`tests/WorktreeMergedCleanup.Tests.ps1:254`, "Assert-True (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-rebased') 'A branch rebased before it merged must report merged own work.'").
 
 The two rules also disagree in the destructive direction. A brand-new branch points at a commit
 the base already has, so ancestry is true and the removal hook deletes a worktree nobody has

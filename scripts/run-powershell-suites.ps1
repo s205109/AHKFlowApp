@@ -1,10 +1,14 @@
-#Requires -Version 5.1
+#Requires -Version 7.0
 <#
 .SYNOPSIS
   Runs every PowerShell test suite in tests/ and fails when any of them fails.
 .DESCRIPTION
   Run it locally before a push, and read the table it prints. CI runs the same script in the
   powershell-suites job in .github/workflows/ci.yml.
+
+  This script needs PowerShell 7. Start it with pwsh, which is what every documented command
+  already does. tests/powershell-suites.json is the one record of which suites exist and which
+  CI jobs run each of them; this script reads and checks it before it starts any child process.
 
   Each suite runs as its own process. That is the whole point of this script. The suites end in
   two different ways: some call 'exit 1' on failure and 'exit 0' on success, others throw on
@@ -20,11 +24,24 @@
 param(
     [string] $SuiteRoot,
 
-    # Suites that have their own CI job. CodexSkillsHashParity runs on Linux in the
-    # codex-skills-hash-parity job, because the bash setup script it compares against
-    # refuses to run under Windows Git Bash. Every name here must match a real file;
-    # the script fails when one does not.
-    [string[]] $Exclude = @('CodexSkillsHashParity.Tests.ps1')
+    # Wildcards matched against suite file names, for the inner development loop. Leave the
+    # argument out and the run covers every suite in the 'suites' job, which is what CI and the
+    # Gate both want. A value that matches nothing fails the run: a typo must never look like a
+    # green run. So does a blank value, and so does the argument with no value at all.
+    [string[]] $Suite = @(),
+
+    # How many suites may run at once. With no value the run uses the processor count, capped at
+    # eight, and AHKFLOW_SUITE_MAX_PARALLEL overrides that default. An explicit value wins over the
+    # variable. These suites wait on git child processes more than on the processor, so more workers
+    # than processors may still be faster; nobody has measured that, and the variable makes the
+    # measurement cheap.
+    #
+    # Whatever the value, the run never starts more workers than it has suites to share out.
+    #
+    # Bound as text on purpose. An [int] parameter would round '1.5' to 2 and '2.5' to 2 while
+    # binding, so a typo would run a number nobody asked for and the "whole number" promise below
+    # could never be checked. The environment-variable path parses its text the same way.
+    [string] $MaxParallel = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -38,6 +55,8 @@ $PSNativeCommandUseErrorActionPreference = $false
 $repoRoot = Split-Path -Parent $PSScriptRoot
 
 . "$PSScriptRoot\progress.common.ps1"
+. "$PSScriptRoot\powershell-suites.common.ps1"
+. "$PSScriptRoot\progress.parallel.ps1"
 
 if ([string]::IsNullOrWhiteSpace($SuiteRoot)) {
     $SuiteRoot = Join-Path $repoRoot 'tests'
@@ -60,26 +79,60 @@ $keepTimings = Test-ProgressTimingsWanted -SuiteRoot $SuiteRoot -DefaultSuiteRoo
 
 $discovered = @(Get-ChildItem -LiteralPath $SuiteRoot -Filter '*.Tests.ps1' -File | Sort-Object Name)
 
-# An exclusion that names a file which no longer exists is a rename nobody finished. Fail on it,
-# or the excluded suite silently stops running everywhere.
-$discoveredNames = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
-foreach ($file in $discovered) { [void]$discoveredNames.Add($file.Name) }
-
-$staleExclusions = @($Exclude | Where-Object { -not $discoveredNames.Contains($_) })
-if ($staleExclusions.Count -gt 0) {
-    Write-Failure "These excluded suites do not exist in ${SuiteRoot}: $($staleExclusions -join ', ')"
-    Write-Host 'Update the -Exclude default in this script, or restore the file.'
-    exit 1
-}
-
-$excluded = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
-foreach ($name in $Exclude) { [void]$excluded.Add($name) }
-
-$suites = @($discovered | Where-Object { -not $excluded.Contains($_.Name) })
-if ($suites.Count -eq 0) {
+# A folder the glob finds nothing in cannot have a manifest worth reading, and the message a
+# reader needs there names the folder, not the manifest.
+if ($discovered.Count -eq 0) {
     Write-Failure "No test suites found in $SuiteRoot"
     Write-Host 'A run with nothing to run must not look green.'
     exit 1
+}
+
+$manifestPath = Join-Path $SuiteRoot 'powershell-suites.json'
+try {
+    $entries = @(Read-SuiteManifest -Path $manifestPath -DiscoveredName @($discovered.Name))
+
+    # Leaving -Suite out is the only way to ask for the whole job. A caller who passes the argument
+    # asked for a subset, so an argument that names nothing is a mistake. '-Suite $env:FILTER' with
+    # the variable unset binds $null, and that used to run every suite.
+    if ($PSBoundParameters.ContainsKey('Suite') -and ($null -eq $Suite -or $Suite.Count -eq 0)) {
+        throw '-Suite was given no value to match. Leave -Suite out to run every suite in the suites job.'
+    }
+
+    $selected = @(Select-SuiteEntry -Entry $entries -Pattern $Suite)
+} catch {
+    # Stop before any child starts. A manifest or selection we cannot trust means the coverage this
+    # run reports would be a guess.
+    Write-Failure $_.Exception.Message
+    exit 1
+}
+
+$byName = @{}
+foreach ($file in $discovered) { $byName[$file.Name] = $file }
+$suites = @($selected | ForEach-Object { $byName[$_.Name] })
+
+$workerCount = [Math]::Min([Environment]::ProcessorCount, 8)
+
+# The explicit parameter is settled first, and the variable is then never read. "An explicit value
+# wins over the variable" has to mean this: validating the variable first would fail the run on a
+# value the caller has already overridden.
+if ($PSBoundParameters.ContainsKey('MaxParallel')) {
+    $parsedMaxParallel = 0
+    if (-not [int]::TryParse($MaxParallel.Trim(), [ref] $parsedMaxParallel) -or $parsedMaxParallel -lt 1) {
+        Write-Failure "-MaxParallel must be a whole number of at least one. Got: '$MaxParallel'"
+        exit 1
+    }
+    $workerCount = $parsedMaxParallel
+} else {
+    $envMaxParallel = $env:AHKFLOW_SUITE_MAX_PARALLEL
+    if (-not [string]::IsNullOrWhiteSpace($envMaxParallel)) {
+        $parsedMaxParallel = 0
+        if (-not [int]::TryParse($envMaxParallel.Trim(), [ref] $parsedMaxParallel) -or $parsedMaxParallel -lt 1) {
+            # Falling back to the default here would hide a misconfigured CI job for months.
+            Write-Failure "AHKFLOW_SUITE_MAX_PARALLEL must be a whole number of at least one. Got: '$envMaxParallel'"
+            exit 1
+        }
+        $workerCount = $parsedMaxParallel
+    }
 }
 
 # The suites are written for the host that runs this script, so run them under the same one.
@@ -91,31 +144,95 @@ Write-Host "Host: $hostExe"
 
 $progress = New-ProgressTracker -RunnerKey 'run-powershell-suites' -Unit @($suites.Name) -RepoRoot $repoRoot -NoStore:(-not $keepTimings)
 
-$results = [System.Collections.Generic.List[object]]::new()
-foreach ($suite in $suites) {
-    if ($inActions) { Write-Host "::group::$($suite.Name)" }
-    Start-ProgressUnit -Tracker $progress -Name $suite.Name
+$schedule = @(Get-SuiteSchedule -Entry $selected -History $progress.History)
 
-    $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-    & $hostExe -NoProfile -File $suite.FullName
-    $exitCode = $LASTEXITCODE
-    $stopwatch.Stop()
-    Stop-ProgressUnit -Tracker $progress
+# ForEach-Object -ThrottleLimit sizes its runspace pool from this number before it starts anything,
+# so a very large value throws 'Array dimensions exceeded supported range' and no suite runs at all.
+# The validation above accepts any whole number of at least one, and a worker with no suite to take
+# buys nothing, so cap the count at the number of suites that share the pool.
+#
+# The floor is one, not zero. An all-exclusive selection shares nothing, and those suites still run
+# one after another, so one is the count the run really uses. Zero would misreport the run, and it
+# is not a legal -ThrottleLimit if the pool ever ran.
+$sharedCount = @($schedule | Where-Object { $_.Execution -ne 'exclusive' }).Count
+$workerCount = [Math]::Min($workerCount, [Math]::Max(1, $sharedCount))
+
+# After the cap, so the number printed is the number the run uses.
+Write-Host "Workers: $workerCount"
+
+$parallelProgress = New-ParallelProgressTracker -Tracker $progress
+
+$results = [System.Collections.Generic.List[object]]::new()
+
+# Invoke-SuiteChild comes from powershell-suites.common.ps1, which this script already dot-sources.
+# Prints one suite's whole block, in this runspace. Buffering the child's output and printing it
+# here is what stops two suites writing over each other.
+function Show-SuiteResult {
+    param([object] $Result)
+
+    if ($inActions) { Write-Host "::group::$($Result.Name)" }
+
+    Complete-ParallelProgressUnit -Tracker $parallelProgress -Name $Result.Name -Seconds $Result.Seconds
+    Write-Host (Get-ParallelProgressLine -Tracker $parallelProgress -Name $Result.Name -Seconds $Result.Seconds)
+
+    if (-not [string]::IsNullOrWhiteSpace($Result.Output)) {
+        Write-Host $Result.Output.TrimEnd()
+    }
 
     if ($inActions) { Write-Host '::endgroup::' }
 
-    $results.Add([pscustomobject]@{
-            Name     = $suite.Name
-            ExitCode = $exitCode
-            Seconds  = [math]::Round($stopwatch.Elapsed.TotalSeconds, 1)
-        })
-
-    if ($exitCode -ne 0) {
-        Write-Failure "FAILED: $($suite.Name) (exit code $exitCode)"
+    if ($Result.ExitCode -ne 0) {
+        Write-Failure "FAILED: $($Result.Name) (exit code $($Result.ExitCode))"
     }
+
+    $results.Add([pscustomobject]@{
+            Name     = $Result.Name
+            ExitCode = $Result.ExitCode
+            Seconds  = [math]::Round($Result.Seconds, 1)
+        })
 }
 
-Save-ProgressTimings -Tracker $progress
+$byPath = @{}
+foreach ($file in $suites) { $byPath[$file.Name] = $file.FullName }
+
+# Exclusive suites first, one at a time. Nothing else may run while one of them does, so putting
+# them first leaves the pool's longest-first order intact afterwards.
+foreach ($item in ($schedule | Where-Object { $_.Execution -eq 'exclusive' })) {
+    Show-SuiteResult (Invoke-SuiteChild -Path $byPath[$item.Name] -Name $item.Name -HostExe $hostExe)
+}
+
+$shared = @($schedule | Where-Object { $_.Execution -ne 'exclusive' } |
+        ForEach-Object { [pscustomobject]@{ Name = $_.Name; Path = $byPath[$_.Name] } })
+
+$commonModule = Join-Path $PSScriptRoot 'powershell-suites.common.ps1'
+
+if ($shared.Count -gt 0) {
+    # Longest first. Starting the slowest suite last would leave it running alone at the end, which
+    # is exactly the shape that makes a parallel run no faster than a sequential one.
+    #
+    # Results reach this pipeline as each child exits, so the parent-side ForEach-Object below
+    # prints one whole block at a time.
+    $shared | ForEach-Object -ThrottleLimit $workerCount -Parallel {
+        # Load the module inside this runspace, so Invoke-SuiteChild is defined here. Do not pass
+        # the parent's scriptblock instead: Microsoft documents that "Scriptblock invocation always
+        # attempts to run in its home runspace, regardless of where it's actually invoked", so a
+        # scriptblock made in the parent would run back in the parent - serialising the whole run,
+        # which is the one failure this task exists to prevent. See
+        # https://learn.microsoft.com/powershell/module/microsoft.powershell.core/foreach-object?view=powershell-7.6
+        . $using:commonModule
+
+        # Fresh runspace: opt out again so a non-zero suite exit code is data, not a throw.
+        $PSNativeCommandUseErrorActionPreference = $false
+
+        # Name, ExitCode, Seconds and Output are exactly what Show-SuiteResult reads, so the
+        # child's own object is what this runspace emits.
+        Invoke-SuiteChild -Path $_.Path -Name $_.Name -HostExe $using:hostExe
+    } | ForEach-Object { Show-SuiteResult $_ }
+}
+
+# Once, after every suite has settled. A save per suite would break the case that reads this
+# file's last-write time while a child runs. -KnownUnit drops a suite that no longer exists.
+Save-ProgressTimings -Tracker $progress -KnownUnit @($discovered.Name)
 
 $failed = @($results | Where-Object { $_.ExitCode -ne 0 })
 
@@ -124,7 +241,9 @@ $lines.Add('### PowerShell suites')
 $lines.Add('')
 $lines.Add('| Suite | Result | Exit code | Duration |')
 $lines.Add('|---|---|---|---|')
-foreach ($result in $results) {
+# By name, not by finish order. A parallel run finishes in a different order every time, and a
+# table nobody can scan is no use in a CI log.
+foreach ($result in ($results | Sort-Object Name)) {
     $verdict = if ($result.ExitCode -eq 0) { 'passed' } else { 'failed' }
     $lines.Add("| $($result.Name) | $verdict | $($result.ExitCode) | $($result.Seconds)s |")
 }

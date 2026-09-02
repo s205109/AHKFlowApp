@@ -170,15 +170,42 @@ Assert on something a user would see — rendered text, a grid cell, a snackbar 
 pwsh .\scripts\test-fast.ps1 -Mode PowerShell
 ```
 
-This mode runs every non-excluded `tests/*.Tests.ps1` suite through
-`scripts/run-powershell-suites.ps1`. Use it when you change a git hook, a worktree script, the
-backlog numbering rules, or the skill layout.
+This mode runs every suite in the `suites` job through `scripts/run-powershell-suites.ps1`. Use it
+when you change a git hook, a worktree script, the backlog numbering rules, or the skill layout.
 
-Each suite runs as its own process, so one failing suite does not stop the rest. The run prints a
-table naming every suite, its result, and how long it took. The whole run takes about three minutes.
+`tests/powershell-suites.json` lists every suite. Each entry names the CI jobs that run the suite,
+whether the suite may share the machine with another, and how long it took when somebody last
+measured it. The runner fails before it starts anything when that file and the `tests/` folder
+disagree.
 
-`CodexSkillsHashParity.Tests.ps1` is skipped. CI runs it in its own Linux job, because the bash
-script it compares against refuses to run under Windows Git Bash.
+Each suite runs as its own process, and several run at once, so one failing suite does not stop the
+rest. Each suite's output prints as one block after that suite ends, so two suites never write over
+each other. The run prints a table naming every suite, its result, and how long it took. The whole
+run takes about three minutes, where running the same suites one after another takes about ten.
+
+`-MaxParallel` sets how many suites run at once. With no value the run uses the processor count,
+capped at eight. `AHKFLOW_SUITE_MAX_PARALLEL` overrides that default, and an explicit `-MaxParallel`
+overrides the variable. Both take a whole number of at least one; anything else fails the run
+rather than being rounded. The run never starts more workers than it has suites to share out, so a
+number far above the suite count is capped rather than refused. A selection where every suite runs
+alone shares nothing, and the run reports one worker. The line the run prints reports the count it
+used.
+
+`scripts/run-powershell-suites.ps1` needs PowerShell 7, so start it with `pwsh`. `test-fast.ps1`
+still runs under Windows PowerShell 5.1: in `-Mode PowerShell` it starts the runner as its own
+`pwsh` child process, and it fails with a clear message when `pwsh` is not installed.
+
+For the inner development loop, target the runner instead of running everything:
+
+```powershell
+pwsh .\scripts\run-powershell-suites.ps1 -Suite 'Worktree*'
+```
+
+A `-Suite` value that matches no suite fails the run, so a typo cannot look green. A blank value
+fails too, and so does `-Suite` with no value at all. Leave the argument out to run everything.
+
+`CodexSkillsHashParity.Tests.ps1` runs only in its own Linux job. Its manifest entry says so, in
+place of the exclusion list the runner used to carry.
 
 CI runs the same script in the `powershell-suites` job, and that job has no docs-only filter, so it
 runs on every PR.
