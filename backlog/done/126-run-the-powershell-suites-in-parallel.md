@@ -176,9 +176,9 @@ in about 80 seconds instead of 618, so that running them stops being a reason to
      The suite stays `parallel`.
 - `Save-ProgressTimings` used to rebuild the store from the units one run completed and then
   replace the file whole. A tracker starts with no completed units
-  (`scripts/progress.common.ps1:178`, "        Completed    = [ordered]@{}"), so a one-suite
+  (`scripts/progress.common.ps1:180`, "        Completed    = [ordered]@{}"), so a one-suite
   `-Suite` run would have deleted every other suite's history. It now merges into the store it
-  read at start (`scripts/progress.common.ps1:327`, "    $payload = [ordered]@{}"). The merging
+  read at start (`scripts/progress.common.ps1:329`, "    $payload = [ordered]@{}"). The merging
   save is the one change this item makes to that 5.1 module, and it stays inside 5.1.
 - Nobody has ever run the runner on Linux, so whether it works there is unknown. An earlier
   draft of this item claimed that two backslash paths stop it from starting. That claim was

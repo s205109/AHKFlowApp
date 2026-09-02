@@ -15,8 +15,10 @@
 #   Stop-ProgressUnit     stop the current unit and record its seconds
 #   Save-ProgressTimings  merge the run's timings into the store, once, through a temporary file
 #
-# This file targets 5.1 because run-powershell-suites.ps1 and test-fast.ps1 both dot-source it
-# and both declare '#Requires -Version 5.1'. A '#Requires' inside a dot-sourced file is enforced.
+# This file targets 5.1 because test-fast.ps1 dot-sources it and declares '#Requires -Version 5.1'.
+# A '#Requires' inside a dot-sourced file is enforced, so a 7.0 line here would break that wrapper.
+# run-powershell-suites.ps1 also dot-sources it, and that script declares 7.0; a lower requirement
+# in a dot-sourced file never blocks a higher host.
 #
 # It does not call Set-StrictMode. That call leaks from a dot-sourced file into the caller's
 # scope, and test-fast.ps1 does not run under strict mode. The two test suites for this module

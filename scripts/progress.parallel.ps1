@@ -26,23 +26,13 @@
 function New-ParallelProgressTracker {
     param(
         [Parameter(Mandatory)][object] $Tracker,
-        [Parameter(Mandatory)][AllowEmptyCollection()][object[]] $Schedule,
-        [Parameter(Mandatory)][int] $MaxParallel
+        [Parameter(Mandatory)][AllowEmptyCollection()][object[]] $Schedule
     )
 
-    # Ordered, so the pending set keeps the schedule's longest-first order. Nothing depends on it
-    # today, but a reader comparing the line to the run's order should see the same sequence.
-    $pending = [ordered]@{}
-    foreach ($item in $Schedule) {
-        $pending[$item.Name] = [double] $item.EffectiveSeconds
-    }
-
     return [pscustomobject]@{
-        Inner       = $Tracker
-        Pending     = $pending
-        Total       = @($Schedule).Count
-        Done        = 0
-        MaxParallel = [Math]::Max(1, $MaxParallel)
+        Inner = $Tracker
+        Total = @($Schedule).Count
+        Done  = 0
     }
 }
 
@@ -56,10 +46,6 @@ function Complete-ParallelProgressUnit {
         [Parameter(Mandatory)][string] $Name,
         [Parameter(Mandatory)][double] $Seconds
     )
-
-    if ($Tracker.Pending.Contains($Name)) {
-        $Tracker.Pending.Remove($Name)
-    }
 
     $Tracker.Done++
 

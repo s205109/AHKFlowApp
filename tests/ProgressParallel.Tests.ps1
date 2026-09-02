@@ -33,16 +33,16 @@ function New-TestSchedule {
 }
 
 function New-TestTracker {
-    param([hashtable] $Seconds, [int] $Worker)
+    param([hashtable] $Seconds)
 
     $schedule = New-TestSchedule -Seconds $Seconds
     $inner = New-ProgressTracker -RunnerKey 'parallel-tests' -Unit @($schedule.Name) -NoStore
-    return New-ParallelProgressTracker -Tracker $inner -Schedule $schedule -MaxParallel $Worker
+    return New-ParallelProgressTracker -Tracker $inner -Schedule $schedule
 }
 
 # --- The line carries the count, the suite, its seconds, and the elapsed time ---
 
-$tracker = New-TestTracker -Seconds @{ 'a.Tests.ps1' = 10; 'b.Tests.ps1' = 10; 'c.Tests.ps1' = 10 } -Worker 2
+$tracker = New-TestTracker -Seconds @{ 'a.Tests.ps1' = 10; 'b.Tests.ps1' = 10; 'c.Tests.ps1' = 10 }
 Complete-ParallelProgressUnit -Tracker $tracker -Name 'a.Tests.ps1' -Seconds 9.6
 $line = Get-ParallelProgressLine -Tracker $tracker -Name 'a.Tests.ps1' -Seconds 9.6
 
@@ -52,15 +52,14 @@ Assert-True ($line -match '9\.6s') "The line must carry the suite's seconds, got
 Assert-True ($line -match 'elapsed \d') "The line must carry the elapsed time, got: $line"
 Assert-True ($line -notmatch 'remaining') "Wave 1 prints no remaining-time estimate, got: $line"
 
-# --- A finished unit leaves the pending set and reaches the inner tracker ---
+# --- A finished unit is counted and reaches the inner tracker ---
 
 Assert-True ($tracker.Done -eq 1) "Done must count the finished suite, got $($tracker.Done)."
-Assert-True (-not $tracker.Pending.Contains('a.Tests.ps1')) 'A finished suite must leave the pending set.'
 Assert-True ($tracker.Inner.Completed['a.Tests.ps1'] -eq 9.6) "The measurement must reach the inner tracker, got $($tracker.Inner.Completed['a.Tests.ps1'])."
 
 # --- The last suite still prints a well-formed line ---
 
-$tracker = New-TestTracker -Seconds @{ 'only.Tests.ps1' = 3 } -Worker 4
+$tracker = New-TestTracker -Seconds @{ 'only.Tests.ps1' = 3 }
 Complete-ParallelProgressUnit -Tracker $tracker -Name 'only.Tests.ps1' -Seconds 3.1
 $line = Get-ParallelProgressLine -Tracker $tracker -Name 'only.Tests.ps1' -Seconds 3.1
 

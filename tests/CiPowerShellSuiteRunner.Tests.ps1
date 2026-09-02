@@ -819,12 +819,26 @@ Invoke-TestCase 'A -Suite wildcard that matches only a suite outside the suites 
 
 Invoke-TestCase 'test-fast PowerShell mode still reaches the full selection' {
     # The wrapper passes no selection argument, so the runner must still choose every suite in the
-    # suites job. This is the whole reason scripts/test-fast.ps1 needs no edit.
+    # suites job. It forwards -SuiteRoot and nothing else.
+    #
+    # It also has to start the runner as its own pwsh process. The wrapper declares
+    # '#Requires -Version 5.1' and the runner declares 7.0, and a '#Requires' in a script called
+    # in-process is enforced against the running host, so a call in this process fails on Windows
+    # PowerShell before a single suite starts.
     $wrapper = Join-Path (Split-Path -Parent $PSScriptRoot) 'scripts/test-fast.ps1'
     $ast = [System.Management.Automation.Language.Parser]::ParseFile($wrapper, [ref] $null, [ref] $null)
     $text = $ast.Extent.Text
     Assert-True ($text -notmatch '-Suite\b') 'test-fast.ps1 must not pass a -Suite argument.'
-    Assert-True ($text -match "run-powershell-suites\.ps1'\) @suiteArguments") 'test-fast.ps1 must still splat only SuiteRoot.'
+
+    $forward = @'
+$suiteArguments += @('-SuiteRoot', $SuiteRoot)
+'@
+    Assert-True ($text -match [regex]::Escape($forward)) 'test-fast.ps1 must forward only -SuiteRoot to the runner.'
+
+    $launch = @'
+& $runnerHost @suiteArguments
+'@
+    Assert-True ($text -match [regex]::Escape($launch)) 'test-fast.ps1 must start the runner as its own process, never call it in this one.'
 }
 
 Invoke-TestCase 'A parallel run and a sequential run reach the same verdict and the same suites' {
@@ -1023,10 +1037,15 @@ Invoke-TestCase 'MaxParallel 1 runs nothing at the same time' {
 Invoke-TestCase 'An exclusive suite never overlaps another suite' {
     $root = New-SuiteFixture
     try {
-        # All three sign in under one tag, and the counts differ. The pair waits for two, so they
-        # are released by each other and their windows must intersect. The exclusive suite waits
-        # for all three, which is the assertion turned into behaviour: it holds its window open
-        # until the other two are alive beside it.
+        # All three sign in under one tag, and all three wait for three sign-ins. The exclusive
+        # suite's wait is the assertion turned into behaviour: it holds its window open until the
+        # other two are alive beside it. The pair's wait is what makes their own overlap certain.
+        #
+        # A count of two for the pair looks like enough and is not. The runner starts the exclusive
+        # suite first, and its sign-in file stays on disk afterwards. The first parallel suite would
+        # then see two files the moment it signs in - its own and that leftover - and release before
+        # its partner had even started. A partner slower than the 300 ms hold would miss the window
+        # and the overlap assertion below would fail, at random, on a correct runner.
         #
         # An earlier draft gave the exclusive suite no barrier and a fixed 300 ms window. A
         # scheduler that wrongly admitted it into the shared pool could then start the pair after
@@ -1034,15 +1053,14 @@ Invoke-TestCase 'An exclusive suite never overlaps another suite' {
         # scheduler is caught: the pair signs in while the exclusive suite is still waiting, all
         # three release together, and the peak reads 3.
         #
-        # A correct scheduler pays one timeout, and only in one of the two orders. If the exclusive
-        # suite runs first it waits the full timeout, because the pair cannot start beside it, then
-        # holds alone; the pair then finds three sign-ins on disk and releases at once. If the pair
-        # runs first they release each other with no wait, and the exclusive suite afterwards finds
-        # three sign-ins already there.
+        # A correct scheduler pays exactly one timeout. It runs every exclusive suite before the
+        # shared pool, so 01-alone starts alone, waits the full timeout because the pair cannot
+        # start beside it, and holds alone. The pair then starts together, and the third sign-in
+        # arrives as soon as the second of them does, so they release each other with no wait.
         $names = @('01-alone.Tests.ps1', '02-other.Tests.ps1', '03-other.Tests.ps1')
         Add-IntervalSuite -Root $root -Name '01-alone.Tests.ps1' -BarrierCount 3 -BarrierTag 'pair'
-        Add-IntervalSuite -Root $root -Name '02-other.Tests.ps1' -BarrierCount 2 -BarrierTag 'pair'
-        Add-IntervalSuite -Root $root -Name '03-other.Tests.ps1' -BarrierCount 2 -BarrierTag 'pair'
+        Add-IntervalSuite -Root $root -Name '02-other.Tests.ps1' -BarrierCount 3 -BarrierTag 'pair'
+        Add-IntervalSuite -Root $root -Name '03-other.Tests.ps1' -BarrierCount 3 -BarrierTag 'pair'
         Set-FixtureManifest -Root $root -Entry @(
             [ordered]@{ name = '01-alone.Tests.ps1'; jobs = @('suites'); execution = 'exclusive'; reason = 'The test needs one suite that may not share.'; baselineSeconds = $null }
             [ordered]@{ name = '02-other.Tests.ps1'; jobs = @('suites'); execution = 'parallel'; baselineSeconds = $null }
@@ -1134,6 +1152,29 @@ Invoke-TestCase 'An explicit -MaxParallel below one fails the run' {
     }
 }
 
+Invoke-TestCase 'A -MaxParallel far above the suite count still runs the suites' {
+    $root = New-SuiteFixture
+    try {
+        # ForEach-Object -ThrottleLimit sizes its runspace pool from the number it is given, so a
+        # large one throws 'Array dimensions exceeded supported range' before any suite starts.
+        # [int]::MaxValue is a value the validation above accepts, which made it a green-looking
+        # argument that killed the run. More workers than suites can never help, so the runner
+        # caps the count at the number of shared suites.
+        Add-FakeSuite -Root $root -Name '01-pass.Tests.ps1' -Ending 'pass'
+        Add-FakeSuite -Root $root -Name '02-pass.Tests.ps1' -Ending 'pass'
+        Set-FixtureManifest -Root $root
+
+        $result = Invoke-Driver -SuiteRoot $root -MaxParallel 2147483647
+        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
+        Assert-True ($result.Output -match 'All 2 suite\(s\) passed\.') "Expected the all-passed summary line. Output: $($result.Output)"
+
+        # The printed count must be the one the run used, not the one the caller asked for.
+        Assert-True ($result.Output -match 'Workers: 2\b') "The run must report the capped worker count. Output: $($result.Output)"
+    } finally {
+        Remove-SuiteFixture -Root $root
+    }
+}
+
 Invoke-TestCase 'A run inside GitHub Actions wraps each suite in one pair of group markers' {
     $root = New-SuiteFixture
     try {
@@ -1183,10 +1224,22 @@ Invoke-TestCase 'A targeted run keeps the stored timings of every suite it did n
         $before = Get-Content -LiteralPath $timings -Raw | ConvertFrom-Json
         Assert-True ($null -ne $before.'01-one.Tests.ps1' -and $null -ne $before.'02-two.Tests.ps1') 'The full run must store both suites.'
 
+        # Sentinels, so the second run has to prove it did something. Checking only that both
+        # properties exist would pass on a targeted run that failed before it started a suite:
+        # the file the first run wrote already holds both names. No fake suite takes anywhere
+        # near this long, so a value that survives was copied and a value that changed was
+        # measured.
+        $seeded = [ordered]@{ '01-one.Tests.ps1' = 4242.4; '02-two.Tests.ps1' = 8484.8 }
+        Set-Content -LiteralPath $timings -Value (([pscustomobject] $seeded) | ConvertTo-Json) -Encoding UTF8
+
         & $script:HostExe -NoProfile -File $driver -Suite '01-one*' 2>&1 | Out-Null
+        Assert-True ($LASTEXITCODE -eq 0) "The targeted run must succeed, got exit code $LASTEXITCODE."
+
         $after = Get-Content -LiteralPath $timings -Raw | ConvertFrom-Json
         Assert-True ($null -ne $after.PSObject.Properties['02-two.Tests.ps1']) 'A targeted run must keep the other suite''s history.'
+        Assert-True ($after.'02-two.Tests.ps1' -eq 8484.8) "The unselected suite's stored seconds must not change, got $($after.'02-two.Tests.ps1')."
         Assert-True ($null -ne $after.PSObject.Properties['01-one.Tests.ps1']) 'A targeted run must store the suite it ran.'
+        Assert-True ($after.'01-one.Tests.ps1' -ne 4242.4) 'The selected suite must be measured again, not copied from the store.'
     } finally {
         Remove-Item -LiteralPath $fakeRepo -Recurse -Force -ErrorAction SilentlyContinue
     }

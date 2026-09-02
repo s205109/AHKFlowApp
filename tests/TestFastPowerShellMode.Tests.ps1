@@ -112,7 +112,15 @@ function Add-FakeSuite {
 # runner would otherwise append these fake tables, deliberate failures included, to the real
 # powershell-suites job summary (scripts/run-powershell-suites.ps1:128-131).
 function Invoke-Wrapper {
-    param([string] $SuiteRoot)
+    param(
+        [string] $SuiteRoot,
+
+        # The host that runs the wrapper. Empty means this suite's own host, which is pwsh.
+        # The Windows PowerShell case below passes powershell.exe instead.
+        [string] $HostExe
+    )
+
+    if ([string]::IsNullOrWhiteSpace($HostExe)) { $HostExe = $script:HostExe }
 
     $summaryPath = Join-Path ([System.IO.Path]::GetTempPath()) ('ahkflow-testfast-mode-summary-' + [guid]::NewGuid().ToString('N') + '.md')
     $previousSummary = $env:GITHUB_STEP_SUMMARY
@@ -121,7 +129,7 @@ function Invoke-Wrapper {
     $env:AHKFLOW_TESTFAST_MODE_TEST = '1'
 
     try {
-        $output = & $script:HostExe -NoProfile -File $script:WrapperPath `
+        $output = & $HostExe -NoProfile -File $script:WrapperPath `
             -Mode PowerShell -SuiteRoot $SuiteRoot 2>&1 | Out-String
         $exitCode = $LASTEXITCODE
     }
@@ -191,6 +199,44 @@ Invoke-TestCase 'A suite that throws fails the run' {
     finally {
         Remove-SuiteFixture -Root $root
     }
+}
+
+# scripts/test-fast.ps1 declares '#Requires -Version 5.1', so Windows PowerShell must be able to
+# run every mode it offers. PowerShell mode is the one that can break: the runner it drives,
+# scripts/run-powershell-suites.ps1, declares 7.0 because it uses ForEach-Object -Parallel. A
+# '#Requires' in a script called in-process is enforced against the running host, so calling the
+# runner from this process fails on 5.1 with ScriptRequiresUnmatchedPSVersion before a single suite
+# starts. The wrapper must launch the runner as a pwsh child instead, and this case proves it does.
+function Get-WindowsPowerShellPath {
+    if (-not $IsWindows) { return $null }
+
+    $path = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+    if (Test-Path -LiteralPath $path -PathType Leaf) { return $path }
+    return $null
+}
+
+$script:WindowsPowerShell = Get-WindowsPowerShellPath
+if ($script:WindowsPowerShell) {
+    Invoke-TestCase 'Windows PowerShell 5.1 can run the PowerShell mode' {
+        $root = New-SuiteFixture
+        try {
+            Add-FakeSuite -Root $root -Name '01-pass.Tests.ps1' -Ending 'pass'
+            Add-FakeSuite -Root $root -Name '02-pass.Tests.ps1' -Ending 'pass'
+            Set-FixtureManifest -Root $root
+
+            $result = Invoke-Wrapper -SuiteRoot $root -HostExe $script:WindowsPowerShell
+            Assert-True ($result.Output -notmatch 'ScriptRequiresUnmatchedPSVersion') `
+                "The wrapper must not run the 7.0 runner in a 5.1 process. Output: $($result.Output)"
+            Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
+            Assert-True ($result.Output -match 'All 2 suite\(s\) passed\.') "Expected the all-passed summary line. Output: $($result.Output)"
+        }
+        finally {
+            Remove-SuiteFixture -Root $root
+        }
+    }
+}
+else {
+    Write-Host '  SKIP  Windows PowerShell 5.1 case: powershell.exe is not on this machine.' -ForegroundColor Yellow
 }
 
 Write-Host ''

@@ -35,6 +35,8 @@ param(
     # variable. These suites wait on git child processes more than on the processor, so more workers
     # than processors may still be faster; nobody has measured that, and the variable makes the
     # measurement cheap.
+    #
+    # Whatever the value, the run never starts more workers than it has suites to share out.
     [int] $MaxParallel = 0
 )
 
@@ -137,10 +139,21 @@ Write-Host "Host: $hostExe"
 
 $progress = New-ProgressTracker -RunnerKey 'run-powershell-suites' -Unit @($suites.Name) -RepoRoot $repoRoot -NoStore:(-not $keepTimings)
 
+$schedule = @(Get-SuiteSchedule -Entry $selected -History $progress.History)
+
+# ForEach-Object -ThrottleLimit sizes its runspace pool from this number before it starts anything,
+# so a very large value throws 'Array dimensions exceeded supported range' and no suite runs at all.
+# The validation above accepts any whole number of at least one, and a worker with no suite to take
+# buys nothing, so cap the count at the number of suites that share the pool.
+$sharedCount = @($schedule | Where-Object { $_.Execution -ne 'exclusive' }).Count
+if ($sharedCount -gt 0 -and $workerCount -gt $sharedCount) {
+    $workerCount = $sharedCount
+}
+
+# After the cap, so the number printed is the number the run uses.
 Write-Host "Workers: $workerCount"
 
-$schedule = @(Get-SuiteSchedule -Entry $selected -History $progress.History)
-$parallelProgress = New-ParallelProgressTracker -Tracker $progress -Schedule $schedule -MaxParallel $workerCount
+$parallelProgress = New-ParallelProgressTracker -Tracker $progress -Schedule $schedule
 
 $results = [System.Collections.Generic.List[object]]::new()
 
@@ -184,7 +197,7 @@ foreach ($item in ($schedule | Where-Object { $_.Execution -eq 'exclusive' })) {
 $shared = @($schedule | Where-Object { $_.Execution -ne 'exclusive' } |
         ForEach-Object { [pscustomobject]@{ Name = $_.Name; Path = $byPath[$_.Name] } })
 
-$childText = (${function:Invoke-SuiteChild}).ToString()
+$commonModule = Join-Path $PSScriptRoot 'powershell-suites.common.ps1'
 
 if ($shared.Count -gt 0) {
     # Longest first. Starting the slowest suite last would leave it running alone at the end, which
@@ -193,13 +206,13 @@ if ($shared.Count -gt 0) {
     # Results reach this pipeline as each child exits, so the parent-side ForEach-Object below
     # prints one whole block at a time.
     $shared | ForEach-Object -ThrottleLimit $workerCount -Parallel {
-        # Rebuild the function from its text, inside this runspace. Do not pass the scriptblock
-        # itself: Microsoft documents that "Scriptblock invocation always attempts to run in its
-        # home runspace, regardless of where it's actually invoked", and a scriptblock made in the
-        # parent would therefore run back in the parent - serialising the whole run, which is the
-        # one failure this task exists to prevent. See
+        # Load the module inside this runspace, so Invoke-SuiteChild is defined here. Do not pass
+        # the parent's scriptblock instead: Microsoft documents that "Scriptblock invocation always
+        # attempts to run in its home runspace, regardless of where it's actually invoked", so a
+        # scriptblock made in the parent would run back in the parent - serialising the whole run,
+        # which is the one failure this task exists to prevent. See
         # https://learn.microsoft.com/powershell/module/microsoft.powershell.core/foreach-object?view=powershell-7.6
-        ${function:Invoke-SuiteChild} = [scriptblock]::Create($using:childText)
+        . $using:commonModule
 
         # Fresh runspace: opt out again so a non-zero suite exit code is data, not a throw.
         $PSNativeCommandUseErrorActionPreference = $false
