@@ -6,7 +6,7 @@
 - **Type**: Feature
 - **Interfaces**: none (test runner scripts)
 - **Difficulty**: complex
-- **Stage**: 7-document
+- **Stage**: 9-ship
 
 ## Summary
 
@@ -127,7 +127,8 @@ in about 80 seconds instead of 618, so that running them stops being a reason to
     unchanged, so the reader never goes back to the start, but the length is already full, so it
     reads the new tail and stops at the terminal marker. That matches every captured failure,
     but nobody has proved it by making the race happen on purpose.
-  - This needs its own backlog item. It is out of scope here.
+  - Backlog 129 owns the defect, `backlog/129-watch-task-drops-output-under-load.md`. It is out
+    of scope here.
 - One section that this split moved unchanged failed once, with
   `fatal: failed to read .git/worktrees/wt-feat-done-forced/commondir`, and passed on two
   re-runs. It is a race between the cleanup child process and the `git branch --list` call that
