@@ -896,6 +896,65 @@ finally {
     Remove-Item -LiteralPath $seamPath -Force -ErrorAction SilentlyContinue
 }
 
+# --- The checkpoint's shape ---
+#
+# The checkpoint must end at the reader's offset, must never be longer than the head length, and
+# must carry the newest bytes last when several reads feed it. These two cases pin that shape.
+# They do not prove the reader is race-free: the driven case above does that.
+
+$consumedPath = Join-Path ([System.IO.Path]::GetTempPath()) ("watch-task-checkpoint-consumed-$([guid]::NewGuid()).output")
+try {
+    [System.IO.File]::WriteAllText($consumedPath, (('C' * 1000) + "`n"))
+    $reader = New-TailReader -Path $consumedPath
+    Read-TailText -Reader $reader | Out-Null
+
+    $onDisk = [System.IO.File]::ReadAllBytes($consumedPath)
+    $expected = [byte[]]::new($script:TailHeadLength)
+    [System.Array]::Copy($onDisk, $onDisk.Length - $script:TailHeadLength, $expected, 0, $script:TailHeadLength)
+
+    Assert-True ($reader.CheckpointOffset -eq $onDisk.Length) `
+        "Checkpoint shape: the checkpoint must end at the offset. Got $($reader.CheckpointOffset), wanted $($onDisk.Length)."
+    Assert-True ($reader.Checkpoint.Length -eq $script:TailHeadLength) `
+        "Checkpoint shape: a long read must fill the checkpoint. Got $($reader.Checkpoint.Length)."
+    Assert-True (Test-SameBytes -Left $reader.Checkpoint -Right $expected) `
+        'Checkpoint shape: the checkpoint must equal the last bytes before the offset.'
+}
+finally {
+    Remove-Item -LiteralPath $consumedPath -Force -ErrorAction SilentlyContinue
+}
+
+$rollingPath = Join-Path ([System.IO.Path]::GetTempPath()) ("watch-task-checkpoint-rolling-$([guid]::NewGuid()).output")
+try {
+    [System.IO.File]::WriteAllText($rollingPath, ('A' * 200))
+    $reader = New-TailReader -Path $rollingPath
+    Read-TailText -Reader $reader | Out-Null
+
+    Assert-True ($reader.Checkpoint.Length -eq 200) `
+        "Rolling checkpoint: a short file must leave a short checkpoint. Got $($reader.Checkpoint.Length)."
+
+    # A short checkpoint must not read as a replacement on the next poll.
+    Read-TailText -Reader $reader | Out-Null
+    Assert-True ($reader.Offset -eq 200) `
+        "Rolling checkpoint: a short checkpoint must not be read as a replacement. Offset: $($reader.Offset)."
+
+    [System.IO.File]::AppendAllText($rollingPath, ('B' * 200))
+    Read-TailText -Reader $reader | Out-Null
+
+    Assert-True ($reader.Offset -eq 400) `
+        "Rolling checkpoint: the second read must consume the appended bytes. Offset: $($reader.Offset)."
+    Assert-True ($reader.Checkpoint.Length -eq $script:TailHeadLength) `
+        "Rolling checkpoint: two short reads must fill the checkpoint. Got $($reader.Checkpoint.Length)."
+
+    $onDisk = [System.IO.File]::ReadAllBytes($rollingPath)
+    $expected = [byte[]]::new($script:TailHeadLength)
+    [System.Array]::Copy($onDisk, $onDisk.Length - $script:TailHeadLength, $expected, 0, $script:TailHeadLength)
+    Assert-True (Test-SameBytes -Left $reader.Checkpoint -Right $expected) `
+        'Rolling checkpoint: the checkpoint must span both reads, newest bytes last.'
+}
+finally {
+    Remove-Item -LiteralPath $rollingPath -Force -ErrorAction SilentlyContinue
+}
+
 # --- A selected output file that disappears ends with a visible failure ---
 
 $root = New-WatchTestRoot
