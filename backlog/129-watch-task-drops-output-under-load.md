@@ -59,12 +59,16 @@ every time, so that a red gate always means my own change broke something.
   length was already full, so it read the new tail and stopped at the terminal marker. That matched
   every captured failure. At filing time nobody had made the race happen on purpose, so it was a
   lead and not a conclusion. Design then reproduced it on purpose and found a second race beside it.
-- **20 runs under load, 2026-09-03.** `failed 0 of 20`, with 7 rounds of the full parallel suite
-  run beside them. One load round, the first, reported `1 of 51 suite(s) failed`, and the suite was
-  `CiPowerShellSuiteRunner.Tests.ps1`, not `WatchTask.Tests.ps1`. The one case that failed there is
-  "A suite folder whose path contains an apostrophe still runs", and it reported an empty child
-  output. That suite passed in the other 6 rounds and passes on its own, and this branch changes
-  neither it nor the runner it tests. `WatchTask.Tests.ps1` passed in every load round as well.
+- **20 runs under load, first attempt, 2026-09-03.** `failed 0 of 20`, with 7 rounds of the full
+  parallel suite run beside them. One load round, the first, reported `1 of 51 suite(s) failed`,
+  and the suite was `CiPowerShellSuiteRunner.Tests.ps1`, not `WatchTask.Tests.ps1`. The one case
+  that failed there is "A suite folder whose path contains an apostrophe still runs", and it
+  reported an empty child output. The plan asks for every load round to pass, so this attempt did
+  not meet the gate and is kept only as a record.
+- **20 runs under load, second attempt, 2026-09-03.** This is the run that meets the gate, and it
+  ran against the reader with the review fixes in it. `failed 0 of 20`, 7 load rounds, `load rounds
+  that failed: 0`, and no round reported a failed suite at all. `WatchTask.Tests.ps1` passed inside
+  every one of the 7 rounds as well as in all 20 runs beside them.
 - Found by backlog 126, `backlog/126-run-the-powershell-suites-in-parallel.md`.
 - Plan: `docs/superpowers/plans/2026-09-02-watch-task-checkpoint-race-plan-129.md`
 - **Design outcome, 2026-09-02.** The lead above was right, and a second, worse race sits beside
