@@ -68,6 +68,11 @@ $script:MaxTailReadFailures = 4
 # a round only repeats when a new run replaced the file inside the last one.
 $script:MaxSettleRounds = 5
 
+# How many times one read may find the file replaced and start again from its beginning before it
+# gives up and leaves the next poll to try. Two covers a run swapping the file once while the
+# reader is inside a call; more than that is a writer the reader cannot keep up with anyway.
+$script:MaxReplacementRetries = 2
+
 function ConvertTo-ClaudeProjectFolder {
     <#
       The rule is inferred from the folder names Claude Code writes, not from documentation.
@@ -391,6 +396,11 @@ function New-TailReader {
         ReadSucceeded  = $true
         ReadError      = $null
         AtEnd          = $false
+
+        # True when a read gave up part-way and left the rest to the next poll. It returns an
+        # empty string to do that, and an empty string also means the end of the file, so a
+        # caller that treats the two alike stops reading a file it has not read.
+        ReadDeferred   = $false
         FileIdentity   = $null
         CheckpointOffset = 0
         Checkpoint     = $null
@@ -486,16 +496,37 @@ function Read-FileCheckpoint {
 }
 
 function Set-TailReaderCheckpoint {
+    <#
+      Remembers the last bytes the reader consumed, so the next read can ask whether the file is
+      still the one those bytes came from. The bytes come from the read itself and are never read
+      back from the file: a re-read describes the file at a later instant, which can already be a
+      replacement, and the reader would then compare new bytes against new bytes and see nothing.
+    #>
     param(
         [Parameter(Mandatory)][object] $Reader,
-        [Parameter(Mandatory)][System.IO.FileStream] $Stream
+        [Parameter(Mandatory)][AllowEmptyCollection()][byte[]] $Consumed,
+        # How many of $Consumed's bytes the read really returned. It defaults to all of them. Only
+        # a caller whose buffer is larger than its read passes a number of its own.
+        [int] $Count = $Consumed.Length
     )
 
     $Reader.CheckpointOffset = $Reader.Offset
-    $Reader.Checkpoint = Read-FileCheckpoint `
-        -Stream $Stream `
-        -EndOffset $Reader.CheckpointOffset `
-        -Count $script:TailHeadLength
+    if ($Count -le 0) { return }
+
+    $keptLength = if ($null -eq $Reader.Checkpoint) { 0 } else { $Reader.Checkpoint.Length }
+    $keep = [int][Math]::Min($script:TailHeadLength, $keptLength + $Count)
+    $tail = [byte[]]::new($keep)
+
+    # Fill from the right. The newest bytes always fit; whatever room is left carries as much of
+    # the previous checkpoint as it can hold.
+    $fromNew = [int][Math]::Min($Count, $keep)
+    [System.Array]::Copy($Consumed, $Count - $fromNew, $tail, $keep - $fromNew, $fromNew)
+    $fromOld = $keep - $fromNew
+    if ($fromOld -gt 0) {
+        [System.Array]::Copy($Reader.Checkpoint, $keptLength - $fromOld, $tail, 0, $fromOld)
+    }
+
+    $Reader.Checkpoint = $tail
 }
 
 function Read-TailText {
@@ -512,6 +543,7 @@ function Read-TailText {
     $Reader.ReadSucceeded = $true
     $Reader.ReadError = $null
     $Reader.AtEnd = $false
+    $Reader.ReadDeferred = $false
 
     $stream = $null
     try {
@@ -528,53 +560,104 @@ function Read-TailText {
     }
 
     try {
-        # A shorter file was truncated. A file whose start has changed was replaced, and that one
-        # can be the same size or longer, so the length alone would say nothing was wrong and the
-        # reader would carry on from the old spot, never reading what came before it.
-        $head = Read-FileHead -Stream $stream -Count $script:TailHeadLength
-        $fileIdentity = [System.IO.File]::GetCreationTimeUtc($Reader.Path).Ticks
-        $identityChanged = $null -ne $Reader.FileIdentity -and $Reader.FileIdentity -ne $fileIdentity
-        $checkpointChanged = $false
-        if ($null -ne $Reader.Checkpoint -and $stream.Length -ge $Reader.CheckpointOffset) {
-            $currentCheckpoint = Read-FileCheckpoint `
-                -Stream $stream `
-                -EndOffset $Reader.CheckpointOffset `
-                -Count $script:TailHeadLength
-            $checkpointChanged = -not (Test-SameBytes -Left $Reader.Checkpoint -Right $currentCheckpoint)
-        }
+        # Read first, check second, commit last.
+        #
+        # The check must never be older than the bytes it approves. Checking first and reading
+        # afterwards lets a writer finish in between: the check still sees the old file, the read
+        # already returns the new one, and everything the new run wrote before the reader's offset
+        # is skipped for good. Reading first makes that impossible, because the check that follows
+        # sees any replacement the read could have picked up.
+        #
+        # A replacement therefore throws away the bytes just read and reads the new file from its
+        # start, in this same call. Handing the caller an empty string instead would cost a poll,
+        # and a caller that is settling after a finished run has only so many of those.
+        $attempt = 0
+        while ($true) {
+            $attempt++
+            $length = $stream.Length
 
-        $replaced = ($stream.Length -lt $Reader.Offset) -or
-                    $identityChanged -or
-                    $checkpointChanged -or
-                    ($null -ne $Reader.Head -and -not (Test-SameHead -Left $Reader.Head -Right $head))
+            $available = $length - $Reader.Offset
+            $buffer = $null
+            $read = 0
+            if ($available -gt 0) {
+                $stream.Position = $Reader.Offset
+                $want = [int][Math]::Min([long] $script:TailReadLength, $available)
+                $buffer = [byte[]]::new($want)
+                $read = $stream.Read($buffer, 0, $buffer.Length)
+                if ($read -lt 0) { $read = 0 }
+            }
 
-        if ($replaced) {
+            # A shorter file was truncated. A file whose start has changed was replaced, and that
+            # one can be the same size or longer, so the length alone would say nothing was wrong
+            # and the reader would carry on from the old spot, never reading what came before it.
+            $head = Read-FileHead -Stream $stream -Count $script:TailHeadLength
+            $fileIdentity = [System.IO.File]::GetCreationTimeUtc($Reader.Path).Ticks
+            $identityChanged = $null -ne $Reader.FileIdentity -and $Reader.FileIdentity -ne $fileIdentity
+            $checkpointChanged = $false
+            if ($null -ne $Reader.Checkpoint -and
+                $Reader.Checkpoint.Length -gt 0 -and
+                $length -ge $Reader.CheckpointOffset) {
+                # Ask for exactly as many bytes as the checkpoint holds. A different count would
+                # compare two lengths and report every short checkpoint as a replacement.
+                $currentCheckpoint = Read-FileCheckpoint `
+                    -Stream $stream `
+                    -EndOffset $Reader.CheckpointOffset `
+                    -Count $Reader.Checkpoint.Length
+                $checkpointChanged = -not (Test-SameBytes -Left $Reader.Checkpoint -Right $currentCheckpoint)
+            }
+
+            $replaced = ($length -lt $Reader.Offset) -or
+                        $identityChanged -or
+                        $checkpointChanged -or
+                        ($null -ne $Reader.Head -and -not (Test-SameHead -Left $Reader.Head -Right $head))
+
+            $Reader.FileIdentity = $fileIdentity
+
+            if (-not $replaced) { break }
+
+            # Whatever the read returned belongs to a file this reader is no longer following.
+            # Nothing was committed, so there is nothing to unwind: drop the bytes and go back to
+            # the start of the new file.
             $Reader.Offset = 0
             $Reader.Carry = ''
             $Reader.CarryTruncated = $false
             $Reader.Decoder.Reset()
-            $Reader.Head = $head
             $Reader.CheckpointOffset = 0
             $Reader.Checkpoint = $null
+
+            # The head that was just read came from the file this reader is dropping, which is not
+            # always the file at the path any more. Keeping it would make the next pass compare a
+            # new file against an old start and call that a replacement too. Forget it instead:
+            # the pass below reads the head of whatever file it ends up following, and adopts it.
+            $Reader.Head = $null
+
+            # A file replaced again while this call was reading it. Leave the reader at the start
+            # and let the next poll try, rather than spin here against a writer. The caller is
+            # told, because an empty string on its own would read as the end of the file.
+            if ($attempt -ge $script:MaxReplacementRetries) {
+                $Reader.ReadDeferred = $true
+                return ''
+            }
+
+            # A run that replaces the path, rather than overwriting the file, leaves this handle
+            # on the old file object. The checks above look at the path and see the new file, so
+            # the two disagree, and a retry through this handle would read the old output a second
+            # time. Open the path again so the retry reads the file the checks just saw.
+            $stream.Dispose()
+            $stream = $null
+            $stream = [System.IO.FileStream]::new(
+                $Reader.Path,
+                [System.IO.FileMode]::Open,
+                [System.IO.FileAccess]::Read,
+                ([System.IO.FileShare]::ReadWrite -bor [System.IO.FileShare]::Delete))
         }
-        elseif ($null -eq $Reader.Head -or $head.Length -gt $Reader.Head.Length) {
+
+        if ($null -eq $Reader.Head -or $head.Length -gt $Reader.Head.Length) {
             # Keep the longest start seen so far. A file that was still short on the first read
             # gives little to compare against, and it grows as the run writes more.
             $Reader.Head = $head
         }
-        $Reader.FileIdentity = $fileIdentity
 
-        $available = $stream.Length - $Reader.Offset
-        if ($available -le 0) {
-            $Reader.AtEnd = $true
-            Set-TailReaderCheckpoint -Reader $Reader -Stream $stream
-            return ''
-        }
-
-        $stream.Position = $Reader.Offset
-        $want = [int][Math]::Min([long] $script:TailReadLength, $available)
-        $buffer = [byte[]]::new($want)
-        $read = $stream.Read($buffer, 0, $buffer.Length)
         if ($read -le 0) {
             $Reader.AtEnd = $true
             return ''
@@ -582,8 +665,8 @@ function Read-TailText {
 
         $Reader.Offset += $read
         $Reader.LastReadBytes = $read
-        $Reader.AtEnd = $Reader.Offset -ge $stream.Length
-        Set-TailReaderCheckpoint -Reader $Reader -Stream $stream
+        $Reader.AtEnd = $Reader.Offset -ge $length
+        Set-TailReaderCheckpoint -Reader $Reader -Consumed $buffer -Count $read
 
         $chars = [char[]]::new($Reader.Decoder.GetCharCount($buffer, 0, $read, $false))
         $written = $Reader.Decoder.GetChars($buffer, 0, $read, $chars, 0, $false)
@@ -619,6 +702,7 @@ function Read-InitialTailText {
     $Reader.ReadSucceeded = $true
     $Reader.ReadError = $null
     $Reader.AtEnd = $false
+    $Reader.ReadDeferred = $false
 
     $stream = $null
     try {
@@ -698,7 +782,8 @@ function Read-InitialTailText {
         $Reader.InitialTruncated = $lineCapReached
         $Reader.AtEnd = $true
         $Reader.FileIdentity = [System.IO.File]::GetCreationTimeUtc($Reader.Path).Ticks
-        Set-TailReaderCheckpoint -Reader $Reader -Stream $stream
+        $consumed = if ($chunks.Count -gt 0) { $chunks[0] } else { [byte[]]::new(0) }
+        Set-TailReaderCheckpoint -Reader $Reader -Consumed $consumed
 
         if ($total -le 0) {
             return ''
@@ -930,6 +1015,7 @@ function Watch-Record {
     $stateReadFailures = 0
     $settleReadFailures = 0
     $catchUpReadFailures = 0
+    $settleDeferrals = 0
     while ($true) {
         $text = Read-TailText -Reader $reader
         if (-not $reader.ReadSucceeded) {
@@ -996,7 +1082,10 @@ function Watch-Record {
 
                     if ($catchUpFailed) { break }
                     $settled = Get-TaskState -Path $reader.Path
-                } while ($roundBytes -gt 0 -and
+                    # A deferred read returns nothing, but the file still has everything the new
+                    # run wrote. Settling on it would print the verdict over output that never
+                    # reached the screen, so it counts as a round that read something.
+                } while (($roundBytes -gt 0 -or $reader.ReadDeferred) -and
                          $null -ne $settled -and
                          -not $settled.Running -and
                          $settleRounds -lt $script:MaxSettleRounds)
@@ -1032,6 +1121,26 @@ function Watch-Record {
                     continue
                 }
                 $settleReadFailures = 0
+
+                # The loop above also ends when it runs out of rounds, and that can happen with a
+                # read still deferred. It means the file was replaced faster than the reader could
+                # follow it, so the last run's output is still on disk and unread. Reporting the
+                # state here would print a verdict over output nobody saw, which is the whole
+                # defect this item exists to fix, so the pass starts again under a count of its
+                # own. A file that keeps doing this is one the reader cannot keep up with, and
+                # saying so beats a silent wrong answer.
+                if ($reader.ReadDeferred) {
+                    $settleDeferrals++
+                    if ($settleDeferrals -ge $script:MaxTailReadFailures) {
+                        Write-Host ''
+                        Write-Host "Task output was replaced faster than it could be read, $settleDeferrals times running: $($reader.Path)"
+                        return 1
+                    }
+
+                    Start-Sleep -Milliseconds 500
+                    continue
+                }
+                $settleDeferrals = 0
 
                 # A replacement that is still running keeps the watch going. The carry stays in
                 # the reader, because its last line is not finished yet.
