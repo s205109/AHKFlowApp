@@ -4,3 +4,4 @@ Format: `Task N | <deliverable commit SHA, or -> | tests: <pass | fail | n/a> | 
 
 Task 1 | 730b74fa | tests: pass | -
 Task 2 | 9f45f6f7 | tests: pass | -
+Task 3 | 318c5fe1 | tests: pass | -
