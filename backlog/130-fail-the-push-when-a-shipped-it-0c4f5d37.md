@@ -6,7 +6,7 @@
 - **Type**: Feature
 - **Interfaces**: none (developer tooling)
 - **Difficulty**: moderate
-- **Stage**: 0-intake
+- **Stage**: 3-plan
 
 ## Summary
 
@@ -33,6 +33,14 @@ the work merges, so that cleanup never keeps a worktree whose plan was in fact c
       push and the cleanup sweep can never disagree about what counts as implemented.
 - [ ] A test suite covers the refusal and each pass case against fixtures, in the style of
       (`tests/PrePushHook.Tests.ps1:1`, "#Requires -Version 7.0").
+- [ ] The check judges only the items this branch ships, and not every item it touches. An item
+      already shipped in the merge base, at `Stage: 9-ship` and already under `backlog/done/`, is
+      skipped whatever this branch does to it.
+- [ ] Items 107, 110, 111, 112, 119 and 121 no longer hold a plan with zero ticked steps. Each tick
+      is backed by the merged diff, and any step that was never carried out stays unticked with the
+      reason written into the plan.
+- [ ] The gate was driven once for real: `pwsh ./scripts/pre-push-quick-checks.ps1` refused with
+      this plan's steps unticked, and passed with them ticked. Both outputs are in this item.
 
 ## Out of scope
 
@@ -56,5 +64,12 @@ the work merges, so that cleanup never keeps a worktree whose plan was in fact c
 - **Reuse the rule, do not copy it.** `Test-WorktreePlanWasImplemented` already resolves the
   `- Plan:` bullet, handles the "names no plan" and "names none" cases, and counts the boxes. A
   second copy of that rule would drift from the sweep's copy.
+- **The debt is eight items, not two.** Measured on 2026-09-03 by running
+  `Test-WorktreePlanWasImplemented` over every item in `backlog/done/`: 107, 110, 111, 112, 119 and
+  121 also carry a plan with zero ticked steps, at 27, 50, 18, 31, 32 and 26 steps. The sweep still
+  refuses to remove a worktree for any of them. This item clears all six.
+- **Only the shipping branch is judged.** A branch that merely edits an already-shipped item is not
+  judged for it. Without that rule the six items above would refuse a push from any branch that
+  touched them, and the gate would be switched off within a week.
 - Spec: none — the rule already exists and the sweep proves it. This item changes where it runs.
-- Plan: none — moderate difficulty, so it goes to Plan when somebody picks it up.
+- Plan: `docs/superpowers/plans/2026-09-03-fail-the-push-on-an-unticked-plan-130.md`
