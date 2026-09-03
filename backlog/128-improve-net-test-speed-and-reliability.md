@@ -28,25 +28,29 @@ A run's time is its **median of five warm runs**, each after one solution build 
 measured Fast spread is 7.12 s.
 
 Starting point, measured 2026-09-03: Fast median 33.88 s over five runs, Integration median
-84.64 s over three, E2E median 299.80 s over two, plus a 10 s solution build.
+84.64 s over three, E2E median 299.80 s over two, plus a 10 s solution build. A developer's real
+inner loop after a one-line edit measured 45 s: a 12 s incremental build, then 33 s of Fast. This
+item does not improve the 12 s.
+
+Both targets are provisional. Each is confirmed or replaced at its checkpoint, and a number that
+moves takes its reason with it.
 
 - [ ] A written measurement exists for each test project: wall clock time, and the slowest
       tests inside it.
 - [ ] A written list exists of the tests that give a different answer on different runs, or
       a statement, backed by run counts, that none were found.
 - [ ] The Fast mode's median finishes in under 22 seconds, down from 33.88.
-- [ ] A prototype measures the Integration mode's reshaped collections over five runs before
-      any Integration target is fixed here.
-- [ ] The Integration mode's median finishes in under 65 seconds, down from 84.64. This target
-      is provisional until the prototype above confirms it; if the prototype lands higher, the
-      number is replaced and the reason written in.
+- [ ] The Integration mode's median finishes in under 65 seconds, down from 84.64.
+- [ ] Each target is measured at its checkpoint before it is written down as met, and every one
+      of the five runs is recorded alongside the median and the maximum.
 - [ ] Every reliability defect the review found is either fixed here, or filed as its own
       backlog item with evidence.
-- [ ] Every speed finding the review left out of scope is filed as its own backlog item, with
-      the measurement that justifies it.
-- [ ] Fast and Integration each run five times after the change with no failure, because
-      making tests run at the same time is what can introduce a flake. The same five runs
-      supply the medians above.
+- [ ] Three items are filed for the speed findings left out of scope, each with the measurement
+      that justifies it: the E2E incremental publish, parallel E2E stacks, and SQL container
+      reuse.
+- [ ] After the collections are reshaped, `API.Tests` and `Infrastructure.Tests` run thirty
+      times with no failure. Five full runs fix the medians; they are not enough on their own to
+      claim that no flake was introduced, and this item does not make that claim on five.
 - [ ] `pwsh ./scripts/test-fast.ps1 -Mode Fast`, `-Mode Integration`, and `-Mode E2E` pass.
 
 The E2E mode carries no target. It is 69 percent of the run, and the design puts it out of
@@ -58,8 +62,8 @@ scope with its own backlog item instead.
 - Adding coverage for untested code. This item is about the tests that already exist.
 - Changing production code, beyond the one test seam the design names. Six CLI tests wait
   through a real two-second retry delay set in production code, and the human accepted an
-  optional `TimeProvider` parameter at Design so the tests can skip that wait. Runtime
-  behaviour does not change.
+  optional `TimeSpan` parameter at Design so the tests can pass zero. Runtime behaviour does
+  not change.
 - The E2E mode. Measured here, but improved under its own item.
 
 ## Notes / dependencies
@@ -82,7 +86,7 @@ scope with its own backlog item instead.
   competed for the disk. Check whether the same effect applies here before assuming more
   parallelism helps.
 - Difficulty settled at Design: complex.
-- ADR: `docs/adr/0013-one-shared-api-host-with-an-exclusive-collection.md`
+- ADR: `docs/adr/0013-sql-backed-tests-isolate-by-owner-id.md`
 - Glossary: `CONTEXT.md` now defines Slice, Mode, and Collection.
 - Spec: `docs/superpowers/specs/2026-09-03-net-test-speed-and-reliability-design-128.md`
 - Plan: none — Design just finished; Stage 3 writes it.
