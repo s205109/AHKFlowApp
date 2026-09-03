@@ -5,7 +5,7 @@
 - **Type**: Tooling
 - **Interfaces**: none (test projects)
 - **Difficulty**: to-be-determined
-- **Stage**: 0-intake
+- **Stage**: 2-design
 
 ## Summary
 
@@ -54,9 +54,6 @@ targets and record where each number came from.
   `tests/AHKFlowApp.Infrastructure.Tests` 10, `tests/AHKFlowApp.Domain.Tests` 9,
   `tests/AHKFlowApp.TestUtilities.Tests` 3.
 - Related, but separate: backlog 126 covers running the PowerShell suites in parallel. Its
-  measurement found that the whole run equalled its slowest single suite, because the suites
-  competed for the disk. Check whether the same effect applies here before assuming more
-  parallelism helps.
   measurement found that the whole run equalled its slowest single suite, because the suites
   competed for the disk. Check whether the same effect applies here before assuming more
   parallelism helps.
