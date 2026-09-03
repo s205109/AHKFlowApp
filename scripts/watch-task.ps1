@@ -68,6 +68,11 @@ $script:MaxTailReadFailures = 4
 # a round only repeats when a new run replaced the file inside the last one.
 $script:MaxSettleRounds = 5
 
+# How many times one read may find the file replaced and start again from its beginning before it
+# gives up and leaves the next poll to try. Two covers a run swapping the file once while the
+# reader is inside a call; more than that is a writer the reader cannot keep up with anyway.
+$script:MaxReplacementRetries = 2
+
 function ConvertTo-ClaudeProjectFolder {
     <#
       The rule is inferred from the folder names Claude Code writes, not from documentation.
@@ -486,16 +491,35 @@ function Read-FileCheckpoint {
 }
 
 function Set-TailReaderCheckpoint {
+    <#
+      Remembers the last bytes the reader consumed, so the next read can ask whether the file is
+      still the one those bytes came from. The bytes come from the read itself and are never read
+      back from the file: a re-read describes the file at a later instant, which can already be a
+      replacement, and the reader would then compare new bytes against new bytes and see nothing.
+    #>
     param(
         [Parameter(Mandatory)][object] $Reader,
-        [Parameter(Mandatory)][System.IO.FileStream] $Stream
+        [Parameter(Mandatory)][AllowEmptyCollection()][byte[]] $Consumed,
+        [Parameter(Mandatory)][int] $Count
     )
 
     $Reader.CheckpointOffset = $Reader.Offset
-    $Reader.Checkpoint = Read-FileCheckpoint `
-        -Stream $Stream `
-        -EndOffset $Reader.CheckpointOffset `
-        -Count $script:TailHeadLength
+    if ($Count -le 0) { return }
+
+    $keptLength = if ($null -eq $Reader.Checkpoint) { 0 } else { $Reader.Checkpoint.Length }
+    $keep = [int][Math]::Min($script:TailHeadLength, $keptLength + $Count)
+    $tail = [byte[]]::new($keep)
+
+    # Fill from the right. The newest bytes always fit; whatever room is left carries as much of
+    # the previous checkpoint as it can hold.
+    $fromNew = [int][Math]::Min($Count, $keep)
+    [System.Array]::Copy($Consumed, $Count - $fromNew, $tail, $keep - $fromNew, $fromNew)
+    $fromOld = $keep - $fromNew
+    if ($fromOld -gt 0) {
+        [System.Array]::Copy($Reader.Checkpoint, $keptLength - $fromOld, $tail, 0, $fromOld)
+    }
+
+    $Reader.Checkpoint = $tail
 }
 
 function Read-TailText {
@@ -528,27 +552,64 @@ function Read-TailText {
     }
 
     try {
-        # A shorter file was truncated. A file whose start has changed was replaced, and that one
-        # can be the same size or longer, so the length alone would say nothing was wrong and the
-        # reader would carry on from the old spot, never reading what came before it.
-        $head = Read-FileHead -Stream $stream -Count $script:TailHeadLength
-        $fileIdentity = [System.IO.File]::GetCreationTimeUtc($Reader.Path).Ticks
-        $identityChanged = $null -ne $Reader.FileIdentity -and $Reader.FileIdentity -ne $fileIdentity
-        $checkpointChanged = $false
-        if ($null -ne $Reader.Checkpoint -and $stream.Length -ge $Reader.CheckpointOffset) {
-            $currentCheckpoint = Read-FileCheckpoint `
-                -Stream $stream `
-                -EndOffset $Reader.CheckpointOffset `
-                -Count $script:TailHeadLength
-            $checkpointChanged = -not (Test-SameBytes -Left $Reader.Checkpoint -Right $currentCheckpoint)
-        }
+        # Read first, check second, commit last.
+        #
+        # The check must never be older than the bytes it approves. Checking first and reading
+        # afterwards lets a writer finish in between: the check still sees the old file, the read
+        # already returns the new one, and everything the new run wrote before the reader's offset
+        # is skipped for good. Reading first makes that impossible, because the check that follows
+        # sees any replacement the read could have picked up.
+        #
+        # A replacement therefore throws away the bytes just read and reads the new file from its
+        # start, in this same call. Handing the caller an empty string instead would cost a poll,
+        # and a caller that is settling after a finished run has only so many of those.
+        $attempt = 0
+        while ($true) {
+            $attempt++
+            $length = $stream.Length
 
-        $replaced = ($stream.Length -lt $Reader.Offset) -or
-                    $identityChanged -or
-                    $checkpointChanged -or
-                    ($null -ne $Reader.Head -and -not (Test-SameHead -Left $Reader.Head -Right $head))
+            $available = $length - $Reader.Offset
+            $buffer = $null
+            $read = 0
+            if ($available -gt 0) {
+                $stream.Position = $Reader.Offset
+                $want = [int][Math]::Min([long] $script:TailReadLength, $available)
+                $buffer = [byte[]]::new($want)
+                $read = $stream.Read($buffer, 0, $buffer.Length)
+                if ($read -lt 0) { $read = 0 }
+            }
 
-        if ($replaced) {
+            # A shorter file was truncated. A file whose start has changed was replaced, and that
+            # one can be the same size or longer, so the length alone would say nothing was wrong
+            # and the reader would carry on from the old spot, never reading what came before it.
+            $head = Read-FileHead -Stream $stream -Count $script:TailHeadLength
+            $fileIdentity = [System.IO.File]::GetCreationTimeUtc($Reader.Path).Ticks
+            $identityChanged = $null -ne $Reader.FileIdentity -and $Reader.FileIdentity -ne $fileIdentity
+            $checkpointChanged = $false
+            if ($null -ne $Reader.Checkpoint -and
+                $Reader.Checkpoint.Length -gt 0 -and
+                $length -ge $Reader.CheckpointOffset) {
+                # Ask for exactly as many bytes as the checkpoint holds. A different count would
+                # compare two lengths and report every short checkpoint as a replacement.
+                $currentCheckpoint = Read-FileCheckpoint `
+                    -Stream $stream `
+                    -EndOffset $Reader.CheckpointOffset `
+                    -Count $Reader.Checkpoint.Length
+                $checkpointChanged = -not (Test-SameBytes -Left $Reader.Checkpoint -Right $currentCheckpoint)
+            }
+
+            $replaced = ($length -lt $Reader.Offset) -or
+                        $identityChanged -or
+                        $checkpointChanged -or
+                        ($null -ne $Reader.Head -and -not (Test-SameHead -Left $Reader.Head -Right $head))
+
+            $Reader.FileIdentity = $fileIdentity
+
+            if (-not $replaced) { break }
+
+            # Whatever the read returned belongs to a file this reader is no longer following.
+            # Nothing was committed, so there is nothing to unwind: drop the bytes and go back to
+            # the start of the new file.
             $Reader.Offset = 0
             $Reader.Carry = ''
             $Reader.CarryTruncated = $false
@@ -556,25 +617,21 @@ function Read-TailText {
             $Reader.Head = $head
             $Reader.CheckpointOffset = 0
             $Reader.Checkpoint = $null
+            $Reader.AtEnd = $false
+
+            # A file replaced again while this call was reading it. Leave the reader at the start
+            # and let the next poll try, rather than spin here against a writer.
+            if ($attempt -ge $script:MaxReplacementRetries) {
+                return ''
+            }
         }
-        elseif ($null -eq $Reader.Head -or $head.Length -gt $Reader.Head.Length) {
+
+        if ($null -eq $Reader.Head -or $head.Length -gt $Reader.Head.Length) {
             # Keep the longest start seen so far. A file that was still short on the first read
             # gives little to compare against, and it grows as the run writes more.
             $Reader.Head = $head
         }
-        $Reader.FileIdentity = $fileIdentity
 
-        $available = $stream.Length - $Reader.Offset
-        if ($available -le 0) {
-            $Reader.AtEnd = $true
-            Set-TailReaderCheckpoint -Reader $Reader -Stream $stream
-            return ''
-        }
-
-        $stream.Position = $Reader.Offset
-        $want = [int][Math]::Min([long] $script:TailReadLength, $available)
-        $buffer = [byte[]]::new($want)
-        $read = $stream.Read($buffer, 0, $buffer.Length)
         if ($read -le 0) {
             $Reader.AtEnd = $true
             return ''
@@ -582,8 +639,8 @@ function Read-TailText {
 
         $Reader.Offset += $read
         $Reader.LastReadBytes = $read
-        $Reader.AtEnd = $Reader.Offset -ge $stream.Length
-        Set-TailReaderCheckpoint -Reader $Reader -Stream $stream
+        $Reader.AtEnd = $Reader.Offset -ge $length
+        Set-TailReaderCheckpoint -Reader $Reader -Consumed $buffer -Count $read
 
         $chars = [char[]]::new($Reader.Decoder.GetCharCount($buffer, 0, $read, $false))
         $written = $Reader.Decoder.GetChars($buffer, 0, $read, $chars, 0, $false)
@@ -698,7 +755,10 @@ function Read-InitialTailText {
         $Reader.InitialTruncated = $lineCapReached
         $Reader.AtEnd = $true
         $Reader.FileIdentity = [System.IO.File]::GetCreationTimeUtc($Reader.Path).Ticks
-        Set-TailReaderCheckpoint -Reader $Reader -Stream $stream
+        Set-TailReaderCheckpoint `
+            -Reader $Reader `
+            -Consumed $(if ($chunks.Count -gt 0) { $chunks[0] } else { [byte[]]::new(0) }) `
+            -Count $(if ($chunks.Count -gt 0) { $chunks[0].Length } else { 0 })
 
         if ($total -le 0) {
             return ''

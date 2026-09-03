@@ -718,6 +718,184 @@ finally {
     Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
 }
 
+# --- A replacement that lands right after the check must not lose output ---
+#
+# Read-TailText has to read the file and decide whether the file is still the one it was
+# following. A writer that finishes between those two steps is the whole bug: the check says
+# nothing changed, the read returns the new file, and everything the new run wrote before the
+# reader's offset is skipped for good.
+#
+# These two cases drive that window instead of waiting for a busy machine to produce it. The seam
+# is Read-FileCheckpoint: once armed it does the real read and then lets the writer finish.
+
+# Overwrites a file from byte zero without emptying it first, so the file is never briefly short.
+function Set-WatchFileInPlace {
+    param(
+        [Parameter(Mandatory)][string] $Path,
+        [Parameter(Mandatory)][string] $Text
+    )
+
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($Text)
+    $stream = [System.IO.File]::Open(
+        $Path,
+        [System.IO.FileMode]::Open,
+        [System.IO.FileAccess]::Write,
+        [System.IO.FileShare]::ReadWrite)
+    try {
+        $stream.Position = 0
+        $stream.Write($bytes, 0, $bytes.Length)
+        $stream.Flush()
+    }
+    finally {
+        $stream.Dispose()
+    }
+}
+
+# Polls until the wanted text arrives or the budget runs out. Returns everything read.
+function Read-TailUntil {
+    param(
+        [Parameter(Mandatory)][object] $Reader,
+        [Parameter(Mandatory)][string] $Text,
+        [int] $MaxCalls = 12
+    )
+
+    $seen = ''
+    for ($call = 0; $call -lt $MaxCalls; $call++) {
+        $seen += Read-TailText -Reader $Reader
+        if ($seen.Contains($Text)) { break }
+    }
+    return $seen
+}
+
+$script:realReadFileCheckpoint = ${function:Read-FileCheckpoint}
+$script:swapArmed = $false
+$script:swapPath = ''
+$script:swapText = ''
+
+function Read-FileCheckpoint {
+    param(
+        [Parameter(Mandatory)][System.IO.FileStream] $Stream,
+        [Parameter(Mandatory)][long] $EndOffset,
+        [Parameter(Mandatory)][int] $Count
+    )
+
+    $bytes = & $script:realReadFileCheckpoint -Stream $Stream -EndOffset $EndOffset -Count $Count
+    if ($script:swapArmed) {
+        $script:swapArmed = $false
+        Set-WatchFileInPlace -Path $script:swapPath -Text $script:swapText
+    }
+    return $bytes
+}
+
+# Both driven cases sit inside one try. The finally puts the real function back, so an assertion
+# that throws cannot leave the seam armed for every case below.
+try {
+
+# --- The swap lands while the reader sits at the end of the file ---
+
+$atEndPath = Join-Path ([System.IO.Path]::GetTempPath()) ("watch-task-driven-atend-$([guid]::NewGuid()).output")
+try {
+    $sharedStart = "SHARED-PREFIX-LINE`n" * 20
+    $original = $sharedStart + ("ORIGINAL-FILLER-LINE`n" * 20)
+    $changed = 'REPLACEMENT-BEFORE-OLD-OFFSET'
+    $replacementStart = $sharedStart + "$changed`n"
+    $padding = $original.Length - $replacementStart.Length + 100
+    $replacement = $replacementStart + ('R' * $padding) + "`nREPLACEMENT-SUFFIX`n[exited with code 11]`n"
+
+    Assert-True ($sharedStart.Length -gt $script:TailHeadLength) `
+        'Driven swap at end: the shared start must be longer than the head check, or the head catches the swap.'
+    Assert-True ($replacement.Length -gt $original.Length) `
+        'Driven swap at end: the replacement must reach past the old offset, or the length catches the swap.'
+
+    [System.IO.File]::WriteAllText($atEndPath, $original)
+    $reader = New-TailReader -Path $atEndPath
+    $seen = Read-TailText -Reader $reader
+    Assert-True ($reader.Offset -eq $original.Length) `
+        "Driven swap at end: the first read must consume the whole file. Offset: $($reader.Offset)"
+
+    $script:swapPath = $atEndPath
+    $script:swapText = $replacement
+    $script:swapArmed = $true
+    $seen += Read-TailUntil -Reader $reader -Text $changed
+
+    Assert-True ($seen.Contains($changed)) `
+        'Driven swap at end: text the replacement wrote before the old offset must not be lost.'
+}
+finally {
+    $script:swapArmed = $false
+    Remove-Item -LiteralPath $atEndPath -Force -ErrorAction SilentlyContinue
+}
+
+# --- The same swap, with the reader still behind, on a file too big to hide in the buffer ---
+#
+# A FileStream serves a read from its own buffer when the range is already there. A small file
+# fits entirely, so the read after the swap can return pre-swap bytes and this case would pass
+# against a reader that is still broken. This one is large enough that the read goes to disk.
+
+$behindPath = Join-Path ([System.IO.Path]::GetTempPath()) ("watch-task-driven-behind-$([guid]::NewGuid()).output")
+try {
+    $sharedStart = "SHARED-PREFIX-LINE`n" * 20
+    $first = $sharedStart + ("ORIGINAL-FILLER-LINE`n" * 363)
+    $grown = $first + ("MORE-FILLER-LINE`n" * 11294)
+    $changed = 'REPLACEMENT-BEFORE-OLD-OFFSET'
+    $replacementStart = $sharedStart + "$changed`n"
+    $padding = $grown.Length - $replacementStart.Length + 60000
+    $replacement = $replacementStart + ('R' * $padding) + "`nREPLACEMENT-SUFFIX`n[exited with code 11]`n"
+
+    $readSize = [Math]::Min($script:TailReadLength, $grown.Length - $first.Length)
+    Assert-True ($readSize -gt 4096) `
+        "Driven swap while behind: the read must be larger than the stream buffer. Read size: $readSize"
+    Assert-True ($replacement.Length -gt $grown.Length) `
+        'Driven swap while behind: the replacement must reach past the grown length.'
+
+    [System.IO.File]::WriteAllText($behindPath, $first)
+    $reader = New-TailReader -Path $behindPath
+    $seen = Read-TailText -Reader $reader
+    Assert-True ($reader.Offset -eq $first.Length) `
+        "Driven swap while behind: the first read must consume the first write. Offset: $($reader.Offset)"
+
+    # The run writes more before the reader polls again, so the reader is behind when it does.
+    [System.IO.File]::WriteAllText($behindPath, $grown)
+
+    $script:swapPath = $behindPath
+    $script:swapText = $replacement
+    $script:swapArmed = $true
+    $seen += Read-TailUntil -Reader $reader -Text $changed
+
+    Assert-True ($seen.Contains($changed)) `
+        'Driven swap while behind: text the replacement wrote before the old offset must not be lost.'
+}
+finally {
+    $script:swapArmed = $false
+    Remove-Item -LiteralPath $behindPath -Force -ErrorAction SilentlyContinue
+}
+
+}
+finally {
+    ${function:Read-FileCheckpoint} = $script:realReadFileCheckpoint
+    $script:swapArmed = $false
+}
+
+# The seam must be gone, or every case below it inherits a writer nobody asked for.
+$seamPath = Join-Path ([System.IO.Path]::GetTempPath()) ("watch-task-seam-off-$([guid]::NewGuid()).output")
+try {
+    [System.IO.File]::WriteAllText($seamPath, "SEAM-OFF`n")
+    $script:swapPath = $seamPath
+    $script:swapText = "SWAPPED-BY-A-SEAM-THAT-SHOULD-BE-GONE`n"
+    $script:swapArmed = $true
+
+    $reader = New-TailReader -Path $seamPath
+    Read-TailText -Reader $reader | Out-Null
+    Read-TailText -Reader $reader | Out-Null
+
+    Assert-True ([System.IO.File]::ReadAllText($seamPath) -eq "SEAM-OFF`n") `
+        'Seam restore: the wrapped checkpoint read must be gone once the driven cases are done.'
+}
+finally {
+    $script:swapArmed = $false
+    Remove-Item -LiteralPath $seamPath -Force -ErrorAction SilentlyContinue
+}
+
 # --- A selected output file that disappears ends with a visible failure ---
 
 $root = New-WatchTestRoot

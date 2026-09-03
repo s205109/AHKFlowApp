@@ -50,8 +50,8 @@ every time, so that a red gate always means my own change broke something.
   `tests/WatchTask.Tests.ps1` nor `scripts/watch-task.ps1`. Running the suites at the same time is
   what makes the defect show, not what causes it.
 - **Where the code points, unproven.** The watcher reads the checkpoint bytes that decide whether
-  the file was replaced (`scripts/watch-task.ps1:539`, "            $currentCheckpoint = Read-FileCheckpoint `"),
-  and reads the file length afterwards (`scripts/watch-task.ps1:567`, "        $available = $stream.Length - $Reader.Offset").
+  the file was replaced (`scripts/watch-task.ps1:594`, "            $currentCheckpoint = Read-FileCheckpoint `"),
+  and reads the file length afterwards (`scripts/watch-task.ps1:571`, "            $available = $length - $Reader.Offset").
   A writer that finishes between those two reads is missed. The checkpoint still looks unchanged,
   so the reader never goes back to the start. The length is already full, so it reads the new tail
   and stops at the terminal marker. That matches every captured failure. Nobody has made the race
