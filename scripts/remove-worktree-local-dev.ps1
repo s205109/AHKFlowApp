@@ -148,11 +148,6 @@ if (-not (Get-Command Test-WorktreePlanWasImplemented -ErrorAction SilentlyConti
         # -WorktreeName is accepted and ignored. The fallback resolves no item at all, so it has
         # no slug route to run; the parameter is here only so a call site never fails to bind.
         param([string] $MainCheckout, [string] $ItemNumber, [string] $BaseRef, [string] $WorktreeName)
-        # Code, PlanPath and the two counts are empty or zero in every fallback answer, because the
-        # fallback reads no plan. They are still present on the object: a caller under
-        # Set-StrictMode that reads .Code would throw on a shape the shared copy does not have, and
-        # the two copies must not drift.
-        #
         # An unreadable manifest is checked before the empty case, so a read failure never borrows
         # the legacy worktree's free pass.
         if ($ItemNumber -eq $WorktreeBacklogItemUnreadable) {

@@ -1265,6 +1265,11 @@ function Get-BacklogItemLinesFromWorkingTreeBySlug {
 #
 # Only the two verdicts that actually read a plan set PlanPath and the counts, so an empty PlanPath
 # means "no plan was read". Only the never-implemented verdict sets Code.
+#
+# scripts/remove-worktree-local-dev.ps1 carries an inline fallback copy of Test-WorktreePlanWasImplemented
+# for the watcher that runs from %TEMP%. Its hand-built verdicts carry all four fields too, empty or
+# zero in every case, because the fallback reads no plan. A caller under Set-StrictMode that reads
+# .Code would throw on a shape the fallback lacked, and the two copies must not drift.
 function New-WorktreePlanVerdict {
     param(
         [Parameter(Mandatory)][bool] $Allow,
