@@ -6,7 +6,7 @@
 - **Type**: Feature
 - **Interfaces**: none (developer tooling)
 - **Difficulty**: moderate
-- **Stage**: 3-plan
+- **Stage**: 9-ship
 
 ## Summary
 
@@ -21,25 +21,25 @@ the work merges, so that cleanup never keeps a worktree whose plan was in fact c
 
 ## Acceptance criteria
 
-- [ ] `scripts/pre-push-quick-checks.ps1` refuses a push when a backlog item this branch owns is
+- [x] `scripts/pre-push-quick-checks.ps1` refuses a push when a backlog item this branch owns is
       at `Stage: 9-ship`, names a plan under `docs/superpowers/plans/`, and that plan holds one or
       more `- [ ]` steps with zero `- [x]` steps.
-- [ ] The refusal names the plan file and says the steps that were carried out must be ticked.
-- [ ] A plan with at least one ticked step passes, whatever its unticked count. Work can be
+- [x] The refusal names the plan file and says the steps that were carried out must be ticked.
+- [x] A plan with at least one ticked step passes, whatever its unticked count. Work can be
       descoped, so a partly ticked plan is not an error.
-- [ ] An item that names no plan, or names `none`, passes.
-- [ ] The check takes its verdict from `Test-WorktreePlanWasImplemented`
+- [x] An item that names no plan, or names `none`, passes.
+- [x] The check takes its verdict from `Test-WorktreePlanWasImplemented`
       (`scripts/worktree-git.common.ps1:1314`, "function Test-WorktreePlanWasImplemented"), so the
       push and the cleanup sweep can never disagree about what counts as implemented.
-- [ ] A test suite covers the refusal and each pass case against fixtures, in the style of
+- [x] A test suite covers the refusal and each pass case against fixtures, in the style of
       (`tests/PrePushHook.Tests.ps1:1`, "#Requires -Version 5.1").
-- [ ] The check judges only the items this branch ships, and not every item it touches. An item
+- [x] The check judges only the items this branch ships, and not every item it touches. An item
       already shipped in the merge base, at `Stage: 9-ship` and already under `backlog/done/`, is
       skipped whatever this branch does to it.
-- [ ] Items 107, 110, 111, 112, 119 and 121 no longer hold a plan with zero ticked steps. Each tick
+- [x] Items 107, 110, 111, 112, 119 and 121 no longer hold a plan with zero ticked steps. Each tick
       is backed by the merged diff, and any step that was never carried out stays unticked with the
       reason written into the plan.
-- [ ] The gate was driven once for real: `pwsh ./scripts/pre-push-quick-checks.ps1` refused with
+- [x] The gate was driven once for real: `pwsh ./scripts/pre-push-quick-checks.ps1` refused with
       this plan's steps unticked, and passed with them ticked. Both outputs are in this item.
 
 ## Out of scope
@@ -73,3 +73,63 @@ the work merges, so that cleanup never keeps a worktree whose plan was in fact c
   touched them, and the gate would be switched off within a week.
 - Spec: none — the rule already exists and the sweep proves it. This item changes where it runs.
 - Plan: `docs/superpowers/plans/2026-09-03-fail-the-push-on-an-unticked-plan-130.md`
+
+## Evidence that the gate fires
+
+A fixture suite proves the rule, and a source assertion proves the pre-push step is written down.
+Neither proves pre-push runs it. So the real hook was driven twice on 2026-09-03, with this item at
+`Stage: 9-ship` and already moved into `backlog/done/`.
+
+**First run, with every step in the plan unticked.** The run got past the frozen-plan step, which
+is the step before it, and then failed:
+
+```
+==> Checking that shipped plans are frozen
+RESULT: every shipped plan and spec is frozen.
+  + Shipped plans are frozen.
+
+==> Checking that a shipped item's plan has a ticked step
+
+Backlog item 130 reads 'Stage: 9-ship', and no step in its plan is ticked.
+
+  Item:  backlog/done/130-fail-the-push-when-a-shipped-it-0c4f5d37.md
+  Plan:  docs/superpowers/plans/2026-09-03-fail-the-push-on-an-unticked-plan-130.md
+  Steps: 39 unticked, 0 ticked
+
+Tick every step you carried out, then push again. A tick claims the step was done, so tick
+only those. A plan with some steps ticked and some not passes: work can be descoped.
+
+The plan belongs to the private plans repository, so it takes its own commit:
+  git -C docs/superpowers add <the plan file>
+  git -C docs/superpowers commit -m "tick the plan steps"
+
+Skip this check with: SKIP_PUSH_HOOK=1 git push
+
+RESULT: 1 shipped item carries a plan with no ticked step.
+```
+
+The hook threw `A backlog item this branch ships carries a plan with no ticked step.`
+
+**Second run, with the carried-out steps ticked again.** Same hook, same commit, nothing else
+changed:
+
+```
+==> Checking that shipped plans are frozen
+  + Shipped plans are frozen.
+
+==> Checking that a shipped item's plan has a ticked step
+RESULT: every shipped plan carries a ticked step. Looked at 2 backlog item(s) this branch touches, of which it ships 1, judged against 54d4f7e863a9cbc417830335399461d715006f0a.
+  + Every shipped plan carries a ticked step.
+  + Pre-push quick checks passed.
+```
+
+## Evidence that the six older plans are clear
+
+Re-run of the measurement that found them, from the worktree root on 2026-09-03: dot-source
+`scripts/worktree-git.common.ps1` and call `Test-WorktreePlanWasImplemented` for every item in
+`backlog/done/`. Every item answered `Allow = True`, including 107, 110, 111, 112, 119 and 121.
+Before the audit those six answered `Allow = False` with 27, 50, 18, 31, 32 and 26 unticked steps.
+
+The audit ticked only what the merged tree, the commit log, or a re-run of the step's own command
+proves. Fifteen steps across the six plans stay unticked, and each plan's header says which ones and
+why. Most are "run the suite and watch it fail" red steps, which leave no trace anywhere.
