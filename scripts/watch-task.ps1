@@ -500,7 +500,9 @@ function Set-TailReaderCheckpoint {
     param(
         [Parameter(Mandatory)][object] $Reader,
         [Parameter(Mandatory)][AllowEmptyCollection()][byte[]] $Consumed,
-        [Parameter(Mandatory)][int] $Count
+        # How many of $Consumed's bytes the read really returned. It defaults to all of them. Only
+        # a caller whose buffer is larger than its read passes a number of its own.
+        [int] $Count = $Consumed.Length
     )
 
     $Reader.CheckpointOffset = $Reader.Offset
@@ -617,7 +619,6 @@ function Read-TailText {
             $Reader.Head = $head
             $Reader.CheckpointOffset = 0
             $Reader.Checkpoint = $null
-            $Reader.AtEnd = $false
 
             # A file replaced again while this call was reading it. Leave the reader at the start
             # and let the next poll try, rather than spin here against a writer.
@@ -755,10 +756,8 @@ function Read-InitialTailText {
         $Reader.InitialTruncated = $lineCapReached
         $Reader.AtEnd = $true
         $Reader.FileIdentity = [System.IO.File]::GetCreationTimeUtc($Reader.Path).Ticks
-        Set-TailReaderCheckpoint `
-            -Reader $Reader `
-            -Consumed $(if ($chunks.Count -gt 0) { $chunks[0] } else { [byte[]]::new(0) }) `
-            -Count $(if ($chunks.Count -gt 0) { $chunks[0].Length } else { 0 })
+        $consumed = if ($chunks.Count -gt 0) { $chunks[0] } else { [byte[]]::new(0) }
+        Set-TailReaderCheckpoint -Reader $Reader -Consumed $consumed
 
         if ($total -le 0) {
             return ''

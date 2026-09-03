@@ -121,8 +121,8 @@ in about 80 seconds instead of 618, so that running them stops being a reason to
   - Marking the suite `exclusive` does not fix it. That was tried for one measurement round and
     it still failed, so the marking was reverted rather than kept for a benefit it does not give.
   - Where the code points: `scripts/watch-task.ps1` reads the checkpoint bytes that decide
-    whether the file was replaced (`scripts/watch-task.ps1:594`, "            $currentCheckpoint = Read-FileCheckpoint `"),
-    and reads the file length afterwards (`scripts/watch-task.ps1:571`, "            $available = $length - $Reader.Offset").
+    whether the file was replaced (`scripts/watch-task.ps1:596`, "            $currentCheckpoint = Read-FileCheckpoint `"),
+    and reads the file length afterwards (`scripts/watch-task.ps1:573`, "            $available = $length - $Reader.Offset").
     A writer that finishes between those two reads is missed: the checkpoint still looks
     unchanged, so the reader never goes back to the start, but the length is already full, so it
     reads the new tail and stops at the terminal marker. That matches every captured failure,

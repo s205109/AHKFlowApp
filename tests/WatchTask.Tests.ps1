@@ -728,29 +728,6 @@ finally {
 # These two cases drive that window instead of waiting for a busy machine to produce it. The seam
 # is Read-FileCheckpoint: once armed it does the real read and then lets the writer finish.
 
-# Overwrites a file from byte zero without emptying it first, so the file is never briefly short.
-function Set-WatchFileInPlace {
-    param(
-        [Parameter(Mandatory)][string] $Path,
-        [Parameter(Mandatory)][string] $Text
-    )
-
-    $bytes = [System.Text.Encoding]::UTF8.GetBytes($Text)
-    $stream = [System.IO.File]::Open(
-        $Path,
-        [System.IO.FileMode]::Open,
-        [System.IO.FileAccess]::Write,
-        [System.IO.FileShare]::ReadWrite)
-    try {
-        $stream.Position = 0
-        $stream.Write($bytes, 0, $bytes.Length)
-        $stream.Flush()
-    }
-    finally {
-        $stream.Dispose()
-    }
-}
-
 # Polls until the wanted text arrives or the budget runs out. Returns everything read.
 function Read-TailUntil {
     param(
@@ -782,7 +759,7 @@ function Read-FileCheckpoint {
     $bytes = & $script:realReadFileCheckpoint -Stream $Stream -EndOffset $EndOffset -Count $Count
     if ($script:swapArmed) {
         $script:swapArmed = $false
-        Set-WatchFileInPlace -Path $script:swapPath -Text $script:swapText
+        Set-FileContentInPlace -Path $script:swapPath -Text $script:swapText
     }
     return $bytes
 }
