@@ -230,6 +230,23 @@ One `tests/*.Tests.ps1` file. The runner starts each Suite as its own process an
 once, so one Suite's failure cannot stop another. `tests/powershell-suites.json` lists every Suite.
 _Avoid_: test file, test script, spec, run
 
+**Slice**:
+One .NET test project plus the trait filter the runner applies to it. `AHKFlowApp.CLI.Tests` with
+`Category!=Integration` is one Slice, and the same project with `Category=Integration` is a
+different one. A Suite is the PowerShell equivalent, and neither word ever means the other.
+_Avoid_: suite, project, run, pass
+
+**Mode**:
+One named list of Slices that `scripts/test-fast.ps1` runs: Fast, Integration, E2E, Coverage, or
+PowerShell.
+_Avoid_: profile, preset, group, tier
+
+**Collection**:
+The xUnit grouping that decides what may run at the same time. Two tests in one Collection never
+run at the same time. Sharing one fixture instance across test classes requires putting those
+classes in one Collection, which is why some Slices run one test at a time.
+_Avoid_: group, bucket, batch
+
 **Merge proof**:
 The evidence that a branch's own work reached the base, which is what lets a worktree be removed. Local git proves it when the branch SHA is a non-first parent of a merge commit on the base. A rebase merge leaves no such commit, so the proof then comes from a merged pull request whose head SHA the branch really pointed at.
 _Avoid_: merged check, merge test, ancestry
