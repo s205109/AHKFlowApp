@@ -28,6 +28,11 @@
     backlog/done/, leaving the Stage line untouched at '9-ship', is still the branch that shipped
     the item, and is still judged.
 
+    The base is looked up under the number the item carried IN THE BASE, which differs from its
+    number now only across a renumber. An item's identity is the file, not the number, so a branch
+    that renumbers an already-shipped item did not ship it. A branch that renumbers an item the base
+    still holds open, and ships it in the same breath, did ship it and is judged.
+
     An item with no Stage line, or with more than one, is skipped. Those are already the business of
     the backlog numbering check, and this must not report them a second time.
 
@@ -108,29 +113,99 @@ function Test-BacklogItemIsNewlyShipped {
     return $false
 }
 
-# The item numbers this branch touches under backlog/. A prefilter for speed only: the base
-# comparison in Get-BranchShippedItem is what decides who shipped what.
+# The number in a backlog path, or '' when the path carries none.
+function Get-BacklogNumberFromPath {
+    param([AllowEmptyString()][string] $Path)
+
+    if ($Path -match ('/(' + $WorktreeBacklogNumberPattern + ')-')) { return $Matches[1] }
+    return ''
+}
+
+# One record per item number this branch touches under backlog/: Number, from the path as it is
+# now, and BaseNumber, the number that same file carried in the base.
+#
+# The two differ only across a renumber, and that is the whole reason this reads the diff as
+# name-status rather than name-only. An item's identity is the FILE, not the number: a renumber is
+# a 'git mv' plus a heading edit, and the item it moves is the same item. 'git diff --name-only'
+# prints only the destination of a rename, so the old number vanished, the base lookup found
+# nothing under the new one, and a branch that merely renumbered a shipped item was told it had
+# shipped it. This repository renumbers shipped items for real: b9f38820 renumbered done item 105
+# to 107, and 7c762117 renumbered 118 to 120.
+#
+# -z, so a path holding a space or a non-ASCII byte arrives whole. Without it git quotes and
+# escapes such a path, and the number would be read out of an escaped string.
+#
+# A copy is not a rename. --find-copies is off by default so 'C' never appears, but its two paths
+# are still parsed, because a caller who turns copies on must not desynchronise the token walk. Its
+# source is deliberately not used as identity: the source still exists, so the destination is a new
+# item, not the same one moved.
 #
 # Suffix-aware, because this repository ships items such as 022b and a digits-only pattern would
-# skip them in silence. The numbers are made unique here: a 'git mv' reports the old path and the
-# new path, and both carry the same number.
+# skip them in silence.
 #
 # Fail closed on the diff. An empty list would switch the whole check off in silence, which is the
 # same rule pre-push already applies when it cannot read the backlog diff.
-function Get-BranchBacklogCandidateNumber {
+function Get-BranchBacklogCandidate {
     param(
         [Parameter(Mandatory)][string] $RepoRoot,
         [Parameter(Mandatory)][string] $MergeBase
     )
 
-    $diff = & git -C $RepoRoot diff --name-only $MergeBase -- backlog 2>$null
+    $diff = & git -C $RepoRoot diff --name-status -z --find-renames $MergeBase -- backlog 2>$null
     if ($LASTEXITCODE -ne 0) {
         throw "Could not read the backlog diff against '$MergeBase', so which items this branch ships is unknown."
     }
 
-    return @(@($diff) |
-        ForEach-Object { if ($_ -match ('/(' + $WorktreeBacklogNumberPattern + ')-')) { $Matches[1] } } |
-        Sort-Object -Unique)
+    # A -z stream holds no newline, so PowerShell hands it back as one string. Joining on a newline
+    # is exact either way: with one element it returns that element unchanged, and were a path ever
+    # to carry a literal newline the join puts it back where it was.
+    $raw = [string]::Join("`n", @($diff))
+    $token = @($raw -split "`0")
+
+    # One record per number, not per changed path. BaseNumber takes the first rename source seen: a
+    # branch that deletes backlog/073-a.md and adds backlog/073-b.md produces two records for one
+    # number, and both answer the same base.
+    $baseByNumber = @{}
+    $order = [System.Collections.Generic.List[string]]::new()
+
+    $i = 0
+    while ($i -lt $token.Count) {
+        $status = $token[$i]
+        if ([string]::IsNullOrEmpty($status)) { $i++; continue }
+
+        $sourcePath = ''
+        if ($status[0] -eq 'R' -or $status[0] -eq 'C') {
+            if ($i + 2 -ge $token.Count) { break }
+            if ($status[0] -eq 'R') { $sourcePath = $token[$i + 1] }
+            $path = $token[$i + 2]
+            $i += 3
+        }
+        else {
+            if ($i + 1 -ge $token.Count) { break }
+            $path = $token[$i + 1]
+            $i += 2
+        }
+
+        $number = Get-BacklogNumberFromPath -Path $path
+        if (-not $number) { continue }
+
+        if (-not $baseByNumber.ContainsKey($number)) {
+            $order.Add($number)
+            $baseByNumber[$number] = ''
+        }
+        if (-not $baseByNumber[$number]) {
+            $sourceNumber = Get-BacklogNumberFromPath -Path $sourcePath
+            if ($sourceNumber) { $baseByNumber[$number] = $sourceNumber }
+        }
+    }
+
+    $candidate = @()
+    foreach ($number in ($order | Sort-Object)) {
+        $baseNumber = $baseByNumber[$number]
+        if (-not $baseNumber) { $baseNumber = $number }
+        $candidate += [pscustomobject]@{ Number = $number; BaseNumber = $baseNumber }
+    }
+    return @($candidate)
 }
 
 # One record per item this branch ships: Number, RelativePath and Stage. One record per number,
@@ -141,8 +216,8 @@ function Get-BranchShippedItem {
         [Parameter(Mandatory)][string] $MergeBase
     )
 
-    $numbers = @(Get-BranchBacklogCandidateNumber -RepoRoot $RepoRoot -MergeBase $MergeBase)
-    if ($numbers.Count -eq 0) { return @() }
+    $candidate = @(Get-BranchBacklogCandidate -RepoRoot $RepoRoot -MergeBase $MergeBase)
+    if ($candidate.Count -eq 0) { return @() }
 
     $inventory = Get-BacklogInventoryFromRef -MainCheckout $RepoRoot -BaseRef $MergeBase
     if ($inventory.Status -ne 'ok') {
@@ -156,20 +231,26 @@ function Get-BranchShippedItem {
     }
 
     $shipped = @()
-    foreach ($number in $numbers) {
+    foreach ($record in $candidate) {
+        $number = $record.Number
         if (-not $items.ContainsKey($number)) { continue }
         $item = $items[$number]
+
+        # The base is looked up under the number the file carried THERE, which is the same number
+        # unless this branch renumbered it. Looking it up under the new number would find nothing
+        # and call every renumbered item newly shipped.
+        $baseNumber = $record.BaseNumber
 
         # A base that carries two files for one number is treated as 'not shipped in the base',
         # which judges the item here. That is the fail-closed reading, and the duplicate is already
         # reported by the backlog numbering check.
-        $pattern = '^backlog/(done/|blocked/)?' + [regex]::Escape($number) + '-[^/]*\.md$'
+        $pattern = '^backlog/(done/|blocked/)?' + [regex]::Escape($baseNumber) + '-[^/]*\.md$'
         $basePaths = @(@($inventory.Paths) | Where-Object { $_ -match $pattern })
         $basePath = ''
         $baseStages = @()
         if ($basePaths.Count -eq 1) {
             $basePath = $basePaths[0]
-            $fromRef = Get-BacklogItemLinesFromRef -MainCheckout $RepoRoot -Inventory $inventory -ItemNumber $number
+            $fromRef = Get-BacklogItemLinesFromRef -MainCheckout $RepoRoot -Inventory $inventory -ItemNumber $baseNumber
             if ($fromRef.Status -eq 'found') {
                 $baseStages = @(Get-SingleBacklogStage -Lines $fromRef.Lines | Where-Object { $_ })
             }
@@ -245,7 +326,7 @@ if (-not $MergeBase) {
     $MergeBase = ([string] $resolved).Trim()
 }
 
-$candidate = @(Get-BranchBacklogCandidateNumber -RepoRoot $RepoRoot -MergeBase $MergeBase)
+$candidate = @(Get-BranchBacklogCandidate -RepoRoot $RepoRoot -MergeBase $MergeBase)
 $shippedItem = @(Get-BranchShippedItem -RepoRoot $RepoRoot -MergeBase $MergeBase)
 $result = Get-ShippedPlanTickFailure -RepoRoot $RepoRoot -Item $shippedItem
 

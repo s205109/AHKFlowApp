@@ -234,6 +234,39 @@ try {
     $shipped = @(Get-BranchShippedItem -RepoRoot $repo -MergeBase $base)
     Assert-Equal 1 $shipped.Count 'A plain rename into backlog/done returns exactly one record'
 
+    # 18b. Renumbering an item the base already shipped. The item keeps its identity across a
+    #      renumber, because the identity is the file and not the number. 'git diff --name-only'
+    #      prints only the destination of a rename, so the old number vanishes and the base lookup
+    #      finds nothing under the new one. That made this branch look like the shipper of debt it
+    #      did not create, which is the exact failure the typo-fix case above exists to stop.
+    #      This repository really does renumber shipped items: b9f38820 renumbered done item 105 to
+    #      107, and 7c762117 renumbered 118 to 120.
+    $repo = New-TempGitRepo
+    Write-Item -Root $repo -Number '073' -Folder 'backlog/done' -Stage '9-ship'
+    & git -C $repo add -A *> $null
+    & git -C $repo commit -m 'ship 073' *> $null
+    $base = Get-BaseSha -Root $repo
+    & git -C $repo mv 'backlog/done/073-probe.md' 'backlog/done/074-probe.md' *> $null
+    & git -C $repo commit -am 'renumber 073 to 074' *> $null
+    $shipped = @(Get-BranchShippedItem -RepoRoot $repo -MergeBase $base)
+    Assert-Equal 0 $shipped.Count 'Renumbering an item the base already shipped returns nothing'
+
+    # 18c. Renumbering an item the base holds OPEN, and shipping it in the same branch. The rename
+    #      must not turn into a free pass: the base never shipped this item, so this branch is the
+    #      shipper and its plan is judged.
+    $repo = New-TempGitRepo
+    Write-Item -Root $repo -Number '073' -Folder 'backlog' -Stage '8-review'
+    & git -C $repo add -A *> $null
+    & git -C $repo commit -m 'file 073' *> $null
+    $base = Get-BaseSha -Root $repo
+    & git -C $repo mv 'backlog/073-probe.md' 'backlog/done/074-probe.md' *> $null
+    Write-Item -Root $repo -Number '074' -Folder 'backlog/done' -Stage '9-ship'
+    & git -C $repo add -A *> $null
+    & git -C $repo commit -m 'renumber and ship 074' *> $null
+    $shipped = @(Get-BranchShippedItem -RepoRoot $repo -MergeBase $base)
+    Assert-Equal 1 $shipped.Count 'Renumbering an open item and shipping it is still shipped here'
+    if ($shipped.Count -eq 1) { Assert-Equal '074' $shipped[0].Number 'The new number names the shipped item' }
+
     # 19. A suffixed item. A digits-only pattern would skip 022b in silence.
     $repo = New-TempGitRepo
     $base = Get-BaseSha -Root $repo
@@ -261,6 +294,81 @@ try {
         $threw = $true
     }
     Assert-True $threw 'An unresolvable merge base must throw'
+
+    # === the script itself, run as pre-push runs it ==========================
+    # Everything above drives the functions in-process. None of it executes the script body: the
+    # exit codes, the refusal message, and the result line. A suite that stops there stays green
+    # while the script always exits 0, or stops calling a helper, or prints a broken diagnostic.
+    # Pre-push reads the exit code and nothing else, so the exit code is the contract.
+    #
+    # The fixture root carries a space, because pre-push passes -RepoRoot and -MergeBase through
+    # 'pwsh -NoProfile -File', and an unquoted path would split there.
+    $entryRepo = New-Root -Prefix 'shipped plan entry'
+    New-Item -ItemType Directory -Path (Join-Path $entryRepo 'backlog/done') -Force | Out-Null
+    New-Item -ItemType Directory -Path (Join-Path $entryRepo 'docs/superpowers/plans') -Force | Out-Null
+    & git -C $entryRepo init *> $null
+    & git -C $entryRepo config user.email 'test@example.com' *> $null
+    & git -C $entryRepo config user.name 'Shipped Plan Test' *> $null
+    Set-Content -LiteralPath (Join-Path $entryRepo 'README.md') -Value 'seed' -Encoding utf8
+    & git -C $entryRepo add -A *> $null
+    & git -C $entryRepo commit -m 'seed' *> $null
+    $entryBase = Get-BaseSha -Root $entryRepo
+
+    $entryPlan = Join-Path $entryRepo 'docs/superpowers/plans/probe-plan-073.md'
+    Set-Content -LiteralPath (Join-Path $entryRepo 'backlog/done/073-probe.md') -Encoding utf8 -Value (@(
+        '# 073 - probe'
+        ''
+        '- **Stage**: 9-ship'
+        ''
+        '- Plan: `docs/superpowers/plans/probe-plan-073.md`'
+    ) -join "`n")
+    Set-Content -LiteralPath $entryPlan -Value "- [ ] Step 1`n- [ ] Step 2`n- [ ] Step 3" -Encoding utf8
+    & git -C $entryRepo add -A *> $null
+    & git -C $entryRepo commit -m 'ship 073' *> $null
+
+    $checkScript = Join-Path $suiteRoot 'scripts/check-shipped-plan-ticked.ps1'
+    $pwshPath = (Get-Process -Id $PID).Path
+
+    function Invoke-CheckScript {
+        param([string] $Root, [string] $Base)
+
+        $output = & $pwshPath -NoProfile -File $checkScript -RepoRoot $Root -MergeBase $Base 2>&1
+        return [pscustomobject]@{
+            ExitCode = $LASTEXITCODE
+            Text = (@($output) -join "`n")
+        }
+    }
+
+    # 22. A shipped item whose plan has no ticked step: exit 1, and the refusal names the plan file
+    #     and both counts. A refusal that does not say which plan is unactionable.
+    $run = Invoke-CheckScript -Root $entryRepo -Base $entryBase
+    Assert-Equal 1 $run.ExitCode 'An unticked shipped plan must exit 1'
+    Assert-True ($run.Text -match 'Backlog item 073') "The refusal must name the item, got: $($run.Text)"
+    Assert-True ($run.Text -match 'backlog/done/073-probe\.md') 'The refusal must name the item file'
+    Assert-True ($run.Text -match 'probe-plan-073\.md') 'The refusal must name the plan file'
+    Assert-True ($run.Text -match '3 unticked, 0 ticked') "The refusal must print both counts, got: $($run.Text)"
+    Assert-True ($run.Text -match 'SKIP_PUSH_HOOK=1') 'The refusal must say how to skip the check'
+
+    # 23. One ticked step: exit 0, and the result line names what it looked at.
+    Set-Content -LiteralPath $entryPlan -Value "- [x] Step 1`n- [ ] Step 2`n- [ ] Step 3" -Encoding utf8
+    $run = Invoke-CheckScript -Root $entryRepo -Base $entryBase
+    Assert-Equal 0 $run.ExitCode "One ticked step must exit 0, got: $($run.Text)"
+    Assert-True ($run.Text -match 'every shipped plan carries a ticked step') 'A clean run must print its result line'
+    Assert-True ($run.Text -match 'ships 1') "The result line must say how many items this branch ships, got: $($run.Text)"
+
+    # 24. A repository path holding a space reaches the script whole. The fixture root above already
+    #     carries one, so this asserts the property rather than assuming it.
+    Assert-True ($entryRepo -match ' ') 'The entry-point fixture root must carry a space'
+
+    # 25. A branch that ships nothing: exit 0, and the result line reports zero.
+    $quietRepo = New-TempGitRepo
+    $quietBase = Get-BaseSha -Root $quietRepo
+    Set-Content -LiteralPath (Join-Path $quietRepo 'README.md') -Value 'edited' -Encoding utf8
+    & git -C $quietRepo add -A *> $null
+    & git -C $quietRepo commit -m 'edit readme' *> $null
+    $run = Invoke-CheckScript -Root $quietRepo -Base $quietBase
+    Assert-Equal 0 $run.ExitCode "A branch that ships nothing must exit 0, got: $($run.Text)"
+    Assert-True ($run.Text -match 'ships 0') 'The result line must report zero shipped items'
 
     # === the pre-push wiring, as written down ================================
     # This is a source assertion. It does not prove the step runs, because pre-push builds the
