@@ -120,13 +120,15 @@ in about 80 seconds instead of 618, so that running them stops being a reason to
     together does not.
   - Marking the suite `exclusive` does not fix it. That was tried for one measurement round and
     it still failed, so the marking was reverted rather than kept for a benefit it does not give.
-  - Where the code points: `scripts/watch-task.ps1` reads the checkpoint bytes that decide
-    whether the file was replaced (`scripts/watch-task.ps1:596`, "            $currentCheckpoint = Read-FileCheckpoint `"),
-    and reads the file length afterwards (`scripts/watch-task.ps1:573`, "            $available = $length - $Reader.Offset").
-    A writer that finishes between those two reads is missed: the checkpoint still looks
-    unchanged, so the reader never goes back to the start, but the length is already full, so it
-    reads the new tail and stops at the terminal marker. That matches every captured failure,
-    but nobody has proved it by making the race happen on purpose.
+  - Where the code pointed, when this item was written: `scripts/watch-task.ps1` at `a548e8aa`,
+    before backlog 129 fixed it. This is kept as a record of the lead, so it carries no line
+    numbers: the fix moved or removed every line it named, and pointing it at today's code would
+    make it describe the opposite of what it says. `Read-TailText` read the checkpoint bytes that
+    decide whether the file was replaced, and read the file length afterwards. A writer that
+    finished between those two reads was missed: the checkpoint still looked unchanged, so the
+    reader never went back to the start, but the length was already full, so it read the new tail
+    and stopped at the terminal marker. That matched every captured failure, and backlog 129 later
+    proved it by making the race happen on purpose.
   - Backlog 129 owns the defect, `backlog/129-watch-task-drops-output-under-load.md`. It is out
     of scope here.
 - One section that this split moved unchanged failed once, with

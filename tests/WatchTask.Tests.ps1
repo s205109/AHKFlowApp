@@ -932,6 +932,265 @@ finally {
     Remove-Item -LiteralPath $rollingPath -Force -ErrorAction SilentlyContinue
 }
 
+# --- A run that replaces the path, rather than overwriting the file, must not replay old output ---
+#
+# The cases above overwrite the file the reader already has open, so the reader's handle keeps
+# serving the new bytes. A run that deletes the path and writes a new file in its place leaves
+# that handle on the old file object: the path says one thing, the handle says another. The reader
+# notices the swap through the path, so it must read the new file through a new handle.
+
+# Deletes the path and writes a new file at it, then gives that file a creation time of its own.
+#
+# The last step is what makes the swap visible. NTFS keeps the deleted file's creation time for a
+# new file of the same name in the same folder, for about 15 seconds. That is file tunneling, and
+# it is a documented NTFS behaviour, not a bug here. Measured on 2026-09-03: a delete followed at
+# once by a write reported the first file's creation time to the tick. So the reader's creation
+# time check cannot see a fast delete-and-recreate on its own, and a case that relies on it would
+# pass for the wrong reason. This builds the state the check is meant to catch instead of racing
+# the tunnel window for it.
+function Set-WatchFileByReplacingPath {
+    param(
+        [Parameter(Mandatory)][string] $Path,
+        [Parameter(Mandatory)][string] $Text
+    )
+
+    [System.IO.File]::Delete($Path)
+    [System.IO.File]::WriteAllText($Path, $Text)
+    $tunneled = [System.IO.File]::GetCreationTimeUtc($Path)
+    [System.IO.File]::SetCreationTimeUtc($Path, $tunneled.AddMinutes(5))
+}
+
+# The seam is Read-FileHead this time, not Read-FileCheckpoint. The checkpoint read is skipped once
+# the reader has dropped its checkpoint, which is exactly what a detected replacement does, so it
+# cannot drive a second replacement inside one call. The head read runs on every pass.
+$script:realReadFileHead = ${function:Read-FileHead}
+$script:headSwapsLeft = 0
+$script:headSwapPath = ''
+$script:headSwapTexts = @()
+
+function Read-FileHead {
+    param(
+        [Parameter(Mandatory)][System.IO.FileStream] $Stream,
+        [Parameter(Mandatory)][int] $Count
+    )
+
+    $bytes = & $script:realReadFileHead -Stream $Stream -Count $Count
+    if ($script:headSwapsLeft -gt 0) {
+        $next = $script:headSwapTexts[$script:headSwapTexts.Count - $script:headSwapsLeft]
+        $script:headSwapsLeft--
+        Set-WatchFileByReplacingPath -Path $script:headSwapPath -Text $next
+    }
+    return $bytes
+}
+
+try {
+
+# --- The path is replaced with a different file object ---
+
+$pathSwapPath = Join-Path ([System.IO.Path]::GetTempPath()) ("watch-task-path-swap-$([guid]::NewGuid()).output")
+try {
+    $onlyInFirst = 'ONLY-IN-THE-FIRST-RUN'
+    $first = "$onlyInFirst`n" + ("FIRST-RUN-FILLER-LINE`n" * 40)
+    $onlyInSecond = 'ONLY-IN-THE-SECOND-RUN'
+    $second = "$onlyInSecond`n" + ("SECOND-RUN-FILLER-LINE`n" * 60) + "[exited with code 11]`n"
+
+    [System.IO.File]::WriteAllText($pathSwapPath, $first)
+    $reader = New-TailReader -Path $pathSwapPath
+    $seen = Read-TailText -Reader $reader
+    Assert-True ($seen.Contains($onlyInFirst)) `
+        'Path swap: the first read must return the first run.'
+
+    $script:headSwapPath = $pathSwapPath
+    $script:headSwapTexts = @($second)
+    $script:headSwapsLeft = 1
+    $seen += Read-TailUntil -Reader $reader -Text $onlyInSecond
+
+    Assert-True ($seen.Contains($onlyInSecond)) `
+        'Path swap: the replacement run''s output must be read.'
+
+    # A reader that retries through the handle the swap left behind reads the old file from its
+    # start again, and the first run appears on screen a second time.
+    $firstRunHits = ([regex]::Matches($seen, [regex]::Escape($onlyInFirst))).Count
+    Assert-True ($firstRunHits -eq 1) `
+        "Path swap: the first run must not be printed twice. Times seen: $firstRunHits"
+}
+finally {
+    $script:headSwapsLeft = 0
+    Remove-Item -LiteralPath $pathSwapPath -Force -ErrorAction SilentlyContinue
+}
+
+# --- Two replacements inside one call must be reported, not read as the end of the file ---
+#
+# The reader gives up after a bounded number of replacements in one call and leaves the rest to the
+# next poll. It returns an empty string to say so, and an empty string is also what it returns at
+# the end of a file. A caller that cannot tell those apart stops reading a file it never read: the
+# catch-up loop treats a round that read nothing as the run being finished, and prints the verdict.
+
+$exhaustPath = Join-Path ([System.IO.Path]::GetTempPath()) ("watch-task-retry-exhaust-$([guid]::NewGuid()).output")
+try {
+    $first = "EXHAUST-FIRST-LINE`n" + ("FIRST-FILLER-LINE`n" * 40)
+    $second = "EXHAUST-SECOND-LINE`n" + ("SECOND-FILLER-LINE`n" * 50)
+    $third = "EXHAUST-THIRD-LINE`n" + ("THIRD-FILLER-LINE`n" * 60) + "[exited with code 11]`n"
+
+    [System.IO.File]::WriteAllText($exhaustPath, $first)
+    $reader = New-TailReader -Path $exhaustPath
+    Read-TailText -Reader $reader | Out-Null
+
+    $script:headSwapPath = $exhaustPath
+    $script:headSwapTexts = @($second, $third)
+    $script:headSwapsLeft = 2
+    $text = Read-TailText -Reader $reader
+
+    Assert-True ($text -eq '') `
+        "Retry exhaustion: the call must return nothing once it gives up. Got $($text.Length) characters."
+    Assert-True ($reader.ReadSucceeded) `
+        'Retry exhaustion: giving up is not a read failure.'
+    Assert-True (-not $reader.AtEnd) `
+        'Retry exhaustion: the reader has not reached the end of the file it now follows.'
+
+    # PSObject.Properties rather than a plain property read: under Set-StrictMode a missing
+    # property throws, which would end the suite and hide every case below this one.
+    $deferred = $reader.PSObject.Properties['ReadDeferred']
+    Assert-True ($null -ne $deferred -and $deferred.Value) `
+        'Retry exhaustion: the reader must say the read was deferred, so a caller can tell it apart from the end of the file.'
+}
+finally {
+    $script:headSwapsLeft = 0
+    Remove-Item -LiteralPath $exhaustPath -Force -ErrorAction SilentlyContinue
+}
+
+# --- A deferred read must clear on the next call ---
+#
+# A flag that stays set would keep the catch-up loop going round until it runs out of rounds.
+
+$clearPath = Join-Path ([System.IO.Path]::GetTempPath()) ("watch-task-defer-clear-$([guid]::NewGuid()).output")
+try {
+    [System.IO.File]::WriteAllText($clearPath, "DEFER-CLEAR`n")
+    $reader = New-TailReader -Path $clearPath
+    Read-TailText -Reader $reader | Out-Null
+    Read-TailText -Reader $reader | Out-Null
+
+    $deferred = $reader.PSObject.Properties['ReadDeferred']
+    Assert-True ($null -ne $deferred -and -not $deferred.Value) `
+        'Deferred read: an ordinary read must leave the deferred flag clear.'
+}
+finally {
+    Remove-Item -LiteralPath $clearPath -Force -ErrorAction SilentlyContinue
+}
+
+}
+finally {
+    ${function:Read-FileHead} = $script:realReadFileHead
+    $script:headSwapsLeft = 0
+}
+
+# The head seam must be gone, or every case below it inherits a writer nobody asked for.
+$headSeamPath = Join-Path ([System.IO.Path]::GetTempPath()) ("watch-task-head-seam-off-$([guid]::NewGuid()).output")
+try {
+    [System.IO.File]::WriteAllText($headSeamPath, "HEAD-SEAM-OFF`n")
+    $script:headSwapPath = $headSeamPath
+    $script:headSwapTexts = @("SWAPPED-BY-A-HEAD-SEAM-THAT-SHOULD-BE-GONE`n")
+    $script:headSwapsLeft = 1
+
+    $reader = New-TailReader -Path $headSeamPath
+    Read-TailText -Reader $reader | Out-Null
+    Read-TailText -Reader $reader | Out-Null
+
+    Assert-True ([System.IO.File]::ReadAllText($headSeamPath) -eq "HEAD-SEAM-OFF`n") `
+        'Head seam restore: the wrapped head read must be gone once its cases are done.'
+}
+finally {
+    $script:headSwapsLeft = 0
+    Remove-Item -LiteralPath $headSeamPath -Force -ErrorAction SilentlyContinue
+}
+
+# --- Two replacements inside one catch-up read must not end the watch ---
+#
+# The case above proves the reader reports a deferred read. This one proves the watcher acts on
+# it. The catch-up loop reads to the file's end, asks the file for its state, and repeats until a
+# whole round reads nothing. A deferred read returns nothing while the new run's output is still
+# sitting unread on disk, so a loop that treats it as "nothing left" prints the verdict over
+# output that never reached the screen.
+#
+# The seam runs inside the child, because Watch-Record's loop is what is under test here. Two
+# wrappers work together. Get-TaskState arms the swap the first time it reports a finished run,
+# which is the exact moment the watcher leaves the follow loop and starts catching up. Read-FileHead
+# then swaps twice, so one catch-up read gives up. Arming on the marker alone would fire one poll
+# too early, in the follow loop, which handles a deferred read on its own and would prove nothing.
+
+$job = $null
+$catchUpPath = Join-Path ([System.IO.Path]::GetTempPath()) ("watch-task-catchup-defer-$([guid]::NewGuid()).output")
+try {
+    [System.IO.File]::WriteAllText($catchUpPath, "RUN-A-LINE`n")
+
+    $job = Start-Job -ScriptBlock {
+        param($exe, $script, $path)
+        & $exe -NoProfile -Command @"
+. '$script'
+
+`$script:swapPath = '$path'
+`$script:swapTexts = @(
+    "RUN-B-LINE``n[exited with code 7]``n",
+    "RUN-C-LINE``n[exited with code 11]``n")
+`$script:swapsLeft = 0
+`$script:armSwaps = 2
+
+`$script:realGetTaskState = `${function:Get-TaskState}
+function Get-TaskState {
+    param([Parameter(Mandatory)][string] `$Path)
+
+    `$state = & `$script:realGetTaskState -Path `$Path
+    if (`$null -ne `$state -and -not `$state.Running -and `$script:armSwaps -gt 0) {
+        `$script:swapsLeft = `$script:armSwaps
+        `$script:armSwaps = 0
+    }
+    return `$state
+}
+
+`$script:realReadFileHead = `${function:Read-FileHead}
+function Read-FileHead {
+    param(
+        [Parameter(Mandatory)][System.IO.FileStream] `$Stream,
+        [Parameter(Mandatory)][int] `$Count
+    )
+
+    `$bytes = & `$script:realReadFileHead -Stream `$Stream -Count `$Count
+    if (`$script:swapsLeft -gt 0) {
+        `$next = `$script:swapTexts[`$script:swapTexts.Count - `$script:swapsLeft]
+        `$script:swapsLeft--
+        [System.IO.File]::Delete(`$script:swapPath)
+        [System.IO.File]::WriteAllText(`$script:swapPath, `$next)
+        `$tunneled = [System.IO.File]::GetCreationTimeUtc(`$script:swapPath)
+        [System.IO.File]::SetCreationTimeUtc(`$script:swapPath, `$tunneled.AddMinutes(5))
+    }
+    return `$bytes
+}
+
+`$record = [pscustomobject]@{ Path = '$path'; LastWrite = (Get-Date); Running = `$true; ExitCode = `$null }
+Watch-Record -Record `$record -Tail 40 | Out-Null
+"@ 2>&1
+    } -ArgumentList $hostExe, $watchScript, $catchUpPath
+
+    $entered = Wait-ForJobOutput -Job $job -Pattern 'RUN-A-LINE'
+    Assert-True $entered 'Catch-up deferral: the watcher must print the first run before the swap.'
+
+    # The marker is what sends the watcher into catch-up, which is what arms the swap.
+    [System.IO.File]::AppendAllText($catchUpPath, "[exited with code 3]`n")
+
+    $finished = Wait-Job -Job $job -Timeout 30
+    Assert-True ($null -ne $finished) 'Catch-up deferral: the watcher must stop, but it was still running after 30s.'
+
+    $output = Get-JobOutputSoFar -Job $job
+    Assert-True ($output -match 'RUN-C-LINE') `
+        "Catch-up deferral: the last run's output must be printed, not skipped. Output: $output"
+    Assert-True ((Get-LastNonEmptyLine -Text $output) -eq 'Exit code: 11') `
+        "Catch-up deferral: the verdict must be the last run's. Output: $output"
+}
+finally {
+    if ($job) { Remove-Job -Job $job -Force -ErrorAction SilentlyContinue }
+    Remove-Item -LiteralPath $catchUpPath -Force -ErrorAction SilentlyContinue
+}
+
 # --- A selected output file that disappears ends with a visible failure ---
 
 $root = New-WatchTestRoot

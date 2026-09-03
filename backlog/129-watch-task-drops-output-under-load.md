@@ -49,13 +49,16 @@ every time, so that a red gate always means my own change broke something.
 - **The defect is older than backlog 126.** That branch changed neither
   `tests/WatchTask.Tests.ps1` nor `scripts/watch-task.ps1`. Running the suites at the same time is
   what makes the defect show, not what causes it.
-- **Where the code points, unproven.** The watcher reads the checkpoint bytes that decide whether
-  the file was replaced (`scripts/watch-task.ps1:596`, "            $currentCheckpoint = Read-FileCheckpoint `"),
-  and reads the file length afterwards (`scripts/watch-task.ps1:573`, "            $available = $length - $Reader.Offset").
-  A writer that finishes between those two reads is missed. The checkpoint still looks unchanged,
-  so the reader never goes back to the start. The length is already full, so it reads the new tail
-  and stops at the terminal marker. That matches every captured failure. Nobody has made the race
-  happen on purpose, so treat it as a lead and not a conclusion.
+- **Where the code pointed, at the time this was filed.** This describes the reader as it stood at
+  `a548e8aa`, before the fix. It is kept as a record of the lead, so it carries no line numbers:
+  every line it named has since moved or gone, and pointing it at today's code would make it
+  describe the opposite of what it says. Read the diff of `730b74fa` to see the shape it describes.
+  `Read-TailText` read the checkpoint bytes that decide whether the file was replaced, then read
+  the file length, then read the data. A writer that finished between the first two reads was
+  missed. The checkpoint still looked unchanged, so the reader never went back to the start. The
+  length was already full, so it read the new tail and stopped at the terminal marker. That matched
+  every captured failure. At filing time nobody had made the race happen on purpose, so it was a
+  lead and not a conclusion. Design then reproduced it on purpose and found a second race beside it.
 - **20 runs under load, 2026-09-03.** `failed 0 of 20`, with 7 rounds of the full parallel suite
   run beside them. One load round, the first, reported `1 of 51 suite(s) failed`, and the suite was
   `CiPowerShellSuiteRunner.Tests.ps1`, not `WatchTask.Tests.ps1`. The one case that failed there is

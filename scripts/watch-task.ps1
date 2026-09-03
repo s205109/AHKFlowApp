@@ -396,6 +396,11 @@ function New-TailReader {
         ReadSucceeded  = $true
         ReadError      = $null
         AtEnd          = $false
+
+        # True when a read gave up part-way and left the rest to the next poll. It returns an
+        # empty string to do that, and an empty string also means the end of the file, so a
+        # caller that treats the two alike stops reading a file it has not read.
+        ReadDeferred   = $false
         FileIdentity   = $null
         CheckpointOffset = 0
         Checkpoint     = $null
@@ -538,6 +543,7 @@ function Read-TailText {
     $Reader.ReadSucceeded = $true
     $Reader.ReadError = $null
     $Reader.AtEnd = $false
+    $Reader.ReadDeferred = $false
 
     $stream = $null
     try {
@@ -616,15 +622,34 @@ function Read-TailText {
             $Reader.Carry = ''
             $Reader.CarryTruncated = $false
             $Reader.Decoder.Reset()
-            $Reader.Head = $head
             $Reader.CheckpointOffset = 0
             $Reader.Checkpoint = $null
 
+            # The head that was just read came from the file this reader is dropping, which is not
+            # always the file at the path any more. Keeping it would make the next pass compare a
+            # new file against an old start and call that a replacement too. Forget it instead:
+            # the pass below reads the head of whatever file it ends up following, and adopts it.
+            $Reader.Head = $null
+
             # A file replaced again while this call was reading it. Leave the reader at the start
-            # and let the next poll try, rather than spin here against a writer.
+            # and let the next poll try, rather than spin here against a writer. The caller is
+            # told, because an empty string on its own would read as the end of the file.
             if ($attempt -ge $script:MaxReplacementRetries) {
+                $Reader.ReadDeferred = $true
                 return ''
             }
+
+            # A run that replaces the path, rather than overwriting the file, leaves this handle
+            # on the old file object. The checks above look at the path and see the new file, so
+            # the two disagree, and a retry through this handle would read the old output a second
+            # time. Open the path again so the retry reads the file the checks just saw.
+            $stream.Dispose()
+            $stream = $null
+            $stream = [System.IO.FileStream]::new(
+                $Reader.Path,
+                [System.IO.FileMode]::Open,
+                [System.IO.FileAccess]::Read,
+                ([System.IO.FileShare]::ReadWrite -bor [System.IO.FileShare]::Delete))
         }
 
         if ($null -eq $Reader.Head -or $head.Length -gt $Reader.Head.Length) {
@@ -677,6 +702,7 @@ function Read-InitialTailText {
     $Reader.ReadSucceeded = $true
     $Reader.ReadError = $null
     $Reader.AtEnd = $false
+    $Reader.ReadDeferred = $false
 
     $stream = $null
     try {
@@ -1055,7 +1081,10 @@ function Watch-Record {
 
                     if ($catchUpFailed) { break }
                     $settled = Get-TaskState -Path $reader.Path
-                } while ($roundBytes -gt 0 -and
+                    # A deferred read returns nothing, but the file still has everything the new
+                    # run wrote. Settling on it would print the verdict over output that never
+                    # reached the screen, so it counts as a round that read something.
+                } while (($roundBytes -gt 0 -or $reader.ReadDeferred) -and
                          $null -ne $settled -and
                          -not $settled.Running -and
                          $settleRounds -lt $script:MaxSettleRounds)
