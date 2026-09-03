@@ -1257,12 +1257,24 @@ function Get-BacklogItemLinesFromWorkingTreeBySlug {
 # One shape for every verdict the plan guard returns. ItemNumber is the item that was judged and
 # RecordedItemNumber is what the manifest said, which are not always the same number after a
 # renumber. When they differ the reason names both, so no caller has to guess which one applied.
+#
+# Code, PlanPath, TickedCount and UntickedCount exist for callers that must act on one verdict and
+# not on the others. Reason is a sentence written for a person, and it interpolates the item number
+# and the step counts, so a caller that matched it would break the first time somebody improved the
+# wording. Reading a count back out of that sentence is the same defect wearing a different hat.
+#
+# Only the two verdicts that actually read a plan set PlanPath and the counts, so an empty PlanPath
+# means "no plan was read". Only the never-implemented verdict sets Code.
 function New-WorktreePlanVerdict {
     param(
         [Parameter(Mandatory)][bool] $Allow,
         [Parameter(Mandatory)][AllowEmptyString()][string] $Reason,
         [AllowEmptyString()][string] $ItemNumber = '',
-        [AllowEmptyString()][string] $RecordedItemNumber = ''
+        [AllowEmptyString()][string] $RecordedItemNumber = '',
+        [AllowEmptyString()][string] $Code = '',
+        [AllowEmptyString()][string] $PlanPath = '',
+        [int] $TickedCount = 0,
+        [int] $UntickedCount = 0
     )
 
     $text = $Reason
@@ -1275,6 +1287,10 @@ function New-WorktreePlanVerdict {
         Reason = $text
         ItemNumber = $ItemNumber
         RecordedItemNumber = $RecordedItemNumber
+        Code = $Code
+        PlanPath = $PlanPath
+        TickedCount = $TickedCount
+        UntickedCount = $UntickedCount
     }
 }
 
@@ -1434,8 +1450,12 @@ function Test-WorktreePlanWasImplemented {
     $unticked = [regex]::Matches($planText, '(?m)^\s*-\s*\[ \]').Count
 
     if ($unticked -gt 0 -and $ticked -eq 0) {
-        return New-WorktreePlanVerdict -Allow $false -Reason "the plan for item $judged was never implemented ($unticked steps, none ticked)" -ItemNumber $judged -RecordedItemNumber $recorded
+        return New-WorktreePlanVerdict -Allow $false -Reason "the plan for item $judged was never implemented ($unticked steps, none ticked)" `
+            -ItemNumber $judged -RecordedItemNumber $recorded `
+            -Code 'plan-never-implemented' -PlanPath $planPath -TickedCount $ticked -UntickedCount $unticked
     }
 
-    return New-WorktreePlanVerdict -Allow $true -Reason "the plan for item $judged has $ticked ticked steps" -ItemNumber $judged -RecordedItemNumber $recorded
+    return New-WorktreePlanVerdict -Allow $true -Reason "the plan for item $judged has $ticked ticked steps" `
+        -ItemNumber $judged -RecordedItemNumber $recorded `
+        -PlanPath $planPath -TickedCount $ticked -UntickedCount $unticked
 }

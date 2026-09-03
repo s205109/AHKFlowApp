@@ -148,15 +148,20 @@ if (-not (Get-Command Test-WorktreePlanWasImplemented -ErrorAction SilentlyConti
         # -WorktreeName is accepted and ignored. The fallback resolves no item at all, so it has
         # no slug route to run; the parameter is here only so a call site never fails to bind.
         param([string] $MainCheckout, [string] $ItemNumber, [string] $BaseRef, [string] $WorktreeName)
+        # Code, PlanPath and the two counts are empty or zero in every fallback answer, because the
+        # fallback reads no plan. They are still present on the object: a caller under
+        # Set-StrictMode that reads .Code would throw on a shape the shared copy does not have, and
+        # the two copies must not drift.
+        #
         # An unreadable manifest is checked before the empty case, so a read failure never borrows
         # the legacy worktree's free pass.
         if ($ItemNumber -eq $WorktreeBacklogItemUnreadable) {
-            return [pscustomobject]@{ Allow = $false; Reason = 'the worktree manifest could not be read'; ItemNumber = ''; RecordedItemNumber = '' }
+            return [pscustomobject]@{ Allow = $false; Reason = 'the worktree manifest could not be read'; ItemNumber = ''; RecordedItemNumber = ''; Code = ''; PlanPath = ''; TickedCount = 0; UntickedCount = 0 }
         }
         if ([string]::IsNullOrWhiteSpace($ItemNumber)) {
-            return [pscustomobject]@{ Allow = $true; Reason = 'no backlog item is recorded for this worktree'; ItemNumber = ''; RecordedItemNumber = '' }
+            return [pscustomobject]@{ Allow = $true; Reason = 'no backlog item is recorded for this worktree'; ItemNumber = ''; RecordedItemNumber = ''; Code = ''; PlanPath = ''; TickedCount = 0; UntickedCount = 0 }
         }
-        return [pscustomobject]@{ Allow = $false; Reason = 'the plan check could not run'; ItemNumber = $ItemNumber; RecordedItemNumber = $ItemNumber }
+        return [pscustomobject]@{ Allow = $false; Reason = 'the plan check could not run'; ItemNumber = $ItemNumber; RecordedItemNumber = $ItemNumber; Code = ''; PlanPath = ''; TickedCount = 0; UntickedCount = 0 }
     }
 }
 
