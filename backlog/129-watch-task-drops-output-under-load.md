@@ -5,7 +5,7 @@
 - **Type**: Bug
 - **Interfaces**: none (developer tooling)
 - **Difficulty**: complex
-- **Stage**: 3-plan
+- **Stage**: 9-ship
 
 ## Summary
 
@@ -21,15 +21,31 @@ every time, so that a red gate always means my own change broke something.
 
 ## Acceptance criteria
 
-- [ ] The race happens on purpose, driven by a test that makes the writer finish between the two
+- [x] The race happens on purpose, driven by a test that makes the writer finish between the two
       reads. A test that only runs the suite under load does not count. It proves nothing when it
       passes.
-- [ ] The root cause is stated with a `file:line` in `scripts/watch-task.ps1`. The reproduction
+      Five driven cases, none of which needs load or a sleep. "Driven swap at end" and "Driven swap
+      while behind" arm `Read-FileCheckpoint` so the writer finishes inside one read. "Path swap",
+      "Retry exhaustion" and "Catch-up deferral" arm `Read-FileHead` for the races review found.
+- [x] The root cause is stated with a `file:line` in `scripts/watch-task.ps1`. The reproduction
       test fails before the fix and passes after it.
-- [ ] `tests/WatchTask.Tests.ps1` passes 20 times in a row while a full parallel suite run works
+      The spec's Root cause section names the three reads and their lines at `a548e8aa`, the
+      revision before the fix. It carries no line numbers for the current tree on purpose: the fix
+      moved or removed all three, so a citation into today's code would describe the opposite of
+      what the section says.
+      Fails before, passes after, proven by putting each part of the fix back the wrong way round:
+      re-reading the checkpoint from the file fails "Driven swap while behind"; dropping the reopen
+      fails "Path swap"; reverting the settle-loop condition fails "Catch-up deferral".
+- [x] `tests/WatchTask.Tests.ps1` passes 20 times in a row while a full parallel suite run works
       beside it.
-- [ ] The suite stays `parallel` in `tests/powershell-suites.json`. Marking it `exclusive` was
+      Second attempt, 2026-09-03: `failed 0 of 20`, 7 load rounds, `load rounds that failed: 0`,
+      and no round reported a failed suite. The first attempt is recorded below as a fail, because
+      one of its load rounds did not pass.
+- [x] The suite stays `parallel` in `tests/powershell-suites.json`. Marking it `exclusive` was
       tried during backlog 126 and did not help.
+      That row still reads execution parallel (`tests/powershell-suites.json:35`, "WatchTask.Tests.ps1"). The canonical
+      citation form allows no double quote inside its expected text, so the phrase names the row
+      rather than quoting the JSON around it.
 
 ## Out of scope
 
