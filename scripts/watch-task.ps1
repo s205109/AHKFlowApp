@@ -1015,6 +1015,7 @@ function Watch-Record {
     $stateReadFailures = 0
     $settleReadFailures = 0
     $catchUpReadFailures = 0
+    $settleDeferrals = 0
     while ($true) {
         $text = Read-TailText -Reader $reader
         if (-not $reader.ReadSucceeded) {
@@ -1120,6 +1121,26 @@ function Watch-Record {
                     continue
                 }
                 $settleReadFailures = 0
+
+                # The loop above also ends when it runs out of rounds, and that can happen with a
+                # read still deferred. It means the file was replaced faster than the reader could
+                # follow it, so the last run's output is still on disk and unread. Reporting the
+                # state here would print a verdict over output nobody saw, which is the whole
+                # defect this item exists to fix, so the pass starts again under a count of its
+                # own. A file that keeps doing this is one the reader cannot keep up with, and
+                # saying so beats a silent wrong answer.
+                if ($reader.ReadDeferred) {
+                    $settleDeferrals++
+                    if ($settleDeferrals -ge $script:MaxTailReadFailures) {
+                        Write-Host ''
+                        Write-Host "Task output was replaced faster than it could be read, $settleDeferrals times running: $($reader.Path)"
+                        return 1
+                    }
+
+                    Start-Sleep -Milliseconds 500
+                    continue
+                }
+                $settleDeferrals = 0
 
                 # A replacement that is still running keeps the watch going. The carry stays in
                 # the reader, because its last line is not finished yet.

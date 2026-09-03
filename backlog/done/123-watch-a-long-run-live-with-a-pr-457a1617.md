@@ -40,7 +40,7 @@ Two things went wrong on 2026-08-29, and both are fixed by this item:
       (`scripts/watch-task.ps1:40`, "param(")
 - [x] Run with no arguments, it tails the newest still-running task output file for this
       repository, including files that belong to any of the repository's worktrees.
-      (`scripts/watch-task.ps1:1237`, "$running = @(");
+      (`scripts/watch-task.ps1:1258`, "$running = @(");
       (`scripts/watch-task.ps1:109`, "function Get-RepositoryCheckoutPath").
       The mechanism changed during review —
       see the note under **Notes / dependencies**.
@@ -49,21 +49,21 @@ Two things went wrong on 2026-08-29, and both are fixed by this item:
       (`scripts/watch-task.ps1:304`, "$lastNonEmpty -match $script:ExitMarker");
       (`scripts/watch-task.ps1:307`, "$lastNonEmpty -match $script:KilledMarker")
 - [x] It stops on its own when a terminal marker is the file's last line. It prints the exit code
-      or killed state as its last line. (`scripts/watch-task.ps1:1037`, "if ($reader.AtEnd)");
-      (`scripts/watch-task.ps1:1051`, "-not $state.Running");
-      (`scripts/watch-task.ps1:1154`, "State: killed");
-      (`scripts/watch-task.ps1:1157`, "Exit code:")
+      or killed state as its last line. (`scripts/watch-task.ps1:1038`, "if ($reader.AtEnd)");
+      (`scripts/watch-task.ps1:1052`, "-not $state.Running");
+      (`scripts/watch-task.ps1:1175`, "State: killed");
+      (`scripts/watch-task.ps1:1178`, "Exit code:")
 - [x] With no running task, it prints the newest stopped task's last lines, path, and terminal
-      state, and exits 0. (`scripts/watch-task.ps1:1239`, "if ($running.Count -eq 0)");
-      (`scripts/watch-task.ps1:1244`, "Show-Tail -Path $newest.Path");
-      (`scripts/watch-task.ps1:1251`, "Path:")
+      state, and exits 0. (`scripts/watch-task.ps1:1260`, "if ($running.Count -eq 0)");
+      (`scripts/watch-task.ps1:1265`, "Show-Tail -Path $newest.Path");
+      (`scripts/watch-task.ps1:1272`, "Path:")
 - [x] With more than one running task, it tails the newest and prints one line naming how many
-      others are running. (`scripts/watch-task.ps1:1261`, "if ($running.Count -gt 1)")
+      others are running. (`scripts/watch-task.ps1:1282`, "if ($running.Count -gt 1)")
 - [x] `-List` prints the recent tasks with their state, age, and index. `-Index` selects one.
-      (`scripts/watch-task.ps1:1206`, "if ($List)");
-      (`scripts/watch-task.ps1:1229`, "if ($Index -gt 0)")
+      (`scripts/watch-task.ps1:1227`, "if ($List)");
+      (`scripts/watch-task.ps1:1250`, "if ($Index -gt 0)")
 - [x] `-Root` points the script at another search root, so a test can build a fake tree.
-      (`scripts/watch-task.ps1:1185`, "$searchRoot = if")
+      (`scripts/watch-task.ps1:1206`, "$searchRoot = if")
 - [x] `scripts/progress.common.ps1` exposes functions to create a tracker over a named list of
       units, start a unit, stop a unit, and save the run's timings.
       (`scripts/progress.common.ps1:155`, "function New-ProgressTracker");
@@ -147,7 +147,7 @@ Two things went wrong on 2026-08-29, and both are fixed by this item:
   (`scripts/watch-task.ps1:235`, "-ge $best");
   (`scripts/watch-task.ps1:775`, "$lineCapReached = $position");
   (`scripts/watch-task.ps1:911`, "$wantedLines = if");
-  (`scripts/watch-task.ps1:1079`, "while (-not $reader.AtEnd)")
+  (`scripts/watch-task.ps1:1080`, "while (-not $reader.AtEnd)")
 - `TestResults/` is already ignored by `.gitignore`, so the timings file never reaches a diff.
 - `scripts/measure-tests.ps1` already writes timings to `TestResults/measure-tests/summary.json`.
   It is a separate profiling tool and this item does not change it.

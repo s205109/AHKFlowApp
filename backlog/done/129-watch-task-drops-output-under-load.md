@@ -85,6 +85,15 @@ every time, so that a red gate always means my own change broke something.
   ran against the reader with the review fixes in it. `failed 0 of 20`, 7 load rounds, `load rounds
   that failed: 0`, and no round reported a failed suite at all. `WatchTask.Tests.ps1` passed inside
   every one of the 7 rounds as well as in all 20 runs beside them.
+- **Review found three more races after the first fix, 2026-09-03.** All in the same reader, all
+  now driven by tests. A run that replaces the path instead of overwriting the file left the reader
+  reading through a stale handle. Giving up after the retry bound returned an empty string, which
+  the catch-up loop read as the run being finished. And the settle loop could run out of rounds
+  with a read still deferred, after which the watcher reported an exit code over output nobody saw.
+  The last one is the narrowest: the main poll loop absorbs deferred reads before a second settle
+  pass can end deferred, so the bounded failure that guards it is defence in depth and has no test
+  of its own. Measured with a 40-swap seam: the deferral count reached 1, and the watch still ended
+  correctly.
 - Found by backlog 126, `backlog/126-run-the-powershell-suites-in-parallel.md`.
 - Plan: `docs/superpowers/plans/2026-09-02-watch-task-checkpoint-race-plan-129.md`
 - **Design outcome, 2026-09-02.** The lead above was right, and a second, worse race sits beside

@@ -1191,6 +1191,94 @@ finally {
     Remove-Item -LiteralPath $catchUpPath -Force -ErrorAction SilentlyContinue
 }
 
+# --- A deferred read on the last settle round must not end the watch ---
+#
+# The case above gives up once, early in the settle loop, and the loop goes round again. This one
+# keeps the replacements coming until the loop runs out of rounds with a read still deferred. The
+# loop's round limit then ends it, and the code after the loop must not take that as a finished
+# run: the file still holds everything the last run wrote, and reporting its exit code there prints
+# a verdict over output nobody saw.
+#
+# The seam fires twice per read, which is what makes one read give up, so it is armed with
+# 2 * $script:MaxSettleRounds swaps: exactly enough for every round of one pass to end deferred.
+
+$job = $null
+$settlePath = Join-Path ([System.IO.Path]::GetTempPath()) ("watch-task-settle-defer-$([guid]::NewGuid()).output")
+try {
+    [System.IO.File]::WriteAllText($settlePath, "RUN-START-LINE`n")
+
+    $job = Start-Job -ScriptBlock {
+        param($exe, $script, $path)
+        & $exe -NoProfile -Command @"
+. '$script'
+
+`$script:swapPath = '$path'
+
+# One swap short of the budget carries filler; the last one is the run whose output must appear.
+`$script:swapTexts = @()
+foreach (`$n in 1..((2 * `$script:MaxSettleRounds) - 1)) {
+    `$script:swapTexts += "RUN-FILLER-`$n-LINE``n[exited with code 7]``n"
+}
+`$script:swapTexts += "RUN-FINAL-LINE``n[exited with code 11]``n"
+
+`$script:swapsLeft = 0
+`$script:armSwaps = `$script:swapTexts.Count
+
+`$script:realGetTaskState = `${function:Get-TaskState}
+function Get-TaskState {
+    param([Parameter(Mandatory)][string] `$Path)
+
+    `$state = & `$script:realGetTaskState -Path `$Path
+    if (`$null -ne `$state -and -not `$state.Running -and `$script:armSwaps -gt 0) {
+        `$script:swapsLeft = `$script:armSwaps
+        `$script:armSwaps = 0
+    }
+    return `$state
+}
+
+`$script:realReadFileHead = `${function:Read-FileHead}
+function Read-FileHead {
+    param(
+        [Parameter(Mandatory)][System.IO.FileStream] `$Stream,
+        [Parameter(Mandatory)][int] `$Count
+    )
+
+    `$bytes = & `$script:realReadFileHead -Stream `$Stream -Count `$Count
+    if (`$script:swapsLeft -gt 0) {
+        `$next = `$script:swapTexts[`$script:swapTexts.Count - `$script:swapsLeft]
+        `$script:swapsLeft--
+        [System.IO.File]::Delete(`$script:swapPath)
+        [System.IO.File]::WriteAllText(`$script:swapPath, `$next)
+        `$tunneled = [System.IO.File]::GetCreationTimeUtc(`$script:swapPath)
+        [System.IO.File]::SetCreationTimeUtc(`$script:swapPath, `$tunneled.AddMinutes(5))
+    }
+    return `$bytes
+}
+
+`$record = [pscustomobject]@{ Path = '$path'; LastWrite = (Get-Date); Running = `$true; ExitCode = `$null }
+Watch-Record -Record `$record -Tail 40 | Out-Null
+"@ 2>&1
+    } -ArgumentList $hostExe, $watchScript, $settlePath
+
+    $entered = Wait-ForJobOutput -Job $job -Pattern 'RUN-START-LINE'
+    Assert-True $entered 'Settle deferral: the watcher must print the first run before the swaps.'
+
+    [System.IO.File]::AppendAllText($settlePath, "[exited with code 3]`n")
+
+    $finished = Wait-Job -Job $job -Timeout 45
+    Assert-True ($null -ne $finished) 'Settle deferral: the watcher must stop, but it was still running after 45s.'
+
+    $output = Get-JobOutputSoFar -Job $job
+    Assert-True ($output -match 'RUN-FINAL-LINE') `
+        "Settle deferral: the last run's output must be printed, not skipped. Output: $output"
+    Assert-True ((Get-LastNonEmptyLine -Text $output) -eq 'Exit code: 11') `
+        "Settle deferral: the verdict must be the last run's. Output: $output"
+}
+finally {
+    if ($job) { Remove-Job -Job $job -Force -ErrorAction SilentlyContinue }
+    Remove-Item -LiteralPath $settlePath -Force -ErrorAction SilentlyContinue
+}
+
 # --- A selected output file that disappears ends with a visible failure ---
 
 $root = New-WatchTestRoot
