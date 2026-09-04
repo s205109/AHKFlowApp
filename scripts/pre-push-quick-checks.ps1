@@ -157,6 +157,29 @@ try {
         }
         Write-Success 'Shipped plans are frozen.'
     }
+
+    # A plan whose steps are all unticked reads as work that never happened. The worktree cleanup
+    # sweep already refuses to remove such a worktree, but that runs weeks after the merge: items
+    # 126 and 129 both shipped with 68 and 21 unticked steps, and the ticks were added by hand long
+    # afterwards. This is the same rule, moved to the push.
+    #
+    # It lives here rather than in CI for the same reason as the three steps above: CI cannot see
+    # docs/superpowers, so it cannot read a plan at all.
+    #
+    # $mergeBase is the one the citation step already resolved, so both steps judge against the same
+    # commit. tests/ShippedPlanTicked.Tests.ps1 covers the rule against fixtures.
+    Write-Step 'Checking that a shipped item''s plan has a ticked step'
+    if ($scanPlan.Action -ne 'Run') {
+        Write-Host $scanPlan.Reason
+    }
+    else {
+        & $pwshPath -NoProfile -File (Join-Path $PSScriptRoot 'check-shipped-plan-ticked.ps1') `
+            -MergeBase ([string] $mergeBase).Trim()
+        if ($LASTEXITCODE -ne 0) {
+            throw "A backlog item this branch ships carries a plan with no ticked step. $skipHint"
+        }
+        Write-Success 'Every shipped plan carries a ticked step.'
+    }
 }
 finally {
     Pop-Location
