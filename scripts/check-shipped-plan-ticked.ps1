@@ -163,8 +163,8 @@ function Get-BranchBacklogCandidate {
     $token = @($raw -split "`0")
 
     # One record per number, not per changed path. BaseNumber takes the first rename source seen: a
-    # branch that deletes backlog/073-a.md and adds backlog/073-b.md produces two records for one
-    # number, and both answer the same base.
+    # branch that deletes backlog/073-a.md and adds backlog/073-b.md produces two path entries for
+    # one number, and they fold into the single record that answers for that number.
     $baseByNumber = @{}
     $order = [System.Collections.Generic.List[string]]::new()
 
