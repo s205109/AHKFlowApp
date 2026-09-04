@@ -5,7 +5,7 @@
 - **Type**: Tooling
 - **Interfaces**: none (test projects)
 - **Difficulty**: complex
-- **Stage**: 2-design
+- **Stage**: 3-plan
 
 ## Summary
 
@@ -89,4 +89,4 @@ scope with its own backlog item instead.
 - ADR: `docs/adr/0013-sql-backed-tests-isolate-by-owner-id.md`
 - Glossary: `CONTEXT.md` now defines Slice, Mode, and Collection.
 - Spec: `docs/superpowers/specs/2026-09-03-net-test-speed-and-reliability-design-128.md`
-- Plan: none — Design just finished; Stage 3 writes it.
+- Plan: `docs/superpowers/plans/2026-09-04-net-test-speed-and-reliability-plan-128.md`
