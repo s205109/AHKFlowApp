@@ -3,3 +3,4 @@ Task 2 | 3fd700a8 | checks: TestFastDotnetProgress 9/9 pass; Fast mode 2941 test
 Task 3 | df8f32fb | checks: MeasureTestModes 8/8 pass, four mutations each go red on the right case; Fast checkpoint median 15.68 s over five runs (17.29/15.60/15.78/15.65/15.68), target 22 s met | deferrals: none
 Task 4 | 7f11d272 | checks: Integration mode passes, Infrastructure.Tests 26 s -> 8 s; maxParallelThreads 1 gives 16 s and 4 gives 8-10 s; direct run with the shared env var cleared peaks at 1 SQL container | deferrals: none
 Task 5 | 96a04973 | checks: Integration median 49.59 s over five runs (50.56/49.59/49.48/50.52/49.08), target 65 s met; soak of Infrastructure.Tests passed 30 of 30; 644 tests, same as baseline | deferrals: d3 declined by the human at Step 4, both targets already met
+Task 6 | 9fe5aca8 | checks: skip path, no code changed; decision recorded in the spec D3 section and the backlog item | deferrals: d3 declined
