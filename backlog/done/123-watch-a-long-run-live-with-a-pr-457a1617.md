@@ -92,8 +92,12 @@ Two things went wrong on 2026-08-29, and both are fixed by this item:
       (`scripts/run-powershell-suites.ps1:176`, "    Write-Host (Get-ParallelProgressLine -Tracker $parallelProgress -Name $Result.Name -Seconds $Result.Seconds)")
 - [x] `scripts/test-fast.ps1` prints a progress line per test project through that module, and
       Fast mode and Integration mode keep separate remembered timings.
-      (`scripts/test-fast.ps1:276`, "Start-ProgressUnit -Tracker $progress");
-      (`scripts/test-fast.ps1:270`, "test-fast.$Mode")
+      (`scripts/test-fast.ps1:440`, "Start-ProgressUnit -Tracker $progress");
+      (`scripts/test-fast.ps1:434`, "test-fast.$Mode")
+      Backlog 128 later made Fast mode one call over five built assemblies, so Fast now prints
+      one progress line rather than one per project. The citations above moved to the
+      per-project path, which Integration and E2E still take. Separate remembered timings per
+      mode are unchanged.
 - [x] `tests/WatchTask.Tests.ps1` covers the project-folder name mangling for a main checkout
       and for a worktree, running against finished detection, newest-running selection, and the
       case where nothing is running.

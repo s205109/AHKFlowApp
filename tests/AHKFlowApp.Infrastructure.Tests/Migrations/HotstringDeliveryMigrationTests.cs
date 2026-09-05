@@ -15,8 +15,8 @@ using Xunit;
 
 namespace AHKFlowApp.Infrastructure.Tests.Migrations;
 
-[Collection("SqlServer")]
-public sealed class HotstringDeliveryMigrationTests(SqlContainerFixture sqlFixture)
+public sealed class HotstringDeliveryMigrationTests(SharedSqlServerFixture sqlFixture)
+    : IClassFixture<SharedSqlServerFixture>
 {
     private const string DbName = "HotstringDelivery_DefaultAuto";
 

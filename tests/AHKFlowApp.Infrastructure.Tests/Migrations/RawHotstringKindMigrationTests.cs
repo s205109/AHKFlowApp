@@ -17,8 +17,8 @@ namespace AHKFlowApp.Infrastructure.Tests.Migrations;
 /// verbatim definition, with Kind flipped to Raw (4). Includes the 4,000-character body row,
 /// proving the widened column does not truncate.
 /// </summary>
-[Collection("SqlServer")]
-public sealed class RawHotstringKindMigrationTests(SqlContainerFixture sqlFixture)
+public sealed class RawHotstringKindMigrationTests(SharedSqlServerFixture sqlFixture)
+    : IClassFixture<SharedSqlServerFixture>
 {
     private const string DbName = "RawHotstringKind_Parity";
 

@@ -21,6 +21,15 @@
     </PackageReference>
   </ItemGroup>
   <ItemGroup>
+    <!-- Backlog 128. Without a file here xUnit uses Environment.ProcessorCount, which is 16 on a
+         developer machine and 4 on the CI runner. These classes each migrate a database on one
+         shared SQL Server, so the thread count is a property of that server, not of the machine.
+         Four matches the CI runner and bounds the contention everywhere else. -->
+    <None Update="xunit.runner.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\..\src\Backend\AHKFlowApp.Infrastructure\AHKFlowApp.Infrastructure.csproj" />
     <ProjectReference Include="..\AHKFlowApp.TestUtilities\AHKFlowApp.TestUtilities.csproj" />
   </ItemGroup>

@@ -10,9 +10,9 @@ using Xunit;
 
 namespace AHKFlowApp.Infrastructure.Tests.Persistence;
 
-[Collection("SqlServer")]
 [Trait("Category", "Integration")]
-public sealed class HotstringPersistenceTests(SqlContainerFixture sqlFixture)
+public sealed class HotstringPersistenceTests(SharedSqlServerFixture sqlFixture)
+    : IClassFixture<SharedSqlServerFixture>
 {
     [Fact]
     public async Task SaveAndReload_KindAndOptionFlags_RoundTrip()

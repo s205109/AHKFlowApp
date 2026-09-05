@@ -21,7 +21,7 @@ public sealed class CliHttpClientBuilderExtensionsTests
             CreateSuccessfulListResponse());
         RecordingRetryStatusWriter retryStatusWriter = new();
 
-        using ServiceProvider provider = CreateServices(handler, retryStatusWriter);
+        using ServiceProvider provider = CreateServices(handler, retryStatusWriter, TimeSpan.Zero);
         IHotstringsApiClient sut = provider.GetRequiredService<IHotstringsApiClient>();
 
         PagedList<HotstringDto> result = await sut.ListAsync(null, null, 1, 50, CancellationToken.None);
@@ -95,7 +95,7 @@ public sealed class CliHttpClientBuilderExtensionsTests
             CreateSuccessfulListResponse());
         RecordingRetryStatusWriter retryStatusWriter = new();
 
-        using ServiceProvider provider = CreateServices(handler, retryStatusWriter);
+        using ServiceProvider provider = CreateServices(handler, retryStatusWriter, TimeSpan.Zero);
         IHotstringsApiClient sut = provider.GetRequiredService<IHotstringsApiClient>();
 
         PagedList<HotstringDto> result = await sut.ListAsync(null, null, 1, 50, CancellationToken.None);
@@ -130,7 +130,7 @@ public sealed class CliHttpClientBuilderExtensionsTests
             CreateSuccessfulListResponse());
         RecordingRetryStatusWriter retryStatusWriter = new();
 
-        using ServiceProvider provider = CreateServices(handler, retryStatusWriter);
+        using ServiceProvider provider = CreateServices(handler, retryStatusWriter, TimeSpan.Zero);
         IHotstringsApiClient sut = provider.GetRequiredService<IHotstringsApiClient>();
 
         PagedList<HotstringDto> result = await sut.ListAsync(null, null, 1, 50, CancellationToken.None);
@@ -152,7 +152,7 @@ public sealed class CliHttpClientBuilderExtensionsTests
             CreateSuccessfulListResponse());
         RecordingRetryStatusWriter retryStatusWriter = new();
 
-        using ServiceProvider provider = CreateServices(handler, retryStatusWriter);
+        using ServiceProvider provider = CreateServices(handler, retryStatusWriter, TimeSpan.Zero);
         IHotstringsApiClient sut = provider.GetRequiredService<IHotstringsApiClient>();
 
         PagedList<HotstringDto> result = await sut.ListAsync(null, null, 1, 50, CancellationToken.None);
@@ -209,7 +209,7 @@ public sealed class CliHttpClientBuilderExtensionsTests
             CreateSuccessfulCreateResponse());
         RecordingRetryStatusWriter retryStatusWriter = new();
 
-        using ServiceProvider provider = CreateServices(handler, retryStatusWriter);
+        using ServiceProvider provider = CreateServices(handler, retryStatusWriter, TimeSpan.Zero);
         IHotstringsApiClient sut = provider.GetRequiredService<IHotstringsApiClient>();
 
         HotstringDto result = await sut.CreateAsync(CreateInput(), CancellationToken.None);
@@ -230,7 +230,7 @@ public sealed class CliHttpClientBuilderExtensionsTests
             CreateSuccessfulCreateResponse());
         RecordingRetryStatusWriter retryStatusWriter = new();
 
-        using ServiceProvider provider = CreateServices(handler, retryStatusWriter);
+        using ServiceProvider provider = CreateServices(handler, retryStatusWriter, TimeSpan.Zero);
         IHotstringsApiClient sut = provider.GetRequiredService<IHotstringsApiClient>();
 
         HotstringDto result = await sut.CreateAsync(CreateInput(), CancellationToken.None);
@@ -240,18 +240,58 @@ public sealed class CliHttpClientBuilderExtensionsTests
         retryStatusWriter.Messages.Should().HaveCount(1);
     }
 
+    // The seam that keeps this suite fast. Polly reports the delay it is about to wait through
+    // OnRetryArguments.RetryDelay, so the recorded value proves the configured delay without a
+    // timing assertion and without waiting.
+    [Fact]
+    public async Task AddCliApiResilience_WithZeroDelay_RetriesWithoutWaiting()
+    {
+        SequenceHandler handler = new(
+            CreateStoppedWebAppResponse(),
+            CreateSuccessfulListResponse());
+        RecordingRetryStatusWriter retryStatusWriter = new();
+
+        using ServiceProvider provider = CreateServices(handler, retryStatusWriter, TimeSpan.Zero);
+        IHotstringsApiClient sut = provider.GetRequiredService<IHotstringsApiClient>();
+
+        await sut.ListAsync(null, null, 1, 50, CancellationToken.None);
+
+        handler.RequestCount.Should().Be(2);
+        retryStatusWriter.Delays.Should().ContainSingle().Which.Should().Be(TimeSpan.Zero);
+    }
+
+    // The production default is two seconds, and this is the one test that still pays it. Without
+    // it, a change that set the default to zero would ship a CLI that retries a cold API with no
+    // pause at all, and every other test in this file would stay green.
+    [Fact]
+    public async Task AddCliApiResilience_WithNoDelayArgument_KeepsTheTwoSecondDefault()
+    {
+        SequenceHandler handler = new(
+            CreateStoppedWebAppResponse(),
+            CreateSuccessfulCreateResponse());
+        RecordingRetryStatusWriter retryStatusWriter = new();
+
+        using ServiceProvider provider = CreateServices(handler, retryStatusWriter);
+        IHotstringsApiClient sut = provider.GetRequiredService<IHotstringsApiClient>();
+
+        await sut.CreateAsync(CreateInput(), CancellationToken.None);
+
+        retryStatusWriter.Delays.Should().ContainSingle().Which.Should().Be(TimeSpan.FromSeconds(2));
+    }
+
     private static CreateHotstringDto CreateInput() => new("btw", "by the way");
 
     private static ServiceProvider CreateServices(
         HttpMessageHandler handler,
-        IHttpRetryStatusWriter retryStatusWriter)
+        IHttpRetryStatusWriter retryStatusWriter,
+        TimeSpan? retryDelay = null)
     {
         ServiceCollection services = new();
         services.AddSingleton(retryStatusWriter);
         services.AddHttpClient<IHotstringsApiClient, HotstringsApiClient>(client =>
             client.BaseAddress = new Uri("http://localhost/"))
             .ConfigurePrimaryHttpMessageHandler(() => handler)
-            .AddCliApiResilience("hotstrings");
+            .AddCliApiResilience("hotstrings", retryDelay);
 
         return services.BuildServiceProvider();
     }
@@ -313,12 +353,17 @@ public sealed class CliHttpClientBuilderExtensionsTests
     {
         public List<string> Messages { get; } = [];
 
+        // The raw TimeSpan, kept alongside the message. FormatRetrying rounds anything under a
+        // second up to "1s", so the message alone cannot prove the delay a test asked for.
+        public List<TimeSpan> Delays { get; } = [];
+
         public void WriteRetrying(
             string operationName,
             int retryAttempt,
             int maxRetryAttempts,
             TimeSpan delay)
         {
+            Delays.Add(delay);
             Messages.Add(HttpRetryStatusMessages.FormatRetrying(
                 operationName,
                 retryAttempt,
