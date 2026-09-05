@@ -6,7 +6,7 @@
 - **Type**: Chore
 - **Interfaces**: none (CI workflows, test runner scripts)
 - **Difficulty**: moderate
-- **Stage**: 0-intake
+- **Stage**: 3-plan
 
 ## Summary
 
@@ -53,6 +53,7 @@ cannot cost time.
 
 - Spec: none — the grilling round for backlog 126 produced this question, and this item answers
   it.
+- Plan: `docs/superpowers/plans/2026-09-05-invariant-suite-platform-plan-127.md`
 - The Linux job was chosen for speed, not for platform coverage
   (`backlog/done/121-backlog-numbering-reads-one-working-tree.md:38`, "- [x] That job finishes in under two minutes on a normal pull request. Confirmed: the first `repo-invariants` run on pull request #360 took 1 minute 14 seconds. The local Windows run was 2 minutes 4 seconds, so Linux process startup is indeed faster.").
 - The second run was known and left alone to keep that item small
