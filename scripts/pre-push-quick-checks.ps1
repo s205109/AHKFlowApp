@@ -9,7 +9,15 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$Configuration = 'Release'
+    [string]$Configuration = 'Release',
+
+    # The commits git is about to send, from the pre-push hook's stdin. Empty means a run by hand,
+    # which judges HEAD.
+    #
+    # Only the record checks read this. The build and the test slice deliberately verify the
+    # working tree, because that is the code the developer is about to be judged on by CI. A record
+    # is different: it goes to the remote exactly as committed, so it is checked as committed.
+    [string[]]$PushedCommit = @()
 )
 
 $ErrorActionPreference = 'Stop'
@@ -166,17 +174,29 @@ try {
     # It lives here rather than in CI for the same reason as the three steps above: CI cannot see
     # docs/superpowers, so it cannot read a plan at all.
     #
-    # $mergeBase is the one the citation step already resolved, so both steps judge against the same
-    # commit. tests/ShippedPlanTicked.Tests.ps1 covers the rule against fixtures.
+    # Each pushed commit is judged on its own terms, against its own merge base. A push carries
+    # commits, not the working tree, so an uncommitted edit must not decide whether a committed
+    # record is checked. With nothing on stdin - a run by hand - HEAD stands in.
+    # tests/ShippedPlanTicked.Tests.ps1 covers the rule against fixtures, and
+    # tests/PrePushHook.Tests.ps1 covers the stdin parsing that supplies these commits.
     Write-Step 'Checking that a shipped item''s plan has a ticked step'
     if ($scanPlan.Action -ne 'Run') {
         Write-Host $scanPlan.Reason
     }
     else {
-        & $pwshPath -NoProfile -File (Join-Path $PSScriptRoot 'check-shipped-plan-ticked.ps1') `
-            -MergeBase ([string] $mergeBase).Trim()
-        if ($LASTEXITCODE -ne 0) {
-            throw "A backlog item this branch ships carries a plan with no ticked step. $skipHint"
+        $targets = if ($PushedCommit.Count -gt 0) { $PushedCommit } else { @('HEAD') }
+        foreach ($target in $targets) {
+            # Resolved per commit, not reused from the citation step. A branch pushed while a
+            # different one is checked out has its own base, and the shared $mergeBase is HEAD's.
+            $targetBase = & git -C $repoRoot merge-base $target origin/main
+            if ($LASTEXITCODE -ne 0 -or -not $targetBase) {
+                throw "Could not resolve the merge base of '$target' with origin/main, so which items it ships is unknown. Fetch the remote and retry. $skipHint"
+            }
+            & $pwshPath -NoProfile -File (Join-Path $PSScriptRoot 'check-shipped-plan-ticked.ps1') `
+                -MergeBase ([string] $targetBase).Trim() -TargetCommit $target
+            if ($LASTEXITCODE -ne 0) {
+                throw "A backlog item this push ships carries a plan with no ticked step. $skipHint"
+            }
         }
         Write-Success 'Every shipped plan carries a ticked step.'
     }

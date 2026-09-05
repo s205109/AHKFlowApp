@@ -44,7 +44,12 @@
     The repository root. Defaults to the parent of this script's folder.
 
 .PARAMETER MergeBase
-    The commit to compare against. Defaults to 'git merge-base HEAD origin/main'.
+    The commit to compare against. Defaults to the merge base of TargetCommit and origin/main.
+
+.PARAMETER TargetCommit
+    The commit being pushed. Defaults to HEAD. Every backlog read comes from this commit, never
+    from the working tree: a push carries commits, and an uncommitted edit must not decide whether
+    a committed record is judged. The plan file is the exception and still comes from disk.
 
 .PARAMETER AsModule
     Dot-source the functions and return, without running the check.
@@ -56,6 +61,7 @@
 param(
     [string] $RepoRoot,
     [string] $MergeBase = '',
+    [string] $TargetCommit = '',
     [switch] $AsModule
 )
 
@@ -64,11 +70,12 @@ $ErrorActionPreference = 'Stop'
 
 $repoRootDefault = Split-Path -Parent $PSScriptRoot
 
-# Neither file runs anything on its own. backlog.common.ps1 does dot-source slug.common.ps1, which
-# calls Set-StrictMode -Version Latest, and that call leaks into this scope. This script sets strict
-# mode itself, so the leak changes nothing here.
+# This file runs nothing on its own. It carries the plan verdict, the backlog snapshot readers, and
+# the number pattern, which is everything this check needs.
+#
+# backlog.common.ps1 is deliberately NOT dot-sourced. Its Get-BacklogItem reads the working tree,
+# and the working tree is exactly what this check must not read.
 . (Join-Path $PSScriptRoot 'worktree-git.common.ps1')
-. (Join-Path $PSScriptRoot 'backlog.common.ps1')
 
 # The one Stage line an item carries, or '' when it carries none or more than one. An item with no
 # Stage line, or with two, is not a shipping decision this check may take: the backlog numbering
@@ -148,10 +155,15 @@ function Get-BacklogNumberFromPath {
 function Get-BranchBacklogCandidate {
     param(
         [Parameter(Mandatory)][string] $RepoRoot,
-        [Parameter(Mandatory)][string] $MergeBase
+        [Parameter(Mandatory)][string] $MergeBase,
+        [Parameter(Mandatory)][string] $TargetCommit
     )
 
-    $diff = & git -C $RepoRoot diff --name-status -z --find-renames $MergeBase -- backlog 2>$null
+    # Two commits, never one. A one-commit diff compares the base against the WORKING TREE, so an
+    # uncommitted edit decided the answer: HEAD read 'Stage: 9-ship' with an unticked plan, the
+    # developer changed the Stage line on disk without committing, and the gate passed while the
+    # 9-ship record went to the remote. A push carries commits, so commits are what get judged.
+    $diff = & git -C $RepoRoot diff --name-status -z --find-renames $MergeBase $TargetCommit -- backlog 2>$null
     if ($LASTEXITCODE -ne 0) {
         throw "Could not read the backlog diff against '$MergeBase', so which items this branch ships is unknown."
     }
@@ -208,15 +220,20 @@ function Get-BranchBacklogCandidate {
     return @($candidate)
 }
 
-# One record per item this branch ships: Number, RelativePath and Stage. One record per number,
-# never one per changed path.
+# One record per item the target commit ships: Number, RelativePath and Stage. One record per
+# number, never one per changed path.
+#
+# Every backlog read comes from a commit: the base snapshot for "was it already shipped", and the
+# target snapshot for "what does it say now". Nothing here reads the working tree, because the
+# working tree is not what a push carries.
 function Get-BranchShippedItem {
     param(
         [Parameter(Mandatory)][string] $RepoRoot,
-        [Parameter(Mandatory)][string] $MergeBase
+        [Parameter(Mandatory)][string] $MergeBase,
+        [Parameter(Mandatory)][string] $TargetCommit
     )
 
-    $candidate = @(Get-BranchBacklogCandidate -RepoRoot $RepoRoot -MergeBase $MergeBase)
+    $candidate = @(Get-BranchBacklogCandidate -RepoRoot $RepoRoot -MergeBase $MergeBase -TargetCommit $TargetCommit)
     if ($candidate.Count -eq 0) { return @() }
 
     $inventory = Get-BacklogInventoryFromRef -MainCheckout $RepoRoot -BaseRef $MergeBase
@@ -224,17 +241,27 @@ function Get-BranchShippedItem {
         throw "The base '$MergeBase' $($inventory.Detail), so which items this branch ships is unknown."
     }
 
-    $backlogRoot = Join-Path $RepoRoot 'backlog'
-    $items = @{}
-    foreach ($item in @(Get-BacklogItem -BacklogRoot $backlogRoot)) {
-        if ($item.Key) { $items[$item.Key] = $item }
+    $target = Get-BacklogInventoryFromRef -MainCheckout $RepoRoot -BaseRef $TargetCommit
+    if ($target.Status -ne 'ok') {
+        throw "The pushed commit '$TargetCommit' $($target.Detail), so which items it ships is unknown."
     }
 
     $shipped = @()
     foreach ($record in $candidate) {
         $number = $record.Number
-        if (-not $items.ContainsKey($number)) { continue }
-        $item = $items[$number]
+
+        # The item as the pushed commit holds it: its Stage line and its path there.
+        $targetLines = Get-BacklogItemLinesFromRef -MainCheckout $RepoRoot -Inventory $target -ItemNumber $number
+        if ($targetLines.Status -ne 'found') { continue }
+
+        $targetPattern = '^backlog/(done/|blocked/)?' + [regex]::Escape($number) + '-[^/]*\.md$'
+        $targetPaths = @(@($target.Paths) | Where-Object { $_ -match $targetPattern })
+        if ($targetPaths.Count -ne 1) { continue }
+
+        $item = [pscustomobject]@{
+            RelativePath = $targetPaths[0]
+            Stages = @(Get-SingleBacklogStage -Lines $targetLines.Lines | Where-Object { $_ })
+        }
 
         # The base is looked up under the number the file carried THERE, which is the same number
         # unless this branch renumbered it. Looking it up under the new number would find nothing
@@ -271,15 +298,23 @@ function Get-BranchShippedItem {
     return @($shipped)
 }
 
-# Failures and diagnostics for the items this branch ships.
+# Failures and diagnostics for the items the target commit ships.
 #
 # Only a verdict whose Code reads 'plan-never-implemented' becomes a failure. Its plan path and its
 # two counts are read as fields, never parsed back out of Reason: Reason is a sentence written for a
 # person, and it would break the first time somebody improved the wording.
+#
+# -BaseRef is the pushed commit, so the item and its '- Plan:' bullet are read from that commit.
+# Without it an uncommitted rewrite of the bullet to 'none' hid the pushed pointer.
+#
+# The plan FILE it names still comes from disk, and must. docs/superpowers is a second repository
+# that this one ignores, so no commit here ever carries a plan. That asymmetry is the whole shape of
+# the check: the record is judged as pushed, the plan is read where it actually lives.
 function Get-ShippedPlanTickFailure {
     param(
         [Parameter(Mandatory)][string] $RepoRoot,
-        [psobject[]] $Item
+        [psobject[]] $Item,
+        [Parameter(Mandatory)][string] $TargetCommit
     )
 
     $failures = @()
@@ -288,7 +323,7 @@ function Get-ShippedPlanTickFailure {
     # An empty array binds as $null, and @($null) is a one-element list holding nothing. Without
     # this filter the loop below would ask a null for its Number on every clean run.
     foreach ($record in @($Item | Where-Object { $null -ne $_ })) {
-        $verdict = Test-WorktreePlanWasImplemented -MainCheckout $RepoRoot -ItemNumber $record.Number
+        $verdict = Test-WorktreePlanWasImplemented -MainCheckout $RepoRoot -ItemNumber $record.Number -BaseRef $TargetCommit
         if ($verdict.Allow) { continue }
 
         if ($verdict.Code -ne 'plan-never-implemented') {
@@ -318,17 +353,25 @@ if ($AsModule) { return }
 
 if (-not $RepoRoot) { $RepoRoot = $repoRootDefault }
 
+if (-not $TargetCommit) { $TargetCommit = 'HEAD' }
+
+$resolvedTarget = & git -C $RepoRoot rev-parse --verify --quiet "$TargetCommit^{commit}" 2>$null
+if ($LASTEXITCODE -ne 0 -or -not $resolvedTarget) {
+    throw "Could not resolve the commit '$TargetCommit', so there is nothing to judge."
+}
+$TargetCommit = ([string] $resolvedTarget).Trim()
+
 if (-not $MergeBase) {
-    $resolved = & git -C $RepoRoot merge-base HEAD origin/main 2>$null
+    $resolved = & git -C $RepoRoot merge-base $TargetCommit origin/main 2>$null
     if ($LASTEXITCODE -ne 0 -or -not $resolved) {
         throw "Could not resolve the merge base with origin/main, so which items this branch ships is unknown. Fetch the remote and retry."
     }
     $MergeBase = ([string] $resolved).Trim()
 }
 
-$candidate = @(Get-BranchBacklogCandidate -RepoRoot $RepoRoot -MergeBase $MergeBase)
-$shippedItem = @(Get-BranchShippedItem -RepoRoot $RepoRoot -MergeBase $MergeBase)
-$result = Get-ShippedPlanTickFailure -RepoRoot $RepoRoot -Item $shippedItem
+$candidate = @(Get-BranchBacklogCandidate -RepoRoot $RepoRoot -MergeBase $MergeBase -TargetCommit $TargetCommit)
+$shippedItem = @(Get-BranchShippedItem -RepoRoot $RepoRoot -MergeBase $MergeBase -TargetCommit $TargetCommit)
+$result = Get-ShippedPlanTickFailure -RepoRoot $RepoRoot -Item $shippedItem -TargetCommit $TargetCommit
 
 foreach ($line in $result.Diagnostics) { "  $line" }
 

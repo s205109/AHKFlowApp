@@ -43,6 +43,11 @@ function New-Root {
 }
 
 # A scratch checkout holding a backlog folder and a plans folder, so no case reads the real ones.
+#
+# The backlog item is committed, because the check reads every backlog file from a commit. The plan
+# file is left uncommitted on purpose: docs/superpowers is a second repository this one ignores, so
+# no commit here ever carries a plan, and the check must read it from disk. Returns the root and
+# the commit that holds the item.
 function New-CheckoutFixture {
     param(
         [string] $Number = '073',
@@ -56,16 +61,26 @@ function New-CheckoutFixture {
     New-Item -ItemType Directory -Path (Join-Path $root 'backlog/done') -Force | Out-Null
     New-Item -ItemType Directory -Path (Join-Path $root 'docs/superpowers/plans') -Force | Out-Null
 
+    & git -C $root init *> $null
+    & git -C $root config user.email 'test@example.com' *> $null
+    & git -C $root config user.name 'Shipped Plan Test' *> $null
+
     $body = @("# $Number - probe", '', "- **Stage**: $Stage", '')
     if ($PlanBullet) { $body += $PlanBullet }
     New-Item -ItemType Directory -Path (Join-Path $root $Folder) -Force | Out-Null
     Set-Content -LiteralPath (Join-Path $root "$Folder/$Number-probe.md") -Value ($body -join "`n") -Encoding utf8
 
+    & git -C $root add -A -- backlog *> $null
+    & git -C $root commit -m "ship $Number" *> $null
+
     if ($PlanBody) {
         Set-Content -LiteralPath (Join-Path $root 'docs/superpowers/plans/probe-plan-073.md') `
             -Value $PlanBody -Encoding utf8
     }
-    return $root
+    return [pscustomobject]@{
+        Root = (Resolve-Path -LiteralPath $root).Path
+        Head = ((& git -C $root rev-parse HEAD) | Out-String).Trim()
+    }
 }
 
 function New-ItemRecord {
@@ -95,13 +110,21 @@ function Write-Item {
         [string] $Number,
         [string] $Folder = 'backlog',
         [string] $Stage = '9-ship',
-        [string] $Extra = ''
+        [string] $Extra = '',
+        [string] $PlanBullet = '- Plan: none - trivial'
     )
 
     New-Item -ItemType Directory -Path (Join-Path $Root $Folder) -Force | Out-Null
-    $body = @("# $Number - probe", '', "- **Stage**: $Stage", '', '- Plan: none - trivial')
+    $body = @("# $Number - probe", '', "- **Stage**: $Stage", '', $PlanBullet)
     if ($Extra) { $body += $Extra }
     Set-Content -LiteralPath (Join-Path $Root "$Folder/$Number-probe.md") -Value ($body -join "`n") -Encoding utf8
+}
+
+function Write-Plan {
+    param([string] $Root, [string] $Body)
+
+    New-Item -ItemType Directory -Path (Join-Path $Root 'docs/superpowers/plans') -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $Root 'docs/superpowers/plans/probe-plan-073.md') -Value $Body -Encoding utf8
 }
 
 function Get-BaseSha {
@@ -152,8 +175,8 @@ try {
     # === Get-ShippedPlanTickFailure: fixture folders =========================
 
     # 9. Unticked steps and none ticked. Reported, naming the plan file and the counts.
-    $root = New-CheckoutFixture -PlanBody "- [ ] Step 1`n- [ ] Step 2`n- [ ] Step 3"
-    $result = Get-ShippedPlanTickFailure -RepoRoot $root -Item @(New-ItemRecord)
+    $fx = New-CheckoutFixture -PlanBody "- [ ] Step 1`n- [ ] Step 2`n- [ ] Step 3"
+    $result = Get-ShippedPlanTickFailure -RepoRoot $fx.Root -Item @(New-ItemRecord) -TargetCommit $fx.Head
     Assert-Equal 1 $result.Failures.Count 'A plan with no ticked step is reported'
     if ($result.Failures.Count -eq 1) {
         Assert-True ($result.Failures[0].PlanPath -match 'probe-plan-073\.md$') `
@@ -164,37 +187,37 @@ try {
     }
 
     # 10. One ticked step and nine unticked. Silent: work can be descoped.
-    $root = New-CheckoutFixture -PlanBody ("- [x] Step 1`n" + (1..9 | ForEach-Object { "- [ ] Step $_" }) -join "`n")
-    $result = Get-ShippedPlanTickFailure -RepoRoot $root -Item @(New-ItemRecord)
+    $fx = New-CheckoutFixture -PlanBody ("- [x] Step 1`n" + (1..9 | ForEach-Object { "- [ ] Step $_" }) -join "`n")
+    $result = Get-ShippedPlanTickFailure -RepoRoot $fx.Root -Item @(New-ItemRecord) -TargetCommit $fx.Head
     Assert-Equal 0 $result.Failures.Count 'A plan with one ticked step passes'
     Assert-Equal 0 $result.Diagnostics.Count 'A plan with one ticked step prints no diagnostic'
 
     # 11. Every step ticked.
-    $root = New-CheckoutFixture -PlanBody "- [x] Step 1`n- [x] Step 2"
-    $result = Get-ShippedPlanTickFailure -RepoRoot $root -Item @(New-ItemRecord)
+    $fx = New-CheckoutFixture -PlanBody "- [x] Step 1`n- [x] Step 2"
+    $result = Get-ShippedPlanTickFailure -RepoRoot $fx.Root -Item @(New-ItemRecord) -TargetCommit $fx.Head
     Assert-Equal 0 $result.Failures.Count 'A fully ticked plan passes'
 
     # 12. No checkbox at all. Measured on 2026-09-03: 68 of the 180 plans in
     #     docs/superpowers/plans/ carry no checkbox, and the guard allows every one of them.
-    $root = New-CheckoutFixture -PlanBody "# A plan written as prose, with no step list at all."
-    $result = Get-ShippedPlanTickFailure -RepoRoot $root -Item @(New-ItemRecord)
+    $fx = New-CheckoutFixture -PlanBody "# A plan written as prose, with no step list at all."
+    $result = Get-ShippedPlanTickFailure -RepoRoot $fx.Root -Item @(New-ItemRecord) -TargetCommit $fx.Head
     Assert-Equal 0 $result.Failures.Count 'A plan with no checkbox passes'
 
     # 13. A '- Plan:' bullet reading 'none' with a reason.
-    $root = New-CheckoutFixture -PlanBullet '- Plan: none - trivial' -PlanBody ''
-    $result = Get-ShippedPlanTickFailure -RepoRoot $root -Item @(New-ItemRecord)
+    $fx = New-CheckoutFixture -PlanBullet '- Plan: none - trivial' -PlanBody ''
+    $result = Get-ShippedPlanTickFailure -RepoRoot $fx.Root -Item @(New-ItemRecord) -TargetCommit $fx.Head
     Assert-Equal 0 $result.Failures.Count '"Plan: none" passes'
     Assert-Equal 0 $result.Diagnostics.Count '"Plan: none" prints no diagnostic'
 
     # 14. No '- Plan:' bullet at all.
-    $root = New-CheckoutFixture -PlanBullet '' -PlanBody ''
-    $result = Get-ShippedPlanTickFailure -RepoRoot $root -Item @(New-ItemRecord)
+    $fx = New-CheckoutFixture -PlanBullet '' -PlanBody ''
+    $result = Get-ShippedPlanTickFailure -RepoRoot $fx.Root -Item @(New-ItemRecord) -TargetCommit $fx.Head
     Assert-Equal 0 $result.Failures.Count 'An item with no Plan bullet passes'
 
     # 15. A pointer naming a file that is not there. That is a real problem, but it is not this
     #     item's problem, so it prints one diagnostic and does not fail the push.
-    $root = New-CheckoutFixture -PlanBullet '- Plan: `docs/superpowers/plans/gone.md`' -PlanBody ''
-    $result = Get-ShippedPlanTickFailure -RepoRoot $root -Item @(New-ItemRecord)
+    $fx = New-CheckoutFixture -PlanBullet '- Plan: `docs/superpowers/plans/gone.md`' -PlanBody ''
+    $result = Get-ShippedPlanTickFailure -RepoRoot $fx.Root -Item @(New-ItemRecord) -TargetCommit $fx.Head
     Assert-Equal 0 $result.Failures.Count 'A missing plan file does not fail the push'
     Assert-Equal 1 $result.Diagnostics.Count 'A missing plan file prints one diagnostic'
 
@@ -208,7 +231,7 @@ try {
     # pre-push runs after the commit anyway.
     & git -C $repo add -A *> $null
     & git -C $repo commit -m 'file and ship 073' *> $null
-    $shipped = @(Get-BranchShippedItem -RepoRoot $repo -MergeBase $base)
+    $shipped = @(Get-BranchShippedItem -RepoRoot $repo -MergeBase $base -TargetCommit (Get-BaseSha -Root $repo))
     Assert-Equal 1 $shipped.Count 'A newly added shipped item is returned'
     if ($shipped.Count -eq 1) { Assert-Equal '073' $shipped[0].Number 'The returned record names the item' }
 
@@ -220,7 +243,7 @@ try {
     & git -C $repo commit -m 'ship 073' *> $null
     $base = Get-BaseSha -Root $repo
     Write-Item -Root $repo -Number '073' -Folder 'backlog/done' -Stage '9-ship' -Extra '- Typo repaired.'
-    $shipped = @(Get-BranchShippedItem -RepoRoot $repo -MergeBase $base)
+    $shipped = @(Get-BranchShippedItem -RepoRoot $repo -MergeBase $base -TargetCommit (Get-BaseSha -Root $repo))
     Assert-Equal 0 $shipped.Count 'Editing an item the base already shipped returns nothing'
 
     # 18. A branch that only moves an item into backlog/done/, its Stage line already 9-ship. The
@@ -231,7 +254,8 @@ try {
     & git -C $repo commit -m 'stamp 073' *> $null
     $base = Get-BaseSha -Root $repo
     & git -C $repo mv 'backlog/073-probe.md' 'backlog/done/073-probe.md' *> $null
-    $shipped = @(Get-BranchShippedItem -RepoRoot $repo -MergeBase $base)
+    & git -C $repo commit -m 'move 073 into done' *> $null
+    $shipped = @(Get-BranchShippedItem -RepoRoot $repo -MergeBase $base -TargetCommit (Get-BaseSha -Root $repo))
     Assert-Equal 1 $shipped.Count 'A plain rename into backlog/done returns exactly one record'
 
     # 18b. Renumbering an item the base already shipped. The item keeps its identity across a
@@ -248,7 +272,7 @@ try {
     $base = Get-BaseSha -Root $repo
     & git -C $repo mv 'backlog/done/073-probe.md' 'backlog/done/074-probe.md' *> $null
     & git -C $repo commit -am 'renumber 073 to 074' *> $null
-    $shipped = @(Get-BranchShippedItem -RepoRoot $repo -MergeBase $base)
+    $shipped = @(Get-BranchShippedItem -RepoRoot $repo -MergeBase $base -TargetCommit (Get-BaseSha -Root $repo))
     Assert-Equal 0 $shipped.Count 'Renumbering an item the base already shipped returns nothing'
 
     # 18c. Renumbering an item the base holds OPEN, and shipping it in the same branch. The rename
@@ -263,7 +287,7 @@ try {
     Write-Item -Root $repo -Number '074' -Folder 'backlog/done' -Stage '9-ship'
     & git -C $repo add -A *> $null
     & git -C $repo commit -m 'renumber and ship 074' *> $null
-    $shipped = @(Get-BranchShippedItem -RepoRoot $repo -MergeBase $base)
+    $shipped = @(Get-BranchShippedItem -RepoRoot $repo -MergeBase $base -TargetCommit (Get-BaseSha -Root $repo))
     Assert-Equal 1 $shipped.Count 'Renumbering an open item and shipping it is still shipped here'
     if ($shipped.Count -eq 1) { Assert-Equal '074' $shipped[0].Number 'The new number names the shipped item' }
 
@@ -273,7 +297,7 @@ try {
     Write-Item -Root $repo -Number '022b' -Folder 'backlog/done' -Stage '9-ship'
     & git -C $repo add -A *> $null
     & git -C $repo commit -m 'file and ship 022b' *> $null
-    $shipped = @(Get-BranchShippedItem -RepoRoot $repo -MergeBase $base)
+    $shipped = @(Get-BranchShippedItem -RepoRoot $repo -MergeBase $base -TargetCommit (Get-BaseSha -Root $repo))
     Assert-Equal 1 $shipped.Count 'A suffixed item is not skipped'
     if ($shipped.Count -eq 1) { Assert-Equal '022b' $shipped[0].Number 'The suffixed number is returned whole' }
 
@@ -281,7 +305,7 @@ try {
     $repo = New-TempGitRepo
     $base = Get-BaseSha -Root $repo
     Set-Content -LiteralPath (Join-Path $repo 'README.md') -Value 'edited' -Encoding utf8
-    $shipped = @(Get-BranchShippedItem -RepoRoot $repo -MergeBase $base)
+    $shipped = @(Get-BranchShippedItem -RepoRoot $repo -MergeBase $base -TargetCommit (Get-BaseSha -Root $repo))
     Assert-Equal 0 $shipped.Count 'A branch that touches no backlog file ships nothing'
 
     # 21. An unresolvable merge base must throw, never return empty. An empty list would switch the
@@ -294,6 +318,68 @@ try {
         $threw = $true
     }
     Assert-True $threw 'An unresolvable merge base must throw'
+
+    # === the pushed commit decides, not the working tree =====================
+    # A push carries commits. Judging the working tree let an uncommitted edit hide a committed
+    # item: HEAD reads 'Stage: 9-ship' with an unticked plan, the developer downgrades the Stage
+    # line on disk without committing, and the gate passed while the 9-ship record went to the
+    # remote. The plan file is the one thing that must still come from disk, because it lives in a
+    # second repository this one never carries.
+
+    # 26. An uncommitted Stage downgrade must not hide the committed item.
+    $repo = New-TempGitRepo
+    $base = Get-BaseSha -Root $repo
+    Write-Item -Root $repo -Number '073' -Folder 'backlog/done' -Stage '9-ship' `
+        -PlanBullet '- Plan: `docs/superpowers/plans/probe-plan-073.md`'
+    Write-Plan -Root $repo -Body "- [ ] Step 1`n- [ ] Step 2"
+    & git -C $repo add -A *> $null
+    & git -C $repo commit -m 'ship 073 with an unticked plan' *> $null
+    $head = Get-BaseSha -Root $repo
+
+    Write-Item -Root $repo -Number '073' -Folder 'backlog/done' -Stage '8-review' `
+        -PlanBullet '- Plan: `docs/superpowers/plans/probe-plan-073.md`'
+    $shipped = @(Get-BranchShippedItem -RepoRoot $repo -MergeBase $base -TargetCommit $head)
+    Assert-Equal 1 $shipped.Count 'An uncommitted Stage downgrade must not hide the pushed item'
+
+    $result = Get-ShippedPlanTickFailure -RepoRoot $repo -Item $shipped -TargetCommit $head
+    Assert-Equal 1 $result.Failures.Count 'The pushed commit still carries an unticked plan'
+
+    # 27. An uncommitted rewrite of the '- Plan:' bullet must not hide it either. The pointer comes
+    #     from the pushed commit; the plan file it names still comes from disk.
+    $repo = New-TempGitRepo
+    $base = Get-BaseSha -Root $repo
+    Write-Item -Root $repo -Number '073' -Folder 'backlog/done' -Stage '9-ship' `
+        -PlanBullet '- Plan: `docs/superpowers/plans/probe-plan-073.md`'
+    Write-Plan -Root $repo -Body "- [ ] Step 1`n- [ ] Step 2"
+    & git -C $repo add -A *> $null
+    & git -C $repo commit -m 'ship 073 with an unticked plan' *> $null
+    $head = Get-BaseSha -Root $repo
+
+    Write-Item -Root $repo -Number '073' -Folder 'backlog/done' -Stage '9-ship' `
+        -PlanBullet '- Plan: none - trivial'
+    $shipped = @(Get-BranchShippedItem -RepoRoot $repo -MergeBase $base -TargetCommit $head)
+    $result = Get-ShippedPlanTickFailure -RepoRoot $repo -Item $shipped -TargetCommit $head
+    Assert-Equal 1 $result.Failures.Count 'An uncommitted "Plan: none" must not hide the pushed pointer'
+
+    # 28. The plan file itself is read from disk, not from the commit. docs/superpowers is a second
+    #     repository that this one ignores, so the pushed commit never carries a plan at all. Here
+    #     the commit holds an unticked plan and the working tree ticks a step: the tick counts, and
+    #     that is the whole point of the refusal telling you to go and tick the steps.
+    Write-Plan -Root $repo -Body "- [x] Step 1`n- [ ] Step 2"
+    $result = Get-ShippedPlanTickFailure -RepoRoot $repo -Item $shipped -TargetCommit $head
+    Assert-Equal 0 $result.Failures.Count 'A tick on disk counts, because the plan lives outside this repository'
+
+    # 29. An older commit can be judged on its own terms. The pushed commit is not always HEAD.
+    Write-Plan -Root $repo -Body "- [ ] Step 1`n- [ ] Step 2"
+    Write-Item -Root $repo -Number '073' -Folder 'backlog/done' -Stage '6-verify' `
+        -PlanBullet '- Plan: `docs/superpowers/plans/probe-plan-073.md`'
+    & git -C $repo add -A *> $null
+    & git -C $repo commit -m 'walk 073 back to 6-verify' *> $null
+    $later = Get-BaseSha -Root $repo
+    Assert-Equal 0 @(Get-BranchShippedItem -RepoRoot $repo -MergeBase $base -TargetCommit $later).Count `
+        'The later commit no longer ships the item'
+    Assert-Equal 1 @(Get-BranchShippedItem -RepoRoot $repo -MergeBase $base -TargetCommit $head).Count `
+        'The earlier commit still ships it, judged on its own terms'
 
     # === the script itself, run as pre-push runs it ==========================
     # Everything above drives the functions in-process. None of it executes the script body: the
@@ -377,10 +463,24 @@ try {
     $prePushSource = Get-Content -Raw -LiteralPath (Join-Path $suiteRoot 'scripts/pre-push-quick-checks.ps1')
     Assert-True ($prePushSource -match 'check-shipped-plan-ticked\.ps1') `
         'pre-push-quick-checks.ps1 must run check-shipped-plan-ticked.ps1'
-    Assert-True ($prePushSource -match '-MergeBase \(\[string\] \$mergeBase\)\.Trim\(\)') `
-        'pre-push must hand the step the merge base the citation step already resolved'
+    Assert-True ($prePushSource -match '\[string\[\]\]\$PushedCommit') `
+        'pre-push-quick-checks.ps1 must accept the commits the hook read from stdin'
+    Assert-True ($prePushSource -match '-TargetCommit \$target') `
+        'pre-push must judge each pushed commit, not the working tree'
+    Assert-True ($prePushSource -match 'merge-base \$target origin/main') `
+        'pre-push must resolve each pushed commit''s own merge base'
+    Assert-True ($prePushSource -match "if \(\`$PushedCommit\.Count -gt 0\) \{ \`$PushedCommit \} else \{ @\('HEAD'\) \}") `
+        'a run by hand, with nothing on stdin, must fall back to HEAD'
     Assert-True ($prePushSource -match '(?s)check-shipped-plan-ticked\.ps1.*?\$LASTEXITCODE -ne 0.*?throw ') `
         'pre-push must throw when the check exits non-zero'
+
+    # The hook is the half that reads stdin. tests/PrePushHook.Tests.ps1 runs it for real against
+    # both PowerShell hosts; this only pins that the wiring is still written down here.
+    $hookSource = Get-Content -Raw -LiteralPath (Join-Path $suiteRoot '.githooks/pre-push.ps1')
+    Assert-True ($hookSource -match '\[Console\]::IsInputRedirected') `
+        'the hook must guard the stdin read, or a run by hand blocks forever'
+    Assert-True ($hookSource -match '-PushedCommit \$pushedCommit') `
+        'the hook must hand the pushed commits to the quick-checks script'
 
     if ($failures.Count -gt 0) {
         foreach ($failure in $failures) { Write-Host "FAIL: $failure" }
