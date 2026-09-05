@@ -98,3 +98,10 @@ and an uncommitted edit on disk moving the same item's Stage line to `6-verify`.
    touches, of which it ships 1, judged against cf0b2c67f05780de93fc28944e682570fd108d2e.
    EXITCODE=0
    ```
+
+One limit on that evidence. `core.hooksPath` points at the main checkout's `.githooks`, and every
+worktree shares the main checkout's `.git/config`. So a push from this branch runs the copy of
+`pre-push.ps1` that lives in `main`, and that copy does not read stdin. The push of this branch
+fell back to `HEAD`. The stdin path is proven by `tests/PrePushHook.Tests.ps1` under both
+PowerShell hosts, not by that push. The hook change starts working for real once this merges into
+`main`.
