@@ -45,21 +45,17 @@ moves takes its reason with it.
   2026-09-05 after Task 4: median 49.59 s over five runs. D3, the shared API host, was declined
   by the human at the Integration checkpoint: the target was already met without it, and its
   predicted 12 seconds did not justify a shared mutable host, an exclusive Collection, and edits
-  to 29 test classes. It is filed as its own backlog item.
+  to 29 test classes. It is filed as backlog 134.
 - [x] Each target is measured at its checkpoint before it is written down as met, and every one
       of the five runs is recorded alongside the median and the maximum.
 - [x] Every reliability defect the review found is either fixed here, or filed as its own
       backlog item with evidence.
-- [ ] Three items are filed for the speed findings left out of scope, each with the measurement
+- [x] Three items are filed for the speed findings left out of scope, each with the measurement
       that justifies it: the E2E incremental publish, parallel E2E stacks, and SQL container
-      reuse. **Not done, and the reason is recorded here rather than hidden.** Filing an item
-      needs a worktree of its own, and an agent session isolated inside this worktree cannot
-      write into another one: the repository's own guard refuses it. The session that finishes
-      this box has to start with `AHKFLOW_ALLOW_MAIN=1` set. A fourth item belongs with these
-      three, for the declined D3, so four items are outstanding, not three. Each one's
-      justifying measurement is in the spec, under D7 for the first three and under D3 for the
-      fourth. The next free number is 131: 130 is taken on an unmerged branch, which `ls` on
-      this branch cannot see.
+      reuse. Filed on 2026-09-05 as backlog 131, 132 and 133, each in its own worktree with a
+      draft pull request. A fourth went with them, backlog 134, for the D3 the human declined at
+      the Integration checkpoint. Each carries its justifying measurement: D7 of the spec for the
+      first three, D3 for the fourth.
 - [x] After the collections are reshaped, `API.Tests` and `Infrastructure.Tests` run thirty
       times with no failure. Five full runs fix the medians; they are not enough on their own to
       claim that no flake was introduced, and this item does not make that claim on five.
