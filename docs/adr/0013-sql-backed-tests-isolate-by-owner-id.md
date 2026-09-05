@@ -27,8 +27,10 @@ one of those two things, never as a way to avoid thinking about isolation.
 **Nothing in this section is built.** `AHKFlowApp.API.Tests` still runs every class through one
 shared collection, one after another. Backlog 128 designed the shared host, measured the gain at
 about twelve seconds, and the human declined it, because the Integration target was already met
-without it. The design is filed as backlog 134. What follows is the part of that design which
-owner-id isolation does not cover, kept here so the next reader need not work it out again.
+without it. The design is filed as backlog 134, which is still on its own branch and reaches
+`backlog/` only when that branch merges. Look there first, and read this section meanwhile.
+What follows is the part of that design which owner-id isolation does not cover, kept here so
+the next reader need not work it out again.
 
 Sharing one `WebApplicationFactory` across parallel classes is not free.
 
@@ -59,11 +61,15 @@ what a plain `dotnet test` does, so eight classes would mean eight SQL Server co
 **Hand-picked collection groups** were rejected as arbitrary. The grouping would carry no meaning,
 would drift as classes are added, and would still start one host per group.
 
-**Leaving both suites serial** was rejected for `Infrastructure.Tests`, because the cost is
-measured. In `API.Tests` the eight classes that build their own host hold 5.84 s across 24 tests,
-while the other 215 tests hold 15.13 s; only the first number is a floor. That 15.13 s is the
-prize backlog 134 is still holding, and leaving `API.Tests` serial is exactly what the human
-chose once the Integration target was met without it.
+**Leaving both suites serial** was rejected for `Infrastructure.Tests`, because the cost was
+measured and then removed: the assembly ran in 26 s serial and runs in 8 s now. That is the
+number this decision earned.
+
+For `API.Tests` the same measurement says something different. Its eight classes that build
+their own host hold 5.84 s across 24 tests, while the other 215 tests hold 15.13 s; only the
+first number is a floor. So 15.13 s is the most that reshaping could win back, and the human
+chose to leave `API.Tests` serial once the Integration target was met without it. That
+unclaimed 15.13 s is what the shared-host item is holding.
 
 ## Consequences
 
