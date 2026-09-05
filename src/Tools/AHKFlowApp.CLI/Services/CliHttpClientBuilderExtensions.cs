@@ -13,9 +13,14 @@ public static class CliHttpClientBuilderExtensions
     private static readonly TimeSpan AttemptTimeout = TimeSpan.FromSeconds(20);
     private static readonly TimeSpan TotalTimeout = TimeSpan.FromMinutes(2);
 
+    /// <param name="retryDelay">
+    /// How long to wait between attempts. Leave it unset for the two-second production delay.
+    /// A test passes <see cref="TimeSpan.Zero"/> so it does not wait through a real backoff.
+    /// </param>
     public static IHttpClientBuilder AddCliApiResilience(
         this IHttpClientBuilder httpClientBuilder,
-        string operationName)
+        string operationName,
+        TimeSpan? retryDelay = null)
     {
         httpClientBuilder.AddResilienceHandler(
             $"{operationName}-cli",
@@ -29,7 +34,7 @@ public static class CliHttpClientBuilderExtensions
                 {
                     MaxRetryAttempts = MaxRetryAttempts,
                     BackoffType = DelayBackoffType.Constant,
-                    Delay = RetryDelay,
+                    Delay = retryDelay ?? RetryDelay,
                     UseJitter = false,
                     ShouldHandle = static async args =>
                         CliApiFailureDetector.ShouldRetry(
