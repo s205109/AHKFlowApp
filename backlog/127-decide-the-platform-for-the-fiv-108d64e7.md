@@ -6,7 +6,7 @@
 - **Type**: Chore
 - **Interfaces**: none (CI workflows, test runner scripts)
 - **Difficulty**: moderate
-- **Stage**: 0-intake
+- **Stage**: 3-plan
 
 ## Summary
 
