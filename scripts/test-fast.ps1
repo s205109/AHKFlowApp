@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
   Run explicit local test slices for fast, integration, E2E, or coverage workflows.
@@ -49,6 +49,7 @@ $sharedSqlScript = Join-Path $PSScriptRoot 'test-sql-container.common.ps1'
 . "$PSScriptRoot\test-run-lock.common.ps1"
 . "$PSScriptRoot\code-change-filter.common.ps1"
 . "$PSScriptRoot\progress.common.ps1"
+. "$PSScriptRoot\test-results.common.ps1"
 
 function Get-ProgressUnitLabel {
     param([Parameter(Mandatory = $true)][object]$TestRun)
@@ -161,21 +162,6 @@ function Get-FastAssembly {
     }
 }
 
-function Read-TestCount {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$TrxPath
-    )
-
-    [xml]$trx = Get-Content -LiteralPath $TrxPath -Raw
-    $counters = $trx.GetElementsByTagName('Counters') | Select-Object -First 1
-    if (-not $counters) {
-        return 0
-    }
-
-    return [int]$counters.total
-}
-
 function Get-TestCountByAssembly {
     <#
       Splits one combined TRX into per-assembly result counts.
@@ -271,16 +257,8 @@ function Invoke-CombinedTestRun {
         $name = [System.IO.Path]::GetFileNameWithoutExtension($path)
         $count = 0
         if ($counts.ContainsKey($name)) { $count = $counts[$name] }
-        if ($count -lt 1) {
-            throw "$name discovered zero tests for filter '$filterText'."
-        }
 
-        $summaries += [pscustomobject]@{
-            Project = $name
-            Filter = $filterText
-            Tests = $count
-            TrxPath = $trxPath
-        }
+        $summaries += New-AhkFlowTestSummary -Project $name -Filter $filterText -Tests $count -TrxPath $trxPath
     }
 
     return $summaries
@@ -327,25 +305,16 @@ function Invoke-TestRun {
         throw "dotnet test failed for $projectName."
     }
 
-    $trxFile = Get-ChildItem -LiteralPath $projectResultsDirectory -Recurse -Filter '*.trx' |
-        Sort-Object LastWriteTimeUtc -Descending |
-        Select-Object -First 1
-
-    if (-not $trxFile) {
+    $trxPath = Get-AhkFlowLatestTrxPath -ResultsDirectory $projectResultsDirectory
+    if (-not $trxPath) {
         throw "No TRX file was produced for $projectName."
     }
 
-    $testCount = Read-TestCount -TrxPath $trxFile.FullName
-    if ($testCount -lt 1) {
-        throw "$projectName discovered zero tests for filter '$filterText'."
-    }
-
-    [pscustomobject]@{
-        Project = $projectName
-        Filter = $filterText
-        Tests = $testCount
-        TrxPath = $trxFile.FullName
-    }
+    New-AhkFlowTestSummary `
+        -Project $projectName `
+        -Filter $filterText `
+        -Tests (Get-AhkFlowTestCount -TrxPath $trxPath) `
+        -TrxPath $trxPath
 }
 
 $sharedSqlContainer = $null

@@ -48,15 +48,17 @@ function Invoke-TestCase {
     }
 }
 
-# The five projects Fast mode runs, in the order it runs them, each with the unit label the
-# wrapper builds for it. Derived from scripts/test-fast.ps1, so a change there fails this suite
-# rather than quietly passing with the wrong list.
+# The five projects Fast mode runs, in the order it runs them. Derived from scripts/test-fast.ps1,
+# so a change there fails this suite rather than quietly passing with the wrong list.
+#
+# Names only. Each entry used to carry a per-project progress label as well, and the combined run
+# retired those: one call means one progress unit, $script:FastLabel below.
 $script:FastProject = @(
-    @{ Name = 'AHKFlowApp.Domain.Tests';       Label = 'AHKFlowApp.Domain.Tests' }
-    @{ Name = 'AHKFlowApp.TestUtilities.Tests'; Label = 'AHKFlowApp.TestUtilities.Tests' }
-    @{ Name = 'AHKFlowApp.UI.Blazor.Tests';    Label = 'AHKFlowApp.UI.Blazor.Tests' }
-    @{ Name = 'AHKFlowApp.Application.Tests';  Label = 'AHKFlowApp.Application.Tests[Category!=Integration]' }
-    @{ Name = 'AHKFlowApp.CLI.Tests';          Label = 'AHKFlowApp.CLI.Tests[Category!=Integration]' }
+    @{ Name = 'AHKFlowApp.Domain.Tests' }
+    @{ Name = 'AHKFlowApp.TestUtilities.Tests' }
+    @{ Name = 'AHKFlowApp.UI.Blazor.Tests' }
+    @{ Name = 'AHKFlowApp.Application.Tests' }
+    @{ Name = 'AHKFlowApp.CLI.Tests' }
 )
 
 function New-WrapperFixture {
@@ -71,6 +73,7 @@ function New-WrapperFixture {
             'test-run-lock.common.ps1'
             'code-change-filter.common.ps1'
             'progress.common.ps1'
+            'test-results.common.ps1'
         )) {
         Copy-Item -LiteralPath (Join-Path $repoRoot "scripts\$name") -Destination (Join-Path $root "scripts\$name")
     }

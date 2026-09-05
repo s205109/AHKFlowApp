@@ -55,12 +55,15 @@ function New-HarnessFixture {
     # empty folder is enough: the dotnet stub never reads it.
     New-Item -ItemType Directory -Path (Join-Path $root 'tests\FakeProject') -Force | Out-Null
 
-    # Two real files, copied. The harness under test, and the lock helper - the lock behaviour is
-    # what case 7 tests, and the helper is pure PowerShell that dot-sources nothing.
+    # Three real files, copied. The harness under test, the lock helper - the lock behaviour is
+    # what case 7 tests - and the TRX reader the zero-test guard goes through. All three are pure
+    # PowerShell that dot-sources nothing.
     Copy-Item -LiteralPath (Join-Path $repoRoot 'scripts\measure-test-modes.ps1') `
         -Destination (Join-Path $root 'scripts\measure-test-modes.ps1')
     Copy-Item -LiteralPath (Join-Path $repoRoot 'scripts\test-run-lock.common.ps1') `
         -Destination (Join-Path $root 'scripts\test-run-lock.common.ps1')
+    Copy-Item -LiteralPath (Join-Path $repoRoot 'scripts\test-results.common.ps1') `
+        -Destination (Join-Path $root 'scripts\test-results.common.ps1')
 
     Set-Content -LiteralPath (Join-Path $root 'scripts\test-sql-container.common.ps1') -Encoding utf8 -Value @'
 # Fake. tests/MeasureTestModes.Tests.ps1 covers the harness's orchestration, not the container

@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+﻿#Requires -Version 7.0
 <#
 .SYNOPSIS
   Times one test Mode several times and reports the median, or soaks one test project.
@@ -53,34 +53,7 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 . "$PSScriptRoot\test-sql-container.common.ps1"
 . "$PSScriptRoot\test-run-lock.common.ps1"
-
-function Get-SoakTestCount {
-    <#
-      How many tests one soak repetition actually ran, read from its TRX.
-
-      A soak that counts only the exit code passes a run that discovered nothing, and a filter
-      typo or a lost class fixture is exactly how that happens: dotnet test exits zero with an
-      empty suite. Thirty of those report "30 of 30". scripts/test-fast.ps1 refuses a zero-test
-      run for the same reason, in its own Read-TestCount.
-
-      Returns 0 when no TRX was written, which the caller treats as a failed repetition.
-    #>
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$ResultsDirectory
-    )
-
-    $trxFile = Get-ChildItem -LiteralPath $ResultsDirectory -Recurse -Filter '*.trx' -ErrorAction SilentlyContinue |
-        Sort-Object LastWriteTimeUtc -Descending |
-        Select-Object -First 1
-    if (-not $trxFile) { return 0 }
-
-    [xml]$trx = Get-Content -LiteralPath $trxFile.FullName -Raw
-    $counters = $trx.GetElementsByTagName('Counters') | Select-Object -First 1
-    if (-not $counters) { return 0 }
-
-    return [int]$counters.total
-}
+. "$PSScriptRoot\test-results.common.ps1"
 
 # A failing 'dotnet test' must be counted, not thrown. PowerShell turns a non-zero exit code from
 # a native command into a terminating error while $ErrorActionPreference is 'Stop' and this
@@ -161,7 +134,12 @@ try {
 
                     # Two ways to fail, and the second one is silent without this. A run that
                     # exits zero having discovered nothing is not a pass.
-                    $count = Get-SoakTestCount -ResultsDirectory $resultsDirectory
+                    # A soak that counts only the exit code passes a run that discovered
+                    # nothing, and a filter typo or a lost class fixture is exactly how
+                    # that happens: dotnet test exits zero with an empty suite. Thirty of
+                    # those report "30 of 30". scripts/test-fast.ps1 refuses a zero-test
+                    # run for the same reason, through the same helper.
+                    $count = Get-AhkFlowTestCountFromResults -ResultsDirectory $resultsDirectory
                     if ($exitCode -ne 0) {
                         $failed += $run
                     }
