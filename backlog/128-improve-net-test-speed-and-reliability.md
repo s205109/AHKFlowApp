@@ -5,7 +5,7 @@
 - **Type**: Tooling
 - **Interfaces**: none (test projects)
 - **Difficulty**: complex
-- **Stage**: 6-verify
+- **Stage**: 8-review
 
 ## Summary
 
@@ -35,30 +35,38 @@ item does not improve the 12 s.
 Both targets are provisional. Each is confirmed or replaced at its checkpoint, and a number that
 moves takes its reason with it.
 
-- [ ] A written measurement exists for each test project: wall clock time, and the slowest
+- [x] A written measurement exists for each test project: wall clock time, and the slowest
       tests inside it.
-- [ ] A written list exists of the tests that give a different answer on different runs, or
+- [x] A written list exists of the tests that give a different answer on different runs, or
       a statement, backed by run counts, that none were found.
-- [ ] The Fast mode's median finishes in under 22 seconds, down from 33.88. Measured 2026-09-05
+- [x] The Fast mode's median finishes in under 22 seconds, down from 33.88. Measured 2026-09-05
   after Tasks 1 and 2: median 15.68 s over five runs.
-- [ ] The Integration mode's median finishes in under 65 seconds, down from 84.64. Measured
+- [x] The Integration mode's median finishes in under 65 seconds, down from 84.64. Measured
   2026-09-05 after Task 4: median 49.59 s over five runs. D3, the shared API host, was declined
   by the human at the Integration checkpoint: the target was already met without it, and its
   predicted 12 seconds did not justify a shared mutable host, an exclusive Collection, and edits
   to 29 test classes. It is filed as its own backlog item.
-- [ ] Each target is measured at its checkpoint before it is written down as met, and every one
+- [x] Each target is measured at its checkpoint before it is written down as met, and every one
       of the five runs is recorded alongside the median and the maximum.
-- [ ] Every reliability defect the review found is either fixed here, or filed as its own
+- [x] Every reliability defect the review found is either fixed here, or filed as its own
       backlog item with evidence.
 - [ ] Three items are filed for the speed findings left out of scope, each with the measurement
       that justifies it: the E2E incremental publish, parallel E2E stacks, and SQL container
-      reuse.
-- [ ] After the collections are reshaped, `API.Tests` and `Infrastructure.Tests` run thirty
+      reuse. **Not done, and the reason is recorded here rather than hidden.** Filing an item
+      needs a worktree of its own, and an agent session isolated inside this worktree cannot
+      write into another one: the repository's own guard refuses it. The session that finishes
+      this box has to start with `AHKFLOW_ALLOW_MAIN=1` set. A fourth item belongs with these
+      three, for the declined D3, so four items are outstanding, not three. Each one's
+      justifying measurement is in the spec, under D7 for the first three and under D3 for the
+      fourth. The next free number is 131: 130 is taken on an unmerged branch, which `ls` on
+      this branch cannot see.
+- [x] After the collections are reshaped, `API.Tests` and `Infrastructure.Tests` run thirty
       times with no failure. Five full runs fix the medians; they are not enough on their own to
       claim that no flake was introduced, and this item does not make that claim on five.
       Only `Infrastructure.Tests` was reshaped, and it soaked 30 of 30 on 2026-09-05.
       `API.Tests` was never reshaped, because D3 was declined, so it has nothing to soak.
-- [ ] `pwsh ./scripts/test-fast.ps1 -Mode Fast`, `-Mode Integration`, and `-Mode E2E` pass.
+- [x] `pwsh ./scripts/test-fast.ps1 -Mode Fast`, `-Mode Integration`, and `-Mode E2E` pass.
+      Verified 2026-09-05 at the Gate: Fast 2941, Integration 644, E2E 57, all green.
 
 The E2E mode carries no target. It is 69 percent of the run, and the design puts it out of
 scope with its own backlog item instead.
