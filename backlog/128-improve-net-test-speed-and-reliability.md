@@ -42,7 +42,10 @@ moves takes its reason with it.
 - [ ] The Fast mode's median finishes in under 22 seconds, down from 33.88. Measured 2026-09-05
   after Tasks 1 and 2: median 15.68 s over five runs.
 - [ ] The Integration mode's median finishes in under 65 seconds, down from 84.64. Measured
-  2026-09-05 after Task 4: median 49.59 s over five runs.
+  2026-09-05 after Task 4: median 49.59 s over five runs. D3, the shared API host, was declined
+  by the human at the Integration checkpoint: the target was already met without it, and its
+  predicted 12 seconds did not justify a shared mutable host, an exclusive Collection, and edits
+  to 29 test classes. It is filed as its own backlog item.
 - [ ] Each target is measured at its checkpoint before it is written down as met, and every one
       of the five runs is recorded alongside the median and the maximum.
 - [ ] Every reliability defect the review found is either fixed here, or filed as its own
@@ -53,6 +56,8 @@ moves takes its reason with it.
 - [ ] After the collections are reshaped, `API.Tests` and `Infrastructure.Tests` run thirty
       times with no failure. Five full runs fix the medians; they are not enough on their own to
       claim that no flake was introduced, and this item does not make that claim on five.
+      Only `Infrastructure.Tests` was reshaped, and it soaked 30 of 30 on 2026-09-05.
+      `API.Tests` was never reshaped, because D3 was declined, so it has nothing to soak.
 - [ ] `pwsh ./scripts/test-fast.ps1 -Mode Fast`, `-Mode Integration`, and `-Mode E2E` pass.
 
 The E2E mode carries no target. It is 69 percent of the run, and the design puts it out of
