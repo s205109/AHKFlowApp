@@ -6,7 +6,7 @@
 - **Type**: Tooling
 - **Interfaces**: none (test infrastructure)
 - **Difficulty**: complex
-- **Stage**: 1-pickup
+- **Stage**: 2-design
 
 ## Summary
 
