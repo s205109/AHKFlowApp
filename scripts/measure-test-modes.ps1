@@ -139,16 +139,22 @@ try {
                     # that happens: dotnet test exits zero with an empty suite. Thirty of
                     # those report "30 of 30". scripts/test-fast.ps1 refuses a zero-test
                     # run for the same reason, through the same helper.
-                    $count = Get-AhkFlowTestCountFromResults -ResultsDirectory $resultsDirectory
+                    #
+                    # The exit code is read first, and the TRX only when the run claims success.
+                    # A run that died part-way is already a failure, and its half-written TRX
+                    # carries no answer worth asking for.
                     if ($exitCode -ne 0) {
                         $failed += $run
                     }
-                    elseif ($count -lt 1) {
-                        Write-Host "run $run exited 0 but ran zero tests" -ForegroundColor Red
-                        $empty += $run
-                    }
                     else {
-                        $passed++
+                        $count = Get-AhkFlowTestCountFromResults -ResultsDirectory $resultsDirectory
+                        if ($count -lt 1) {
+                            Write-Host "run $run exited 0 but ran zero tests" -ForegroundColor Red
+                            $empty += $run
+                        }
+                        else {
+                            $passed++
+                        }
                     }
                 }
                 finally {
@@ -195,9 +201,7 @@ try {
         Write-Host ("run {0}: {1:N2} s" -f $run, $elapsed) -ForegroundColor Green
     }
 
-    $sorted = @($seconds | Sort-Object)
-    $middle = [int][Math]::Floor($sorted.Count / 2)
-    $median = if ($sorted.Count % 2 -eq 1) { $sorted[$middle] } else { ($sorted[$middle - 1] + $sorted[$middle]) / 2 }
+    $median = Get-AhkFlowMedian -Values $seconds
     $mean = ($seconds | Measure-Object -Average).Average
     $max = ($seconds | Measure-Object -Maximum).Maximum
 

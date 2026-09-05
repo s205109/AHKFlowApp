@@ -3,11 +3,15 @@
 # Backlog 128. scripts/measure-test-modes.ps1 times a test Mode several times and reports the
 # median, or soaks one test project and reports how many runs passed.
 #
-# This suite covers the orchestration only: argument routing, the median, the run lock, the
-# connection-string restore, one SQL container per soak repetition, the zero-test guard, and what
-# happens when a run fails. It stubs 'dotnet', stubs scripts/test-fast.ps1, and replaces the SQL
-# container helper with a two-function fake that logs instead of calling Docker, so it costs
-# seconds and needs no Docker.
+# This suite covers the orchestration: argument routing, the median, the run lock, the
+# connection-string restore, one SQL container per soak repetition, the zero-test guard, what
+# happens when a run fails, and what happens when a run leaves a TRX nobody can parse. It stubs
+# 'dotnet', stubs scripts/test-fast.ps1, and replaces the SQL container helper with a
+# two-function fake that logs instead of calling Docker, so it costs seconds and needs no Docker.
+#
+# One case is not orchestration: it calls Get-AhkFlowMedian with fixed values. The median is the
+# number every performance claim in backlog 128 rests on, and driving it through the harness can
+# only check it against wall-clock timings.
 #
 # It deliberately covers no timing. The numbers the harness reports are evidence gathered by
 # running it for real against the repository, and no stub can stand in for that.
@@ -25,6 +29,11 @@ $PSNativeCommandUseErrorActionPreference = $false
 
 $repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 $hostExe = [System.Diagnostics.Process]::GetCurrentProcess().Path
+
+# The real file, not the fixture copy. The median case calls Get-AhkFlowMedian with fixed values,
+# which is the only way to test the arithmetic with no wall clock in the assertion. It defines
+# functions and nothing else, so dot-sourcing it here has no side effect.
+. (Join-Path $repoRoot 'scripts\test-results.common.ps1')
 
 $script:Failures = New-Object System.Collections.Generic.List[string]
 
@@ -55,8 +64,8 @@ function New-HarnessFixture {
     # empty folder is enough: the dotnet stub never reads it.
     New-Item -ItemType Directory -Path (Join-Path $root 'tests\FakeProject') -Force | Out-Null
 
-    # Three real files, copied. The harness under test, the lock helper - the lock behaviour is
-    # what case 7 tests - and the TRX reader the zero-test guard goes through. All three are pure
+    # Three real files, copied. The harness under test, the lock helper - the two lock cases test
+    # that behaviour - and the TRX reader the zero-test guard goes through. All three are pure
     # PowerShell that dot-sources nothing.
     Copy-Item -LiteralPath (Join-Path $repoRoot 'scripts\measure-test-modes.ps1') `
         -Destination (Join-Path $root 'scripts\measure-test-modes.ps1')
@@ -105,7 +114,7 @@ if ($args[0] -eq 'build') {
     exit 0
 }
 
-# Which test run is this? Cases 4 and 5 name a run number in a marker file.
+# Which test run is this? The soak cases name a run number in a marker file.
 $run = @(Get-Content -LiteralPath $callsPath | Where-Object { $_ -like 'test *' }).Count
 
 $resultsDirectory = $null
@@ -123,10 +132,22 @@ if ((Test-Path -LiteralPath $emptyMarker) -and ((Get-Content -LiteralPath $empty
     $total = 0
 }
 
+# A run killed part-way leaves a TRX whose XML never closes. The two malformed-TRX cases name a
+# run number here to get one, because reading such a file is where a soak used to stop dead.
+$malformedMarker = Join-Path $stubFolder 'malformed-run.txt'
+$malformed = (Test-Path -LiteralPath $malformedMarker) -and
+    ((Get-Content -LiteralPath $malformedMarker -Raw).Trim() -eq "$run")
+
 if ($resultsDirectory) {
     New-Item -ItemType Directory -Path $resultsDirectory -Force | Out-Null
-    $trx = '<?xml version="1.0" encoding="UTF-8"?><TestRun xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">' +
-        "<ResultSummary><Counters total=""$total"" passed=""$total"" failed=""0"" /></ResultSummary></TestRun>"
+    if ($malformed) {
+        $trx = '<?xml version="1.0" encoding="UTF-8"?><TestRun xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">' +
+            '<ResultSummary><Counters total='
+    }
+    else {
+        $trx = '<?xml version="1.0" encoding="UTF-8"?><TestRun xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">' +
+            "<ResultSummary><Counters total=""$total"" passed=""$total"" failed=""0"" /></ResultSummary></TestRun>"
+    }
     Set-Content -LiteralPath (Join-Path $resultsDirectory $logFileName) -Value $trx -Encoding utf8
 }
 
@@ -150,12 +171,13 @@ Add-Content -LiteralPath $callsPath -Value "Mode=$Mode NoBuild=$NoBuild"
 $owner = Test-Path -LiteralPath (Join-Path $repoRoot '.test-run.lock.owner')
 Add-Content -LiteralPath (Join-Path $stubFolder 'signals.txt') -Value "test-fast owner=$owner"
 
-# Runs of different lengths, so case 2 can tell a median from a mean. 1st longest, 3rd middle.
-# The three numbers are chosen, not arbitrary. Sorted they are 0.10 / 0.30 / 0.90 s, so the
-# median is 0.30 s and the mean is 0.43 s. Case 2 asserts the two differ by more than 0.05 s,
-# and the gap here is 0.13 s - nearly three times the threshold. An earlier draft used
-# 600 / 100 / 300, whose median is 0.30 s and mean 0.33 s: a gap of 0.033 s, which fails that
-# assertion outright rather than flakily. Change these numbers and re-do this arithmetic.
+# Runs of different lengths, so the reported-median case sees a median and a mean that differ.
+# 1st longest, 3rd middle. Sorted they are 0.10 / 0.30 / 0.90 s: median 0.30 s, mean 0.43 s.
+#
+# That case asserts each printed number against the runs the harness itself printed, so no
+# threshold here has to survive machine load. It once compared the mean against the median with
+# a fixed 0.05 s margin, which a slow run could close by accident. The fixed-value case above
+# owns that comparison now, where the numbers are constants and nothing can move them.
 $run = @(Get-Content -LiteralPath $callsPath).Count
 $sleep = @(900, 100, 300)[($run - 1) % 3]
 Start-Sleep -Milliseconds $sleep
@@ -207,27 +229,47 @@ Invoke-TestCase 'Timing mode calls the Mode once per run' {
     finally { Remove-HarnessFixture -Root $root }
 }
 
-Invoke-TestCase 'The reported median is the middle of the sorted runs, not the mean' {
+Invoke-TestCase 'Get-AhkFlowMedian is the middle sorted value, and the mean of the middle two when even' {
+    # Fixed values and no wall clock at all. The case below proves the harness prints the median it
+    # computed; this case proves the computation, and no amount of machine load can move it.
+    Assert-True ((Get-AhkFlowMedian -Values @(0.9, 0.1, 0.3)) -eq 0.3) `
+        'An odd count is the middle of the sorted values, and the input is not pre-sorted.'
+    Assert-True ((Get-AhkFlowMedian -Values @(4, 1, 3, 2)) -eq 2.5) `
+        'An even count is the mean of the middle two sorted values.'
+    Assert-True ((Get-AhkFlowMedian -Values @(7)) -eq 7) 'One value is its own median.'
+
+    # The discriminating case. Mean 28.75, median 5: a median that quietly became a mean fails
+    # here by a wide margin, with no threshold to tune.
+    Assert-True ((Get-AhkFlowMedian -Values @(5, 5, 5, 100)) -eq 5) `
+        'The median ignores an outlier that moves the mean.'
+
+    $threw = $false
+    try { Get-AhkFlowMedian -Values @() } catch { $threw = $true }
+    Assert-True $threw 'An empty set has no median, and silently returning zero would read as a fast run.'
+}
+
+Invoke-TestCase 'The reported median is the middle of the sorted runs, and the mean line is the mean' {
     $root = New-HarnessFixture
     try {
         $result = Invoke-Harness -Root $root -Arguments @('-Mode', 'Fast', '-Runs', '3', '-NoBuild')
         Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
 
-        # Assert the arithmetic against the numbers the harness itself printed, never against a
-        # wall-clock value. Process start-up noise moves every run; it cannot move the ordering.
+        # Every number here comes from the harness's own output, so both sides of each assertion
+        # move together. Load changes what the runs are; it cannot make the median stop being the
+        # middle one, nor the mean line stop being their average. The case above owns the arithmetic.
         $text = $result.Output -join "`n"
         Assert-True ($text -match 'runs\s+:\s+([\d.,/ ]+)') "No runs line. Output: $text"
         $runs = @($Matches[1] -split '/' | ForEach-Object { [double]($_.Trim() -replace ',', '.') })
         Assert-True ($text -match 'median\s+:\s+([\d.,]+)') "No median line. Output: $text"
         $median = [double]($Matches[1] -replace ',', '.')
+        Assert-True ($text -match 'mean\s+:\s+([\d.,]+)') "No mean line. Output: $text"
+        $mean = [double]($Matches[1] -replace ',', '.')
 
         $sorted = @($runs | Sort-Object)
         Assert-True ([Math]::Abs($median - $sorted[1]) -lt 0.02) `
             "Median $median must be the middle sorted run $($sorted[1]). Runs: $($runs -join ', ')"
-
-        $mean = ($runs | Measure-Object -Average).Average
-        Assert-True ([Math]::Abs($mean - $sorted[1]) -gt 0.05) `
-            'The stub sleeps must differ enough that the mean and the median are distinguishable.'
+        Assert-True ([Math]::Abs($mean - ($runs | Measure-Object -Average).Average) -lt 0.02) `
+            "Mean $mean must be the average of the runs. Runs: $($runs -join ', ')"
     }
     finally { Remove-HarnessFixture -Root $root }
 }
@@ -281,6 +323,50 @@ Invoke-TestCase 'A soak run that exits zero with an empty TRX is not a pass' {
         Assert-True (-not ($text -match 'passed\s+:\s+3 of 3')) `
             "An empty run must not count as passed. Output: $text"
         Assert-True ($result.ExitCode -ne 0) 'A soak with an empty run must fail overall.'
+    }
+    finally { Remove-HarnessFixture -Root $root }
+}
+
+Invoke-TestCase 'A soak run that fails with a half-written TRX is counted, not thrown' {
+    $root = New-HarnessFixture
+    try {
+        # Run 2 dies part-way: it exits non-zero AND leaves a TRX whose XML never closes. The
+        # soak used to read the count before it checked the exit code, so the parse error escaped
+        # the loop and run 3 never happened. A failed run is data; it must not end the soak.
+        Set-Content -LiteralPath (Join-Path $root 'stub\fail-run.txt') -Value '2' -Encoding utf8
+        Set-Content -LiteralPath (Join-Path $root 'stub\malformed-run.txt') -Value '2' -Encoding utf8
+
+        $result = Invoke-Harness -Root $root -Arguments @('-Soak', 'tests/FakeProject', '-Runs', '3', '-NoBuild')
+        $text = $result.Output -join "`n"
+
+        $sql = @(Get-Content -LiteralPath (Join-Path $root 'sql-calls.txt'))
+        Assert-True (@($sql | Where-Object { $_ -like 'start *' }).Count -eq 3) `
+            "The soak must finish all 3 runs after run 2 dies mid-write. Log: $($sql -join ' | ')"
+        Assert-True ($text -match 'passed\s+:\s+2 of 3') "Expected 'passed : 2 of 3'. Output: $text"
+        Assert-True ($text -match 'failed runs\s+:\s+2') "Expected run 2 named as failed. Output: $text"
+        Assert-True ($result.ExitCode -ne 0) 'A soak with a failed run must fail overall.'
+    }
+    finally { Remove-HarnessFixture -Root $root }
+}
+
+Invoke-TestCase 'A soak run that exits zero with an unreadable TRX is not a pass' {
+    $root = New-HarnessFixture
+    try {
+        # Exit code zero, and a TRX that will not parse. The count is unknown, so the run proved
+        # nothing and belongs with the empty ones. Reading it must still not end the soak.
+        Set-Content -LiteralPath (Join-Path $root 'stub\malformed-run.txt') -Value '2' -Encoding utf8
+
+        $result = Invoke-Harness -Root $root -Arguments @('-Soak', 'tests/FakeProject', '-Runs', '3', '-NoBuild')
+        $text = $result.Output -join "`n"
+
+        $sql = @(Get-Content -LiteralPath (Join-Path $root 'sql-calls.txt'))
+        Assert-True (@($sql | Where-Object { $_ -like 'start *' }).Count -eq 3) `
+            "The soak must finish all 3 runs. Log: $($sql -join ' | ')"
+        Assert-True ($text -match 'ran zero tests\s+:\s+2') `
+            "Run 2 wrote an unreadable TRX and must be named. Output: $text"
+        Assert-True (-not ($text -match 'passed\s+:\s+3 of 3')) `
+            "An unreadable TRX must not count as passed. Output: $text"
+        Assert-True ($result.ExitCode -ne 0) 'A soak with an unreadable TRX must fail overall.'
     }
     finally { Remove-HarnessFixture -Root $root }
 }
