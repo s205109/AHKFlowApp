@@ -39,7 +39,8 @@ moves takes its reason with it.
       tests inside it.
 - [ ] A written list exists of the tests that give a different answer on different runs, or
       a statement, backed by run counts, that none were found.
-- [ ] The Fast mode's median finishes in under 22 seconds, down from 33.88.
+- [ ] The Fast mode's median finishes in under 22 seconds, down from 33.88. Measured 2026-09-05
+  after Tasks 1 and 2: median 15.68 s over five runs.
 - [ ] The Integration mode's median finishes in under 65 seconds, down from 84.64.
 - [ ] Each target is measured at its checkpoint before it is written down as met, and every one
       of the five runs is recorded alongside the median and the maximum.

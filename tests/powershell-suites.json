@@ -16,6 +16,7 @@
     { "name": "CoverageSliceSkip.Tests.ps1", "jobs": ["suites"], "execution": "parallel", "baselineSeconds": 10.0 },
     { "name": "FrictionRecallSample.Tests.ps1", "jobs": ["suites"], "execution": "parallel", "baselineSeconds": 5.1 },
     { "name": "GateWording.Tests.ps1", "jobs": ["suites"], "execution": "parallel", "baselineSeconds": 8.0 },
+    { "name": "MeasureTestModes.Tests.ps1", "jobs": ["suites"], "execution": "parallel", "baselineSeconds": 8.1 },
     { "name": "PersonalDefaultsSyncMarker.Tests.ps1", "jobs": ["suites"], "execution": "parallel", "baselineSeconds": 0.5 },
     { "name": "PlanWorkflowParity.Tests.ps1", "jobs": ["suites"], "execution": "parallel", "baselineSeconds": 6.6 },
     { "name": "PreCommitAntiPatternHook.Tests.ps1", "jobs": ["suites"], "execution": "parallel", "baselineSeconds": 2.3 },
