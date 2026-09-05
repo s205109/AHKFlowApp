@@ -43,7 +43,7 @@ every time, so that a red gate always means my own change broke something.
       one of its load rounds did not pass.
 - [x] The suite stays `parallel` in `tests/powershell-suites.json`. Marking it `exclusive` was
       tried during backlog 126 and did not help.
-      That row still reads execution parallel (`tests/powershell-suites.json:36`, "WatchTask.Tests.ps1"). The canonical
+      That row still reads execution parallel (`tests/powershell-suites.json:37`, "WatchTask.Tests.ps1"). The canonical
       citation form allows no double quote inside its expected text, so the phrase names the row
       rather than quoting the JSON around it.
 
