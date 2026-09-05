@@ -6,7 +6,7 @@
 - **Type**: Fix
 - **Interfaces**: none (developer tooling)
 - **Difficulty**: moderate
-- **Stage**: 3-plan
+- **Stage**: 9-ship
 
 ## Summary
 
@@ -21,27 +21,27 @@ so that a clean working tree cannot hide a bad record that is already committed.
 
 ## Acceptance criteria
 
-- [ ] `.githooks/pre-push.ps1` reads the ref lines git writes on its stdin and collects the local
+- [x] `.githooks/pre-push.ps1` reads the ref lines git writes on its stdin and collects the local
       commit of each pushed ref. A ref being deleted carries an all-zero commit and contributes
       nothing.
-- [ ] The hook reads stdin only when `[Console]::IsInputRedirected` is true, so running the hook
+- [x] The hook reads stdin only when `[Console]::IsInputRedirected` is true, so running the hook
       by hand does not block on a terminal that will never close.
-- [ ] `scripts/pre-push-quick-checks.ps1` takes a `-PushedCommit` parameter, resolves a merge base
+- [x] `scripts/pre-push-quick-checks.ps1` takes a `-PushedCommit` parameter, resolves a merge base
       for each pushed commit on its own, and runs the shipped-plan check once per commit. With no
       commits passed, it judges `HEAD`.
-- [ ] `scripts/check-shipped-plan-ticked.ps1` takes a `-TargetCommit` parameter and reads the
+- [x] `scripts/check-shipped-plan-ticked.ps1` takes a `-TargetCommit` parameter and reads the
       backlog diff, the item's path, and the item's Stage line from that commit.
-- [ ] `scripts/check-shipped-plan-ticked.ps1` no longer dot-sources `scripts/backlog.common.ps1`.
+- [x] `scripts/check-shipped-plan-ticked.ps1` no longer dot-sources `scripts/backlog.common.ps1`.
       Its `Get-BacklogItem` reads the working tree, which is what this check must not read.
-- [ ] The plan file the item names is still read from disk. `docs/superpowers` is a second
+- [x] The plan file the item names is still read from disk. `docs/superpowers` is a second
       repository that this one ignores, so no commit here ever carries a plan.
-- [ ] Pushing a branch that is not checked out judges that branch's commits, and not the commits
+- [x] Pushing a branch that is not checked out judges that branch's commits, and not the commits
       of whatever `HEAD` happens to be.
-- [ ] A committed item at `Stage: 9-ship` whose plan has no ticked step is refused, even when the
+- [x] A committed item at `Stage: 9-ship` whose plan has no ticked step is refused, even when the
       working tree copy of that item was edited to another stage and left uncommitted.
-- [ ] `tests/ShippedPlanTicked.Tests.ps1` covers the commit-based reads against fixtures, and
+- [x] `tests/ShippedPlanTicked.Tests.ps1` covers the commit-based reads against fixtures, and
       `tests/PrePushHook.Tests.ps1` covers the stdin parsing that supplies the commits.
-- [ ] `tests/powershell-suites.json` records the measured baseline for
+- [x] `tests/powershell-suites.json` records the measured baseline for
       `ShippedPlanTicked.Tests.ps1` after the suite grew.
 
 ## Out of scope
