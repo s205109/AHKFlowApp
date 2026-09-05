@@ -60,3 +60,41 @@ so that a clean working tree cannot hide a bad record that is already committed.
   the working tree and the pushed commits can disagree.
 - Spec: none — one design decision, recorded in the plan.
 - Plan: `docs/superpowers/plans/2026-09-05-the-push-gate-judges-the-pushed-commits-135.md`
+
+## Gate evidence
+
+`pwsh ./scripts/pre-push-quick-checks.ps1` on this branch: build succeeded with 0 warnings, the
+fast test slice passed (44 + 8 + 956 + 1749 + 182 tests), citations passed, shipped plans frozen,
+and the shipped-plan check passed.
+
+The defect was proven against this item itself. Repository state for all three runs: item 135
+committed at `Stage: 9-ship` in `backlog/done/`, its plan holding 7 unticked steps and 0 ticked,
+and an uncommitted edit on disk moving the same item's Stage line to `6-verify`.
+
+1. This branch's check, run in that state:
+
+   ```
+   Backlog item 135 reads 'Stage: 9-ship', and no step in its plan is ticked.
+     Steps: 7 unticked, 0 ticked
+   RESULT: 1 shipped item carries a plan with no ticked step.
+   EXITCODE=1
+   ```
+
+2. The version on `main` (`cf0b2c67`), run in the same state, with nothing else changed:
+
+   ```
+   RESULT: every shipped plan carries a ticked step. Looked at 1 backlog item(s) this branch
+   touches, of which it ships 0, judged against cf0b2c67f05780de93fc28944e682570fd108d2e.
+   EXITCODE=0
+   ```
+
+   It read the uncommitted `6-verify` line, decided the branch ships nothing, and passed. That is
+   the hole this item closes.
+
+3. This branch's check, after the seven plan steps were ticked and committed:
+
+   ```
+   RESULT: every shipped plan carries a ticked step. Looked at 1 backlog item(s) this branch
+   touches, of which it ships 1, judged against cf0b2c67f05780de93fc28944e682570fd108d2e.
+   EXITCODE=0
+   ```
