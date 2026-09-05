@@ -23,6 +23,7 @@ and must be changed as one set (see below).
 | `test-fast.ps1` | Runs explicit local test slices (fast, integration, E2E, PowerShell suites, coverage). |
 | `run-coverage.ps1` | Runs tests with coverage, builds the merged report, enforces the CI coverage gate. |
 | `pre-push-quick-checks.ps1` | Incremental build + container-free fast test slice; runs automatically via the pre-push hook. |
+| `check-shipped-plan-ticked.ps1` | Fails the push when a backlog item this branch ships carries a plan with no ticked step. Judges only items the branch ships, never every item it touches. Run by `pre-push-quick-checks.ps1`; CI cannot run it, because CI cannot see `docs/superpowers`. |
 | `run-powershell-suites.ps1` | Runs the suites in `tests/powershell-suites.json`, several at once, each as its own process. One failing suite fails the run and the rest still run. `-Suite <wildcard>` targets part of the inventory; `-MaxParallel` sets the worker count. Prints a table naming the failures. CI runs the same script in the `powershell-suites` job. |
 | `measure-tests.ps1` | Measures test project, class, test, and SQL fixture setup timings. |
 | `kill-dev-ports.ps1` | Frees the dev-server ports so `dotnet run` doesn't fail with "address already in use". |

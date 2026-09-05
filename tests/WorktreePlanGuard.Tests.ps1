@@ -523,6 +523,96 @@ try {
         "The reason must say the base could not be resolved, got '$($verdict.Reason)'"
     Assert-Equal '' $verdict.ItemNumber 'An unresolvable base reports no judged item'
 
+    # --- the verdict carries a code, the plan path, and the two counts ------
+    # scripts/check-shipped-plan-ticked.ps1 must act on the never-implemented refusal and on no
+    # other one, and it must print the plan file and the step counts. Reading any of that back out
+    # of Reason would break the first time somebody improved the wording, so it is read as fields.
+    $root = New-Scenario -ItemBody "# 073 - probe`n`n- Plan: ``docs/superpowers/plans/probe-plan-073.md``" `
+                         -PlanBody "- [ ] Step 1`n- [ ] Step 2`n- [ ] Step 3"
+    $verdict = Test-WorktreePlanWasImplemented -MainCheckout $root -ItemNumber '073'
+    Assert-Equal 'plan-never-implemented' $verdict.Code 'The never-implemented refusal must carry its own code'
+    Assert-True ($verdict.PlanPath -match 'probe-plan-073\.md$') `
+        "The refusal must name the plan file, got '$($verdict.PlanPath)'"
+    Assert-Equal 3 $verdict.UntickedCount 'The refusal must carry the unticked count'
+    Assert-Equal 0 $verdict.TickedCount 'The refusal must carry the ticked count'
+
+    # An allowing verdict that read a plan carries no code and the same three fields.
+    $root = New-Scenario -ItemBody "# 073 - probe`n`n- Plan: ``docs/superpowers/plans/probe-plan-073.md``" `
+                         -PlanBody "- [x] Step 1`n- [ ] Step 2"
+    $verdict = Test-WorktreePlanWasImplemented -MainCheckout $root -ItemNumber '073'
+    Assert-Equal '' $verdict.Code 'An allowing verdict must carry an empty code'
+    Assert-True ($verdict.PlanPath -match 'probe-plan-073\.md$') 'An allowing verdict must name the plan it read'
+    Assert-Equal 1 $verdict.TickedCount 'An allowing verdict must carry the ticked count'
+    Assert-Equal 1 $verdict.UntickedCount 'An allowing verdict must carry the unticked count'
+
+    # A verdict that never opened a plan carries an empty PlanPath. That is how a caller tells
+    # "the plan was read" from "the plan was not read" without parsing a sentence.
+    $root = New-Scenario -ItemBody "# 073 - probe`n`n- Plan: none - trivial" -PlanBody $null
+    $verdict = Test-WorktreePlanWasImplemented -MainCheckout $root -ItemNumber '073'
+    Assert-True $verdict.Allow '"Plan: none" still allows'
+    Assert-Equal '' $verdict.PlanPath 'A verdict that read no plan must carry an empty plan path'
+    Assert-Equal '' $verdict.Code 'A verdict that read no plan must carry an empty code'
+
+    # --- the watcher's fallback carries the same four fields ----------------
+    # A source-text match cannot prove a field is on the object. The fallback block is cut out of
+    # the script and run in a fresh runspace, where the real function is not defined, so the
+    # 'if (-not (Get-Command ...))' guard fires and defines the fallback. Then every field is read
+    # under Set-StrictMode -Version Latest, which throws on a member that is not there.
+    $removeSource = Get-Content -Raw -LiteralPath (Join-Path $scriptsDir 'remove-worktree-local-dev.ps1')
+    $blockStart = $removeSource.IndexOf('if (-not (Get-Command Test-WorktreePlanWasImplemented -ErrorAction SilentlyContinue)) {')
+    Assert-True ($blockStart -ge 0) 'The fallback block must be present in remove-worktree-local-dev.ps1'
+
+    $depth = 0
+    $blockEnd = -1
+    for ($i = $blockStart; $i -lt $removeSource.Length; $i++) {
+        if ($removeSource[$i] -eq '{') { $depth++ }
+        elseif ($removeSource[$i] -eq '}') {
+            $depth--
+            if ($depth -eq 0) { $blockEnd = $i; break }
+        }
+    }
+    Assert-True ($blockEnd -gt $blockStart) 'The fallback block must have a matching closing brace'
+    $fallbackBlock = $removeSource.Substring($blockStart, $blockEnd - $blockStart + 1)
+
+    $probe = @"
+Set-StrictMode -Version Latest
+`$ErrorActionPreference = 'Stop'
+`$WorktreeBacklogItemUnreadable = '$WorktreeBacklogItemUnreadable'
+$fallbackBlock
+@(
+    (Test-WorktreePlanWasImplemented -MainCheckout 'x' -ItemNumber `$WorktreeBacklogItemUnreadable),
+    (Test-WorktreePlanWasImplemented -MainCheckout 'x' -ItemNumber ''),
+    (Test-WorktreePlanWasImplemented -MainCheckout 'x' -ItemNumber '073')
+) | ForEach-Object {
+    [pscustomobject]@{
+        Allow = `$_.Allow
+        Code = `$_.Code
+        PlanPath = `$_.PlanPath
+        TickedCount = `$_.TickedCount
+        UntickedCount = `$_.UntickedCount
+    }
+}
+"@
+
+    $shell = [powershell]::Create()
+    try {
+        $null = $shell.AddScript($probe)
+        $fallbackVerdicts = @($shell.Invoke())
+        Assert-True ($shell.Streams.Error.Count -eq 0) `
+            "The fallback probe must not error: $($shell.Streams.Error -join ' | ')"
+    } finally {
+        $shell.Dispose()
+    }
+
+    Assert-Equal 3 $fallbackVerdicts.Count 'The fallback probe must return one verdict per call'
+    foreach ($fallbackVerdict in $fallbackVerdicts) {
+        Assert-Equal '' $fallbackVerdict.Code 'The fallback reads no plan, so its code is empty'
+        Assert-Equal '' $fallbackVerdict.PlanPath 'The fallback reads no plan, so its plan path is empty'
+        Assert-Equal 0 $fallbackVerdict.TickedCount 'The fallback reads no plan, so its ticked count is zero'
+        Assert-Equal 0 $fallbackVerdict.UntickedCount 'The fallback reads no plan, so its unticked count is zero'
+    }
+    Assert-True ($fallbackVerdicts[1].Allow) 'The fallback still allows a worktree with no recorded item'
+
     # --- the hook gate asks the guard only after the merge gate -------------
     # Asking first made an unmerged worktree fail with the plan guard's wording, and read the
     # working tree while the merge gate read the resolved base.

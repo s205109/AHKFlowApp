@@ -29,6 +29,7 @@
     { "name": "ProgressParallel.Tests.ps1", "jobs": ["suites"], "execution": "parallel", "baselineSeconds": 0.8 },
     { "name": "RepoInvariantsCiJob.Tests.ps1", "jobs": ["suites"], "execution": "parallel", "baselineSeconds": 0.4 },
     { "name": "RunFrontend.Tests.ps1", "jobs": ["suites"], "execution": "parallel", "baselineSeconds": 1.1 },
+    { "name": "ShippedPlanTicked.Tests.ps1", "jobs": ["suites"], "execution": "parallel", "baselineSeconds": 6.1 },
     { "name": "SkillLayout.Tests.ps1", "jobs": ["suites"], "execution": "parallel", "baselineSeconds": 0.4 },
     { "name": "SkillParity.Tests.ps1", "jobs": ["invariants", "suites"], "execution": "parallel", "baselineSeconds": 1.7 },
     { "name": "TestFastDotnetProgress.Tests.ps1", "jobs": ["suites"], "execution": "parallel", "baselineSeconds": 6.7 },
