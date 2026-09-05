@@ -97,7 +97,7 @@ scope with its own backlog item instead.
   competed for the disk. Check whether the same effect applies here before assuming more
   parallelism helps.
 - Difficulty settled at Design: complex.
-- ADR: `docs/adr/0013-sql-backed-tests-isolate-by-owner-id.md`
+- ADR: `docs/adr/0013-sql-backed-tests-isolate-by-database.md`
 - Glossary: `CONTEXT.md` now defines Slice, Mode, and Collection.
 - Spec: `docs/superpowers/specs/2026-09-03-net-test-speed-and-reliability-design-128.md`
 - Plan: `docs/superpowers/plans/2026-09-04-net-test-speed-and-reliability-plan-128.md`
