@@ -5,3 +5,4 @@ Task 4 | 7f11d272 | checks: Integration mode passes, Infrastructure.Tests 26 s -
 Task 5 | 96a04973 | checks: Integration median 49.59 s over five runs (50.56/49.59/49.48/50.52/49.08), target 65 s met; soak of Infrastructure.Tests passed 30 of 30; 644 tests, same as baseline | deferrals: d3 declined by the human at Step 4, both targets already met
 Task 6 | 9fe5aca8 | checks: skip path, no code changed; decision recorded in the spec D3 section and the backlog item | deferrals: d3 declined
 Task 7 | bdb31c45 | checks: docs-only, testing-workflow.md build-once path plus four spec corrections (ci job, TRX join, cleanup owner withdrawn in D3 and D4, D2 changes the script too) and three summary bullets | deferrals: none
+Task 8 Step 2 | 6d6de93f | checks: simplify round, four review angles; TRX count + zero-test guard extracted to scripts/test-results.common.ps1, dead Label field dropped; both PowerShell suites green, real Fast 2941 and Integration 644 | deferrals: none
