@@ -1,19 +1,27 @@
 #Requires -Version 7.0
 <#
 .SYNOPSIS
-    Runs the cheap repository-invariant suites in parallel, so ci.yml can gate the expensive jobs
-    on them and still finish inside two minutes.
+    Runs the repository-invariant suites, so ci.yml can gate the expensive jobs on them and still
+    finish inside two minutes.
 
 .DESCRIPTION
     Backlog 121. A duplicate backlog number, filed on one branch and unseen on another, used to
-    fail CI only after the slowest job had run for minutes. This script runs the five suites that
-    check repository invariants, each in its own pwsh child process, all at once. It waits for
-    every suite, prints each one's output, then exits 1 if any failed - so one run lists every
-    broken invariant.
+    fail CI only after the slowest job had run for minutes. The repo-invariants job runs the cheap
+    suites that check repository invariants first, and every other job waits on it.
 
-    Run one after another the five take about 115 seconds, and CitationFreshness alone is about
-    78. In parallel the wall time is about the slowest suite. This does not change
-    scripts/run-powershell-suites.ps1; that job still runs every suite, now gated behind this one.
+    Backlog 127. This script used to keep its own list of the five suite names and its own parallel
+    loop. That was a second copy of a list tests/powershell-suites.json already holds, and two
+    lists drift. The manifest is now the one record: an entry belongs to this job when its "jobs"
+    array names "invariants". So this script does one thing - it calls the runner and asks for that
+    job - and adding a suite to the job is a one-line manifest edit with nothing to keep in step.
+
+    Do not add -Suite here. -Job invariants means exactly the manifest's invariants set; a -Suite
+    filter beside it would narrow that set, and a suite silently skipped is the failure this
+    repository has already paid for once. tests/RepoInvariantsCiJob.Tests.ps1 reads this
+    invocation and fails when it names anything else.
+
+    The runner still gives every suite its own process, still runs them in parallel, and still runs
+    all of them even after one fails, so one run lists every broken invariant.
 #>
 [CmdletBinding()]
 param()
@@ -25,44 +33,10 @@ $ErrorActionPreference = 'Stop'
 # throws under Set-StrictMode before 7.3. run-powershell-suites.ps1 sets it the same way.
 $PSNativeCommandUseErrorActionPreference = $false
 
-$repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-$hostExe = [System.Diagnostics.Process]::GetCurrentProcess().Path
+$runner = Join-Path (Split-Path -Parent $PSScriptRoot) 'run-powershell-suites.ps1'
 
-$suites = @(
-    'BacklogNumbering.Tests.ps1'
-    'BacklogPlanPointer.Tests.ps1'
-    'BacklogStaleOpen.Tests.ps1'
-    'CitationFreshness.Tests.ps1'
-    'SkillParity.Tests.ps1'
-)
+& $runner -Job 'invariants'
 
-foreach ($suite in $suites) {
-    if (-not (Test-Path -LiteralPath (Join-Path $repoRoot "tests/$suite"))) {
-        throw "Invariant suite not found: tests/$suite"
-    }
-}
-
-$results = $suites | ForEach-Object -Parallel {
-    $suite = $_
-    $path = Join-Path $using:repoRoot "tests/$suite"
-    # Fresh runspace: opt out again so a non-zero suite exit code is data, not a throw.
-    $PSNativeCommandUseErrorActionPreference = $false
-    $output = & $using:hostExe -NoProfile -File $path 2>&1 | Out-String
-    [pscustomobject]@{ Suite = $suite; ExitCode = $LASTEXITCODE; Output = $output }
-} -ThrottleLimit 5
-
-foreach ($result in ($results | Sort-Object Suite)) {
-    Write-Host "--- $($result.Suite) (exit $($result.ExitCode)) ---"
-    Write-Host $result.Output
-}
-
-$failed = @($results | Where-Object { $_.ExitCode -ne 0 } | ForEach-Object { $_.Suite } | Sort-Object)
-
-Write-Host ''
-if ($failed.Count -gt 0) {
-    Write-Host "$($failed.Count) of $($suites.Count) invariant suite(s) failed: $($failed -join ', ')" -ForegroundColor Red
-    exit 1
-}
-
-Write-Host "All $($suites.Count) repository-invariant suites passed."
-exit 0
+# The runner ends with an explicit exit, so its code reaches this scope in $LASTEXITCODE. Pass it
+# through unchanged: a suite that failed must fail this job.
+exit $LASTEXITCODE

@@ -18,6 +18,12 @@
 $script:KnownJob = @('invariants', 'suites', 'codex-parity')
 $script:KnownExecution = @('parallel', 'exclusive')
 
+# Backlog 127. Every entry records the platforms a real run has passed it on, and the runner drops
+# a suite whose platform does not include the one it is running on. The field is a rule, not a note:
+# CodexSkillsHashParity is Linux-only because the bash script it compares against refuses under
+# Windows Git Bash, and a field the runner ignored would let a future edit run it there anyway.
+$script:KnownPlatform = @('windows', 'linux')
+
 function Read-SuiteManifest {
     <#
       Returns one object per manifest entry, or throws. Every check runs before the caller starts
@@ -48,7 +54,7 @@ function Read-SuiteManifest {
     $seen = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
 
     foreach ($item in @($parsed.suites)) {
-        foreach ($field in @('name', 'jobs', 'execution')) {
+        foreach ($field in @('name', 'jobs', 'execution', 'platform')) {
             if ($null -eq $item.PSObject.Properties[$field]) {
                 throw "Suite manifest entry has no '$field': $Path"
             }
@@ -69,6 +75,25 @@ function Read-SuiteManifest {
         foreach ($job in $jobs) {
             if ($script:KnownJob -notcontains $job) {
                 throw "Suite '$name' names an unknown job '$job'. Known jobs: $($script:KnownJob -join ', '). File: $Path"
+            }
+        }
+
+        # Read the raw property before coercing it. The jobs check above coerces instead, so
+        # "jobs": "suites" passes there as a one-element array. Backlog 127 requires platform to be
+        # a JSON array, so the type of the parsed value is itself part of the contract:
+        # ConvertFrom-Json returns [object[]] for an array and [string] for a scalar.
+        $rawPlatform = $item.platform
+        if ($rawPlatform -is [string]) {
+            throw "Suite '$name' has a platform that is not an array. Write it as [`"$($rawPlatform)`"], with the brackets. File: $Path"
+        }
+
+        $platform = @($rawPlatform | ForEach-Object { [string] $_ })
+        if ($platform.Count -eq 0) {
+            throw "Suite '$name' has an empty platform array: $Path"
+        }
+        foreach ($value in $platform) {
+            if ($script:KnownPlatform -notcontains $value) {
+                throw "Suite '$name' names an unknown platform '$value'. Known platforms: $($script:KnownPlatform -join ', '). File: $Path"
             }
         }
 
@@ -102,6 +127,7 @@ function Read-SuiteManifest {
         $entries.Add([pscustomobject]@{
                 Name            = $name
                 Jobs            = $jobs
+                Platform        = $platform
                 Execution       = $execution
                 Reason          = $reason
                 BaselineSeconds = $baseline
@@ -126,25 +152,57 @@ function Read-SuiteManifest {
     return $entries.ToArray()
 }
 
+# The platform this process is running on, as the manifest spells it. Backlog 127.
+# $IsWindows and $IsLinux are automatic variables in PowerShell 7 on every platform, so no
+# version check is needed. macOS throws rather than selecting nothing: a run with nothing to
+# run must not look green, and a silent empty selection is exactly that.
+function Get-CurrentSuitePlatform {
+    if ($IsWindows) { return 'windows' }
+    if ($IsLinux) { return 'linux' }
+    throw "This platform is not one the suite manifest knows. Known platforms: $($script:KnownPlatform -join ', ')."
+}
+
 function Select-SuiteEntry {
     <#
-      The suites this run covers. With no pattern that is every suite in the 'suites' job, which is
-      what the runner has always done when given no arguments.
+      The suites this run covers: the ones this job runs, less the ones this platform does not.
+      With no pattern that is every suite in the job, which is what the runner has always done
+      when given no arguments.
+
+      -Platform exists so a test can ask for the other platform without running there. Leave it
+      out and the run uses the platform it is on.
     #>
     param(
         [Parameter(Mandatory)][AllowEmptyCollection()][object[]] $Entry,
-        [string[]] $Pattern
+        [string[]] $Pattern,
+        [string] $Job = 'suites',
+        [string] $Platform
     )
 
-    $inJob = @($Entry | Where-Object { $_.Jobs -contains 'suites' })
+    if ($script:KnownJob -notcontains $Job) {
+        throw "-Job '$Job' is not a known job. Known jobs: $($script:KnownJob -join ', ')."
+    }
+
+    if ([string]::IsNullOrWhiteSpace($Platform)) {
+        $Platform = Get-CurrentSuitePlatform
+    } elseif ($script:KnownPlatform -notcontains $Platform) {
+        throw "-Platform '$Platform' is not a known platform. Known platforms: $($script:KnownPlatform -join ', ')."
+    }
+
+    $inJob = @($Entry | Where-Object { $_.Jobs -contains $Job })
+    $runnable = @($inJob | Where-Object { $_.Platform -contains $Platform })
 
     # Test for $null, never for truthiness. PowerShell reads a one-element array as its element,
     # so '-not @('''')' is true, and a blank wildcard would then select the whole job.
     if ($null -eq $Pattern -or $Pattern.Count -eq 0) {
         if ($inJob.Count -eq 0) {
-            throw 'No suite belongs to the suites job. A run with nothing to run must not look green.'
+            throw "No suite belongs to the $Job job. A run with nothing to run must not look green."
         }
-        return ($inJob | Sort-Object Name)
+        # Say which of the two emptied the selection. "No suite belongs to this job" and "every
+        # suite in it is for the other platform" need different fixes.
+        if ($runnable.Count -eq 0) {
+            throw "Every suite in the $Job job is for another platform, so none runs on $Platform`: $(($inJob.Name | Sort-Object) -join ', '). A run with nothing to run must not look green."
+        }
+        return ($runnable | Sort-Object Name)
     }
 
     $selected = [System.Collections.Generic.List[object]]::new()
@@ -154,16 +212,22 @@ function Select-SuiteEntry {
         # A caller who hands -Suite an unset variable lands here with a blank value. They asked for
         # a subset, so a value that names nothing is a mistake, not a request for every suite.
         if ([string]::IsNullOrWhiteSpace($wildcard)) {
-            throw '-Suite was given a blank value. Leave -Suite out to run every suite in the suites job.'
+            throw "-Suite was given a blank value. Leave -Suite out to run every suite in the $Job job."
         }
 
-        $matched = @($inJob | Where-Object { $_.Name -like $wildcard })
+        $matched = @($runnable | Where-Object { $_.Name -like $wildcard })
         if ($matched.Count -eq 0) {
-            # Say which kind of miss it was. A name that exists but sits outside the job is a
-            # different mistake from a name nothing matches, and the two need different fixes.
+            # Say which kind of miss it was. Three misses need three different fixes: a name that
+            # exists but this platform does not run, a name that exists outside the job, and a
+            # name nothing matches at all. A suite silently skipped is the failure this
+            # repository has already paid for once.
+            $wrongPlatform = @($inJob | Where-Object { $_.Name -like $wildcard })
+            if ($wrongPlatform.Count -gt 0) {
+                throw "-Suite '$wildcard' matches only suites this platform does not run. Not on $Platform`: $($wrongPlatform.Name -join ', ')"
+            }
             $elsewhere = @($Entry | Where-Object { $_.Name -like $wildcard })
             if ($elsewhere.Count -gt 0) {
-                throw "-Suite '$wildcard' matches only suites outside the suites job: $($elsewhere.Name -join ', ')"
+                throw "-Suite '$wildcard' matches only suites outside the $Job job: $($elsewhere.Name -join ', ')"
             }
             throw "-Suite '$wildcard' matched no suite."
         }

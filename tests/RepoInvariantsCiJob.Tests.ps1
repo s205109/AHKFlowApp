@@ -26,42 +26,132 @@ $expectedSuites = @(
     'BacklogStaleOpen.Tests.ps1'
     'CitationFreshness.Tests.ps1'
     'SkillParity.Tests.ps1'
+    # Backlog 127. This one is in the job so that every pull request proves the runner starts,
+    # reads a manifest, and selects suites on Linux. It is the only member that is here for the
+    # platform rather than for a repository invariant.
+    'SuiteRunnerLinux.Tests.ps1'
 )
 
-# --- The check script names every invariant suite, and each suite file exists ---
+# --- The check script asks the manifest for exactly the invariants job ---
+
+# Backlog 127. The check script used to hold its own copy of the five suite names, and this suite
+# read that array. The manifest is now the one record of which job runs which suite, so the drift
+# worth testing is no longer inside the script - it is between the script's invocation and the
+# manifest.
+#
+# Do not compare the manifest with itself here. Reading the manifest's invariants entries and then
+# comparing them against Select-SuiteEntry -Job invariants over those same entries is a tautology:
+# both sides move together on every manifest edit, so the assertion could never go red.
+# Select-SuiteEntry's own filtering belongs to tests/CiPowerShellSuiteRunner.Tests.ps1.
+#
+# So this reads the invocation. Read it from the syntax tree, never from the file text: the parser
+# drops comments, so a name that appears only in the description block cannot satisfy it.
+function Read-RunnerInvocation {
+    param([string] $Path)
+
+    $errors = $null
+    $ast = [System.Management.Automation.Language.Parser]::ParseFile($Path, [ref] $null, [ref] $errors)
+
+    # The runner is called with the '&' operator. Any other command in the file is a plain
+    # cmdlet call, so this picks out the invocation without depending on how the path is built.
+    $calls = @($ast.FindAll({
+                param($node)
+                $node -is [System.Management.Automation.Language.CommandAst] -and
+                $node.InvocationOperator -eq [System.Management.Automation.Language.TokenKind]::Ampersand
+            }, $true))
+
+    $jobValues = @()
+    $narrowing = @()
+
+    foreach ($call in $calls) {
+        $elements = @($call.CommandElements)
+        for ($i = 0; $i -lt $elements.Count; $i++) {
+            $element = $elements[$i]
+            if ($element -isnot [System.Management.Automation.Language.CommandParameterAst]) { continue }
+
+            $name = $element.ParameterName
+
+            # -Suite and -Platform both narrow the selection below the manifest's invariants set,
+            # which is exactly the miss this test forbids. PowerShell accepts an abbreviated
+            # parameter name, so match any prefix of either one.
+            if ('Suite'.StartsWith($name, [System.StringComparison]::OrdinalIgnoreCase) -or
+                'Platform'.StartsWith($name, [System.StringComparison]::OrdinalIgnoreCase)) {
+                $narrowing += "-$name"
+                continue
+            }
+
+            if (-not 'Job'.StartsWith($name, [System.StringComparison]::OrdinalIgnoreCase)) { continue }
+
+            # '-Job:invariants' carries its value on the parameter; '-Job invariants' carries it
+            # in the next element. Read a literal only, so a computed value cannot pass.
+            $argument = $element.Argument
+            if ($null -eq $argument -and ($i + 1) -lt $elements.Count) { $argument = $elements[$i + 1] }
+            if ($argument -is [System.Management.Automation.Language.StringConstantExpressionAst]) {
+                $jobValues += $argument.Value
+            } else {
+                $jobValues += '<not a literal>'
+            }
+        }
+    }
+
+    return [pscustomobject]@{
+        ParseErrorCount = @($errors).Count
+        CallCount       = $calls.Count
+        JobValues       = $jobValues
+        Narrowing       = $narrowing
+    }
+}
 
 $checkScript = Join-Path $repoRoot 'scripts/ci/check-repo-invariants.ps1'
 Assert-True (Test-Path -LiteralPath $checkScript) 'scripts/ci/check-repo-invariants.ps1 must exist'
 
 if (Test-Path -LiteralPath $checkScript) {
     $checkText = Get-Content -LiteralPath $checkScript -Raw
+    $invocation = Read-RunnerInvocation -Path $checkScript
 
-    # Read the parsed $suites assignment, not the file text. The parser drops comments, so a
-    # suite named only in a comment - the description block at the top, or an entry commented
-    # out inside the array - cannot count as the script running that suite.
-    $parseErrors = $null
-    $checkAst = [System.Management.Automation.Language.Parser]::ParseFile($checkScript, [ref] $null, [ref] $parseErrors)
-    Assert-True (@($parseErrors).Count -eq 0) "check-repo-invariants.ps1 must parse cleanly. Errors: $(@($parseErrors) -join ' | ')"
+    Assert-True ($invocation.ParseErrorCount -eq 0) 'check-repo-invariants.ps1 must parse cleanly.'
+    Assert-True ($invocation.CallCount -eq 1) "check-repo-invariants.ps1 must call the runner exactly once. Found $($invocation.CallCount) '&' invocation(s)."
 
-    $suitesAssignment = $checkAst.Find({
-            param($node)
-            $node -is [System.Management.Automation.Language.AssignmentStatementAst] -and
-            $node.Left -is [System.Management.Automation.Language.VariableExpressionAst] -and
-            $node.Left.VariablePath.UserPath -eq 'suites'
-        }, $true)
-    Assert-True ($null -ne $suitesAssignment) 'check-repo-invariants.ps1 must assign a $suites variable'
+    # The name has to be in the code, not only in the comment block the parser drops.
+    $errors = $null
+    $checkAst = [System.Management.Automation.Language.Parser]::ParseFile($checkScript, [ref] $null, [ref] $errors)
+    $runnerNamed = @($checkAst.FindAll({
+                param($node)
+                $node -is [System.Management.Automation.Language.StringConstantExpressionAst] -and
+                $node.Value -eq 'run-powershell-suites.ps1'
+            }, $true)).Count -gt 0
+    Assert-True $runnerNamed 'check-repo-invariants.ps1 must name run-powershell-suites.ps1 in code, not only in a comment.'
 
-    $declaredSuites = @()
-    if ($null -ne $suitesAssignment) {
-        $declaredSuites = @($suitesAssignment.Right.FindAll({
-                    param($node)
-                    $node -is [System.Management.Automation.Language.StringConstantExpressionAst]
-                }, $true) | ForEach-Object { $_.Value })
-    }
-    foreach ($suite in $expectedSuites) {
-        Assert-True ($declaredSuites -contains $suite) "The `$suites array in check-repo-invariants.ps1 must list $suite. Found: $($declaredSuites -join ', ')"
-    }
+    Assert-True (($invocation.JobValues -join ',') -eq 'invariants') "check-repo-invariants.ps1 must pass -Job invariants. Found: '$($invocation.JobValues -join ',')'"
+    Assert-True ($invocation.Narrowing.Count -eq 0) "check-repo-invariants.ps1 must pass no argument that narrows the selection below the manifest's invariants set. Found: $($invocation.Narrowing -join ', ')"
 }
+
+# --- The assertion above can go red ---
+
+# A fixture manifest cannot express this drift: the script and this test read the same real
+# manifest, so both sides would move together. The red has to come from the invocation instead.
+# Two mutations, because the two ways to break it fail differently.
+$mutationRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('ahkflow-invariants-' + [guid]::NewGuid().ToString('N'))
+New-Item -ItemType Directory -Path $mutationRoot -Force | Out-Null
+try {
+    $wrongJob = Join-Path $mutationRoot 'wrong-job.ps1'
+    Set-Content -LiteralPath $wrongJob -Value ($checkText -replace "-Job 'invariants'", "-Job 'suites'") -Encoding utf8
+    $wrongJobResult = Read-RunnerInvocation -Path $wrongJob
+    Assert-True (($wrongJobResult.JobValues -join ',') -ne 'invariants') 'The -Job assertion must go red when the script names another job.'
+
+    $noJob = Join-Path $mutationRoot 'no-job.ps1'
+    Set-Content -LiteralPath $noJob -Value ($checkText -replace " -Job 'invariants'", '') -Encoding utf8
+    $noJobResult = Read-RunnerInvocation -Path $noJob
+    Assert-True ($noJobResult.JobValues.Count -eq 0) 'The -Job assertion must go red when the script passes no -Job at all.'
+
+    $withSuite = Join-Path $mutationRoot 'with-suite.ps1'
+    Set-Content -LiteralPath $withSuite -Value ($checkText -replace "-Job 'invariants'", "-Job 'invariants' -Suite 'SkillParity.Tests.ps1'") -Encoding utf8
+    $withSuiteResult = Read-RunnerInvocation -Path $withSuite
+    Assert-True ($withSuiteResult.Narrowing.Count -gt 0) 'The no-narrowing assertion must go red when the script adds a -Suite filter.'
+} finally {
+    Remove-Item -LiteralPath $mutationRoot -Recurse -Force -ErrorAction SilentlyContinue
+}
+
 foreach ($suite in $expectedSuites) {
     Assert-True (Test-Path -LiteralPath (Join-Path $repoRoot "tests/$suite")) "tests/$suite must exist"
 }
@@ -111,10 +201,26 @@ foreach ($job in ($jobNames | Where-Object { $_ -ne 'repo-invariants' })) {
     }
 }
 
-# --- The runner runs the suites in parallel ---
+# --- The manifest's invariants job holds exactly the suites this file names ---
 
-if (Test-Path -LiteralPath $checkScript) {
-    Assert-True ($checkText -match 'ForEach-Object\s+-Parallel') 'check-repo-invariants.ps1 must run the suites in parallel'
+# The list above is a literal in this file; the manifest is another file. So this goes red when
+# somebody adds a suite to the invariants job, or drops one, without saying so here. That is the
+# drift the acceptance criterion asks about: the job must run every suite inside the set and
+# nothing outside it.
+. (Join-Path $repoRoot 'scripts/powershell-suites.common.ps1')
+
+$manifestPath = Join-Path $repoRoot 'tests/powershell-suites.json'
+$discovered = @(Get-ChildItem -LiteralPath (Join-Path $repoRoot 'tests') -Filter '*.Tests.ps1' -File | ForEach-Object { $_.Name })
+$manifestEntries = @(Read-SuiteManifest -Path $manifestPath -DiscoveredName $discovered)
+
+$manifestInvariants = @($manifestEntries | Where-Object { $_.Jobs -contains 'invariants' } | ForEach-Object { $_.Name } | Sort-Object)
+Assert-True ((($manifestInvariants) -join ',') -eq (($expectedSuites | Sort-Object) -join ',')) "The manifest's invariants job must hold exactly: $(($expectedSuites | Sort-Object) -join ', '). Found: $($manifestInvariants -join ', ')"
+
+# The job runs on Linux, so every suite in it has to be one a Linux run has passed. An entry
+# without 'linux' here would be scheduled by ci.yml and then dropped by the runner's own platform
+# filter, and the job would look green having run less than it claims.
+foreach ($entry in ($manifestEntries | Where-Object { $_.Jobs -contains 'invariants' })) {
+    Assert-True ($entry.Platform -contains 'linux') "$($entry.Name) is in the invariants job, which runs on Linux, so its platform must include linux. Found: $($entry.Platform -join ', ')"
 }
 
 # --- The job runs on ubuntu-latest ---

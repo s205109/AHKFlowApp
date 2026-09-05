@@ -87,6 +87,9 @@ function Set-FixtureManifest {
                 [ordered]@{
                     name            = $_.Name
                     jobs            = @('suites')
+                    # Both platforms, so a case that relies on the helper's own entries runs
+                    # unchanged wherever this suite runs. A case about platform passes -Entry.
+                    platform        = @('windows', 'linux')
                     execution       = 'parallel'
                     baselineSeconds = $null
                 }
@@ -565,7 +568,7 @@ Invoke-TestCase 'A suite file missing from the manifest fails the run' {
         Add-FakeSuite -Root $root -Name '01-pass.Tests.ps1' -Ending 'pass'
         Add-FakeSuite -Root $root -Name '02-orphan.Tests.ps1' -Ending 'pass'
         Set-FixtureManifest -Root $root -Entry @(
-            [ordered]@{ name = '01-pass.Tests.ps1'; jobs = @('suites'); execution = 'parallel'; baselineSeconds = $null }
+            [ordered]@{ name = '01-pass.Tests.ps1'; jobs = @('suites'); platform = @('windows', 'linux'); execution = 'parallel'; baselineSeconds = $null }
         )
 
         $result = Invoke-Driver -SuiteRoot $root
@@ -582,8 +585,8 @@ Invoke-TestCase 'A manifest entry with no suite file fails the run' {
     try {
         Add-FakeSuite -Root $root -Name '01-pass.Tests.ps1' -Ending 'pass'
         Set-FixtureManifest -Root $root -Entry @(
-            [ordered]@{ name = '01-pass.Tests.ps1'; jobs = @('suites'); execution = 'parallel'; baselineSeconds = $null }
-            [ordered]@{ name = 'NotThere.Tests.ps1'; jobs = @('suites'); execution = 'parallel'; baselineSeconds = $null }
+            [ordered]@{ name = '01-pass.Tests.ps1'; jobs = @('suites'); platform = @('windows', 'linux'); execution = 'parallel'; baselineSeconds = $null }
+            [ordered]@{ name = 'NotThere.Tests.ps1'; jobs = @('suites'); platform = @('windows', 'linux'); execution = 'parallel'; baselineSeconds = $null }
         )
 
         $result = Invoke-Driver -SuiteRoot $root
@@ -599,8 +602,8 @@ Invoke-TestCase 'A duplicate manifest entry fails the run' {
     try {
         Add-FakeSuite -Root $root -Name '01-pass.Tests.ps1' -Ending 'pass'
         Set-FixtureManifest -Root $root -Entry @(
-            [ordered]@{ name = '01-pass.Tests.ps1'; jobs = @('suites'); execution = 'parallel'; baselineSeconds = $null }
-            [ordered]@{ name = '01-pass.Tests.ps1'; jobs = @('suites'); execution = 'parallel'; baselineSeconds = 2 }
+            [ordered]@{ name = '01-pass.Tests.ps1'; jobs = @('suites'); platform = @('windows', 'linux'); execution = 'parallel'; baselineSeconds = $null }
+            [ordered]@{ name = '01-pass.Tests.ps1'; jobs = @('suites'); platform = @('windows', 'linux'); execution = 'parallel'; baselineSeconds = 2 }
         )
 
         $result = Invoke-Driver -SuiteRoot $root
@@ -624,7 +627,7 @@ function New-ManifestFile {
 
 Invoke-TestCase 'An unknown job value fails the manifest' {
     $path = New-ManifestFile -Entry @(
-        [ordered]@{ name = 'a.Tests.ps1'; jobs = @('nonsense'); execution = 'parallel'; baselineSeconds = 1 }
+        [ordered]@{ name = 'a.Tests.ps1'; jobs = @('nonsense'); platform = @('windows', 'linux'); execution = 'parallel'; baselineSeconds = 1 }
     )
     try {
         $threw = $false
@@ -639,7 +642,7 @@ Invoke-TestCase 'An unknown job value fails the manifest' {
 
 Invoke-TestCase 'An unknown execution value fails the manifest' {
     $path = New-ManifestFile -Entry @(
-        [ordered]@{ name = 'a.Tests.ps1'; jobs = @('suites'); execution = 'sometimes'; baselineSeconds = 1 }
+        [ordered]@{ name = 'a.Tests.ps1'; jobs = @('suites'); platform = @('windows', 'linux'); execution = 'sometimes'; baselineSeconds = 1 }
     )
     try {
         $threw = $false
@@ -654,7 +657,7 @@ Invoke-TestCase 'An unknown execution value fails the manifest' {
 
 Invoke-TestCase 'An exclusive entry with no reason fails the manifest' {
     $path = New-ManifestFile -Entry @(
-        [ordered]@{ name = 'a.Tests.ps1'; jobs = @('suites'); execution = 'exclusive'; baselineSeconds = 1 }
+        [ordered]@{ name = 'a.Tests.ps1'; jobs = @('suites'); platform = @('windows', 'linux'); execution = 'exclusive'; baselineSeconds = 1 }
     )
     try {
         $threw = $false
@@ -670,7 +673,7 @@ Invoke-TestCase 'An exclusive entry with no reason fails the manifest' {
 Invoke-TestCase 'An unusable baseline duration fails the manifest' {
     foreach ($bad in @(0, -3, 'NaN', 'Infinity', 'soon')) {
         $path = New-ManifestFile -Entry @(
-            [ordered]@{ name = 'a.Tests.ps1'; jobs = @('suites'); execution = 'parallel'; baselineSeconds = $bad }
+            [ordered]@{ name = 'a.Tests.ps1'; jobs = @('suites'); platform = @('windows', 'linux'); execution = 'parallel'; baselineSeconds = $bad }
         )
         try {
             $threw = $false
@@ -684,7 +687,7 @@ Invoke-TestCase 'An unusable baseline duration fails the manifest' {
 
 Invoke-TestCase 'A null baseline duration is allowed' {
     $path = New-ManifestFile -Entry @(
-        [ordered]@{ name = 'a.Tests.ps1'; jobs = @('suites'); execution = 'parallel'; baselineSeconds = $null }
+        [ordered]@{ name = 'a.Tests.ps1'; jobs = @('suites'); platform = @('windows', 'linux'); execution = 'parallel'; baselineSeconds = $null }
     )
     try {
         $entries = @(Read-SuiteManifest -Path $path -DiscoveredName @('a.Tests.ps1'))
@@ -695,11 +698,107 @@ Invoke-TestCase 'A null baseline duration is allowed' {
     }
 }
 
+# --- platform, backlog 127 ---
+
+# This entry omits platform ON PURPOSE. It is the only fixture in this file that may do so, and a
+# later edit that "fixes" it by adding the field silently deletes this case. Leave it alone.
+Invoke-TestCase 'A manifest entry with no platform fails the manifest' {
+    $path = New-ManifestFile -Entry @(
+        [ordered]@{ name = 'a.Tests.ps1'; jobs = @('suites'); execution = 'parallel'; baselineSeconds = 1 }
+    )
+    try {
+        $threw = $false
+        $message = ''
+        try { Read-SuiteManifest -Path $path -DiscoveredName @('a.Tests.ps1') } catch { $threw = $true; $message = $_.Exception.Message }
+        Assert-True $threw 'A missing platform must throw.'
+        Assert-True ($message -match 'platform') "The message must name the missing field. Got: $message"
+    } finally {
+        Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
+    }
+}
+
+Invoke-TestCase 'An empty platform array fails the manifest' {
+    $path = New-ManifestFile -Entry @(
+        [ordered]@{ name = 'a.Tests.ps1'; jobs = @('suites'); platform = @(); execution = 'parallel'; baselineSeconds = 1 }
+    )
+    try {
+        $threw = $false
+        $message = ''
+        try { Read-SuiteManifest -Path $path -DiscoveredName @('a.Tests.ps1') } catch { $threw = $true; $message = $_.Exception.Message }
+        Assert-True $threw 'An empty platform array must throw.'
+        Assert-True ($message -match 'empty platform') "The message must say the array is empty. Got: $message"
+    } finally {
+        Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
+    }
+}
+
+# The jobs field coerces a scalar into a one-element array, so "jobs": "suites" passes today.
+# platform must not copy that: the item asks for an array of strings, so the JSON type is the
+# contract and a bare string is a mistake the reader has to catch.
+Invoke-TestCase 'A scalar platform string fails the manifest' {
+    $path = New-ManifestFile -Entry @(
+        [ordered]@{ name = 'a.Tests.ps1'; jobs = @('suites'); platform = 'windows'; execution = 'parallel'; baselineSeconds = 1 }
+    )
+    try {
+        $threw = $false
+        $message = ''
+        try { Read-SuiteManifest -Path $path -DiscoveredName @('a.Tests.ps1') } catch { $threw = $true; $message = $_.Exception.Message }
+        Assert-True $threw 'A scalar platform string must throw.'
+        Assert-True ($message -match 'not an array') "The message must say it is not an array. Got: $message"
+    } finally {
+        Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
+    }
+}
+
+Invoke-TestCase 'An unknown platform value fails the manifest' {
+    $path = New-ManifestFile -Entry @(
+        [ordered]@{ name = 'a.Tests.ps1'; jobs = @('suites'); platform = @('windows', 'macos'); execution = 'parallel'; baselineSeconds = 1 }
+    )
+    try {
+        $threw = $false
+        $message = ''
+        try { Read-SuiteManifest -Path $path -DiscoveredName @('a.Tests.ps1') } catch { $threw = $true; $message = $_.Exception.Message }
+        Assert-True $threw 'An unknown platform value must throw.'
+        Assert-True ($message -match 'macos') "The message must name the bad value. Got: $message"
+    } finally {
+        Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
+    }
+}
+
+Invoke-TestCase 'A valid platform pair survives onto the entry' {
+    $path = New-ManifestFile -Entry @(
+        [ordered]@{ name = 'a.Tests.ps1'; jobs = @('suites'); platform = @('windows', 'linux'); execution = 'parallel'; baselineSeconds = 1 }
+    )
+    try {
+        $entries = @(Read-SuiteManifest -Path $path -DiscoveredName @('a.Tests.ps1'))
+        Assert-True ($entries.Count -eq 1) "Expected one entry, got $($entries.Count)."
+        Assert-True (@($entries[0].Platform).Count -eq 2) "Expected two platform values, got $(@($entries[0].Platform).Count)."
+        Assert-True ($entries[0].Platform -contains 'windows') 'The entry must carry windows.'
+        Assert-True ($entries[0].Platform -contains 'linux') 'The entry must carry linux.'
+    } finally {
+        Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
+    }
+}
+
+Invoke-TestCase 'A single-platform array survives onto the entry' {
+    $path = New-ManifestFile -Entry @(
+        [ordered]@{ name = 'a.Tests.ps1'; jobs = @('codex-parity'); platform = @('linux'); execution = 'parallel'; baselineSeconds = 1 }
+    )
+    try {
+        $entries = @(Read-SuiteManifest -Path $path -DiscoveredName @('a.Tests.ps1'))
+        Assert-True ($entries.Count -eq 1) "Expected one entry, got $($entries.Count)."
+        Assert-True (@($entries[0].Platform).Count -eq 1) "Expected one platform value, got $(@($entries[0].Platform).Count)."
+        Assert-True ($entries[0].Platform -contains 'linux') 'The entry must carry linux.'
+    } finally {
+        Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
+    }
+}
+
 Invoke-TestCase 'With no pattern the selection is every suite in the suites job' {
     $entries = @(
-        [pscustomobject]@{ Name = 'a.Tests.ps1'; Jobs = @('suites'); Execution = 'parallel'; Reason = $null; BaselineSeconds = 1.0 }
-        [pscustomobject]@{ Name = 'b.Tests.ps1'; Jobs = @('invariants', 'suites'); Execution = 'parallel'; Reason = $null; BaselineSeconds = 2.0 }
-        [pscustomobject]@{ Name = 'c.Tests.ps1'; Jobs = @('codex-parity'); Execution = 'parallel'; Reason = $null; BaselineSeconds = $null }
+        [pscustomobject]@{ Name = 'a.Tests.ps1'; Jobs = @('suites'); Platform = @('windows', 'linux'); Execution = 'parallel'; Reason = $null; BaselineSeconds = 1.0 }
+        [pscustomobject]@{ Name = 'b.Tests.ps1'; Jobs = @('invariants', 'suites'); Platform = @('windows', 'linux'); Execution = 'parallel'; Reason = $null; BaselineSeconds = 2.0 }
+        [pscustomobject]@{ Name = 'c.Tests.ps1'; Jobs = @('codex-parity'); Platform = @('windows', 'linux'); Execution = 'parallel'; Reason = $null; BaselineSeconds = $null }
     )
 
     $selected = @(Select-SuiteEntry -Entry $entries)
@@ -707,11 +806,112 @@ Invoke-TestCase 'With no pattern the selection is every suite in the suites job'
     Assert-True (($selected.Name -join ',') -eq 'a.Tests.ps1,b.Tests.ps1') "Got: $($selected.Name -join ',')"
 }
 
+# --- -Job and -Platform, backlog 127 ---
+
+# Three entries, one per job shape, and one of them Linux-only. Every case below reads this set,
+# so a change to it changes every expectation in one place.
+function New-PlatformFixtureEntry {
+    return @(
+        [pscustomobject]@{ Name = 'a.Tests.ps1'; Jobs = @('suites'); Platform = @('windows', 'linux'); Execution = 'parallel'; Reason = $null; BaselineSeconds = 1.0 }
+        [pscustomobject]@{ Name = 'b.Tests.ps1'; Jobs = @('invariants', 'suites'); Platform = @('windows', 'linux'); Execution = 'parallel'; Reason = $null; BaselineSeconds = 2.0 }
+        [pscustomobject]@{ Name = 'c.Tests.ps1'; Jobs = @('codex-parity'); Platform = @('linux'); Execution = 'parallel'; Reason = $null; BaselineSeconds = $null }
+    )
+}
+
+Invoke-TestCase '-Job invariants selects exactly the invariants entries' {
+    $selected = @(Select-SuiteEntry -Entry (New-PlatformFixtureEntry) -Job 'invariants' -Platform 'linux')
+    Assert-True (($selected.Name -join ',') -eq 'b.Tests.ps1') "Got: $($selected.Name -join ',')"
+}
+
+Invoke-TestCase '-Job codex-parity selects the suite the suites job never sees' {
+    $selected = @(Select-SuiteEntry -Entry (New-PlatformFixtureEntry) -Job 'codex-parity' -Platform 'linux')
+    Assert-True (($selected.Name -join ',') -eq 'c.Tests.ps1') "Got: $($selected.Name -join ',')"
+}
+
+Invoke-TestCase 'An unknown -Job value throws and names the known jobs' {
+    $threw = $false
+    $message = ''
+    try { Select-SuiteEntry -Entry (New-PlatformFixtureEntry) -Job 'nonsense' } catch { $threw = $true; $message = $_.Exception.Message }
+    Assert-True $threw 'An unknown job must throw.'
+    Assert-True ($message -match 'invariants') "The message must list the known jobs. Got: $message"
+}
+
+Invoke-TestCase 'An unknown -Platform value throws and names the known platforms' {
+    $threw = $false
+    $message = ''
+    try { Select-SuiteEntry -Entry (New-PlatformFixtureEntry) -Platform 'macos' } catch { $threw = $true; $message = $_.Exception.Message }
+    Assert-True $threw 'An unknown platform must throw.'
+    Assert-True ($message -match 'windows') "The message must list the known platforms. Got: $message"
+}
+
+# The filter is a rule, not a note. Asking for the codex-parity job on Windows must select
+# nothing and say so, because its one suite is Linux-only.
+Invoke-TestCase 'A job whose every suite is for another platform fails the selection' {
+    $threw = $false
+    $message = ''
+    try { Select-SuiteEntry -Entry (New-PlatformFixtureEntry) -Job 'codex-parity' -Platform 'windows' } catch { $threw = $true; $message = $_.Exception.Message }
+    Assert-True $threw 'A selection emptied by the platform filter must throw.'
+    Assert-True ($message -match 'another platform') "The message must say the platform emptied it. Got: $message"
+    Assert-True ($message -match 'c\.Tests\.ps1') "The message must name the dropped suite. Got: $message"
+}
+
+# "No suite belongs to this job" and "every suite in it is for the other platform" need
+# different fixes, so the two messages must not be the same message.
+Invoke-TestCase 'An empty job and an empty platform give different messages' {
+    $entries = @(
+        [pscustomobject]@{ Name = 'a.Tests.ps1'; Jobs = @('suites'); Platform = @('windows', 'linux'); Execution = 'parallel'; Reason = $null; BaselineSeconds = 1.0 }
+    )
+
+    $emptyJob = ''
+    try { Select-SuiteEntry -Entry $entries -Job 'codex-parity' -Platform 'linux' } catch { $emptyJob = $_.Exception.Message }
+    Assert-True ($emptyJob -match 'No suite belongs to the codex-parity job') "Got: $emptyJob"
+
+    $linuxOnly = @(
+        [pscustomobject]@{ Name = 'a.Tests.ps1'; Jobs = @('suites'); Platform = @('linux'); Execution = 'parallel'; Reason = $null; BaselineSeconds = 1.0 }
+    )
+    $emptyPlatform = ''
+    try { Select-SuiteEntry -Entry $linuxOnly -Job 'suites' -Platform 'windows' } catch { $emptyPlatform = $_.Exception.Message }
+    Assert-True ($emptyPlatform -match 'another platform') "Got: $emptyPlatform"
+    Assert-True ($emptyJob -ne $emptyPlatform) 'The two failures must not share one message.'
+}
+
+# A -Suite wildcard that matches a suite this platform does not run must say so. Silently
+# skipping it is the failure this repository already paid for once.
+Invoke-TestCase 'A -Suite wildcard dropped for its platform says so' {
+    $threw = $false
+    $message = ''
+    try { Select-SuiteEntry -Entry (New-PlatformFixtureEntry) -Pattern @('c.Tests.ps1') -Job 'codex-parity' -Platform 'windows' } catch { $threw = $true; $message = $_.Exception.Message }
+    Assert-True $threw 'A wildcard matching only the other platform must throw.'
+    Assert-True ($message -match 'this platform does not run') "The message must blame the platform. Got: $message"
+    Assert-True ($message -match 'c\.Tests\.ps1') "The message must name the suite. Got: $message"
+}
+
+# The older message still has to work: a name outside the job is a different mistake from a
+# name this platform does not run, and the two need different fixes.
+Invoke-TestCase 'A -Suite wildcard outside the job still names the job' {
+    $threw = $false
+    $message = ''
+    try { Select-SuiteEntry -Entry (New-PlatformFixtureEntry) -Pattern @('c.Tests.ps1') -Job 'suites' -Platform 'linux' } catch { $threw = $true; $message = $_.Exception.Message }
+    Assert-True $threw 'A wildcard matching only another job must throw.'
+    Assert-True ($message -match 'outside the suites job') "The message must name the job. Got: $message"
+}
+
+Invoke-TestCase 'With no -Platform the selection uses the platform it is running on' {
+    $entries = @(
+        [pscustomobject]@{ Name = 'both.Tests.ps1'; Jobs = @('suites'); Platform = @('windows', 'linux'); Execution = 'parallel'; Reason = $null; BaselineSeconds = 1.0 }
+        [pscustomobject]@{ Name = 'here.Tests.ps1'; Jobs = @('suites'); Platform = @((Get-CurrentSuitePlatform)); Execution = 'parallel'; Reason = $null; BaselineSeconds = 1.0 }
+        [pscustomobject]@{ Name = 'elsewhere.Tests.ps1'; Jobs = @('suites'); Platform = @(@('windows', 'linux') | Where-Object { $_ -ne (Get-CurrentSuitePlatform) }); Execution = 'parallel'; Reason = $null; BaselineSeconds = 1.0 }
+    )
+
+    $selected = @(Select-SuiteEntry -Entry $entries)
+    Assert-True (($selected.Name -join ',') -eq 'both.Tests.ps1,here.Tests.ps1') "Got: $($selected.Name -join ',')"
+}
+
 Invoke-TestCase 'The schedule puts the longest suite first and an unknown one before all of them' {
     $entries = @(
-        [pscustomobject]@{ Name = 'short.Tests.ps1'; Jobs = @('suites'); Execution = 'parallel'; Reason = $null; BaselineSeconds = 2.0 }
-        [pscustomobject]@{ Name = 'long.Tests.ps1'; Jobs = @('suites'); Execution = 'parallel'; Reason = $null; BaselineSeconds = 90.0 }
-        [pscustomobject]@{ Name = 'new.Tests.ps1'; Jobs = @('suites'); Execution = 'parallel'; Reason = $null; BaselineSeconds = $null }
+        [pscustomobject]@{ Name = 'short.Tests.ps1'; Jobs = @('suites'); Platform = @('windows', 'linux'); Execution = 'parallel'; Reason = $null; BaselineSeconds = 2.0 }
+        [pscustomobject]@{ Name = 'long.Tests.ps1'; Jobs = @('suites'); Platform = @('windows', 'linux'); Execution = 'parallel'; Reason = $null; BaselineSeconds = 90.0 }
+        [pscustomobject]@{ Name = 'new.Tests.ps1'; Jobs = @('suites'); Platform = @('windows', 'linux'); Execution = 'parallel'; Reason = $null; BaselineSeconds = $null }
     )
 
     $order = (Get-SuiteSchedule -Entry $entries -History @{}).Name -join ','
@@ -720,8 +920,8 @@ Invoke-TestCase 'The schedule puts the longest suite first and an unknown one be
 
 Invoke-TestCase 'Local history overrides the committed baseline' {
     $entries = @(
-        [pscustomobject]@{ Name = 'a.Tests.ps1'; Jobs = @('suites'); Execution = 'parallel'; Reason = $null; BaselineSeconds = 90.0 }
-        [pscustomobject]@{ Name = 'b.Tests.ps1'; Jobs = @('suites'); Execution = 'parallel'; Reason = $null; BaselineSeconds = 10.0 }
+        [pscustomobject]@{ Name = 'a.Tests.ps1'; Jobs = @('suites'); Platform = @('windows', 'linux'); Execution = 'parallel'; Reason = $null; BaselineSeconds = 90.0 }
+        [pscustomobject]@{ Name = 'b.Tests.ps1'; Jobs = @('suites'); Platform = @('windows', 'linux'); Execution = 'parallel'; Reason = $null; BaselineSeconds = 10.0 }
     )
 
     # History says a is now the quick one, so b must be scheduled first.
@@ -826,8 +1026,8 @@ Invoke-TestCase 'A -Suite wildcard that matches only a suite outside the suites 
         Add-FakeSuite -Root $root -Name 'Alpha.Tests.ps1' -Ending 'pass'
         Add-FakeSuite -Root $root -Name 'Elsewhere.Tests.ps1' -Ending 'pass'
         Set-FixtureManifest -Root $root -Entry @(
-            [ordered]@{ name = 'Alpha.Tests.ps1'; jobs = @('suites'); execution = 'parallel'; baselineSeconds = $null }
-            [ordered]@{ name = 'Elsewhere.Tests.ps1'; jobs = @('codex-parity'); execution = 'parallel'; baselineSeconds = $null }
+            [ordered]@{ name = 'Alpha.Tests.ps1'; jobs = @('suites'); platform = @('windows', 'linux'); execution = 'parallel'; baselineSeconds = $null }
+            [ordered]@{ name = 'Elsewhere.Tests.ps1'; jobs = @('codex-parity'); platform = @('windows', 'linux'); execution = 'parallel'; baselineSeconds = $null }
         )
 
         $result = Invoke-Driver -SuiteRoot $root -Suite @('Elsewhere*')
@@ -1065,9 +1265,9 @@ Invoke-TestCase 'An exclusive suite never overlaps another suite' {
         Add-IntervalSuite -Root $root -Name '02-other.Tests.ps1' -BarrierCount 3 -BarrierTag 'pair'
         Add-IntervalSuite -Root $root -Name '03-other.Tests.ps1' -BarrierCount 3 -BarrierTag 'pair'
         Set-FixtureManifest -Root $root -Entry @(
-            [ordered]@{ name = '01-alone.Tests.ps1'; jobs = @('suites'); execution = 'exclusive'; reason = 'The test needs one suite that may not share.'; baselineSeconds = $null }
-            [ordered]@{ name = '02-other.Tests.ps1'; jobs = @('suites'); execution = 'parallel'; baselineSeconds = $null }
-            [ordered]@{ name = '03-other.Tests.ps1'; jobs = @('suites'); execution = 'parallel'; baselineSeconds = $null }
+            [ordered]@{ name = '01-alone.Tests.ps1'; jobs = @('suites'); platform = @('windows', 'linux'); execution = 'exclusive'; reason = 'The test needs one suite that may not share.'; baselineSeconds = $null }
+            [ordered]@{ name = '02-other.Tests.ps1'; jobs = @('suites'); platform = @('windows', 'linux'); execution = 'parallel'; baselineSeconds = $null }
+            [ordered]@{ name = '03-other.Tests.ps1'; jobs = @('suites'); platform = @('windows', 'linux'); execution = 'parallel'; baselineSeconds = $null }
         )
 
         $result = Invoke-Driver -SuiteRoot $root -MaxParallel 3
@@ -1202,8 +1402,8 @@ Invoke-TestCase 'An all-exclusive selection still reports a capped worker count'
         Add-FakeSuite -Root $root -Name '01-alone.Tests.ps1' -Ending 'pass'
         Add-FakeSuite -Root $root -Name '02-alone.Tests.ps1' -Ending 'pass'
         Set-FixtureManifest -Root $root -Entry @(
-            [ordered]@{ name = '01-alone.Tests.ps1'; jobs = @('suites'); execution = 'exclusive'; reason = 'The case needs a selection that shares nothing.'; baselineSeconds = $null }
-            [ordered]@{ name = '02-alone.Tests.ps1'; jobs = @('suites'); execution = 'exclusive'; reason = 'The case needs a selection that shares nothing.'; baselineSeconds = $null }
+            [ordered]@{ name = '01-alone.Tests.ps1'; jobs = @('suites'); platform = @('windows', 'linux'); execution = 'exclusive'; reason = 'The case needs a selection that shares nothing.'; baselineSeconds = $null }
+            [ordered]@{ name = '02-alone.Tests.ps1'; jobs = @('suites'); platform = @('windows', 'linux'); execution = 'exclusive'; reason = 'The case needs a selection that shares nothing.'; baselineSeconds = $null }
         )
 
         $result = Invoke-Driver -SuiteRoot $root -MaxParallel 2147483647
@@ -1275,8 +1475,8 @@ Invoke-TestCase 'A targeted run keeps the stored timings of every suite it did n
         }
 
         $manifest = [ordered]@{ suites = @(
-                [ordered]@{ name = '01-one.Tests.ps1'; jobs = @('suites'); execution = 'parallel'; baselineSeconds = $null }
-                [ordered]@{ name = '02-two.Tests.ps1'; jobs = @('suites'); execution = 'parallel'; baselineSeconds = $null }
+                [ordered]@{ name = '01-one.Tests.ps1'; jobs = @('suites'); platform = @('windows', 'linux'); execution = 'parallel'; baselineSeconds = $null }
+                [ordered]@{ name = '02-two.Tests.ps1'; jobs = @('suites'); platform = @('windows', 'linux'); execution = 'parallel'; baselineSeconds = $null }
             ) }
         Set-Content -LiteralPath (Join-Path $fakeRepo 'tests/powershell-suites.json') -Value ($manifest | ConvertTo-Json -Depth 6) -Encoding utf8
 
@@ -1324,7 +1524,7 @@ Invoke-TestCase 'A stored entry whose suite file no longer exists is dropped' {
         Move-Item -LiteralPath (Join-Path $fakeRepo '01-one.Tests.ps1') -Destination (Join-Path $fakeRepo 'tests/01-one.Tests.ps1')
 
         $manifest = [ordered]@{ suites = @(
-                [ordered]@{ name = '01-one.Tests.ps1'; jobs = @('suites'); execution = 'parallel'; baselineSeconds = $null }
+                [ordered]@{ name = '01-one.Tests.ps1'; jobs = @('suites'); platform = @('windows', 'linux'); execution = 'parallel'; baselineSeconds = $null }
             ) }
         Set-Content -LiteralPath (Join-Path $fakeRepo 'tests/powershell-suites.json') -Value ($manifest | ConvertTo-Json -Depth 6) -Encoding utf8
 
@@ -1380,7 +1580,7 @@ function Save-ProgressTimings {
                 Add-FakeSuite -Root $repo -Name $name -Ending 'pass'
                 Move-Item -LiteralPath (Join-Path $repo $name) -Destination (Join-Path $repo "tests/$name")
             }
-            [ordered]@{ name = $name; jobs = @('suites'); execution = 'parallel'; baselineSeconds = $null }
+            [ordered]@{ name = $name; jobs = @('suites'); platform = @('windows', 'linux'); execution = 'parallel'; baselineSeconds = $null }
         }
         $manifest = [ordered]@{ suites = @($entries) }
         Set-Content -LiteralPath (Join-Path $repo 'tests/powershell-suites.json') -Value ($manifest | ConvertTo-Json -Depth 6) -Encoding utf8
@@ -1539,34 +1739,26 @@ Invoke-TestCase 'The manifest lists every suite in tests/, exactly once' {
     Assert-True ($entries.Count -eq $onDisk.Count) "Manifest holds $($entries.Count) entries for $($onDisk.Count) files."
 }
 
-# One list of invariant suites, not two. The invariant job cannot call the runner yet, because it
-# runs on Linux and nobody has run the runner there. Backlog 127 owns that. Until then this Check
-# keeps the two records in step.
-Invoke-TestCase 'The manifest invariants set matches check-repo-invariants.ps1' {
-    $manifestPath = Join-Path $PSScriptRoot 'powershell-suites.json'
-    $onDisk = @(Get-ChildItem -LiteralPath $PSScriptRoot -Filter '*.Tests.ps1' -File | ForEach-Object { $_.Name })
-    $fromManifest = @(Read-SuiteManifest -Path $manifestPath -DiscoveredName $onDisk |
-            Where-Object { $_.Jobs -contains 'invariants' } | ForEach-Object { $_.Name } | Sort-Object)
-
-    # Read the parsed assignment, not the file text. The parser drops comments, so a suite named
-    # only in a comment cannot count as the script running that suite.
+# One list of invariant suites, not two. Until backlog 127 the invariant job kept its own copy of
+# the five names, and a case here compared the two copies and kept them in step. The copy is gone:
+# scripts/ci/check-repo-invariants.ps1 now calls the runner with -Job invariants, so the manifest
+# is the only list. tests/RepoInvariantsCiJob.Tests.ps1 reads that invocation.
+#
+# What is left to check here is that the second copy stays gone. A future edit that reintroduces a
+# suite-name list inside that script would put the drift back without failing anything else.
+Invoke-TestCase 'check-repo-invariants.ps1 holds no second copy of the suite list' {
     $checkScript = Join-Path (Split-Path -Parent $PSScriptRoot) 'scripts/ci/check-repo-invariants.ps1'
     $ast = [System.Management.Automation.Language.Parser]::ParseFile($checkScript, [ref] $null, [ref] $null)
-    $assignment = $ast.Find({
-            param($node)
-            $node -is [System.Management.Automation.Language.AssignmentStatementAst] -and
-            $node.Left -is [System.Management.Automation.Language.VariableExpressionAst] -and
-            $node.Left.VariablePath.UserPath -eq 'suites'
-        }, $true)
-    Assert-True ($null -ne $assignment) 'check-repo-invariants.ps1 must assign a $suites variable.'
 
-    $fromScript = @($assignment.Right.FindAll({
+    # Read the syntax tree, never the file text. The parser drops comments, so the description
+    # block at the top may name a suite freely without counting as a second list.
+    $named = @($ast.FindAll({
                 param($node)
-                $node -is [System.Management.Automation.Language.StringConstantExpressionAst]
-            }, $true) | ForEach-Object { $_.Value } | Sort-Object)
+                $node -is [System.Management.Automation.Language.StringConstantExpressionAst] -and
+                $node.Value -like '*.Tests.ps1'
+            }, $true) | ForEach-Object { $_.Value })
 
-    Assert-True (($fromManifest -join ',') -eq ($fromScript -join ',')) `
-        "The two lists disagree. Manifest: $($fromManifest -join ','). Script: $($fromScript -join ',')."
+    Assert-True ($named.Count -eq 0) "check-repo-invariants.ps1 must name no suite in code; the manifest is the list. Found: $($named -join ', ')"
 }
 
 # The Codex suite runs on Linux in its own job, because the bash setup script it compares against
