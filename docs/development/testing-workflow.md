@@ -89,13 +89,28 @@ pre-push hook is a faster subset (incremental build + fast slice,
 pwsh .\scripts\test-fast.ps1 -Mode Fast
 ```
 
+That builds the solution once, then runs all five Fast assemblies in one call.
+
+When you have just built, skip the build:
+
+```bash
+pwsh .\scripts\test-fast.ps1 -Mode Fast -NoBuild
+```
+
+This is the path the pre-push hook already takes, in `scripts/pre-push-quick-checks.ps1`. It
+saves about 10 seconds a run.
+
 Fast mode runs:
 
 - `AHKFlowApp.Domain.Tests`
 - `AHKFlowApp.TestUtilities.Tests`
 - `AHKFlowApp.UI.Blazor.Tests`
-- `AHKFlowApp.Application.Tests` filtered to `Category!=Integration`
-- `AHKFlowApp.CLI.Tests` filtered to `Category!=Integration`
+- `AHKFlowApp.Application.Tests`
+- `AHKFlowApp.CLI.Tests`
+
+All five take the same filter, `Category!=Integration`. One call applies one filter to every
+assembly, and that filter keeps a test carrying no `Category` trait, so the three projects that
+never needed a filter lose nothing.
 
 Use this for domain logic, validators, pure handlers, CLI parser/unit behavior, and Blazor component changes that do not require SQL Server, WebApplicationFactory, or browser automation.
 
