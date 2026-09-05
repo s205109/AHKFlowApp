@@ -1,8 +1,23 @@
-# SQL-backed tests isolate by owner id, not by collection
+# SQL-backed tests isolate by their own database, not by collection
 
-A test that touches the shared database keeps itself apart from every other test by using its own
-random owner id and scoping every assertion to it. The xUnit collection is not the isolation
-mechanism. It is only how a fixture instance gets shared.
+A test that touches SQL Server keeps itself apart from every other test by working in a database
+of its own. The xUnit collection is not the isolation mechanism. It is only how a fixture
+instance gets shared.
+
+Two shapes of that exist here, and both are database isolation.
+
+- **A database per test class.** `SharedSqlServerFixture` hands a class the shared *server's*
+  connection string, and the class names its own catalog on it. `HotstringPersistenceTests` opens
+  `HotstringPersistenceTests`, and `SchemaPolishBackfillTests` opens `SchemaPolish_Backfill`. All
+  eight SQL-backed classes in `AHKFlowApp.Infrastructure.Tests` work this way. Its other two
+  classes, both under `Services/`, touch no database and take no fixture.
+- **A database per test run.** `SqlContainerFixture` builds one name through
+  `SqlTestDatabase.CreateConnectionString`, and every class in `AHKFlowApp.API.Tests` shares it.
+
+Owner id is not the boundary, and this document said for a while that it was. `TestUserBuilder`
+gives every authenticated client the same fixed oid unless a test calls `WithOid`. Random owner
+ids are a tool for the few tests that assert one owner cannot see another's rows, such as
+`KnownShortcutsControllerTests`. They keep no test apart from any other by default.
 
 That distinction is easy to lose, and losing it is expensive in both directions. Reading a
 collection as an isolation boundary makes a suite serial for no reason, which is what
@@ -15,8 +30,9 @@ Only `Infrastructure.Tests` was then changed. `API.Tests` still reads that way t
 reasons in the Consequences section below.
 
 Reading it the other way round is worse. Dropping the attribute to gain parallelism, without
-first proving that every class isolates by owner id, would let two tests write to the same rows
-and produce a failure that depends on scheduling.
+first checking what each class actually writes to, would let two tests share a catalog and
+produce a failure that depends on scheduling. `Infrastructure.Tests` was safe to change because
+each of its classes already named a different database.
 
 So the rule is: **isolation is a property a test class proves about itself, and a collection is a
 tool for sharing a fixture or for forcing exclusivity.** Reach for a collection when a test needs
@@ -29,7 +45,7 @@ shared collection, one after another. Backlog 128 designed the shared host, meas
 about twelve seconds, and the human declined it, because the Integration target was already met
 without it. The design is filed as backlog 134, which is still on its own branch and reaches
 `backlog/` only when that branch merges. Look there first, and read this section meanwhile.
-What follows is the part of that design which owner-id isolation does not cover, kept here so
+What follows is the part of that design which database isolation does not cover, kept here so
 the next reader need not work it out again.
 
 Sharing one `WebApplicationFactory` across parallel classes is not free.
@@ -79,9 +95,10 @@ separately. Reading either one as the state of both is the mistake this section 
 ### `AHKFlowApp.Infrastructure.Tests`, where the rule is in force
 
 A new SQL-backed test class runs in parallel by default. It reaches the shared server through
-`IClassFixture<SharedSqlServerFixture>`, not through a collection. A class that cannot isolate by
-owner id says so and gets a collection of its own. None of that is discoverable from the code
-alone, so it belongs in the testing guide as well as here.
+`IClassFixture<SharedSqlServerFixture>`, not through a collection, and it names its own database
+on that server. Two classes that name the same database are not isolated from each other, so a
+new class either picks a fresh name or joins the class it shares with in one collection. None of
+that is discoverable from the code alone, so it belongs in the testing guide as well as here.
 
 Parallelism is bounded by the machine, not by the core count of whoever measured it. This project
 therefore carries an explicit `maxParallelThreads` of 4 in its own `xunit.runner.json`, rather
@@ -91,9 +108,15 @@ test project in the repository with such a file; every other one keeps the defau
 ### `AHKFlowApp.API.Tests`, where nothing changed
 
 All 29 classes still carry `[Collection("WebApi")]` and share one `ICollectionFixture`, so no two
-of them run at once. There is no shared host, no exclusive collection, and no thread cap. The
-rule at the top of this document still describes what the suite would have to prove; it does not
-describe what the suite does today.
+of them run at once. That fixture is `ApiTestFixture`, and it does build one host: its
+`InitializeAsync` creates a single `CustomWebApplicationFactory` that every class in the
+collection uses. What the suite has no version of is a **process-scoped host that parallel
+collections could reach**. The one host it has is reachable only from inside the serial
+collection, which is why it needs none of the locking the section above describes.
+
+There is also no exclusive collection and no thread cap. The rule at the top of this document
+still describes what the suite would have to prove; it does not describe what the suite does
+today.
 
 If backlog 134 runs, the Infrastructure rules apply here as well, plus one more that is specific
 to hosts: a class that builds its own host with `WithWebHostBuilder` joins the exclusive
