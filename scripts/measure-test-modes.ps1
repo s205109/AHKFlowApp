@@ -166,12 +166,23 @@ try {
             Write-Host ''
             Write-Host "Soak of $Soak" -ForegroundColor Cyan
             Write-Host ("  passed : {0} of {1}" -f $passed, $Runs)
+            # Both lists print before either throw. Throwing inside the first block hid the
+            # second one, so a soak where run 2 came back empty and run 17 genuinely failed
+            # named only run 2, and the reader went looking for the wrong problem.
             if ($empty.Count -gt 0) {
                 Write-Host ("  ran zero tests : {0}" -f ($empty -join ', ')) -ForegroundColor Red
-                throw "$($empty.Count) of $Runs soak runs discovered zero tests. The soak proved nothing; fix the filter or the fixture first."
             }
             if ($failed.Count -gt 0) {
                 Write-Host ("  failed runs : {0}" -f ($failed -join ', ')) -ForegroundColor Red
+            }
+
+            # A run lands in $empty for two different reasons, and the message names both. Its
+            # TRX said zero, or its TRX could not be read at all - a filter typo and a killed
+            # run look identical from here, because the count reader answers zero for each.
+            if ($empty.Count -gt 0) {
+                throw "$($empty.Count) of $Runs soak runs reported no tests. Either the filter matched nothing, or the run died before it wrote a readable TRX. The soak proved nothing; check the filter, the fixture, and the TRX files under TestResults\soak."
+            }
+            if ($failed.Count -gt 0) {
                 throw "The soak failed $($failed.Count) of $Runs runs. A new flake means the reshape is wrong."
             }
 

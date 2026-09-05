@@ -48,6 +48,12 @@ function Get-AhkFlowTestCount {
       parse error out of here ended a soak at its first bad run instead of counting it. Both
       callers already treat 0 as "this run proved nothing", which is the right answer for a file
       nobody can read.
+
+      A killed run leaves three shapes, and only one of them is a parse error. The emptiness
+      check has to come first: Get-Content -Raw answers $null for a zero-byte file, casting
+      $null to [xml] succeeds quietly, and the null then throws on the first method call - past
+      the catch, and straight out of this function. A zero-byte TRX is the likeliest shape of
+      all, because the logger creates the file before it writes anything into it.
     #>
     param(
         [Parameter(Mandatory = $true)]
@@ -55,7 +61,18 @@ function Get-AhkFlowTestCount {
     )
 
     try {
-        [xml]$trx = Get-Content -LiteralPath $TrxPath -Raw
+        $raw = Get-Content -LiteralPath $TrxPath -Raw
+    }
+    catch {
+        return 0
+    }
+
+    if ([string]::IsNullOrWhiteSpace($raw)) {
+        return 0
+    }
+
+    try {
+        [xml]$trx = $raw
     }
     catch {
         return 0
@@ -126,6 +143,10 @@ function New-AhkFlowTestSummary {
       The zero-test throw lives here rather than at each call site because its wording is the
       thing a developer greps for when a filter typo makes a slice silently empty. Two copies
       of that message drift.
+
+      The message names the second cause as well. Get-AhkFlowTestCount answers zero for a TRX
+      it cannot read, so a run killed mid-write arrives here looking exactly like a filter that
+      matched nothing. Naming the TRX path gives the reader somewhere to look.
     #>
     param(
         [Parameter(Mandatory = $true)]
@@ -142,7 +163,7 @@ function New-AhkFlowTestSummary {
     )
 
     if ($Tests -lt 1) {
-        throw "$Project discovered zero tests for filter '$Filter'."
+        throw "$Project discovered zero tests for filter '$Filter'. Either the filter matched nothing, or $TrxPath could not be read."
     }
 
     [pscustomobject]@{

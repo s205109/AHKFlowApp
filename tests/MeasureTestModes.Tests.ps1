@@ -248,6 +248,33 @@ Invoke-TestCase 'Get-AhkFlowMedian is the middle sorted value, and the mean of t
     Assert-True $threw 'An empty set has no median, and silently returning zero would read as a fast run.'
 }
 
+Invoke-TestCase 'Get-AhkFlowTestCount returns zero for every shape of TRX nobody can read' {
+    # A killed run leaves one of three things behind, and only one of them is a parse error.
+    # A zero-byte file is the likeliest: the logger creates the file, then the process dies
+    # before it writes anything. Get-Content -Raw returns $null for that, [xml]$null assigns
+    # without throwing, and the null then throws on the first method call - past the catch.
+    $probe = Join-Path ([System.IO.Path]::GetTempPath()) ('trx-unreadable-' + [guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $probe -Force | Out-Null
+    try {
+        $zeroByte = Join-Path $probe 'zero.trx'
+        New-Item -ItemType File -Path $zeroByte -Force | Out-Null
+        Assert-True ((Get-Item -LiteralPath $zeroByte).Length -eq 0) 'The probe file must really be zero bytes.'
+        Assert-True ((Get-AhkFlowTestCount -TrxPath $zeroByte) -eq 0) 'A zero-byte TRX counts zero tests.'
+
+        $whitespace = Join-Path $probe 'blank.trx'
+        Set-Content -LiteralPath $whitespace -Value '   ' -Encoding utf8
+        Assert-True ((Get-AhkFlowTestCount -TrxPath $whitespace) -eq 0) 'A whitespace-only TRX counts zero tests.'
+
+        $truncated = Join-Path $probe 'cut.trx'
+        Set-Content -LiteralPath $truncated -Value '<?xml version="1.0"?><TestRun><ResultSummary><Counters total=' -Encoding utf8
+        Assert-True ((Get-AhkFlowTestCount -TrxPath $truncated) -eq 0) 'A truncated TRX counts zero tests.'
+
+        Assert-True ((Get-AhkFlowTestCountFromResults -ResultsDirectory $probe) -eq 0) `
+            'The directory entry point the soak calls must answer zero as well.'
+    }
+    finally { Remove-Item -LiteralPath $probe -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
 Invoke-TestCase 'The reported median is the middle of the sorted runs, and the mean line is the mean' {
     $root = New-HarnessFixture
     try {
