@@ -398,6 +398,26 @@ Invoke-TestCase 'A soak run that exits zero with an unreadable TRX is not a pass
     finally { Remove-HarnessFixture -Root $root }
 }
 
+Invoke-TestCase 'A soak with both an empty run and a failed run names both' {
+    $root = New-HarnessFixture
+    try {
+        # Run 2 comes back empty, run 3 genuinely fails. The summary used to throw inside the
+        # first block it matched, so the second list never printed and the reader went hunting
+        # a filter typo while a real failure sat unnamed.
+        Set-Content -LiteralPath (Join-Path $root 'stub\empty-run.txt') -Value '2' -Encoding utf8
+        Set-Content -LiteralPath (Join-Path $root 'stub\fail-run.txt') -Value '3' -Encoding utf8
+
+        $result = Invoke-Harness -Root $root -Arguments @('-Soak', 'tests/FakeProject', '-Runs', '3', '-NoBuild')
+        $text = $result.Output -join "`n"
+
+        Assert-True ($text -match 'ran zero tests\s+:\s+2') "Run 2 must be named as empty. Output: $text"
+        Assert-True ($text -match 'failed runs\s+:\s+3') "Run 3 must be named as failed. Output: $text"
+        Assert-True ($text -match 'passed\s+:\s+1 of 3') "Only run 1 passed. Output: $text"
+        Assert-True ($result.ExitCode -ne 0) 'A soak with either kind of trouble must fail overall.'
+    }
+    finally { Remove-HarnessFixture -Root $root }
+}
+
 Invoke-TestCase 'The connection-string variable is restored in the process that changed it' {
     $root = New-HarnessFixture
     try {
