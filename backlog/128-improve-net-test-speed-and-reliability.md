@@ -5,7 +5,7 @@
 - **Type**: Tooling
 - **Interfaces**: none (test projects)
 - **Difficulty**: complex
-- **Stage**: 3-plan
+- **Stage**: 5-simplify
 
 ## Summary
 
