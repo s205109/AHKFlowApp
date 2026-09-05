@@ -7,8 +7,8 @@ using Xunit;
 
 namespace AHKFlowApp.Infrastructure.Tests.Persistence;
 
-[Collection("SqlServer")]
-public sealed class AppDbContextTests(SqlContainerFixture sqlFixture)
+public sealed class AppDbContextTests(SharedSqlServerFixture sqlFixture)
+    : IClassFixture<SharedSqlServerFixture>
 {
     private AppDbContext CreateContext(string? databaseName = null)
     {

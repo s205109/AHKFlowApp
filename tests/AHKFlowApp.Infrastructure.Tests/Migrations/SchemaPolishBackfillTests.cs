@@ -10,8 +10,8 @@ using Xunit;
 
 namespace AHKFlowApp.Infrastructure.Tests.Migrations;
 
-[Collection("SqlServer")]
-public sealed class SchemaPolishBackfillTests(SqlContainerFixture sqlFixture)
+public sealed class SchemaPolishBackfillTests(SharedSqlServerFixture sqlFixture)
+    : IClassFixture<SharedSqlServerFixture>
 {
     private AppDbContext CreateContext(string databaseName)
     {

@@ -16,8 +16,8 @@ namespace AHKFlowApp.Infrastructure.Tests.Migrations;
 /// Proves the HotkeyTypedActions migration's hand-written back-fill T-SQL agrees with
 /// <c>LegacyHotkeyDefinitionConverter</c> over every <c>LegacyHotkeyFixtures</c> row.
 /// </summary>
-[Collection("SqlServer")]
-public sealed class HotkeyTypedActionsMigrationTests(SqlContainerFixture sqlFixture)
+public sealed class HotkeyTypedActionsMigrationTests(SharedSqlServerFixture sqlFixture)
+    : IClassFixture<SharedSqlServerFixture>
 {
     private const string DbName = "HotkeyTypedActions_Parity";
     private const string DivergenceDbName = "HotkeyTypedActions_Divergence";
