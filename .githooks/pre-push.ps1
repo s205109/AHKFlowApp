@@ -54,9 +54,44 @@ if ($RemoteName) {
     Write-Host "[pre-push] Remote: $RemoteName $RemoteLocation" -ForegroundColor DarkGray
 }
 
+# The commits git is about to send. Git writes one line per pushed ref on stdin:
+# '<local ref> <local sha> <remote ref> <remote sha>'. Without reading it the checks ran against
+# whatever HEAD happened to be, so 'git push origin other-branch' verified the current branch and
+# a bad record on the pushed branch went out unchecked.
+#
+# IsInputRedirected is the guard that matters. Git always redirects stdin, but a human running this
+# script by hand does not, and ReadToEnd would then block forever waiting for a terminal.
+#
+# An all-zero local SHA means the ref is being deleted. There is no commit to verify, so it is
+# dropped rather than passed on.
+$pushedCommit = @()
+if ([Console]::IsInputRedirected) {
+    $stdin = [Console]::In.ReadToEnd()
+    foreach ($line in ($stdin -split "`r?`n")) {
+        if ([string]::IsNullOrWhiteSpace($line)) { continue }
+        $field = @($line.Trim() -split '\s+')
+        if ($field.Count -lt 2) { continue }
+        $localSha = $field[1]
+        if ($localSha -notmatch '^[0-9a-f]{40}$') { continue }
+        if ($localSha -match '^0{40}$') { continue }
+        if ($pushedCommit -notcontains $localSha) { $pushedCommit += $localSha }
+    }
+}
+
+if ($pushedCommit.Count -gt 0) {
+    Write-Host "[pre-push] Verifying $($pushedCommit.Count) pushed commit(s)." -ForegroundColor DarkGray
+}
+
 Push-Location $repoRoot
 try {
-    & $checkScriptPath
+    # The legacy fallback script predates this parameter, so it is only passed to the quick-checks
+    # script. A branch old enough to need run-coverage.ps1 has no shipped-plan check either.
+    if ($checkScriptPath -eq $quickChecksScriptPath -and $pushedCommit.Count -gt 0) {
+        & $checkScriptPath -PushedCommit $pushedCommit
+    }
+    else {
+        & $checkScriptPath
+    }
     if ($LASTEXITCODE -ne 0) {
         throw "Pre-push checks failed ($checkLabel)."
     }
