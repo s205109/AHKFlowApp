@@ -6,7 +6,7 @@
 - **Type**: Chore
 - **Interfaces**: none (CI workflow, test runner scripts)
 - **Difficulty**: moderate
-- **Stage**: 3-plan
+- **Stage**: 9-ship
 
 ## Summary
 
@@ -21,15 +21,15 @@ place I write that down, so that a suite cannot be listed in one place and run f
 
 ## Acceptance criteria
 
-- [ ] `.github/workflows/ci.yml` runs the `codex-skills-hash-parity` job through
+- [x] `.github/workflows/ci.yml` runs the `codex-skills-hash-parity` job through
       `scripts/run-powershell-suites.ps1`, selecting the manifest's `codex-parity` set.
-- [ ] A test fails when the job would run any suite outside the manifest's `codex-parity` set,
+- [x] A test fails when the job would run any suite outside the manifest's `codex-parity` set,
       or would miss one inside it.
-- [ ] The job still runs on `ubuntu-latest`, and the item records why. The current reason is
+- [x] The job still runs on `ubuntu-latest`, and the item records why. The current reason is
       that the bash setup script the suite compares against refuses under Windows Git Bash.
-- [ ] `CodexSkillsHashParity.Tests.ps1` carries `platform: ["linux"]` in the manifest, and the
+- [x] `CodexSkillsHashParity.Tests.ps1` carries `platform: ["linux"]` in the manifest, and the
       runner honours it, so a Windows run does not try to run it.
-- [ ] The job's log still names the suite that ran, so a failure is as easy to read as it is
+- [x] The job's log still names the suite that ran, so a failure is as easy to read as it is
       today.
 
 ## Out of scope
@@ -48,4 +48,10 @@ place I write that down, so that a suite cannot be listed in one place and run f
 - The suite is one file and the job runs it directly today, so the drift this closes is small.
   The value is that the manifest becomes true for all three jobs rather than two.
 - Spec: none — the change is mechanical once 127 ships.
-- Plan: <path, or "none — reason">
+- Plan: docs/superpowers/plans/2026-09-06-codex-parity-job-manifest-plan-136.md
+- The job stays on `ubuntu-latest`. `scripts/agents/setup-cross-agent-skills.sh` refuses to run
+  under Windows Git Bash, and the suite compares that script's hash against the PowerShell one.
+  Both bash and pwsh are preinstalled on the ubuntu runner.
+- Criteria 4 and 5 were already true when this item started; backlog 127 shipped both. The
+  runner refuses the codex-parity job on Windows, naming the suite it dropped, and it wraps each
+  suite in a group marker carrying that suite's name inside GitHub Actions.
