@@ -39,7 +39,7 @@ The five Gate steps on that branch:
 
 The Gate is defined at (`docs/development/testing-workflow.md:24`, "dotnet build AHKFlowApp.slnx --configuration Release").
 
-Coverage mode hands off to `run-coverage.ps1` (`scripts/test-fast.ps1:211`, "& (Join-Path $PSScriptRoot 'run-coverage.ps1') -Configuration $Configuration").
+Coverage mode hands off to `run-coverage.ps1` (`scripts/test-fast.ps1:346`, "& (Join-Path $PSScriptRoot 'run-coverage.ps1') -Configuration $Configuration").
 That script starts a real SQL Server container, then runs `dotnet test` per project with coverlet
 instrumentation (`scripts/run-coverage.ps1:80`, "dotnet test $project.Path --configuration $Configuration").
 

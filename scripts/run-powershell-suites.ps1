@@ -25,10 +25,15 @@ param(
     [string] $SuiteRoot,
 
     # Wildcards matched against suite file names, for the inner development loop. Leave the
-    # argument out and the run covers every suite in the 'suites' job, which is what CI and the
+    # argument out and the run covers every suite in the selected job, which is what CI and the
     # Gate both want. A value that matches nothing fails the run: a typo must never look like a
     # green run. So does a blank value, and so does the argument with no value at all.
     [string[]] $Suite = @(),
+
+    # Which CI job's suite set to run. Backlog 127. The manifest is the one record of which job
+    # runs which suite, so scripts/ci/check-repo-invariants.ps1 passes '-Job invariants' instead
+    # of keeping its own copy of the five names. An unknown value fails the run.
+    [string] $Job = 'suites',
 
     # How many suites may run at once. With no value the run uses the processor count, capped at
     # eight, and AHKFLOW_SUITE_MAX_PARALLEL overrides that default. An explicit value wins over the
@@ -98,7 +103,12 @@ try {
         throw '-Suite was given no value to match. Leave -Suite out to run every suite in the suites job.'
     }
 
-    $selected = @(Select-SuiteEntry -Entry $entries -Pattern $Suite)
+    # The platform comes from the host, and this script takes no override. An argument here would
+    # let a caller select another platform's suites, run them under this host anyway, and print a
+    # header claiming the run proved something it did not. Select-SuiteEntry keeps a -Platform
+    # parameter so a test can ask about the other platform, which is a question, not a run.
+    $runPlatform = Get-CurrentSuitePlatform
+    $selected = @(Select-SuiteEntry -Entry $entries -Pattern $Suite -Job $Job -Platform $runPlatform)
 } catch {
     # Stop before any child starts. A manifest or selection we cannot trust means the coverage this
     # run reports would be a guess.
@@ -141,6 +151,7 @@ $inActions = $env:GITHUB_ACTIONS -eq 'true'
 
 Write-Host "Running $($suites.Count) PowerShell suite(s) from $SuiteRoot"
 Write-Host "Host: $hostExe"
+Write-Host "Job: $Job    Platform: $runPlatform"
 
 $progress = New-ProgressTracker -RunnerKey 'run-powershell-suites' -Unit @($suites.Name) -RepoRoot $repoRoot -NoStore:(-not $keepTimings)
 

@@ -89,13 +89,28 @@ pre-push hook is a faster subset (incremental build + fast slice,
 pwsh .\scripts\test-fast.ps1 -Mode Fast
 ```
 
+That builds the solution once, then runs all five Fast assemblies in one call.
+
+When you have just built, skip the build:
+
+```bash
+pwsh .\scripts\test-fast.ps1 -Mode Fast -NoBuild
+```
+
+This is the path the pre-push hook already takes, in `scripts/pre-push-quick-checks.ps1`. It
+saves about 10 seconds a run.
+
 Fast mode runs:
 
 - `AHKFlowApp.Domain.Tests`
 - `AHKFlowApp.TestUtilities.Tests`
 - `AHKFlowApp.UI.Blazor.Tests`
-- `AHKFlowApp.Application.Tests` filtered to `Category!=Integration`
-- `AHKFlowApp.CLI.Tests` filtered to `Category!=Integration`
+- `AHKFlowApp.Application.Tests`
+- `AHKFlowApp.CLI.Tests`
+
+All five take the same filter, `Category!=Integration`. One call applies one filter to every
+assembly, and that filter keeps a test carrying no `Category` trait, so the three projects that
+never needed a filter lose nothing.
 
 Use this for domain logic, validators, pure handlers, CLI parser/unit behavior, and Blazor component changes that do not require SQL Server, WebApplicationFactory, or browser automation.
 
@@ -209,6 +224,42 @@ place of the exclusion list the runner used to carry.
 
 CI runs the same script in the `powershell-suites` job, and that job has no docs-only filter, so it
 runs on every PR.
+
+### Which platform a suite runs on
+
+`tests/powershell-suites.json` is the record. Every entry carries a `platform` array, and the only
+allowed values are `windows` and `linux`. A suite that a run has passed on both carries both. The
+runner obeys the field: it drops any suite whose `platform` does not include the platform it is
+running on, and it prints the job and the platform in its header. The field is a rule, not a note
+for a reader.
+
+Every value is backed by a run somebody recorded, never by a guess. The evidence is written into
+the backlog item that added the field, `backlog/done/127-decide-the-platform-for-the-fiv-108d64e7.md`.
+
+Three CI jobs run suites, and each one runs on the platform it needs:
+
+- `repo-invariants` runs on Linux, and it runs the manifest's `invariants` set. It is first, and
+  every other job waits on it, so it was put on Linux for speed: process startup there is faster,
+  and the job finishes in about 75 seconds.
+- `powershell-suites` runs on Windows, and it runs the manifest's `suites` set. Windows is where
+  this repository's own product lives. The git hooks, the worktree scripts, and the `.ahk`
+  emitters are all Windows-first, so a suite that reads paths, git refs, or file bytes has to be
+  proved there.
+- `codex-skills-hash-parity` runs on Linux, and it runs one suite. That suite compares a bash
+  implementation against a PowerShell one, and the bash setup script refuses under Windows Git
+  Bash, so Linux is the only platform it can run on.
+
+The five invariant suites run in both of the first two jobs, and that overlap is deliberate. The
+second run costs about nothing: a parallel run ends when its slowest suite ends, so removing work
+from a pool that is not the bottleneck saves no time. Removing the Windows run saves 0 seconds at
+six or more workers, and about 28 seconds at four. What the two runs buy is different: the Linux
+job was chosen for speed and never for platform coverage, and three of the five touch a path
+separator, letter case in a path, or a file's bytes. Neither run proves the other.
+
+`SuiteRunnerLinux.Tests.ps1` is in the `invariants` set for the platform rather than for a
+repository invariant. It proves the runner starts, reads a manifest, and selects suites on
+whichever platform runs it, so the `repo-invariants` job proves that on Linux on every pull
+request.
 
 ## Full coverage gate
 
