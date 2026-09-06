@@ -55,6 +55,26 @@ exit $ExitCode
     Set-Content -LiteralPath (Join-Path $RepoDir 'scripts\pre-push-quick-checks.ps1') -Value $content -Encoding utf8
 }
 
+# A stub that records the arguments the hook passed it, so a case can prove the pushed SHAs
+# reached the check script rather than being dropped on the floor.
+function Write-StubArgRecordingScript {
+    param(
+        [string] $RepoDir,
+        [string] $MarkerPath,
+        [int] $ExitCode = 0
+    )
+
+    # Each argument is expanded before joining. A [string[]] arrives as one array object, and a
+    # plain '-join' would render it as 'System.Object[]' and hide the SHAs the case is asserting on.
+    $content = @"
+`$flat = @()
+foreach (`$item in `$args) { `$flat += @(`$item) }
+Set-Content -LiteralPath '$MarkerPath' -Value (`$flat -join ' ') -Encoding utf8
+exit $ExitCode
+"@
+    Set-Content -LiteralPath (Join-Path $RepoDir 'scripts\pre-push-quick-checks.ps1') -Value $content -Encoding utf8
+}
+
 function Write-StubRunCoverageScript {
     param(
         [string] $RepoDir,
@@ -89,11 +109,17 @@ function Invoke-PrePushHook {
     param(
         [string] $RepoDir,
         [hashtable] $EnvOverrides,
-        [string] $HostExe
+        [string] $HostExe,
+        # Git feeds the hook one line per pushed ref on stdin:
+        # '<local ref> <local sha> <remote ref> <remote sha>'. Pass those lines to prove the hook
+        # reads them. Leave the argument out for a hand-run: stdin is then an empty file, which
+        # tells the hook the same thing a hand-run does - no ref lines came in.
+        [string[]] $StdInLines
     )
 
     $stdoutFile = [System.IO.Path]::GetTempFileName()
     $stderrFile = [System.IO.Path]::GetTempFileName()
+    $stdinFile = $null
     try {
         $previousValues = @{}
         if ($EnvOverrides) {
@@ -105,12 +131,32 @@ function Invoke-PrePushHook {
 
         try {
             $psExe = if ($HostExe) { $HostExe } else { [System.Diagnostics.Process]::GetCurrentProcess().Path }
-            $proc = Start-Process -FilePath $psExe `
-                -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $realHookScript) `
-                -WorkingDirectory $RepoDir `
-                -RedirectStandardOutput $stdoutFile `
-                -RedirectStandardError $stderrFile `
-                -NoNewWindow -PassThru -Wait
+            $startArgs = @{
+                FilePath = $psExe
+                ArgumentList = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $realHookScript)
+                WorkingDirectory = $RepoDir
+                RedirectStandardOutput = $stdoutFile
+                RedirectStandardError = $stderrFile
+                NoNewWindow = $true
+                PassThru = $true
+                Wait = $true
+            }
+            # stdin is always redirected, for every case. Leaving it alone makes the hook process
+            # inherit whatever stdin this suite was started with. From a terminal that is a
+            # console, so [Console]::IsInputRedirected in the hook is false and the hook skips the
+            # read. Under scripts/run-powershell-suites.ps1 it is an open pipe that nothing ever
+            # writes to and nothing ever closes, so IsInputRedirected is true, the hook's
+            # [Console]::In.ReadToEnd() never returns, and the suite hangs forever.
+            #
+            # GetTempFileName creates an empty file. An empty stdin reaches end of file at once and
+            # carries no ref lines, so the hook leaves -PushedRefsRead off and falls back to HEAD -
+            # the same answer a hand-run gets, which is what the hand-run case asserts.
+            $stdinFile = [System.IO.Path]::GetTempFileName()
+            if ($StdInLines) {
+                Set-Content -LiteralPath $stdinFile -Value $StdInLines -Encoding ascii
+            }
+            $startArgs['RedirectStandardInput'] = $stdinFile
+            $proc = Start-Process @startArgs
         } finally {
             foreach ($key in $previousValues.Keys) {
                 [Environment]::SetEnvironmentVariable($key, $previousValues[$key], 'Process')
@@ -124,6 +170,7 @@ function Invoke-PrePushHook {
         }
     } finally {
         Remove-Item -LiteralPath $stdoutFile, $stderrFile -Force -ErrorAction SilentlyContinue
+        if ($stdinFile) { Remove-Item -LiteralPath $stdinFile -Force -ErrorAction SilentlyContinue }
     }
 }
 
@@ -145,6 +192,79 @@ function Invoke-AllScenarios {
         Assert-Equal 0 $result.ExitCode "[$HostLabel] SKIP_PUSH_HOOK should short-circuit with exit 0. Stderr: $($result.Stderr)"
         Assert-True (-not (Test-Path -LiteralPath $marker)) "[$HostLabel] Quick-checks stub must not run when SKIP_PUSH_HOOK is set."
         Assert-True (-not (Test-Path -LiteralPath $coverageMarker)) "[$HostLabel] run-coverage.ps1 must not be invoked when the quick-checks helper is present."
+    } finally {
+        Remove-TempTree $repo
+    }
+
+    # --- Test: the pushed SHAs from stdin reach the check script -------------------
+    # Git writes one line per pushed ref on stdin: '<local ref> <local sha> <remote ref>
+    # <remote sha>'. Without reading it the hook checked whatever HEAD happened to be, so
+    # 'git push origin other-branch' verified the current branch instead of the pushed one.
+    $repo = New-TempGitRepo
+    try {
+        $marker = Join-Path $repo 'quick-checks-args.txt'
+        Write-StubArgRecordingScript -RepoDir $repo -MarkerPath $marker
+        Write-StubRunCoverageScript -RepoDir $repo -MarkerPath (Join-Path $repo 'run-coverage-invoked.txt')
+
+        $pushedSha = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678'
+        $result = Invoke-PrePushHook -RepoDir $repo -HostExe $HostExe -StdInLines @(
+            "refs/heads/other-branch $pushedSha refs/heads/other-branch 0000000000000000000000000000000000000000"
+        )
+        Assert-Equal 0 $result.ExitCode "[$HostLabel] Hook should succeed when the stub exits 0. Stderr: $($result.Stderr)"
+        Assert-True (Test-Path -LiteralPath $marker) "[$HostLabel] Expected the arg-recording stub to run. Stdout: $($result.Stdout)"
+
+        $recordedArgs = (Get-Content -Raw -LiteralPath $marker).Trim()
+        Assert-True ($recordedArgs -match [regex]::Escape($pushedSha)) `
+            "[$HostLabel] The pushed SHA must reach the check script. Got: '$recordedArgs'"
+        Assert-True ($recordedArgs -match '-PushedCommit') `
+            "[$HostLabel] The SHA must arrive as -PushedCommit. Got: '$recordedArgs'"
+    } finally {
+        Remove-TempTree $repo
+    }
+
+    # --- Test: a deleted ref carries an all-zero local SHA and is not checked ------
+    # 'git push origin :old-branch' deletes a ref. There is no commit to verify, and passing the
+    # zero SHA on would make the check script fail to resolve it.
+    $repo = New-TempGitRepo
+    try {
+        $marker = Join-Path $repo 'quick-checks-args.txt'
+        Write-StubArgRecordingScript -RepoDir $repo -MarkerPath $marker
+        Write-StubRunCoverageScript -RepoDir $repo -MarkerPath (Join-Path $repo 'run-coverage-invoked.txt')
+
+        $result = Invoke-PrePushHook -RepoDir $repo -HostExe $HostExe -StdInLines @(
+            "(delete) 0000000000000000000000000000000000000000 refs/heads/old-branch f1e2d3c4b5a60718293a4b5c6d7e8f9012345678"
+        )
+        Assert-Equal 0 $result.ExitCode "[$HostLabel] A ref deletion must not fail the hook. Stderr: $($result.Stderr)"
+        $recordedArgs = (Get-Content -Raw -LiteralPath $marker -ErrorAction SilentlyContinue)
+        Assert-True (-not ($recordedArgs -match '0000000000000000000000000000000000000000')) `
+            "[$HostLabel] An all-zero SHA must not be passed on. Got: '$recordedArgs'"
+
+        # An empty commit list from git is not the same thing as no list at all. Without this
+        # switch the check script cannot tell them apart, falls back to HEAD, and refuses
+        # 'git push origin :old-branch' over the state of whatever branch happens to be checked
+        # out. A deletion carries nothing to judge, so the answer is to judge nothing.
+        Assert-True ($recordedArgs -match '-PushedRefsRead') `
+            "[$HostLabel] A deletion-only push must still say that git supplied the refs. Got: '$recordedArgs'"
+    } finally {
+        Remove-TempTree $repo
+    }
+
+    # --- Test: a hand-run passes no ref switch, so HEAD still stands in ------------
+    # No ref lines arrive on stdin when a person runs the hook themselves. That is the one case
+    # where HEAD is the right answer, and the switch must stay off to keep it. The case sends an
+    # empty stdin rather than no stdin at all; see Invoke-PrePushHook for why.
+    $repo = New-TempGitRepo
+    try {
+        $marker = Join-Path $repo 'quick-checks-args.txt'
+        Write-StubArgRecordingScript -RepoDir $repo -MarkerPath $marker
+        Write-StubRunCoverageScript -RepoDir $repo -MarkerPath (Join-Path $repo 'run-coverage-invoked.txt')
+
+        $result = Invoke-PrePushHook -RepoDir $repo -HostExe $HostExe
+        Assert-Equal 0 $result.ExitCode "[$HostLabel] A hand-run must not fail the hook. Stderr: $($result.Stderr)"
+
+        $recordedArgs = (Get-Content -Raw -LiteralPath $marker -ErrorAction SilentlyContinue)
+        Assert-True (-not ($recordedArgs -match '-PushedRefsRead')) `
+            "[$HostLabel] A hand-run must not claim git supplied the refs. Got: '$recordedArgs'"
     } finally {
         Remove-TempTree $repo
     }

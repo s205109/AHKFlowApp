@@ -54,9 +54,59 @@ if ($RemoteName) {
     Write-Host "[pre-push] Remote: $RemoteName $RemoteLocation" -ForegroundColor DarkGray
 }
 
+# The commits git is about to send. Git writes one line per pushed ref on stdin:
+# '<local ref> <local sha> <remote ref> <remote sha>'. Without reading it the checks ran against
+# whatever HEAD happened to be, so 'git push origin other-branch' verified the current branch and
+# a bad record on the pushed branch went out unchecked.
+#
+# IsInputRedirected is the guard that matters. Git always redirects stdin, but a human running this
+# script by hand does not, and ReadToEnd would then block forever waiting for a terminal.
+#
+# An all-zero local SHA means the ref is being deleted. There is no commit to verify, so it is
+# dropped rather than passed on.
+#
+# $pushedRefsRead records that git named at least one ref, which is a different question from
+# whether any commit came back. 'git push origin :old-branch' deletes a ref and sends no commit,
+# so the list is empty and yet everything about the push is known. Without this flag the check
+# script cannot tell that apart from a hand-run, falls back to HEAD, and refuses the deletion over
+# the state of whatever branch is checked out.
+#
+# The flag counts ref lines rather than trusting IsInputRedirected, because stdin is redirected and
+# empty in plenty of places that are not a push - a script, a scheduled job, a test host. Treating
+# those as a push would switch the record checks off in silence.
+$pushedCommit = @()
+$pushedRefsRead = $false
+if ([Console]::IsInputRedirected) {
+    $stdin = [Console]::In.ReadToEnd()
+    foreach ($line in ($stdin -split "`r?`n")) {
+        if ([string]::IsNullOrWhiteSpace($line)) { continue }
+        $field = @($line.Trim() -split '\s+')
+        if ($field.Count -lt 2) { continue }
+        $localSha = $field[1]
+        if ($localSha -notmatch '^[0-9a-f]{40}$') { continue }
+        $pushedRefsRead = $true
+        if ($localSha -match '^0{40}$') { continue }
+        if ($pushedCommit -notcontains $localSha) { $pushedCommit += $localSha }
+    }
+}
+
+if ($pushedCommit.Count -gt 0) {
+    Write-Host "[pre-push] Verifying $($pushedCommit.Count) pushed commit(s)." -ForegroundColor DarkGray
+}
+elseif ($pushedRefsRead) {
+    Write-Host '[pre-push] This push sends no commit, so the record checks have nothing to judge.' -ForegroundColor DarkGray
+}
+
 Push-Location $repoRoot
 try {
-    & $checkScriptPath
+    # The legacy fallback script predates this parameter, so it is only passed to the quick-checks
+    # script. A branch old enough to need run-coverage.ps1 has no shipped-plan check either.
+    if ($checkScriptPath -eq $quickChecksScriptPath -and $pushedRefsRead) {
+        & $checkScriptPath -PushedCommit $pushedCommit -PushedRefsRead
+    }
+    else {
+        & $checkScriptPath
+    }
     if ($LASTEXITCODE -ne 0) {
         throw "Pre-push checks failed ($checkLabel)."
     }
