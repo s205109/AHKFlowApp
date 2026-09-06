@@ -52,18 +52,49 @@ function Read-RunnerInvocation {
     $errors = $null
     $ast = [System.Management.Automation.Language.Parser]::ParseFile($Path, [ref] $null, [ref] $errors)
 
-    # The runner is called with the '&' operator. Any other command in the file is a plain
-    # cmdlet call, so this picks out the invocation without depending on how the path is built.
+    # Which variables hold the runner's path. Read the assignment, so a call made through a
+    # variable is tied to the file that variable actually names.
+    #
+    # Checking "some '&' call passes -Job invariants" and, separately, "the runner's name appears
+    # somewhere in the code" is two claims that never meet. A script could assign the runner path
+    # to $runner, never use it, and invoke something else with -Job invariants. Both checks would
+    # pass and the invariant job would run the wrong command.
+    $runnerVariable = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    $assignments = @($ast.FindAll({
+                param($node)
+                $node -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+                $node.Left -is [System.Management.Automation.Language.VariableExpressionAst]
+            }, $true))
+    foreach ($assignment in $assignments) {
+        $namesRunner = @($assignment.Right.FindAll({
+                    param($node)
+                    $node -is [System.Management.Automation.Language.StringConstantExpressionAst] -and
+                    $node.Value -eq 'run-powershell-suites.ps1'
+                }, $true)).Count -gt 0
+        if ($namesRunner) { [void] $runnerVariable.Add($assignment.Left.VariablePath.UserPath) }
+    }
+
+    # Every '&' invocation in the file, then only the ones whose target is the runner.
     $calls = @($ast.FindAll({
                 param($node)
                 $node -is [System.Management.Automation.Language.CommandAst] -and
                 $node.InvocationOperator -eq [System.Management.Automation.Language.TokenKind]::Ampersand
             }, $true))
 
+    $runnerCalls = @($calls | Where-Object {
+            $target = @($_.CommandElements)[0]
+            if ($target -is [System.Management.Automation.Language.VariableExpressionAst]) {
+                return $runnerVariable.Contains($target.VariablePath.UserPath)
+            }
+            # A direct path, literal or interpolated. Read the target expression's own text, never
+            # the whole file: a comment is not part of any expression's extent.
+            return $target.Extent.Text -like '*run-powershell-suites.ps1*'
+        })
+
     $jobValues = @()
     $narrowing = @()
 
-    foreach ($call in $calls) {
+    foreach ($call in $runnerCalls) {
         $elements = @($call.CommandElements)
         for ($i = 0; $i -lt $elements.Count; $i++) {
             $element = $elements[$i]
@@ -97,6 +128,7 @@ function Read-RunnerInvocation {
     return [pscustomobject]@{
         ParseErrorCount = @($errors).Count
         CallCount       = $calls.Count
+        RunnerCallCount = $runnerCalls.Count
         JobValues       = $jobValues
         Narrowing       = $narrowing
     }
@@ -110,17 +142,12 @@ if (Test-Path -LiteralPath $checkScript) {
     $invocation = Read-RunnerInvocation -Path $checkScript
 
     Assert-True ($invocation.ParseErrorCount -eq 0) 'check-repo-invariants.ps1 must parse cleanly.'
-    Assert-True ($invocation.CallCount -eq 1) "check-repo-invariants.ps1 must call the runner exactly once. Found $($invocation.CallCount) '&' invocation(s)."
 
-    # The name has to be in the code, not only in the comment block the parser drops.
-    $errors = $null
-    $checkAst = [System.Management.Automation.Language.Parser]::ParseFile($checkScript, [ref] $null, [ref] $errors)
-    $runnerNamed = @($checkAst.FindAll({
-                param($node)
-                $node -is [System.Management.Automation.Language.StringConstantExpressionAst] -and
-                $node.Value -eq 'run-powershell-suites.ps1'
-            }, $true)).Count -gt 0
-    Assert-True $runnerNamed 'check-repo-invariants.ps1 must name run-powershell-suites.ps1 in code, not only in a comment.'
+    # One '&' invocation, and it targets the runner. The second number is the one that matters:
+    # it counts calls whose target resolves to run-powershell-suites.ps1, so the arguments read
+    # below belong to the runner and to nothing else.
+    Assert-True ($invocation.RunnerCallCount -eq 1) "check-repo-invariants.ps1 must invoke run-powershell-suites.ps1 exactly once. Found $($invocation.RunnerCallCount) call(s) to it, out of $($invocation.CallCount) '&' invocation(s)."
+    Assert-True ($invocation.CallCount -eq 1) "check-repo-invariants.ps1 must make no other '&' invocation. Found $($invocation.CallCount)."
 
     Assert-True (($invocation.JobValues -join ',') -eq 'invariants') "check-repo-invariants.ps1 must pass -Job invariants. Found: '$($invocation.JobValues -join ',')'"
     Assert-True ($invocation.Narrowing.Count -eq 0) "check-repo-invariants.ps1 must pass no argument that narrows the selection below the manifest's invariants set. Found: $($invocation.Narrowing -join ', ')"
@@ -148,6 +175,22 @@ try {
     Set-Content -LiteralPath $withSuite -Value ($checkText -replace "-Job 'invariants'", "-Job 'invariants' -Suite 'SkillParity.Tests.ps1'") -Encoding utf8
     $withSuiteResult = Read-RunnerInvocation -Path $withSuite
     Assert-True ($withSuiteResult.Narrowing.Count -gt 0) 'The no-narrowing assertion must go red when the script adds a -Suite filter.'
+
+    # The target, not only the arguments. This is the mutation the earlier version of this test
+    # could not catch: the script still assigns the runner's path, and still passes
+    # -Job invariants, but invokes something else entirely.
+    $wrongTarget = Join-Path $mutationRoot 'wrong-target.ps1'
+    Set-Content -LiteralPath $wrongTarget -Value ($checkText -replace '(?m)^& \$runner ', '& $somethingElse ') -Encoding utf8
+    $wrongTargetResult = Read-RunnerInvocation -Path $wrongTarget
+    Assert-True ($wrongTargetResult.RunnerCallCount -eq 0) 'The invocation assertion must go red when the script invokes a command other than the runner.'
+    Assert-True ($wrongTargetResult.JobValues.Count -eq 0) 'Arguments must be read from the runner call only, never from another command.'
+
+    # The assignment, so the variable really names the runner. A script that pointed $runner at
+    # another file would still invoke $runner, and the target check alone would not notice.
+    $wrongFile = Join-Path $mutationRoot 'wrong-file.ps1'
+    Set-Content -LiteralPath $wrongFile -Value ($checkText -replace "'run-powershell-suites\.ps1'", "'some-other-script.ps1'") -Encoding utf8
+    $wrongFileResult = Read-RunnerInvocation -Path $wrongFile
+    Assert-True ($wrongFileResult.RunnerCallCount -eq 0) 'The invocation assertion must go red when the variable names another file.'
 } finally {
     Remove-Item -LiteralPath $mutationRoot -Recurse -Force -ErrorAction SilentlyContinue
 }

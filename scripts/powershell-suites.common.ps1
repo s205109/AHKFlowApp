@@ -92,7 +92,10 @@ function Read-SuiteManifest {
             throw "Suite '$name' has an empty platform array: $Path"
         }
         foreach ($value in $platform) {
-            if ($script:KnownPlatform -notcontains $value) {
+            # -cnotcontains, not -notcontains. The plain operator ignores letter case, so 'LINUX'
+            # would pass and be stored, and the manifest would hold a spelling the contract does not
+            # name. The two values are exact.
+            if ($script:KnownPlatform -cnotcontains $value) {
                 throw "Suite '$name' names an unknown platform '$value'. Known platforms: $($script:KnownPlatform -join ', '). File: $Path"
             }
         }
@@ -184,7 +187,7 @@ function Select-SuiteEntry {
 
     if ([string]::IsNullOrWhiteSpace($Platform)) {
         $Platform = Get-CurrentSuitePlatform
-    } elseif ($script:KnownPlatform -notcontains $Platform) {
+    } elseif ($script:KnownPlatform -cnotcontains $Platform) {
         throw "-Platform '$Platform' is not a known platform. Known platforms: $($script:KnownPlatform -join ', ')."
     }
 

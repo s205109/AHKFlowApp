@@ -35,11 +35,6 @@ param(
     # of keeping its own copy of the five names. An unknown value fails the run.
     [string] $Job = 'suites',
 
-    # Which platform's suites to run. Leave it out and the run uses the platform it is on, which
-    # is what CI and the Gate both want. It exists so a test can ask for the other platform
-    # without running there.
-    [string] $Platform = '',
-
     # How many suites may run at once. With no value the run uses the processor count, capped at
     # eight, and AHKFLOW_SUITE_MAX_PARALLEL overrides that default. An explicit value wins over the
     # variable. These suites wait on git child processes more than on the processor, so more workers
@@ -108,8 +103,12 @@ try {
         throw '-Suite was given no value to match. Leave -Suite out to run every suite in the suites job.'
     }
 
-    $selected = @(Select-SuiteEntry -Entry $entries -Pattern $Suite -Job $Job -Platform $Platform)
-    $runPlatform = if ([string]::IsNullOrWhiteSpace($Platform)) { Get-CurrentSuitePlatform } else { $Platform }
+    # The platform comes from the host, and this script takes no override. An argument here would
+    # let a caller select another platform's suites, run them under this host anyway, and print a
+    # header claiming the run proved something it did not. Select-SuiteEntry keeps a -Platform
+    # parameter so a test can ask about the other platform, which is a question, not a run.
+    $runPlatform = Get-CurrentSuitePlatform
+    $selected = @(Select-SuiteEntry -Entry $entries -Pattern $Suite -Job $Job -Platform $runPlatform)
 } catch {
     # Stop before any child starts. A manifest or selection we cannot trust means the coverage this
     # run reports would be a guess.

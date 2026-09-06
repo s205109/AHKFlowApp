@@ -87,13 +87,39 @@ function Set-FixtureManifest {
     Set-Content -LiteralPath (Join-Path $Root 'powershell-suites.json') -Value ($payload | ConvertTo-Json -Depth 6) -Encoding utf8
 }
 
-# Spawns the runner as a child of the current host, the way CI does.
+# Spawns the runner as a child of the current host, the way CI does. The one place this file
+# starts a runner child, so no case can forget the redirect below.
+#
+# The child inherits this process's environment. Under CI that includes GITHUB_STEP_SUMMARY, and
+# this suite runs inside the repo-invariants job, so without the redirect every fake-suite table
+# here would be appended to that job's real summary. Point the child at a scratch file instead.
+# Redirecting rather than clearing keeps the runner's summary-writing branch covered, and the
+# case below reads the scratch file to prove the redirect really caught it.
+#
+# Returns the child's exit code, everything it printed, and the job summary it wrote.
 function Invoke-Runner {
     param([string] $SuiteRoot, [string[]] $ExtraArgument = @())
 
-    $arguments = @('-NoProfile', '-File', $script:RunnerPath, '-SuiteRoot', $SuiteRoot) + $ExtraArgument
-    $output = & $script:HostExe @arguments 2>&1 | Out-String
-    return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = $output }
+    $summaryPath = Join-Path ([System.IO.Path]::GetTempPath()) ('ahkflow-runnerlinux-summary-' + [guid]::NewGuid().ToString('N') + '.md')
+    $previousSummary = $env:GITHUB_STEP_SUMMARY
+    $env:GITHUB_STEP_SUMMARY = $summaryPath
+
+    try {
+        $arguments = @('-NoProfile', '-File', $script:RunnerPath, '-SuiteRoot', $SuiteRoot) + $ExtraArgument
+        $output = & $script:HostExe @arguments 2>&1 | Out-String
+        $exitCode = $LASTEXITCODE
+
+        $summary = if (Test-Path -LiteralPath $summaryPath) {
+            Get-Content -LiteralPath $summaryPath -Raw
+        } else {
+            ''
+        }
+    } finally {
+        $env:GITHUB_STEP_SUMMARY = $previousSummary
+        Remove-Item -LiteralPath $summaryPath -Force -ErrorAction SilentlyContinue
+    }
+
+    return [pscustomobject]@{ ExitCode = $exitCode; Output = $output; Summary = $summary }
 }
 
 $script:ThisPlatform = if ($IsWindows) { 'windows' } elseif ($IsLinux) { 'linux' } else { 'other' }
@@ -142,6 +168,38 @@ Invoke-TestCase 'The backslash dot-source loads, on this platform' {
         Assert-True ($result.Output -match '\[1/1 done\]') "scripts/progress.common.ps1 must load through its backslash path on $($script:ThisPlatform). Output: $($result.Output)"
         Assert-True ($result.Output -notmatch 'progress\.common\.ps1.*not (found|recognized)') "The dot-source must not fail. Output: $($result.Output)"
     } finally {
+        Remove-Fixture -Root $root
+    }
+}
+
+# This suite runs inside the repo-invariants job, and each case above starts a runner over fake
+# suites. A runner writes its result table to whatever GITHUB_STEP_SUMMARY names, so a fixture run
+# that inherited the job's own summary file would put a table of invented suite names into the
+# report a human reads. The redirect in Invoke-Runner is what stops that, and this proves it.
+Invoke-TestCase 'A fixture run never writes to the job summary it inherited' {
+    $root = New-Fixture
+    $inherited = Join-Path ([System.IO.Path]::GetTempPath()) ('ahkflow-runnerlinux-outer-' + [guid]::NewGuid().ToString('N') + '.md')
+    $previousSummary = $env:GITHUB_STEP_SUMMARY
+    try {
+        Set-Content -LiteralPath $inherited -Value '' -Encoding utf8
+        $env:GITHUB_STEP_SUMMARY = $inherited
+
+        Add-FakeSuite -Root $root -Name '01-one.Tests.ps1'
+        Set-FixtureManifest -Root $root -Entry @(
+            [ordered]@{ name = '01-one.Tests.ps1'; jobs = @('suites'); platform = @('windows', 'linux'); execution = 'parallel'; baselineSeconds = $null }
+        )
+
+        $result = Invoke-Runner -SuiteRoot $root
+        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
+
+        # The table went to the scratch file, so the runner's summary branch still ran.
+        Assert-True ($result.Summary -match '01-one\.Tests\.ps1') "The runner must still write its table somewhere. Got: $($result.Summary)"
+
+        $leaked = Get-Content -LiteralPath $inherited -Raw
+        Assert-True ([string]::IsNullOrWhiteSpace($leaked)) "The inherited job summary must stay empty. Got: $leaked"
+    } finally {
+        $env:GITHUB_STEP_SUMMARY = $previousSummary
+        Remove-Item -LiteralPath $inherited -Force -ErrorAction SilentlyContinue
         Remove-Fixture -Root $root
     }
 }

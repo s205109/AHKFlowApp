@@ -765,6 +765,26 @@ Invoke-TestCase 'An unknown platform value fails the manifest' {
     }
 }
 
+# PowerShell's -contains ignores letter case, so 'LINUX' would otherwise be accepted and stored.
+# The contract names two values, 'windows' and 'linux', and a manifest holding a third spelling of
+# one of them is a manifest two readers can disagree about.
+Invoke-TestCase 'A platform value in the wrong case fails the manifest' {
+    foreach ($bad in @('LINUX', 'Windows', 'lInUx')) {
+        $path = New-ManifestFile -Entry @(
+            [ordered]@{ name = 'a.Tests.ps1'; jobs = @('suites'); platform = @($bad); execution = 'parallel'; baselineSeconds = 1 }
+        )
+        try {
+            $threw = $false
+            $message = ''
+            try { Read-SuiteManifest -Path $path -DiscoveredName @('a.Tests.ps1') } catch { $threw = $true; $message = $_.Exception.Message }
+            Assert-True $threw "platform '$bad' must throw; only the exact spelling is allowed."
+            Assert-True ($message -match [regex]::Escape($bad)) "The message must name the bad value. Got: $message"
+        } finally {
+            Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
 Invoke-TestCase 'A valid platform pair survives onto the entry' {
     $path = New-ManifestFile -Entry @(
         [ordered]@{ name = 'a.Tests.ps1'; jobs = @('suites'); platform = @('windows', 'linux'); execution = 'parallel'; baselineSeconds = 1 }
@@ -806,6 +826,45 @@ Invoke-TestCase 'With no pattern the selection is every suite in the suites job'
     Assert-True (($selected.Name -join ',') -eq 'a.Tests.ps1,b.Tests.ps1') "Got: $($selected.Name -join ',')"
 }
 
+# The runner reads the platform from the host it runs on, and takes no override. An override
+# there would let a Windows caller select Linux-only suites, run them under the Windows host, and
+# print "Platform: linux" over the result - a false claim about what the run proved. Only
+# Select-SuiteEntry takes -Platform, so a test can ask about the other platform without lying
+# about a run.
+Invoke-TestCase 'The runner takes no -Platform override' {
+    $root = New-SuiteFixture
+    try {
+        Add-FakeSuite -Root $root -Name '01-pass.Tests.ps1' -Ending 'pass'
+        Set-FixtureManifest -Root $root
+
+        $other = if ($IsWindows) { 'linux' } else { 'windows' }
+        $output = & $script:HostExe -NoProfile -File $script:DriverPath -SuiteRoot $root -Platform $other 2>&1 | Out-String
+        $exitCode = $LASTEXITCODE
+
+        Assert-True ($exitCode -ne 0) "The runner must refuse -Platform. Exit code: $exitCode. Output: $output"
+        Assert-True ($output -match 'Platform') "The refusal must name the parameter. Output: $output"
+        Assert-True (-not (Test-MarkerExists -Root $root -Name '01-pass.Tests.ps1')) 'No suite may run behind a refused argument.'
+    } finally {
+        Remove-SuiteFixture -Root $root
+    }
+}
+
+# The header states what the run actually did, so it must come from the host, not from an
+# argument. A run on this machine can only ever be this platform.
+Invoke-TestCase 'The run header names the platform the host is on' {
+    $root = New-SuiteFixture
+    try {
+        Add-FakeSuite -Root $root -Name '01-pass.Tests.ps1' -Ending 'pass'
+        Set-FixtureManifest -Root $root
+
+        $result = Invoke-Driver -SuiteRoot $root
+        $expected = if ($IsWindows) { 'windows' } else { 'linux' }
+        Assert-True ($result.Output -match "Platform: $expected") "The header must name $expected. Output: $($result.Output)"
+    } finally {
+        Remove-SuiteFixture -Root $root
+    }
+}
+
 # --- -Job and -Platform, backlog 127 ---
 
 # Three entries, one per job shape, and one of them Linux-only. Every case below reads this set,
@@ -834,6 +893,12 @@ Invoke-TestCase 'An unknown -Job value throws and names the known jobs' {
     try { Select-SuiteEntry -Entry (New-PlatformFixtureEntry) -Job 'nonsense' } catch { $threw = $true; $message = $_.Exception.Message }
     Assert-True $threw 'An unknown job must throw.'
     Assert-True ($message -match 'invariants') "The message must list the known jobs. Got: $message"
+}
+
+Invoke-TestCase 'A -Platform argument in the wrong case throws' {
+    $threw = $false
+    try { Select-SuiteEntry -Entry (New-PlatformFixtureEntry) -Platform 'LINUX' } catch { $threw = $true }
+    Assert-True $threw "-Platform 'LINUX' must throw; only the exact spelling is allowed."
 }
 
 Invoke-TestCase 'An unknown -Platform value throws and names the known platforms' {
