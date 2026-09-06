@@ -97,7 +97,8 @@ All 17 are listed. Each cause below is the message the probe's own log carries, 
 | `powershell.exe` is absent, so `Get-Command` returns nothing and reading `.Source` on it throws under `Set-StrictMode` | `PrePushHook` |
 | a Linux filesystem is case-sensitive, and an open file handle does not stop another writer | `Progress` |
 | the git hook file is not marked executable, so git skips it | `AgentPreCommitHook` |
-| the `gh` lookup against the throwaway fixture repository returns nothing, so the code falls back to local history | `WorktreeMergedCleanupSweep`, `WorktreeMergedCleanupEligibility`, `CoverageSliceSkip` |
+| the `gh` lookup reports `gh-failed`, and the suite expects a different outcome | `WorktreeMergedCleanupSweep`, `WorktreeMergedCleanupEligibility` |
+| the pull request's base is not found, so the code falls back to `origin/main` | `CoverageSliceSkip` |
 | the worktree removal and sweep paths leave the worktree in place | `WorktreeRemoveHook`, `WorktreeSweepRemoteBase` |
 | the expected value is a Windows path shape | `WatchTask` |
 | the renderer is invoked through a Windows-shaped executable path | `WorkflowPdfGenerator` |
@@ -110,10 +111,15 @@ failures are "Timings wanted: a different case must not change the answer", beca
 the failure must be reported as a warning, not swallowed", because holding a file open on Linux
 does not stop the write the suite expects to fail.
 
-The three `gh` rows say what the log shows and no more. Whether the cause is authentication, the
-fixture repository's shape, or something else was not investigated, because fixing these suites is
-outside this item. What matters here is only that no Linux run has passed them, so they carry
-`["windows"]`.
+Those last two rows are separate on purpose. The log names `gh-failed` for the two cleanup suites:
+`WorktreeMergedCleanupSweep` expected `gh-missing` and got `gh-failed`, and
+`WorktreeMergedCleanupEligibility` printed "GitHub lookup unavailable (gh-failed); deciding on
+local history only". `CoverageSliceSkip`'s log names no `gh` message at all — it reports only "The
+pull request base must win over origin/main. Got 'origin/main'." Whether `gh` is behind that too
+is a guess, so the table does not make it.
+
+Why `gh` failed at all was not investigated, because fixing these three suites is outside this
+item. What matters here is only that no Linux run has passed them, so they carry `["windows"]`.
 
 ### What the five invariant suites depend on
 
