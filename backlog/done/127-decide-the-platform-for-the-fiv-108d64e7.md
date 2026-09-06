@@ -87,15 +87,33 @@ runner.
 Each one fails on Linux because the suite itself reaches for something only Windows has. The cause
 is in the suite, not in the runner, and fixing any of them is outside this item.
 
+All 17 are listed. Each cause below is the message the probe's own log carries, not a guess.
+
 | Cause | Suites |
 |---|---|
 | `cmd` is not on the path | `AgentWorktreeGuard`, `WorktreePlansSymlink`, `RunFrontend` |
-| `Start-Process -WindowStyle` is not supported on this edition | `WorktreeLockHonored`, `WorktreeHolderProbe` |
+| `Start-Process -WindowStyle` is not supported on this edition of PowerShell | `WorktreeLockHonored`, `WorktreeHolderProbe` |
 | Windows Principal and `Win32_ProcessStartup` are Windows-only | `WorktreePlanGuard`, `WorktreeWatcherWindow` |
-| `powershell.exe` (Windows PowerShell 5.1) is absent | `Progress` |
-| the git hook is not marked executable, so git skips it | `AgentPreCommitHook` |
-| `gh` is absent or behaves differently | `WorktreeMergedCleanupSweep`, `WorktreeMergedCleanupEligibility`, `CoverageSliceSkip` |
-| Windows path shapes and the background watcher | `WatchTask`, `WorktreeRemoveHook`, `WorktreeSweepRemoteBase`, `WorkflowPdfGenerator` |
+| `powershell.exe` is absent, so `Get-Command` returns nothing and reading `.Source` on it throws under `Set-StrictMode` | `PrePushHook` |
+| a Linux filesystem is case-sensitive, and an open file handle does not stop another writer | `Progress` |
+| the git hook file is not marked executable, so git skips it | `AgentPreCommitHook` |
+| the `gh` lookup against the throwaway fixture repository returns nothing, so the code falls back to local history | `WorktreeMergedCleanupSweep`, `WorktreeMergedCleanupEligibility`, `CoverageSliceSkip` |
+| the worktree removal and sweep paths leave the worktree in place | `WorktreeRemoveHook`, `WorktreeSweepRemoteBase` |
+| the expected value is a Windows path shape | `WatchTask` |
+| the renderer is invoked through a Windows-shaped executable path | `WorkflowPdfGenerator` |
+
+Two notes on the `Progress` row, because an earlier draft of this table got it wrong. The suite
+also checks Windows PowerShell 5.1, and on Linux that check **skips** rather than fails — the log
+says "Windows PowerShell 5.1 check skipped: powershell.exe is not available." Its two real
+failures are "Timings wanted: a different case must not change the answer", because
+`.ToUpperInvariant()` names a different file on a case-sensitive filesystem, and "Locked timings:
+the failure must be reported as a warning, not swallowed", because holding a file open on Linux
+does not stop the write the suite expects to fail.
+
+The three `gh` rows say what the log shows and no more. Whether the cause is authentication, the
+fixture repository's shape, or something else was not investigated, because fixing these suites is
+outside this item. What matters here is only that no Linux run has passed them, so they carry
+`["windows"]`.
 
 ### What the five invariant suites depend on
 
