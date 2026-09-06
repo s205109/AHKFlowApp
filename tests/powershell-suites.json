@@ -20,7 +20,7 @@
     { "name": "PersonalDefaultsSyncMarker.Tests.ps1", "jobs": ["suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 0.5 },
     { "name": "PlanWorkflowParity.Tests.ps1", "jobs": ["suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 6.6 },
     { "name": "PreCommitAntiPatternHook.Tests.ps1", "jobs": ["suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 2.3 },
-    { "name": "PrePushHook.Tests.ps1", "jobs": ["suites"], "platform": ["windows"], "execution": "parallel", "baselineSeconds": 6.6 },
+    { "name": "PrePushHook.Tests.ps1", "jobs": ["suites"], "platform": ["windows"], "execution": "parallel", "baselineSeconds": 9.9 },
     { "name": "ProcessAnchors.Tests.ps1", "jobs": ["suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 5.5 },
     { "name": "ProcessFriction.Tests.ps1", "jobs": ["suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 1.2 },
     { "name": "ProcessParity.Tests.ps1", "jobs": ["suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 13.2 },

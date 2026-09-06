@@ -112,7 +112,8 @@ function Invoke-PrePushHook {
         [string] $HostExe,
         # Git feeds the hook one line per pushed ref on stdin:
         # '<local ref> <local sha> <remote ref> <remote sha>'. Pass those lines to prove the hook
-        # reads them. Left empty, stdin is not redirected at all, which is how a human runs it.
+        # reads them. Leave the argument out for a hand-run: stdin is then an empty file, which
+        # tells the hook the same thing a hand-run does - no ref lines came in.
         [string[]] $StdInLines
     )
 
@@ -140,11 +141,21 @@ function Invoke-PrePushHook {
                 PassThru = $true
                 Wait = $true
             }
+            # stdin is always redirected, for every case. Leaving it alone makes the hook process
+            # inherit whatever stdin this suite was started with. From a terminal that is a
+            # console, so [Console]::IsInputRedirected in the hook is false and the hook skips the
+            # read. Under scripts/run-powershell-suites.ps1 it is an open pipe that nothing ever
+            # writes to and nothing ever closes, so IsInputRedirected is true, the hook's
+            # [Console]::In.ReadToEnd() never returns, and the suite hangs forever.
+            #
+            # GetTempFileName creates an empty file. An empty stdin reaches end of file at once and
+            # carries no ref lines, so the hook leaves -PushedRefsRead off and falls back to HEAD -
+            # the same answer a hand-run gets, which is what the hand-run case asserts.
+            $stdinFile = [System.IO.Path]::GetTempFileName()
             if ($StdInLines) {
-                $stdinFile = [System.IO.Path]::GetTempFileName()
                 Set-Content -LiteralPath $stdinFile -Value $StdInLines -Encoding ascii
-                $startArgs['RedirectStandardInput'] = $stdinFile
             }
+            $startArgs['RedirectStandardInput'] = $stdinFile
             $proc = Start-Process @startArgs
         } finally {
             foreach ($key in $previousValues.Keys) {
@@ -239,8 +250,9 @@ function Invoke-AllScenarios {
     }
 
     # --- Test: a hand-run passes no ref switch, so HEAD still stands in ------------
-    # Nothing is redirected onto stdin when a person runs the hook themselves. That is the one
-    # case where HEAD is the right answer, and the switch must stay off to keep it.
+    # No ref lines arrive on stdin when a person runs the hook themselves. That is the one case
+    # where HEAD is the right answer, and the switch must stay off to keep it. The case sends an
+    # empty stdin rather than no stdin at all; see Invoke-PrePushHook for why.
     $repo = New-TempGitRepo
     try {
         $marker = Join-Path $repo 'quick-checks-args.txt'

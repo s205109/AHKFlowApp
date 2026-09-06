@@ -105,3 +105,34 @@ worktree shares the main checkout's `.git/config`. So a push from this branch ru
 fell back to `HEAD`. The stdin path is proven by `tests/PrePushHook.Tests.ps1` under both
 PowerShell hosts, not by that push. The hook change starts working for real once this merges into
 `main`.
+
+## After merging main
+
+`main` moved on while this branch was open, so `origin/main` was merged in. The one conflict was
+`tests/powershell-suites.json`: `main` added the `platform` field to every suite and two new
+suites, this branch raised the `ShippedPlanTicked.Tests.ps1` baseline. Both were kept.
+
+That merge exposed a hang in `tests/PrePushHook.Tests.ps1`. The suite passed when a person ran it
+in a terminal and hung forever under `scripts/run-powershell-suites.ps1`, which is how CI runs it.
+
+`Invoke-PrePushHook` redirected stdin only for the cases that pass ref lines. The other cases left
+stdin alone, so the hook process inherited whatever stdin the suite itself had. From a terminal
+that is a console, `[Console]::IsInputRedirected` is false, and the hook skips the read. Under the
+suite runner it is an open pipe that nothing writes to and nothing closes, so
+`[Console]::IsInputRedirected` is true and `[Console]::In.ReadToEnd()` never returns.
+
+The fix is in the suite, not the hook. `Invoke-PrePushHook` now always redirects stdin, and sends
+an empty file for the hand-run cases. An empty stdin reaches end of file at once and carries no
+ref lines, so the hook leaves `-PushedRefsRead` off and falls back to `HEAD` — the same answer the
+hand-run case already asserted. The hook's stdin contract is unchanged.
+
+Before the fix, the suite hung under the runner three separate times. After it:
+
+```
+[1/1 done] PrePushHook.Tests.ps1  9.9s  elapsed 10s
+| PrePushHook.Tests.ps1 | passed | 0 | 9.9s |
+All 1 suite(s) passed.
+```
+
+`tests/powershell-suites.json` now records 9.9 for that suite, measured on its own. The full
+`-Job suites` run after the merge passed all 54 suites.
