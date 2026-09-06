@@ -243,6 +243,10 @@ try {
     & git -C $repo commit -m 'ship 073' *> $null
     $base = Get-BaseSha -Root $repo
     Write-Item -Root $repo -Number '073' -Folder 'backlog/done' -Stage '9-ship' -Extra '- Typo repaired.'
+    # Committed, or the target commit would equal the base, the diff would be empty, and this case
+    # would pass without ever holding an edited shipped item.
+    & git -C $repo add -A *> $null
+    & git -C $repo commit -m 'fix a typo in 073' *> $null
     $shipped = @(Get-BranchShippedItem -RepoRoot $repo -MergeBase $base -TargetCommit (Get-BaseSha -Root $repo))
     Assert-Equal 0 $shipped.Count 'Editing an item the base already shipped returns nothing'
 
@@ -313,7 +317,10 @@ try {
     $repo = New-TempGitRepo
     $threw = $false
     try {
-        $null = Get-BranchShippedItem -RepoRoot $repo -MergeBase '0000000000000000000000000000000000000000'
+        # -TargetCommit is mandatory, and leaving it out made parameter binding throw before the
+        # merge base was ever read. The case then proved nothing about the merge base.
+        $null = Get-BranchShippedItem -RepoRoot $repo -MergeBase '0000000000000000000000000000000000000000' `
+            -TargetCommit (Get-BaseSha -Root $repo)
     } catch {
         $threw = $true
     }
@@ -469,7 +476,9 @@ try {
         'pre-push must judge each pushed commit, not the working tree'
     Assert-True ($prePushSource -match 'merge-base \$target origin/main') `
         'pre-push must resolve each pushed commit''s own merge base'
-    Assert-True ($prePushSource -match "if \(\`$PushedCommit\.Count -gt 0\) \{ \`$PushedCommit \} else \{ @\('HEAD'\) \}") `
+    Assert-True ($prePushSource -match "elseif \(\`$PushedRefsRead\) \{ @\(\) \}") `
+        'a push that names refs but sends no commit must judge nothing, not HEAD'
+    Assert-True ($prePushSource -match "else \{ @\('HEAD'\) \}") `
         'a run by hand, with nothing on stdin, must fall back to HEAD'
     Assert-True ($prePushSource -match '(?s)check-shipped-plan-ticked\.ps1.*?\$LASTEXITCODE -ne 0.*?throw ') `
         'pre-push must throw when the check exits non-zero'
@@ -479,8 +488,8 @@ try {
     $hookSource = Get-Content -Raw -LiteralPath (Join-Path $suiteRoot '.githooks/pre-push.ps1')
     Assert-True ($hookSource -match '\[Console\]::IsInputRedirected') `
         'the hook must guard the stdin read, or a run by hand blocks forever'
-    Assert-True ($hookSource -match '-PushedCommit \$pushedCommit') `
-        'the hook must hand the pushed commits to the quick-checks script'
+    Assert-True ($hookSource -match '-PushedCommit \$pushedCommit -PushedRefsRead') `
+        'the hook must hand over the pushed commits and say that git named the refs'
 
     if ($failures.Count -gt 0) {
         foreach ($failure in $failures) { Write-Host "FAIL: $failure" }

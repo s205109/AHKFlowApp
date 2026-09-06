@@ -19,7 +19,9 @@
 
     An item is shipped by this branch when both halves hold:
 
-      - The working tree gives it exactly one '- **Stage**:' line, and that line reads '9-ship'.
+      - The commit being judged gives it exactly one '- **Stage**:' line, and that line reads
+        '9-ship'. That commit is TargetCommit, and never the working tree: a push carries commits,
+        so an uncommitted edit must not decide whether a committed record is judged.
       - The merge base does not already have it shipped. The base has it shipped when the base
         carries the item, its Stage line there also reads '9-ship', and its path there is already
         under backlog/done/. Any one of those three being false makes this branch the shipper.

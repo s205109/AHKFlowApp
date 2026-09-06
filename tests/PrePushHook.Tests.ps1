@@ -227,6 +227,32 @@ function Invoke-AllScenarios {
         $recordedArgs = (Get-Content -Raw -LiteralPath $marker -ErrorAction SilentlyContinue)
         Assert-True (-not ($recordedArgs -match '0000000000000000000000000000000000000000')) `
             "[$HostLabel] An all-zero SHA must not be passed on. Got: '$recordedArgs'"
+
+        # An empty commit list from git is not the same thing as no list at all. Without this
+        # switch the check script cannot tell them apart, falls back to HEAD, and refuses
+        # 'git push origin :old-branch' over the state of whatever branch happens to be checked
+        # out. A deletion carries nothing to judge, so the answer is to judge nothing.
+        Assert-True ($recordedArgs -match '-PushedRefsRead') `
+            "[$HostLabel] A deletion-only push must still say that git supplied the refs. Got: '$recordedArgs'"
+    } finally {
+        Remove-TempTree $repo
+    }
+
+    # --- Test: a hand-run passes no ref switch, so HEAD still stands in ------------
+    # Nothing is redirected onto stdin when a person runs the hook themselves. That is the one
+    # case where HEAD is the right answer, and the switch must stay off to keep it.
+    $repo = New-TempGitRepo
+    try {
+        $marker = Join-Path $repo 'quick-checks-args.txt'
+        Write-StubArgRecordingScript -RepoDir $repo -MarkerPath $marker
+        Write-StubRunCoverageScript -RepoDir $repo -MarkerPath (Join-Path $repo 'run-coverage-invoked.txt')
+
+        $result = Invoke-PrePushHook -RepoDir $repo -HostExe $HostExe
+        Assert-Equal 0 $result.ExitCode "[$HostLabel] A hand-run must not fail the hook. Stderr: $($result.Stderr)"
+
+        $recordedArgs = (Get-Content -Raw -LiteralPath $marker -ErrorAction SilentlyContinue)
+        Assert-True (-not ($recordedArgs -match '-PushedRefsRead')) `
+            "[$HostLabel] A hand-run must not claim git supplied the refs. Got: '$recordedArgs'"
     } finally {
         Remove-TempTree $repo
     }

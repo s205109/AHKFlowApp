@@ -17,7 +17,13 @@ param(
     # Only the record checks read this. The build and the test slice deliberately verify the
     # working tree, because that is the code the developer is about to be judged on by CI. A record
     # is different: it goes to the remote exactly as committed, so it is checked as committed.
-    [string[]]$PushedCommit = @()
+    [string[]]$PushedCommit = @(),
+
+    # Set by the pre-push hook to say that git supplied the ref lines, so $PushedCommit is the
+    # whole truth about this push even when it is empty. An empty list with this switch means a
+    # deletion-only push: nothing is being sent, so nothing is judged. An empty list without it
+    # means a run by hand, and HEAD stands in.
+    [switch]$PushedRefsRead
 )
 
 $ErrorActionPreference = 'Stop'
@@ -176,15 +182,21 @@ try {
     #
     # Each pushed commit is judged on its own terms, against its own merge base. A push carries
     # commits, not the working tree, so an uncommitted edit must not decide whether a committed
-    # record is checked. With nothing on stdin - a run by hand - HEAD stands in.
+    # record is checked. With nothing on stdin - a run by hand - HEAD stands in, and a push that
+    # only deletes refs sends no commit, so it is judged on nothing at all.
     # tests/ShippedPlanTicked.Tests.ps1 covers the rule against fixtures, and
     # tests/PrePushHook.Tests.ps1 covers the stdin parsing that supplies these commits.
     Write-Step 'Checking that a shipped item''s plan has a ticked step'
+    $targets = if ($PushedCommit.Count -gt 0) { $PushedCommit }
+               elseif ($PushedRefsRead) { @() }
+               else { @('HEAD') }
     if ($scanPlan.Action -ne 'Run') {
         Write-Host $scanPlan.Reason
     }
+    elseif ($targets.Count -eq 0) {
+        Write-Host 'This push sends no commit, so it ships no backlog item.'
+    }
     else {
-        $targets = if ($PushedCommit.Count -gt 0) { $PushedCommit } else { @('HEAD') }
         foreach ($target in $targets) {
             # Resolved per commit, not reused from the citation step. A branch pushed while a
             # different one is checked out has its own base, and the shared $mergeBase is HEAD's.
