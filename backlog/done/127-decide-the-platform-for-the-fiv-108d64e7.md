@@ -68,9 +68,11 @@ Two local runs, **2026-09-05**, on the same working tree. The Linux one ran in D
 | `./scripts/run-powershell-suites.ps1 -Suite 'ProcessWorkflow.Tests.ps1'` | Linux (container) | passed; the runner started and printed its header |
 | `./tests/SuiteRunnerLinux.Tests.ps1` | Linux (container) | 7 of 7 cases passed |
 | `./tests/SuiteRunnerLinux.Tests.ps1` | Windows 11, pwsh 7.6.5 | 7 of 7 cases passed |
+| `./tests/MeasureTestModes.Tests.ps1` | Linux (container), 2026-09-06 | 3 of 3 cases passed |
 
-Those two runs are the evidence for `SuiteRunnerLinux.Tests.ps1`, which is new in this item and so
-has no earlier CI run of its own.
+The first three are the evidence for `SuiteRunnerLinux.Tests.ps1`, which is new in this item and
+so has no earlier CI run of its own. The fourth is the evidence for `MeasureTestModes.Tests.ps1` —
+see the section below for why it needed its own run.
 
 ### The runner starts on Linux
 
@@ -82,15 +84,16 @@ now proves the same thing on every pull request.
 **No path was rewritten.** Not one of the 17 failures below is a path or host defect in the
 runner.
 
-### One suite carries `["windows"]` for a different reason
+### One suite was measured after the probe
 
-`MeasureTestModes.Tests.ps1` arrived on `main` from backlog 128 while this item was in review, and
+`MeasureTestModes.Tests.ps1` arrived on `main` from backlog 128 while this item was in review, so
 the probe above ran before it existed. Its Windows evidence is the `powershell-suites` job, which
-has passed it on every pull request since it landed. It has **no Linux run at all**, so it gets
-`["windows"]` — under this item's own rule, an unmeasured platform is not a platform.
+has passed it on every pull request since it landed. Its Linux evidence is the container run in
+the table above, on **2026-09-06**: 3 of 3 cases passed. So it carries `["windows","linux"]`.
 
-That is a gap in coverage, not a defect. Whoever wants it on Linux should run it there and add the
-value, exactly as this item did for the others.
+It was worth running rather than assuming either way. The suite builds a stub `dotnet` and puts it
+on `PATH`, which looked like it would need Windows command discovery to resolve a `.ps1` by a bare
+name. It does not.
 
 ### Why 17 suites carry `["windows"]` after failing on Linux
 
