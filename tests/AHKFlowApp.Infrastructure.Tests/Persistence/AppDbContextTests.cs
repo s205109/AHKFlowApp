@@ -10,16 +10,14 @@ namespace AHKFlowApp.Infrastructure.Tests.Persistence;
 public sealed class AppDbContextTests(SharedSqlServerFixture sqlFixture)
     : IClassFixture<SharedSqlServerFixture>
 {
-    private AppDbContext CreateContext(string? databaseName = null)
+    // databaseName is required, and every caller passes a name unique to its own test. Two
+    // reasons. EnsureCreated and Migrate fight each other when they hit the same database, and
+    // classes holding SharedSqlServerFixture run at the same time. A default would let a new
+    // call share the assembly database with every other class silently.
+    private AppDbContext CreateContext(string databaseName)
     {
-        // Use a unique database name to isolate from MigrationTests
-        // (EnsureCreated and Migrate conflict if they hit the same DB)
-        string connectionString = sqlFixture.ConnectionString;
-        if (databaseName is not null)
-        {
-            var csb = new SqlConnectionStringBuilder(connectionString) { InitialCatalog = databaseName };
-            connectionString = csb.ConnectionString;
-        }
+        var csb = new SqlConnectionStringBuilder(sqlFixture.ConnectionString) { InitialCatalog = databaseName };
+        string connectionString = csb.ConnectionString;
 
         DbContextOptions<AppDbContext> options = new DbContextOptionsBuilder<AppDbContext>()
             .UseSqlServer(connectionString,
