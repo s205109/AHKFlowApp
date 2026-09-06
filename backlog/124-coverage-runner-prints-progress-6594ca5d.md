@@ -6,7 +6,7 @@
 - **Type**: Feature
 - **Interfaces**: CLI
 - **Difficulty**: moderate
-- **Stage**: 0-intake
+- **Stage**: 3-plan
 
 ## Summary
 
@@ -49,6 +49,6 @@ shared module could prove itself against two shapes before it took on a third.
 
 ## Notes / dependencies
 
-- Blocked until item 123 ships, because the module it uses does not exist yet.
+- Item 123 has shipped, so the module this item uses exists. The block is lifted.
 - Spec: none — this item reuses the design written for item 123.
-- Plan: none — filed at intake. A plan is written when somebody picks the item up.
+- Plan: docs/superpowers/plans/2026-09-06-coverage-runner-progress-plan-124.md
