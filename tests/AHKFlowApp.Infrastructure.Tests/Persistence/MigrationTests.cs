@@ -10,17 +10,16 @@ using Xunit;
 
 namespace AHKFlowApp.Infrastructure.Tests.Persistence;
 
-[Collection("SqlServer")]
-public sealed class MigrationTests(SqlContainerFixture sqlFixture)
+public sealed class MigrationTests(SharedSqlServerFixture sqlFixture)
+    : IClassFixture<SharedSqlServerFixture>
 {
-    private AppDbContext CreateContext(string? databaseName = null)
+    // databaseName is required, and every caller passes a name unique to its own test. Migrating
+    // is destructive, and classes holding SharedSqlServerFixture run at the same time. A default
+    // would let a new call migrate the assembly database that every other class reads.
+    private AppDbContext CreateContext(string databaseName)
     {
-        string connectionString = sqlFixture.ConnectionString;
-        if (databaseName is not null)
-        {
-            var csb = new SqlConnectionStringBuilder(connectionString) { InitialCatalog = databaseName };
-            connectionString = csb.ConnectionString;
-        }
+        var csb = new SqlConnectionStringBuilder(sqlFixture.ConnectionString) { InitialCatalog = databaseName };
+        string connectionString = csb.ConnectionString;
 
         DbContextOptions<AppDbContext> options = new DbContextOptionsBuilder<AppDbContext>()
             .UseSqlServer(connectionString,

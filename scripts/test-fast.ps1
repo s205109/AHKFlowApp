@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
   Run explicit local test slices for fast, integration, E2E, or coverage workflows.
@@ -49,6 +49,7 @@ $sharedSqlScript = Join-Path $PSScriptRoot 'test-sql-container.common.ps1'
 . "$PSScriptRoot\test-run-lock.common.ps1"
 . "$PSScriptRoot\code-change-filter.common.ps1"
 . "$PSScriptRoot\progress.common.ps1"
+. "$PSScriptRoot\test-results.common.ps1"
 
 function Get-ProgressUnitLabel {
     param([Parameter(Mandatory = $true)][object]$TestRun)
@@ -77,11 +78,19 @@ function New-TestRun {
 
 function Get-TestRuns {
     switch ($Mode) {
+        # Get-FastAssembly reads this list and turns each project into its built assembly, so
+        # this stays the only place the Fast project list is written down.
+        #
+        # Every entry states its filter, including the three that never needed one. The combined
+        # call applies a single filter to all five assemblies, and 'Category!=Integration' keeps
+        # a test carrying no Category trait, so those three lose nothing: the combined run still
+        # found all 2939 tests. Writing it out is what lets Get-FastAssembly refuse a project
+        # that disagrees, instead of quietly extending one project's filter over another's tests.
         'Fast' {
             return @(
-                New-TestRun -Project 'tests\AHKFlowApp.Domain.Tests\AHKFlowApp.Domain.Tests.csproj'
-                New-TestRun -Project 'tests\AHKFlowApp.TestUtilities.Tests\AHKFlowApp.TestUtilities.Tests.csproj'
-                New-TestRun -Project 'tests\AHKFlowApp.UI.Blazor.Tests\AHKFlowApp.UI.Blazor.Tests.csproj'
+                New-TestRun -Project 'tests\AHKFlowApp.Domain.Tests\AHKFlowApp.Domain.Tests.csproj' -Filter 'Category!=Integration'
+                New-TestRun -Project 'tests\AHKFlowApp.TestUtilities.Tests\AHKFlowApp.TestUtilities.Tests.csproj' -Filter 'Category!=Integration'
+                New-TestRun -Project 'tests\AHKFlowApp.UI.Blazor.Tests\AHKFlowApp.UI.Blazor.Tests.csproj' -Filter 'Category!=Integration'
                 New-TestRun -Project 'tests\AHKFlowApp.Application.Tests\AHKFlowApp.Application.Tests.csproj' -Filter 'Category!=Integration'
                 New-TestRun -Project 'tests\AHKFlowApp.CLI.Tests\AHKFlowApp.CLI.Tests.csproj' -Filter 'Category!=Integration'
             )
@@ -105,19 +114,154 @@ function Get-TestRuns {
     }
 }
 
-function Read-TestCount {
+function Get-FastAssembly {
+    <#
+      The Fast assemblies and the one filter the combined call applies to all of them.
+
+      The project list is not repeated here. It comes from Get-TestRuns, which stays the single
+      place that records which projects Fast covers and what filter each one takes. This function
+      only turns each .csproj path into the .dll the build produced from it.
+
+      All five Fast entries now carry 'Category!=Integration' explicitly, and Step 2b is what puts
+      it on the three that had no filter before. Applying it to them is safe, and that was checked
+      rather than assumed: the filter keeps a test carrying no Category trait at all, and a
+      combined run over these five returned 2939 tests, the same total the five separate calls
+      found.
+
+      Writing it out on all five is what makes the throw below a real guard. An earlier draft
+      dropped the empty filters before checking, so a project with no filter silently inherited
+      another project's filter and only a second *non-empty* filter was caught. Now every entry
+      must say what it means, and any disagreement stops the run.
+
+      'net10.0' is written out rather than read from Directory.Build.props. A framework bump is a
+      once-a-year edit that already touches that file and global.json, and a grep for 'net10.0'
+      finds this line. Reading the XML here would mean parsing it under PowerShell 5.1, which this
+      script still supports. The failure is loud either way: the caller names the missing path.
+    #>
+    $testRuns = @(Get-TestRuns)
+
+    $missing = @($testRuns | Where-Object { [string]::IsNullOrWhiteSpace($_.Filter) })
+    if ($missing.Count -gt 0) {
+        $names = @($missing | ForEach-Object { [System.IO.Path]::GetFileNameWithoutExtension($_.Project) })
+        throw "Every Fast project must state its filter, these do not: $($names -join ', ')"
+    }
+
+    $filters = @($testRuns | ForEach-Object { $_.Filter } | Sort-Object -Unique)
+    if ($filters.Count -ne 1) {
+        throw "The combined Fast call needs exactly one filter, found $($filters.Count): $($filters -join ', ')"
+    }
+
+    $assembly = @($testRuns | ForEach-Object {
+        $name = [System.IO.Path]::GetFileNameWithoutExtension($_.Project)
+        Join-Path (Split-Path -Parent $_.Project) "bin\$Configuration\net10.0\$name.dll"
+    })
+
+    return [pscustomobject]@{
+        Assembly = $assembly
+        Filter = $filters[0]
+    }
+}
+
+function Get-TestCountByAssembly {
+    <#
+      Splits one combined TRX into per-assembly result counts.
+
+      A combined run writes one TRX for every assembly it ran. The assembly name is not on the
+      result: it is on the TestMethod element inside TestDefinitions, as the 'codeBase'
+      attribute. Counting TestDefinitions is not the same as counting results, because theory
+      rows with the same display name collapse into one definition. So this joins each
+      UnitTestResult to its definition through the test id, and counts results.
+    #>
     param(
         [Parameter(Mandatory = $true)]
         [string]$TrxPath
     )
 
     [xml]$trx = Get-Content -LiteralPath $TrxPath -Raw
-    $counters = $trx.GetElementsByTagName('Counters') | Select-Object -First 1
-    if (-not $counters) {
-        return 0
+
+    $assemblyByTestId = @{}
+    foreach ($unitTest in $trx.GetElementsByTagName('UnitTest')) {
+        $testMethod = $unitTest.GetElementsByTagName('TestMethod') | Select-Object -First 1
+        if (-not $testMethod) { continue }
+        $codeBase = $testMethod.codeBase
+        if ([string]::IsNullOrWhiteSpace($codeBase)) { continue }
+        $assemblyByTestId[$unitTest.id] = [System.IO.Path]::GetFileNameWithoutExtension($codeBase)
     }
 
-    return [int]$counters.total
+    $counts = @{}
+    foreach ($result in $trx.GetElementsByTagName('UnitTestResult')) {
+        $name = $assemblyByTestId[$result.testId]
+        if ([string]::IsNullOrWhiteSpace($name)) { continue }
+        if (-not $counts.ContainsKey($name)) { $counts[$name] = 0 }
+        $counts[$name]++
+    }
+
+    return $counts
+}
+
+function Invoke-CombinedTestRun {
+    <#
+      Runs several built test assemblies in one 'dotnet test' call.
+
+      One call instead of five removes four MSBuild evaluations of the whole project graph. The
+      caller must have built already: passing assembly paths means dotnet builds nothing.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [string[]]$Assembly,
+
+        [string]$Filter,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Label
+    )
+
+    foreach ($path in $Assembly) {
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+            throw "Test assembly not found: $path. Build the solution first, or drop -NoBuild."
+        }
+    }
+
+    $combinedResultsDirectory = Join-Path $resultsRoot 'combined'
+    New-Item -ItemType Directory -Path $combinedResultsDirectory -Force | Out-Null
+
+    $arguments = @('test') + $Assembly + @(
+        '--logger',
+        'trx;LogFileName=combined.trx',
+        '--results-directory',
+        $combinedResultsDirectory
+    )
+
+    if (-not [string]::IsNullOrWhiteSpace($Filter)) {
+        $arguments += @('--filter', $Filter)
+    }
+
+    $filterText = if ([string]::IsNullOrWhiteSpace($Filter)) { 'all tests' } else { $Filter }
+    Write-Step "Running $($Assembly.Count) assemblies in one call ($filterText)"
+    & dotnet @arguments 2>&1 | ForEach-Object { Write-Host $_ }
+    $exitCode = $LASTEXITCODE
+    if ($exitCode -ne 0) {
+        throw "dotnet test failed for $Label."
+    }
+
+    $trxPath = Join-Path $combinedResultsDirectory 'combined.trx'
+    if (-not (Test-Path -LiteralPath $trxPath -PathType Leaf)) {
+        throw "No TRX file was produced for $Label."
+    }
+
+    # The zero-test guard, kept. One assembly discovering nothing is what catches a filter typo,
+    # and a combined run would otherwise hide it behind the other four.
+    $counts = Get-TestCountByAssembly -TrxPath $trxPath
+    $summaries = @()
+    foreach ($path in $Assembly) {
+        $name = [System.IO.Path]::GetFileNameWithoutExtension($path)
+        $count = 0
+        if ($counts.ContainsKey($name)) { $count = $counts[$name] }
+
+        $summaries += New-AhkFlowTestSummary -Project $name -Filter $filterText -Tests $count -TrxPath $trxPath
+    }
+
+    return $summaries
 }
 
 function Invoke-TestRun {
@@ -161,25 +305,16 @@ function Invoke-TestRun {
         throw "dotnet test failed for $projectName."
     }
 
-    $trxFile = Get-ChildItem -LiteralPath $projectResultsDirectory -Recurse -Filter '*.trx' |
-        Sort-Object LastWriteTimeUtc -Descending |
-        Select-Object -First 1
-
-    if (-not $trxFile) {
+    $trxPath = Get-AhkFlowLatestTrxPath -ResultsDirectory $projectResultsDirectory
+    if (-not $trxPath) {
         throw "No TRX file was produced for $projectName."
     }
 
-    $testCount = Read-TestCount -TrxPath $trxFile.FullName
-    if ($testCount -lt 1) {
-        throw "$projectName discovered zero tests for filter '$filterText'."
-    }
-
-    [pscustomobject]@{
-        Project = $projectName
-        Filter = $filterText
-        Tests = $testCount
-        TrxPath = $trxFile.FullName
-    }
+    New-AhkFlowTestSummary `
+        -Project $projectName `
+        -Filter $filterText `
+        -Tests (Get-AhkFlowTestCount -TrxPath $trxPath) `
+        -TrxPath $trxPath
 }
 
 $sharedSqlContainer = $null
@@ -266,19 +401,49 @@ try {
 
     New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
 
-    $testRuns = @(Get-TestRuns)
-    $progress = New-ProgressTracker -RunnerKey "test-fast.$Mode" -RepoRoot $repoRoot -Unit @(
-        $testRuns | ForEach-Object { Get-ProgressUnitLabel -TestRun $_ }
-    )
+    if ($Mode -eq 'Fast') {
+        # Assembly paths mean dotnet builds nothing, so this script has to build. -NoBuild keeps
+        # its meaning: the caller already built, as the pre-push hook does.
+        #
+        # The whole solution, not the five test projects. Measured on an up-to-date tree: the
+        # solution's sixteen projects take 6.9 s and the biggest single test project takes 4.7 s,
+        # so the eleven extra projects cost about 2.2 s. Building the five separately would be
+        # five MSBuild evaluations, roughly 22 s, which is the cost this change exists to remove.
+        if (-not $NoBuild) {
+            Write-Step "Building solution ($Configuration)"
+            & dotnet build AHKFlowApp.slnx --configuration $Configuration 2>&1 |
+                ForEach-Object { Write-Host $_ }
+            if ($LASTEXITCODE -ne 0) {
+                throw 'Build failed.'
+            }
+        }
 
-    $summaries = @()
-    foreach ($testRun in $testRuns) {
-        Start-ProgressUnit -Tracker $progress -Name (Get-ProgressUnitLabel -TestRun $testRun)
-        $summaries += Invoke-TestRun -TestRun $testRun
+        $fast = Get-FastAssembly
+        $label = "Fast[$($fast.Filter)]"
+        $progress = New-ProgressTracker -RunnerKey "test-fast.$Mode" -RepoRoot $repoRoot -Unit @($label)
+        Start-ProgressUnit -Tracker $progress -Name $label
+        $summaries = @(Invoke-CombinedTestRun `
+            -Assembly $fast.Assembly `
+            -Filter $fast.Filter `
+            -Label $label)
         Stop-ProgressUnit -Tracker $progress
+        Save-ProgressTimings -Tracker $progress
     }
+    else {
+        $testRuns = @(Get-TestRuns)
+        $progress = New-ProgressTracker -RunnerKey "test-fast.$Mode" -RepoRoot $repoRoot -Unit @(
+            $testRuns | ForEach-Object { Get-ProgressUnitLabel -TestRun $_ }
+        )
 
-    Save-ProgressTimings -Tracker $progress
+        $summaries = @()
+        foreach ($testRun in $testRuns) {
+            Start-ProgressUnit -Tracker $progress -Name (Get-ProgressUnitLabel -TestRun $testRun)
+            $summaries += Invoke-TestRun -TestRun $testRun
+            Stop-ProgressUnit -Tracker $progress
+        }
+
+        Save-ProgressTimings -Tracker $progress
+    }
 
     Write-Success "$Mode test slice completed."
     $summaries | Format-Table -AutoSize

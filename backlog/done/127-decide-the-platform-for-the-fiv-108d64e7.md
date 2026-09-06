@@ -55,7 +55,7 @@ CI run **33991643161**, commit **a5f0b1ea**, branch `fix/wt-decide-the-platform-
 
 | Job | Runner OS | Result | What it proves |
 |---|---|---|---|
-| `powershell-suites` | `windows-latest` | success | the `windows` value on all 52 `suites` entries |
+| `powershell-suites` | `windows-latest` | success | the `windows` value on every entry in the `suites` job |
 | `repo-invariants` | `ubuntu-latest` | success | the `linux` value on the five invariant suites |
 | `linux-suite-probe` (temporary, job 101374984038) | `ubuntu-latest` | 35 of 52 passed | the `linux` value on the 35 that passed |
 | `codex-skills-hash-parity` | `ubuntu-latest` | success | the `linux` value on `CodexSkillsHashParity.Tests.ps1` |
@@ -82,7 +82,17 @@ now proves the same thing on every pull request.
 **No path was rewritten.** Not one of the 17 failures below is a path or host defect in the
 runner.
 
-### Why 17 suites carry `["windows"]`
+### One suite carries `["windows"]` for a different reason
+
+`MeasureTestModes.Tests.ps1` arrived on `main` from backlog 128 while this item was in review, and
+the probe above ran before it existed. Its Windows evidence is the `powershell-suites` job, which
+has passed it on every pull request since it landed. It has **no Linux run at all**, so it gets
+`["windows"]` — under this item's own rule, an unmeasured platform is not a platform.
+
+That is a gap in coverage, not a defect. Whoever wants it on Linux should run it there and add the
+value, exactly as this item did for the others.
+
+### Why 17 suites carry `["windows"]` after failing on Linux
 
 Each one fails on Linux because the suite itself reaches for something only Windows has. The cause
 is in the suite, not in the runner, and fixing any of them is outside this item.
