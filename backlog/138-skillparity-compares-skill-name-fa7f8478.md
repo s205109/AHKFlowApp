@@ -6,7 +6,7 @@
 - **Type**: Chore
 - **Interfaces**: none (test suite)
 - **Difficulty**: moderate
-- **Stage**: 0-intake
+- **Stage**: 3-plan
 
 ## Summary
 
@@ -43,7 +43,7 @@ passed as a match.
   dependencies, and recorded it as a follow-up rather than fixing it there.
 - Plan: none — the change is small, but it alters what a repository invariant accepts, so it is
   not `trivial`.
-- Four comparisons are affected. Two compare skill names
+- Four `-notcontains` comparisons report the differences. Two compare skill names
   (`tests/SkillParity.Tests.ps1:30`, "foreach ($name in ($canonicalNames | Where-Object { $pluginNames -notcontains $_ })) {")
   and (`tests/SkillParity.Tests.ps1:33`, "foreach ($name in ($pluginNames | Where-Object { $canonicalNames -notcontains $_ })) {").
   Two compare file paths inside a skill
@@ -51,14 +51,39 @@ passed as a match.
   and (`tests/SkillParity.Tests.ps1:58`, "    foreach ($rel in ($pluginFiles | Where-Object { $canonicalFiles -notcontains $_ })) {").
 - `-cnotcontains` is the case-sensitive operator. Backlog 127 used it for the manifest's
   `platform` values, so there is a recent example in the repository to follow.
-- **This is a latent hole, not a live defect.** For it to bite, two paths differing only in case
-  must exist. Git on Windows cannot check out both, so they could only be created from a Linux
-  checkout, and this repository is developed on Windows. Backlog 127's Linux probe ran this suite
-  and did not trip it.
-- That narrowness is why the item is worth doing but not urgent. Decide at Pickup whether the
-  honest fix is the case-sensitive operator on those four lines, or a check that refuses two paths
-  differing only in case anywhere under the skill roots. The second catches the cause rather than
-  one symptom, and it fails on Windows too, where the operator alone would never notice.
+- **Pickup finding, measured 2026-09-06. A case-only difference can exist here, and it does not
+  need a Linux checkout.** The intake note said it did. That was wrong. The two names this suite
+  compares live in different roots, `.agents/<skill>` and `plugins/ahkflowapp/skills/<skill>`, so
+  the pair never collides on one filesystem and Windows checks out both. A probe committed
+  `.agents/Foo/SKILL.md` beside `plugins/skills/foo/SKILL.md` in a fresh Windows repository, and
+  `git status` stayed clean afterwards.
+- **How the repository would reach that state.** A case-only rename of a skill. Plain
+  `git mv .agents/foo .agents/Foo` fails on Windows with "Invalid argument", but the two-step
+  rename through a temporary name works and git records it. Re-running
+  `scripts/agents/setup-cross-agent-skills.ps1` then rewrites the mirror directory's case on disk,
+  and `core.ignorecase = true` keeps git from noticing, so the mirror stays committed under the
+  old case.
+- **What each platform does with one.** Windows reports nothing. `Get-SkillNames` returns `Foo`
+  from one root and `foo` from the other, every comparison calls them equal, the byte loop opens
+  the mirror as `Foo`, NTFS resolves that to `foo`, and the bytes match. Linux does not pass
+  either. It throws `ItemNotFoundException: Cannot find path .../plugin/Foo because it does not
+  exist` inside `Get-SkillFiles`, and `$ErrorActionPreference = 'Stop'` turns that into a suite
+  crash that never mentions parity. So the suite is silent on Windows and unreadable on Linux.
+- **Pickup verdict: the case-sensitive operator, and it covers six comparisons, not four.** The
+  two `-contains` comparisons that choose which skills and files reach the byte loop must change
+  as well
+  (`tests/SkillParity.Tests.ps1:48`, "foreach ($skillName in ($canonicalNames | Where-Object { $pluginNames -contains $_ })) {")
+  and (`tests/SkillParity.Tests.ps1:62`, "    foreach ($rel in ($canonicalFiles | Where-Object { $pluginFiles -contains $_ })) {").
+  Left case-insensitive they still send the mismatched pair into the byte loop, which is exactly
+  the Linux crash above. With all six changed, the fixture reports two plain failures on both
+  platforms and reads the same on each.
+- **The other option was considered and rejected.** A check that refuses two paths differing only
+  in case anywhere under one skill root cannot see the case this item is about, because that case
+  spans two roots. It would only catch `.agents/Foo` beside `.agents/foo`, and a Windows checkout
+  holds one of that pair at most, so the check could never fire on the platform this repository is
+  developed on. The operator compares strings already in memory, so it behaves the same on both.
+- The case-sensitive comparison passes against the real skill tree today: 26 canonical skills, 26
+  mirrored, zero differences. So the change reports nothing new on a clean tree.
 - The suite runs in both CI jobs, on both platforms
   (`tests/powershell-suites.json:34`, "SkillParity.Tests.ps1"), so a change here must pass on
   Windows and on Linux. `docs/development/testing-workflow.md` explains that record.
