@@ -122,6 +122,7 @@ Frameworks: xUnit, FluentAssertions (over raw `Assert`), NSubstitute, Testcontai
 - `FakeTimeProvider` (from `Microsoft.Extensions.TimeProvider.Testing`) for time-dependent tests
 - Derive expected seed keys and row counts from the seed source — never hard-code them, or a catalog change breaks unrelated suites
 - Rebuild in Release **and restart the API/UI** before any live smoke test; a stale Debug build has served old seed data and produced a false failure
+- Every PowerShell suite in `tests/powershell-suites.json` carries a `platform` array, and the runner drops a suite the platform does not list. Which platform each suite runs on, and why, is in [`docs/development/testing-workflow.md`](docs/development/testing-workflow.md#which-platform-a-suite-runs-on)
 
 ## The development process
 

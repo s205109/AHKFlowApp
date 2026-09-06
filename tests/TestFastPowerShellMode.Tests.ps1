@@ -68,7 +68,8 @@ function Set-FixtureManifest {
     param([string] $Root)
 
     $entries = @(Get-ChildItem -LiteralPath $Root -Filter '*.Tests.ps1' -File | Sort-Object Name | ForEach-Object {
-            [ordered]@{ name = $_.Name; jobs = @('suites'); execution = 'parallel'; baselineSeconds = $null }
+            # Both platforms, so these fixtures run wherever this suite runs. Backlog 127.
+            [ordered]@{ name = $_.Name; jobs = @('suites'); platform = @('windows', 'linux'); execution = 'parallel'; baselineSeconds = $null }
         })
     $payload = [ordered]@{ suites = @($entries) }
     Set-Content -LiteralPath (Join-Path $Root 'powershell-suites.json') -Value ($payload | ConvertTo-Json -Depth 6) -Encoding utf8
