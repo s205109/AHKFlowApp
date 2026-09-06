@@ -47,4 +47,12 @@ done, so that a repeat run starts testing sooner.
   parallel-stacks item on purpose: bundled, the contained change would wait behind the risky one.
 - Spec: none — the design is in
   `docs/superpowers/specs/2026-09-03-net-test-speed-and-reliability-design-128.md`, under D7.
-- Plan: none — not yet at Plan.
+- Plan: docs/superpowers/plans/2026-09-06-e2e-incremental-publish-plan-131.md
+- The premise above is wrong, and the plan carries the measurement. `RemoveDir` deletes
+  `bin/<config>/<tfm>/publish`, while the IL linker writes into `obj/`, so the delete does not
+  make the linker run again. Measured warm on 2026-09-06, Release, on `main` at `abac2f91`:
+  delete then publish has a median of 12.37 s over four runs, publish with the folder left in
+  place has a median of 11.12 s, and a first publish after the tree changed costs 95.39 s. So the
+  delete costs about 1.3 s, and the whole publish step costs about 11 s. The ceiling for this
+  item is therefore about 11 s out of 321.65 s, which is 3.5 percent, not the 85 s the notes
+  above imply.
