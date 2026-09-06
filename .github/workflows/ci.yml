@@ -144,9 +144,11 @@ jobs:
     needs: repo-invariants
     steps:
       - uses: actions/checkout@v4
-      - name: Run Codex skills hash parity test
+      # tests/powershell-suites.json is the one record of which job runs which suite. Naming the
+      # suite here instead would let it be listed in one place and run from another. Backlog 136.
+      - name: Run Codex parity suites
         shell: pwsh
-        run: ./tests/CodexSkillsHashParity.Tests.ps1
+        run: ./scripts/run-powershell-suites.ps1 -Job codex-parity
 
   bicep-lint:
     runs-on: ubuntu-latest

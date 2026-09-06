@@ -60,7 +60,7 @@ passed as a match.
   differing only in case anywhere under the skill roots. The second catches the cause rather than
   one symptom, and it fails on Windows too, where the operator alone would never notice.
 - The suite runs in both CI jobs, on both platforms
-  (`tests/powershell-suites.json:34`, "SkillParity.Tests.ps1"), so a change here must pass on
+  (`tests/powershell-suites.json:35`, "SkillParity.Tests.ps1"), so a change here must pass on
   Windows and on Linux. `docs/development/testing-workflow.md` explains that record.
 - Separator handling is already settled and only letter case is open: the path-splitting helper
   trims either separator
