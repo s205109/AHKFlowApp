@@ -59,19 +59,51 @@ function Read-RunnerInvocation {
     # somewhere in the code" is two claims that never meet. A script could assign the runner path
     # to $runner, never use it, and invoke something else with -Job invariants. Both checks would
     # pass and the invariant job would run the wrong command.
-    $runnerVariable = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
-    $assignments = @($ast.FindAll({
+    # Every assignment in the file, grouped by the variable it writes. Grouping matters: a
+    # variable that is assigned twice is not the variable either assignment describes.
+    $assignmentsByName = @{}
+    foreach ($assignment in $ast.FindAll({
                 param($node)
                 $node -is [System.Management.Automation.Language.AssignmentStatementAst] -and
                 $node.Left -is [System.Management.Automation.Language.VariableExpressionAst]
-            }, $true))
-    foreach ($assignment in $assignments) {
-        $namesRunner = @($assignment.Right.FindAll({
+            }, $true)) {
+        $name = $assignment.Left.VariablePath.UserPath
+        if (-not $assignmentsByName.ContainsKey($name)) {
+            $assignmentsByName[$name] = [System.Collections.Generic.List[object]]::new()
+        }
+        $assignmentsByName[$name].Add($assignment)
+    }
+
+    # Whether a variable names the runner at the point a call uses it.
+    #
+    # Three conditions, and the middle one is the reason this is a function rather than a set
+    # built once. A set that remembered "some assignment to $runner named the runner" would still
+    # say yes after:
+    #
+    #     $runner = Join-Path $root 'run-powershell-suites.ps1'
+    #     $runner = Join-Path $root 'something-else.ps1'
+    #     & $runner -Job 'invariants'
+    #
+    # so it must be exactly one assignment, it must name the runner, and it must come before the
+    # call. A script that assigns the variable twice fails this check even when the second
+    # assignment also names the runner. That is deliberate: this test reads the script, it does
+    # not run it, so the only honest answer to "which file does this variable hold" is the one a
+    # single assignment gives.
+    function Test-NamesRunner {
+        param([string] $Name, [int] $CallOffset)
+
+        if (-not $assignmentsByName.ContainsKey($Name)) { return $false }
+        $forName = @($assignmentsByName[$Name])
+        if ($forName.Count -ne 1) { return $false }
+
+        $only = $forName[0]
+        if ($only.Extent.EndOffset -gt $CallOffset) { return $false }
+
+        return @($only.Right.FindAll({
                     param($node)
                     $node -is [System.Management.Automation.Language.StringConstantExpressionAst] -and
                     $node.Value -eq 'run-powershell-suites.ps1'
                 }, $true)).Count -gt 0
-        if ($namesRunner) { [void] $runnerVariable.Add($assignment.Left.VariablePath.UserPath) }
     }
 
     # Every '&' invocation in the file, then only the ones whose target is the runner.
@@ -84,7 +116,7 @@ function Read-RunnerInvocation {
     $runnerCalls = @($calls | Where-Object {
             $target = @($_.CommandElements)[0]
             if ($target -is [System.Management.Automation.Language.VariableExpressionAst]) {
-                return $runnerVariable.Contains($target.VariablePath.UserPath)
+                return (Test-NamesRunner -Name $target.VariablePath.UserPath -CallOffset $_.Extent.StartOffset)
             }
             # A direct path, literal or interpolated. Read the target expression's own text, never
             # the whole file: a comment is not part of any expression's extent.
@@ -191,6 +223,19 @@ try {
     Set-Content -LiteralPath $wrongFile -Value ($checkText -replace "'run-powershell-suites\.ps1'", "'some-other-script.ps1'") -Encoding utf8
     $wrongFileResult = Read-RunnerInvocation -Path $wrongFile
     Assert-True ($wrongFileResult.RunnerCallCount -eq 0) 'The invocation assertion must go red when the variable names another file.'
+
+    # Reassignment. The variable is set to the runner and then to something else before the call,
+    # so at the moment of the call it names another file. A check that only asked "did any
+    # assignment to this variable name the runner" would say yes and be wrong.
+    $reassigned = Join-Path $mutationRoot 'reassigned.ps1'
+    $reassignedText = $checkText.Replace(
+        "& `$runner -Job 'invariants'",
+        "`$runner = Join-Path (Split-Path -Parent `$PSScriptRoot) 'some-other-script.ps1'" + [Environment]::NewLine + "& `$runner -Job 'invariants'")
+    Assert-True ($reassignedText -ne $checkText) 'The reassignment mutation must actually change the script text.'
+    Set-Content -LiteralPath $reassigned -Value $reassignedText -Encoding utf8
+    $reassignedResult = Read-RunnerInvocation -Path $reassigned
+    Assert-True ($reassignedResult.RunnerCallCount -eq 0) 'The invocation assertion must go red when the variable is reassigned to another file before the call.'
+    Assert-True ($reassignedResult.JobValues.Count -eq 0) 'Arguments must not be read from a call whose target was reassigned away from the runner.'
 } finally {
     Remove-Item -LiteralPath $mutationRoot -Recurse -Force -ErrorAction SilentlyContinue
 }
