@@ -116,21 +116,30 @@ function Invoke-TestCase {
 # A throwaway pair of roots under the system temp directory. Each tree is a hashtable of
 # skill name -> hashtable of relative file path -> file content. Returns the fixture root,
 # whose 'agents' and 'plugin' children are the two roots the comparison takes.
+#
+# The build runs inside try/catch because a caller can only clean up what this function
+# returns. A throw part-way through would leave the folder behind with nobody holding its
+# path, so this function removes it here and lets the error carry on.
 function New-SkillFixture {
     param([hashtable] $Canonical, [hashtable] $Plugin)
 
     $root = Join-Path ([System.IO.Path]::GetTempPath()) ('skillparity-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
 
-    foreach ($side in @(@{ Name = 'agents'; Tree = $Canonical }, @{ Name = 'plugin'; Tree = $Plugin })) {
-        $sideRoot = Join-Path $root $side.Name
-        New-Item -ItemType Directory -Path $sideRoot -Force | Out-Null
-        foreach ($skillName in $side.Tree.Keys) {
-            foreach ($rel in $side.Tree[$skillName].Keys) {
-                $full = Join-Path (Join-Path $sideRoot $skillName) $rel
-                New-Item -ItemType Directory -Path (Split-Path -Parent $full) -Force | Out-Null
-                [System.IO.File]::WriteAllText($full, $side.Tree[$skillName][$rel])
+    try {
+        foreach ($side in @(@{ Name = 'agents'; Tree = $Canonical }, @{ Name = 'plugin'; Tree = $Plugin })) {
+            $sideRoot = Join-Path $root $side.Name
+            New-Item -ItemType Directory -Path $sideRoot -Force | Out-Null
+            foreach ($skillName in $side.Tree.Keys) {
+                foreach ($rel in $side.Tree[$skillName].Keys) {
+                    $full = Join-Path (Join-Path $sideRoot $skillName) $rel
+                    New-Item -ItemType Directory -Path (Split-Path -Parent $full) -Force | Out-Null
+                    [System.IO.File]::WriteAllText($full, $side.Tree[$skillName][$rel])
+                }
             }
         }
+    } catch {
+        Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        throw
     }
 
     return $root

@@ -6,7 +6,7 @@
 - **Type**: Chore
 - **Interfaces**: none (test suite)
 - **Difficulty**: moderate
-- **Stage**: 6-verify
+- **Stage**: 7-document
 
 ## Summary
 
@@ -41,7 +41,7 @@ passed as a match.
 
 - Spec: none — backlog 127 found this while reading the five invariant suites for platform
   dependencies, and recorded it as a follow-up rather than fixing it there.
-- Plan: docs/superpowers/plans/2026-09-06-skillparity-case-sensitive-plan-138.md
+- Plan: `docs/superpowers/plans/2026-09-06-skillparity-case-sensitive-plan-138.md`
 - Four `-cnotcontains` comparisons report the differences. They used `-notcontains` before this
   item. Two compare skill names
   (`tests/SkillParity.Tests.ps1:49`, "    foreach ($name in ($canonicalNames | Where-Object { $pluginNames -cnotcontains $_ })) {")
@@ -137,3 +137,31 @@ Skill parity tests passed.
 
 Also green: `pwsh ./tests/CiPowerShellSuiteRunner.Tests.ps1`, both citation-freshness runs, and
 `pwsh ./scripts/test-fast.ps1 -Mode PowerShell` (all 54 suites).
+
+## Review round 1, 2026-09-06
+
+- Finding: `New-SkillFixture` could leave a partial temporary directory when the build throws.
+  The caller cannot clean it, because a throw means the function never returns the path. Fixed:
+  the build now runs inside try/catch, removes the root, and rethrows.
+- Proof: a probe called the function with a tree the build loop cannot read. The pre-fix copy
+  left 1 directory in the system temp folder; the fixed copy left 0. No permanent test was added.
+  This is internal test-harness cleanup with no observable surface, which is AGENTS.md
+  verification exemption 2.
+- Finding: the item stayed at `6-verify` until the gate ran. Correct, and the gate has now run,
+  so the item moved to `7-document`.
+- The stage move made `BacklogPlanPointer.Tests.ps1` start reading this item, and it failed: the
+  `- Plan:` bullet had no backticks around the path. Fixed in the same round.
+
+## Document verdict
+
+Nothing to document. The change is internal to one test suite. No behaviour, vocabulary, or rule
+moved, so no doc, README, `CONTEXT.md`, or skill needed an edit.
+
+## Gate, 2026-09-06
+
+- `dotnet build AHKFlowApp.slnx --configuration Release` - 17 projects, 0 errors, 0 warnings.
+- `dotnet format AHKFlowApp.slnx --verify-no-changes` - clean.
+- `pwsh ./scripts/test-fast.ps1 -Mode PowerShell` - all 54 suites passed.
+- `pwsh ./scripts/test-fast.ps1 -Mode Coverage` - all per-assembly thresholds met. Line 94.6%,
+  branch 82.8%.
+- `git diff --check main...HEAD` and the bare form - both clean.
