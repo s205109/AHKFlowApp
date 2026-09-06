@@ -15,9 +15,9 @@ namespace AHKFlowApp.Infrastructure.Tests.Persistence;
 /// duplicate before it reaches SQL, so a handler-level test still passes when the unique index is
 /// wrong. Restore and revert have no such pre-check, so the index is their only guard.
 /// </summary>
-[Collection("SqlServer")]
 [Trait("Category", "Integration")]
-public sealed class HotkeyPersistenceTests(SqlContainerFixture sqlFixture)
+public sealed class HotkeyPersistenceTests(SharedSqlServerFixture sqlFixture)
+    : IClassFixture<SharedSqlServerFixture>
 {
     private DbContextOptions<AppDbContext> CreateOptions()
     {
