@@ -6,7 +6,7 @@
 - **Type**: Chore
 - **Interfaces**: none (test suite)
 - **Difficulty**: moderate
-- **Stage**: 3-plan
+- **Stage**: 6-verify
 
 ## Summary
 
@@ -23,12 +23,12 @@ passed as a match.
 
 ## Acceptance criteria
 
-- [ ] The skill name comparison distinguishes letter case. Two skill directories whose names
+- [x] The skill name comparison distinguishes letter case. Two skill directories whose names
       differ only in case are reported as two different skills, not as one match.
-- [ ] The file path comparison inside a skill distinguishes letter case in the same way.
-- [ ] A test proves each comparison fails on a case-only difference. A fixture folder is enough;
+- [x] The file path comparison inside a skill distinguishes letter case in the same way.
+- [x] A test proves each comparison fails on a case-only difference. A fixture folder is enough;
       the check does not need to run against the repository's real skills.
-- [ ] The item records whether a case-only difference can exist in this repository at all, and
+- [x] The item records whether a case-only difference can exist in this repository at all, and
       what a Windows checkout does when one exists.
 
 ## Out of scope
@@ -42,12 +42,13 @@ passed as a match.
 - Spec: none — backlog 127 found this while reading the five invariant suites for platform
   dependencies, and recorded it as a follow-up rather than fixing it there.
 - Plan: docs/superpowers/plans/2026-09-06-skillparity-case-sensitive-plan-138.md
-- Four `-notcontains` comparisons report the differences. Two compare skill names
-  (`tests/SkillParity.Tests.ps1:30`, "foreach ($name in ($canonicalNames | Where-Object { $pluginNames -notcontains $_ })) {")
-  and (`tests/SkillParity.Tests.ps1:33`, "foreach ($name in ($pluginNames | Where-Object { $canonicalNames -notcontains $_ })) {").
+- Four `-cnotcontains` comparisons report the differences. They used `-notcontains` before this
+  item. Two compare skill names
+  (`tests/SkillParity.Tests.ps1:49`, "    foreach ($name in ($canonicalNames | Where-Object { $pluginNames -cnotcontains $_ })) {")
+  and (`tests/SkillParity.Tests.ps1:52`, "    foreach ($name in ($pluginNames | Where-Object { $canonicalNames -cnotcontains $_ })) {").
   Two compare file paths inside a skill
-  (`tests/SkillParity.Tests.ps1:55`, "    foreach ($rel in ($canonicalFiles | Where-Object { $pluginFiles -notcontains $_ })) {")
-  and (`tests/SkillParity.Tests.ps1:58`, "    foreach ($rel in ($pluginFiles | Where-Object { $canonicalFiles -notcontains $_ })) {").
+  (`tests/SkillParity.Tests.ps1:69`, "        foreach ($rel in ($canonicalFiles | Where-Object { $pluginFiles -cnotcontains $_ })) {")
+  and (`tests/SkillParity.Tests.ps1:72`, "        foreach ($rel in ($pluginFiles | Where-Object { $canonicalFiles -cnotcontains $_ })) {").
 - `-cnotcontains` is the case-sensitive operator. Backlog 127 used it for the manifest's
   `platform` values, so there is a recent example in the repository to follow.
 - **Pickup finding, measured 2026-09-06. A case-only difference can exist here, and it does not
@@ -69,10 +70,10 @@ passed as a match.
   exist` inside `Get-SkillFiles`, and `$ErrorActionPreference = 'Stop'` turns that into a suite
   crash that never mentions parity. So the suite is silent on Windows and unreadable on Linux.
 - **Pickup verdict: the case-sensitive operator, and it covers six comparisons, not four.** The
-  two `-contains` comparisons that choose which skills and files reach the byte loop must change
-  as well
-  (`tests/SkillParity.Tests.ps1:48`, "foreach ($skillName in ($canonicalNames | Where-Object { $pluginNames -contains $_ })) {")
-  and (`tests/SkillParity.Tests.ps1:62`, "    foreach ($rel in ($canonicalFiles | Where-Object { $pluginFiles -contains $_ })) {").
+  two `-contains` comparisons that choose which skills and files reach the byte loop changed as
+  well, and are now
+  (`tests/SkillParity.Tests.ps1:62`, "    foreach ($skillName in ($canonicalNames | Where-Object { $pluginNames -ccontains $_ })) {")
+  and (`tests/SkillParity.Tests.ps1:76`, "        foreach ($rel in ($canonicalFiles | Where-Object { $pluginFiles -ccontains $_ })) {").
   Left case-insensitive they still send the mismatched pair into the byte loop, which is exactly
   the Linux crash above. With all six changed, the fixture reports two plain failures on both
   platforms and reads the same on each.
@@ -88,4 +89,51 @@ passed as a match.
   Windows and on Linux. `docs/development/testing-workflow.md` explains that record.
 - Separator handling is already settled and only letter case is open: the path-splitting helper
   trims either separator
-  (`tests/SkillParity.Tests.ps1:42`, "        ForEach-Object { $_.FullName.Substring($SkillDir.Length).TrimStart('\', '/') })").
+  (`tests/SkillParity.Tests.ps1:29`, "        ForEach-Object { $_.FullName.Substring($SkillDir.Length).TrimStart('\', '/') })").
+
+## Verify evidence
+
+Measured 2026-09-06 in this worktree. The mutation reverts the six operators to their
+case-insensitive form; the restored run is the code that ships.
+
+Mutated, Windows `pwsh`:
+
+```
+Skill parity comparison cases:
+  PASS  roots that agree produce no failures
+  FAIL  skill names differing only in case are two skills
+        Expected 2 failures, got 0:
+  FAIL  file names differing only in case are two files
+        Expected 2 failures, got 0:
+  PASS  a skill missing from the mirror is reported
+  PASS  a file whose bytes differ is reported
+```
+
+Mutated, Linux PowerShell (`mcr.microsoft.com/powershell:latest`):
+
+```
+Skill parity comparison cases:
+  PASS  roots that agree produce no failures
+  FAIL  skill names differing only in case are two skills
+        Cannot find path '/tmp/skillparity-0f99f7ad/plugin/Alpha' because it does not exist.
+  FAIL  file names differing only in case are two files
+        Exception calling "ReadAllBytes" with "1" argument(s): "Could not find file
+        '/tmp/skillparity-b3b34d6d/plugin/alpha/Notes.md'.
+  PASS  a skill missing from the mirror is reported
+  PASS  a file whose bytes differ is reported
+```
+
+Restored, on Windows `pwsh`, Windows PowerShell 5.1, and Linux PowerShell:
+
+```
+Skill parity comparison cases:
+  PASS  roots that agree produce no failures
+  PASS  skill names differing only in case are two skills
+  PASS  file names differing only in case are two files
+  PASS  a skill missing from the mirror is reported
+  PASS  a file whose bytes differ is reported
+Skill parity tests passed.
+```
+
+Also green: `pwsh ./tests/CiPowerShellSuiteRunner.Tests.ps1`, both citation-freshness runs, and
+`pwsh ./scripts/test-fast.ps1 -Mode PowerShell` (all 54 suites).
