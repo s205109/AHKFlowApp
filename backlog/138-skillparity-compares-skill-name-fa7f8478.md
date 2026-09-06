@@ -41,8 +41,7 @@ passed as a match.
 
 - Spec: none — backlog 127 found this while reading the five invariant suites for platform
   dependencies, and recorded it as a follow-up rather than fixing it there.
-- Plan: none — the change is small, but it alters what a repository invariant accepts, so it is
-  not `trivial`.
+- Plan: docs/superpowers/plans/2026-09-06-skillparity-case-sensitive-plan-138.md
 - Four `-notcontains` comparisons report the differences. Two compare skill names
   (`tests/SkillParity.Tests.ps1:30`, "foreach ($name in ($canonicalNames | Where-Object { $pluginNames -notcontains $_ })) {")
   and (`tests/SkillParity.Tests.ps1:33`, "foreach ($name in ($pluginNames | Where-Object { $canonicalNames -notcontains $_ })) {").
