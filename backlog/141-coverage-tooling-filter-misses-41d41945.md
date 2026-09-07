@@ -68,7 +68,8 @@ All three move together.
   never `trivial` (`docs/development/workflow.md:825`, "**A filed backlog item is never `trivial`.**").
   The size of the change did not decide this; the rule did.
 - Out of scope check, done on 2026-09-07: the two entry points hold eleven dot-source statements
-  naming nine distinct files, and none of those nine dot-sources anything further. Only
+  naming seven distinct modules, and none of those seven dot-sources anything further. Those
+  seven plus the two entry points are the nine files the list must hold. Only
   `scripts/test-results.common.ps1` was missing, so there is nothing else to file.
   `scripts/run-powershell-suites.ps1` stays off the list: `test-fast.ps1` starts it as a child
   process in PowerShell mode, which is a different slice.

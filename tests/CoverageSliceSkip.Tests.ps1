@@ -201,7 +201,7 @@ function Get-DotSourcedScriptName {
 
 Invoke-TestCase 'The coverage tooling list is exactly the nine files the slice runs' {
     # The exact set, not a couple of spot checks. Asserting only that two entries are present,
-    # and that whatever entries remain exist on disk, lets any of the other eight be deleted
+    # and that whatever entries remain exist on disk, lets any of the other seven be deleted
     # from the YAML with the suite still green - and a deleted entry silently stops protecting
     # that file.
     $path = Get-AhkFlowCodePathFilterPath -RepoRoot $repoRoot
@@ -244,6 +244,84 @@ Invoke-TestCase 'The coverage tooling list is exactly the nine files the slice r
     $derivedSet = @($derived | Sort-Object -Unique)
     Assert-True (($tooling -join '|') -ceq ($derivedSet -join '|')) `
         "The coverage tooling list does not match what the entry points dot-source. Derived: $($derivedSet -join ', ')"
+}
+
+# A throwaway script holding the dot-source lines a case wants Get-DotSourcedScriptName to read.
+# It never runs; only its text is parsed.
+function New-DotSourceFixture {
+    param([string[]] $Line)
+
+    $path = Join-Path ([System.IO.Path]::GetTempPath()) ('ahkflow-dotsource-' + [guid]::NewGuid().ToString('N') + '.ps1')
+    Set-Content -LiteralPath $path -Value $Line -Encoding utf8
+    return $path
+}
+
+Invoke-TestCase 'A dot-source target the reader cannot parse is rejected, never skipped' {
+    # Both throws in Get-DotSourcedScriptName are load-bearing, so both need a case. Delete either
+    # one with no case here and the suite stays green while the derived set quietly loses a name -
+    # which is the same silent failure the hand-kept list had.
+    $path = New-DotSourceFixture -Line @(
+        '. "$PSScriptRoot\Common.ps1"'
+        '. (Join-Path $PSScriptRoot ''slug.common.ps1'')'
+    )
+
+    try {
+        $threw = $false
+        try { Get-DotSourcedScriptName -Path $path | Out-Null }
+        catch {
+            $threw = $true
+            Assert-True ($_.Exception.Message -match 'unsupported dot-source target') `
+                "The message must say the target is unsupported. Got: $($_.Exception.Message)"
+            Assert-True ($_.Exception.Message -match 'line 2') `
+                "The message must name the line the reader stopped on. Got: $($_.Exception.Message)"
+        }
+
+        Assert-True $threw 'An unreadable dot-source target must throw. Skipping it derives an incomplete set.'
+    }
+    finally { Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue }
+}
+
+Invoke-TestCase 'A dot-sourced variable with no resolvable assignment is rejected' {
+    # The variable shape resolves by searching upwards for a Join-Path assignment. When there is
+    # none, the name is unknowable, and guessing would be worse than stopping.
+    $path = New-DotSourceFixture -Line @(
+        '$sharedScript = Get-SomethingElse'
+        '. $sharedScript'
+    )
+
+    try {
+        $threw = $false
+        try { Get-DotSourcedScriptName -Path $path | Out-Null }
+        catch {
+            $threw = $true
+            Assert-True ($_.Exception.Message -match 'dot-sources the variable') `
+                "The message must name the variable it could not resolve. Got: $($_.Exception.Message)"
+            Assert-True ($_.Exception.Message -match 'line 2') `
+                "The message must name the line the reader stopped on. Got: $($_.Exception.Message)"
+        }
+
+        Assert-True $threw 'An unresolvable variable must throw rather than drop the name.'
+    }
+    finally { Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue }
+}
+
+Invoke-TestCase 'Both dot-source shapes are read, and only dot-source lines are read' {
+    # The positive side of the two cases above. Without it, a reader that threw on everything
+    # would also pass them.
+    $path = New-DotSourceFixture -Line @(
+        '$sharedSqlScript = Join-Path $PSScriptRoot ''test-sql-container.common.ps1'''
+        '. $sharedSqlScript'
+        '. "$PSScriptRoot\Common.ps1"'
+        '# . "$PSScriptRoot\not-loaded.common.ps1"'
+        '$path = Join-Path $PSScriptRoot ''also-not-loaded.ps1'''
+    )
+
+    try {
+        $names = @(Get-DotSourcedScriptName -Path $path)
+        Assert-True (($names -join '|') -ceq 'test-sql-container.common.ps1|Common.ps1') `
+            "Expected both shapes and nothing else. Got: $($names -join ', ')"
+    }
+    finally { Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue }
 }
 
 Invoke-TestCase 'A pattern shape the matcher cannot read is rejected, never ignored' {
@@ -453,7 +531,8 @@ Invoke-TestCase 'Changing the test results module is a code change' {
 }
 
 Invoke-TestCase 'An ordinary script is still not a code change' {
-    # The guard above must protect eight named files, not re-admit every .ps1 under scripts/.
+    # The coverage-tooling guard protects nine named files, and must not re-admit every .ps1
+    # under scripts/. The two cases above prove two of those nine; this one proves the boundary.
     $root = New-DiffFixture
     try {
         Add-FixtureFile -Root $root -RelativePath 'scripts/deploy.ps1' -Content '# changed'
