@@ -42,6 +42,9 @@ public sealed class E2EPublishTargetTests
             "--no-build reuses a stale trimmed assembly, so the published app can miss the latest source");
         command.Should().Contain("--no-restore");
         command.Should().Contain("-o \"$(BlazorE2EPublishDir)\"");
+        command.Should().Contain(
+            "-p:CompressionEnabled=false",
+            "the E2E host never reads the .br and .gz siblings, so publishing them is wasted time");
     }
 
     [Fact]

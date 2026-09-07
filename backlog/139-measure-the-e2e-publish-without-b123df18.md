@@ -149,6 +149,27 @@ so no extension run is needed.
 
 This outcome was written down before any file changed.
 
+### What changed
+
+- `tests/AHKFlowApp.E2E.Tests/AHKFlowApp.E2E.Tests.csproj` — the `PublishBlazorForE2E` target's
+  `Exec` gained `-p:CompressionEnabled=false`, with a comment above the target saying why the flag
+  belongs there and not in the Blazor project file.
+- `tests/AHKFlowApp.CLI.Tests/Launcher/E2EPublishTargetTests.cs` — one more `Contain` assertion, so
+  the flag cannot be dropped without a test failing. Written first, watched fail, then made pass.
+- `tests/AHKFlowApp.E2E.Tests/PublishFreshnessTests.cs` — the comment no longer says the `.br` and
+  `.gz` siblings are skipped by the file patterns, because those siblings no longer exist.
+
+### E2E slice, before and after
+
+| Run | Failed | Passed | Total | Duration |
+|---|---|---|---|---|
+| Before the change | 0 | 57 | 57 | 3 m 51 s |
+| After the change | 0 | 57 | 57 | 3 m 53 s |
+
+The test count is the same, so the change did not alter discovery. The slice duration did not drop.
+A 2.65 s saving is small next to a run of nearly four minutes, and run-to-run noise is larger than
+that, so the slice total cannot show the saving. The paired measurement above is what measures it.
+
 ## Notes / dependencies
 
 - Filed out of backlog 131, which measured the publish step while answering a different question.

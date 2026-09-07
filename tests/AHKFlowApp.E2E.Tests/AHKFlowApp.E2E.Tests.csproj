@@ -32,8 +32,15 @@
     <ProjectReference Include="..\..\src\Frontend\AHKFlowApp.UI.Blazor\AHKFlowApp.UI.Blazor.csproj" />
     <ProjectReference Include="..\AHKFlowApp.TestUtilities\AHKFlowApp.TestUtilities.csproj" />
   </ItemGroup>
+  <!--
+    CompressionEnabled=false: the E2E publish writes a .br and a .gz sibling for every framework
+    asset, and nothing in the E2E stack reads them. SpaHost serves the folder with plain static
+    files and no content negotiation, and the service worker never registers because the host is
+    on 127.0.0.1. A deployed app does want the compressed files, so the flag stays here and never
+    reaches the Blazor project file. Backlog 139 measured the saving.
+  -->
   <Target Name="PublishBlazorForE2E" BeforeTargets="VSTest">
     <RemoveDir Directories="$(BlazorE2EPublishDir)" Condition="'$(BlazorE2EPublishDir)' != ''" />
-    <Exec Command="dotnet publish &quot;$(BlazorE2EProject)&quot; -c $(Configuration) --no-restore --disable-build-servers -p:UseSharedCompilation=false -o &quot;$(BlazorE2EPublishDir)&quot;" />
+    <Exec Command="dotnet publish &quot;$(BlazorE2EProject)&quot; -c $(Configuration) --no-restore --disable-build-servers -p:UseSharedCompilation=false -p:CompressionEnabled=false -o &quot;$(BlazorE2EPublishDir)&quot;" />
   </Target>
 </Project>

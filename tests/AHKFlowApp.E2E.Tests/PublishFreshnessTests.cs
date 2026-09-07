@@ -9,7 +9,8 @@ public sealed class PublishFreshnessTests(StackFixture fixture)
 {
     // Directory.GetFiles has a legacy quirk where a three-character extension also matches
     // longer ones. ".wasm" is four characters and ".js" is two, so both patterns below match
-    // exactly, and the ".br" and ".gz" siblings are not counted.
+    // exactly. The E2E publish also runs with -p:CompressionEnabled=false, so there are no
+    // ".br" or ".gz" siblings here to count.
     [Theory]
     [InlineData("AHKFlowApp.UI.Blazor.*.wasm")]
     [InlineData("dotnet.native.*.js")]
