@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: CLI
 - **Difficulty**: moderate
-- **Stage**: 3-plan
+- **Stage**: 9-ship
 
 ## Summary
 
@@ -25,13 +25,13 @@ Write each criterion as state a reader can observe in the repository, not as a c
 "The handler returns `Result.NotFound()` for a missing id" can be checked. "The old check is
 removed" and "tests cover the new API" cannot.
 
-- [ ] The sweep writes a stderr line naming a merged worktree it keeps because
+- [x] The sweep writes a stderr line naming a merged worktree it keeps because
       `git status --porcelain` returned output, in the same shape as the locked-worktree line
       it already writes.
-- [ ] The sweep writes a `Kept: ...` line to `worktree-removal.log` for that worktree, giving
+- [x] The sweep writes a `Kept: ...` line to `worktree-removal.log` for that worktree, giving
       the same reason.
-- [ ] A test covers the dirty-worktree path and asserts both the stderr line and the log line.
-- [ ] The sweep still writes exactly one outcome line per worktree per run.
+- [x] A test covers the dirty-worktree path and asserts both the stderr line and the log line.
+- [x] The sweep still writes exactly one outcome line per worktree per run.
 
 ## Out of scope
 
@@ -55,3 +55,7 @@ removed" and "tests cover the new API" cannot.
   who sees no diff.
 - Spec: none — the change is one reporting path, not a design question.
 - Plan: docs/superpowers/plans/2026-09-07-dirty-worktree-report-plan-147.md
+- The stderr line follows the plan-guard shape, not the locked-worktree shape: `cleanup:
+  keeping <path> because <reason>.` The two existing skip paths already word their lines
+  differently, and this path keeps the worktree rather than skipping it, so the plan-guard
+  wording is the truthful one. Both lines still name the worktree and give the same reason.
