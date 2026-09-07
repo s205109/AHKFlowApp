@@ -235,10 +235,14 @@ public sealed class RestoreCommandTests(HistoryDbFixture fx)
         changes.Should().Equal(HistoryChangeType.Delete, HistoryChangeType.Restore);
     }
 
+    // Takes the action kind, not the payload. A CreateHotkeyDto is a record and does not
+    // serialize, so xUnit put all seven cases under one test id — one Test Explorer row, and no
+    // way to re-run a single kind. An enum serializes.
     [Theory]
     [MemberData(nameof(TypedActions))]
-    public async Task RestoreHotkey_TypedTombstone_RestoresTypedActionPayload(CreateHotkeyDto original)
+    public async Task RestoreHotkey_TypedTombstone_RestoresTypedActionPayload(HotkeyActionKind kind)
     {
+        CreateHotkeyDto original = TypedHotkeyActionFixtures.RestorePayloadFor(kind);
         var owner = Guid.NewGuid();
 
         Guid id;
@@ -318,7 +322,8 @@ public sealed class RestoreCommandTests(HistoryDbFixture fx)
         result.Value.RunTargetKind.Should().Be(RunTargetKind.Application);
     }
 
-    /// <summary>One create payload per action kind — the restore round trip must return each verbatim.</summary>
-    public static TheoryData<CreateHotkeyDto> TypedActions() =>
-        new(TypedHotkeyActionFixtures.RestorePayloads);
+    /// <summary>One create payload per action kind — the restore round trip must return each verbatim.
+    /// The kind is the id; <c>RestorePayloadFor</c> resolves it back to the payload.</summary>
+    public static TheoryData<HotkeyActionKind> TypedActions() =>
+        new(Enum.GetValues<HotkeyActionKind>());
 }

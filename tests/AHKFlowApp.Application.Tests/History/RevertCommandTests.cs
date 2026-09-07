@@ -263,10 +263,13 @@ public sealed class RevertCommandTests(HistoryDbFixture fx)
         versionCount.Should().Be(2);
     }
 
+    // Takes the action kind, not the case. A TypedHotkeyActionCase is a record and does not
+    // serialize, so xUnit put all seven cases under one test id. An enum serializes.
     [Theory]
     [MemberData(nameof(TypedActionCases))]
-    public async Task RevertHotkey_TypedSnapshot_RestoresTypedActionPayload(TypedHotkeyActionCase testCase)
+    public async Task RevertHotkey_TypedSnapshot_RestoresTypedActionPayload(HotkeyActionKind kind)
     {
+        TypedHotkeyActionCase testCase = TypedHotkeyActionFixtures.RevertCaseFor(kind);
         var owner = Guid.NewGuid();
         CreateHotkeyDto original = testCase.Original;
         string key = original.Key;
@@ -346,6 +349,6 @@ public sealed class RevertCommandTests(HistoryDbFixture fx)
 
     /// <summary>One create payload per action kind — the revert round trip must return each verbatim.
     /// For Disable, overwrite to Run (not Disable) so the revert proves state changes, not vacuously passes.</summary>
-    public static TheoryData<TypedHotkeyActionCase> TypedActionCases() =>
-        new(TypedHotkeyActionFixtures.RevertCases);
+    public static TheoryData<HotkeyActionKind> TypedActionCases() =>
+        new(Enum.GetValues<HotkeyActionKind>());
 }
