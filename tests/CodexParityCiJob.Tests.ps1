@@ -161,6 +161,15 @@ function Read-RunnerInvocation {
             Test-TargetIsRunner -Target (@($_.CommandElements)[0]) -RunnerPath $RunnerPath
         })
 
+    # Every other command in the same run: text. The runner has to be the only thing the job
+    # executes, because a second command needs no suite name and no runner argument to start
+    # whatever it likes. '& $env:EXTRA_SUITE' reads clean against every other check here.
+    #
+    # An assignment is not a command, so a step may still set a variable before the call.
+    $otherCalls = @($calls | Where-Object {
+            -not (Test-TargetIsRunner -Target (@($_.CommandElements)[0]) -RunnerPath $RunnerPath)
+        } | ForEach-Object { @($_.CommandElements)[0].Extent.Text })
+
     # Only a statement at the top of the script runs unconditionally. A call inside an if, a
     # loop, a try, or a function body may never execute at all, and a job that ran no suite
     # must not look green. So the counted calls are the top-level ones, and anything nested is
@@ -227,20 +236,40 @@ function Read-RunnerInvocation {
         CallCount             = $calls.Count
         RunnerCallCount       = $topLevel.Count
         NestedRunnerCallCount = $allRunnerCalls.Count - $topLevel.Count
+        OtherCall             = $otherCalls
         JobValues             = $jobValues
         Narrowing             = $narrowing
     }
 }
 
-# Every suite file a run: command names directly. A job that starts a suite this way runs it
-# whatever the manifest says, which is the drift this whole item closes.
+# Every suite file a run: command starts as a command of its own. A job that starts a suite this
+# way runs it whatever the manifest says, which is the drift this whole item closes.
+#
+# Read the command targets from the syntax tree, never the raw text. The parser drops comments,
+# so a warning somebody wrote for the next reader cannot fail this suite. It also keeps a suite
+# name passed as an argument out of the result: that shape is narrowing, and it is reported
+# under its own heading.
 function Get-DirectSuiteCall {
     param([string[]] $Command)
 
     $found = @()
     foreach ($text in $Command) {
-        foreach ($match in [regex]::Matches($text, '[A-Za-z0-9_.-]+\.Tests\.ps1')) {
-            $found += $match.Value
+        $ast = [System.Management.Automation.Language.Parser]::ParseInput($text, [ref] $null, [ref] $null)
+        foreach ($call in $ast.FindAll({
+                    param($node)
+                    $node -is [System.Management.Automation.Language.CommandAst]
+                }, $true)) {
+
+            $target = @($call.CommandElements)[0].Extent.Text.Trim()
+            if ($target.Length -ge 2 -and
+                (($target.StartsWith("'") -and $target.EndsWith("'")) -or
+                 ($target.StartsWith('"') -and $target.EndsWith('"')))) {
+                $target = $target.Substring(1, $target.Length - 2)
+            }
+
+            # The file name alone, so a path spelled either way reports the same thing.
+            $leaf = ($target -replace '\\', '/') -replace '^.*/', ''
+            if ($leaf -match '\.Tests\.ps1$') { $found += $leaf }
         }
     }
     return $found
@@ -267,6 +296,9 @@ Assert-True ($nestedCount -eq 0) "The '$jobName' job must not call the runner fr
 
 $jobValues = @($invocations | ForEach-Object { $_.JobValues })
 Assert-True (($jobValues -join ',') -eq 'codex-parity') "The '$jobName' job must pass -Job codex-parity. Found: '$($jobValues -join ',')'"
+
+$otherCall = @($invocations | ForEach-Object { $_.OtherCall })
+Assert-True ($otherCall.Count -eq 0) "The '$jobName' job must run no command besides the runner. Another command can start any suite, whatever the manifest holds. Found: $($otherCall -join ', ')"
 
 $narrowing = @($invocations | ForEach-Object { $_.Narrowing })
 Assert-True ($narrowing.Count -eq 0) "The '$jobName' job must pass no argument that narrows the selection below the manifest's codex-parity set. Found: $($narrowing -join ', ')"
@@ -379,6 +411,31 @@ if ($fromFolded.Count -eq 1) {
     Assert-True ($foldedRead.RunnerCallCount -eq 1) "A folded run: must name the runner once. Got $($foldedRead.RunnerCallCount)."
     Assert-True (($foldedRead.JobValues -join ',') -eq 'codex-parity') "A folded run: must keep its -Job argument. Got: '$($foldedRead.JobValues -join ',')'"
 }
+
+# A second command beside the runner. It needs no suite name and no runner argument, so every
+# other check here reads clean while it starts whatever it likes.
+$extraEnvCall = Read-RunnerInvocation -Command "$goodCommand`n& `$env:EXTRA_SUITE" -RunnerPath $runnerPath
+Assert-True ($extraEnvCall.OtherCall.Count -gt 0) 'A second command reading its target from the environment must be rejected: it can run any suite.'
+
+$extraComputedCall = Read-RunnerInvocation -Command "`$target = 'tests/Whatever.Tests.ps1'`n$goodCommand`n& `$target" -RunnerPath $runnerPath
+Assert-True ($extraComputedCall.OtherCall.Count -gt 0) 'A second command reading its target from a variable must be rejected: this suite cannot see what it runs.'
+
+$extraNamedCall = Read-RunnerInvocation -Command "$goodCommand`npwsh -File ./tests/CodexSkillsHashParity.Tests.ps1" -RunnerPath $runnerPath
+Assert-True ($extraNamedCall.OtherCall.Count -gt 0) 'A second command must be rejected even when this suite can read its name.'
+
+# The runner on its own is the whole job, so nothing is reported beside it.
+$onlyRunner = Read-RunnerInvocation -Command $goodCommand -RunnerPath $runnerPath
+Assert-True ($onlyRunner.OtherCall.Count -eq 0) 'The runner alone must report no other command.'
+
+# A comment is not a command. Reading the raw text instead of the syntax tree turns a warning
+# somebody wrote for the next reader into a failure.
+$commentOnly = @(Get-DirectSuiteCall -Command @("$goodCommand`n# Do not call Legacy.Tests.ps1 directly"))
+Assert-True ($commentOnly.Count -eq 0) "A suite name inside a comment is not a call, so it must not fail this suite. Found: $($commentOnly -join ', ')"
+
+# Nor is a suite name that appears only as an argument. That shape is already reported as
+# narrowing, and reporting it twice under the wrong heading sends the reader to the wrong fix.
+$argumentOnly = @(Get-DirectSuiteCall -Command @("$goodCommand -Suite 'CodexSkillsHashParity.Tests.ps1'"))
+Assert-True ($argumentOnly.Count -eq 0) "A suite name passed as an argument is not a direct call. Found: $($argumentOnly -join ', ')"
 
 # --- The manifest's codex-parity job can be selected, and runs where it says ---
 
