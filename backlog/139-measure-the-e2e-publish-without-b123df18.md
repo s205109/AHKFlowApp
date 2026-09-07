@@ -6,7 +6,7 @@
 - **Type**: Tooling
 - **Interfaces**: none (test project build)
 - **Difficulty**: moderate
-- **Stage**: 0-intake
+- **Stage**: 3-plan
 
 ## Summary
 
@@ -61,4 +61,4 @@ so that a run starts testing sooner.
 - Compression is a Blazor publish feature, so prove the property name against the official .NET
   documentation for the version in `Directory.Packages.props` before relying on it.
 - Spec: none — the change is one build property and a measurement.
-- Plan: none — not yet at Plan.
+- Plan: `docs/superpowers/plans/2026-09-07-e2e-publish-compression-plan-139.md`
