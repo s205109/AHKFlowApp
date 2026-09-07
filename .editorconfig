@@ -138,6 +138,18 @@ dotnet_diagnostic.IDE0071.severity = silent
 # IDE0031: Use null propagation - keep as silent hint to avoid build errors with TreatWarningsAsErrors
 dotnet_diagnostic.IDE0031.severity = silent
 
+# xUnit1044 / xUnit1045: TheoryData type arguments that do not serialize.
+# xUnit writes a theory's arguments into the test id. When an argument type does not serialize,
+# every case of that theory reports under one id: one row in Test Explorer, no way to re-run a
+# single case, and a full record dump as the case name in the TRX. Backlog 143 fixed seven such
+# theories by passing a serializable id instead of the object.
+# Both ship at Info by default, so neither was visible. Both are raised here because they cover
+# different halves: xUnit1044 fires on a type known not to serialize, which is what a sealed
+# record is, and xUnit1045 fires on one that might not, which is an interface or an unsealed type.
+# TreatWarningsAsErrors is on, so 'warning' means a new case fails the build.
+dotnet_diagnostic.xUnit1044.severity = warning
+dotnet_diagnostic.xUnit1045.severity = warning
+
 # Space preferences
 csharp_space_after_cast = false
 csharp_space_after_colon_in_inheritance_clause = true
