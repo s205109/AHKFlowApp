@@ -6,7 +6,7 @@
 - **Type**: Chore
 - **Interfaces**: none (test suite)
 - **Difficulty**: moderate
-- **Stage**: 7-document
+- **Stage**: 9-ship
 
 ## Summary
 
