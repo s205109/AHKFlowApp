@@ -111,10 +111,11 @@ Two things went wrong on 2026-08-29, and both are fixed by this item:
       (`tests/Progress.Tests.ps1:90`, "estimate with no history");
       (`tests/Progress.Tests.ps1:126`, "save writes through a temporary file")
 - [x] `.claude/CLAUDE.md` says that a background command must let its output reach stdout, and
-      that the agent hands over `pwsh ./scripts/watch-task.ps1` rather than a temporary path.
+      that the agent hands over the watch script by its full absolute path rather than a
+      temporary path.
       (`.claude/CLAUDE.md:55`, "Watch a background run");
       (`.claude/CLAUDE.md:57`, "background command must let its output reach stdout");
-      (`.claude/CLAUDE.md:59`, "pwsh ./scripts/watch-task.ps1")
+      (`.claude/CLAUDE.md:59`, "full absolute path of")
 
 ## Out of scope
 
