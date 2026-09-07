@@ -5,8 +5,8 @@
 - **Epic**: Developer workflow
 - **Type**: Bug
 - **Interfaces**: CLI
-- **Difficulty**: trivial
-- **Stage**: 0-intake
+- **Difficulty**: moderate
+- **Stage**: 9-ship
 
 ## Summary
 
@@ -24,8 +24,9 @@ coverage slice, so that a defect in one of them cannot reach a pull request unno
 The patterns above `coverage-tooling` exclude every `.ps1` file under `scripts/`
 (`.github/code-paths-filter.yml:33`, "- '!scripts/*.ps1'"). The `coverage-tooling` key is the
 exception list that pulls the coverage run's own scripts back in
-(`.github/code-paths-filter.yml:47`, "coverage-tooling:"). Its comment says the list is the entry
-points plus everything `run-coverage.ps1` dot-sources.
+(`.github/code-paths-filter.yml:55`, "coverage-tooling:"). Its comment said the list was the entry
+points plus everything `run-coverage.ps1` dot-sources. The fix rewrote that comment, so the line
+number moved from 47 to 55.
 
 `scripts/test-fast.ps1` is one of those entry points, and it dot-sources
 `scripts/test-results.common.ps1` (`scripts/test-fast.ps1:52`, "$PSScriptRoot\test-results.common.ps1").
@@ -41,14 +42,14 @@ All three move together.
 
 ## Acceptance criteria
 
-- [ ] `.github/code-paths-filter.yml` lists `scripts/test-results.common.ps1` under
+- [x] `.github/code-paths-filter.yml` lists `scripts/test-results.common.ps1` under
       `coverage-tooling`.
-- [ ] The `$expected` literal in `tests/CoverageSliceSkip.Tests.ps1` names the same set as the
+- [x] The `$expected` literal in `tests/CoverageSliceSkip.Tests.ps1` names the same set as the
       YAML file, and its count assertion agrees.
-- [ ] The comment above `coverage-tooling` describes the rule the list actually follows. Today it
+- [x] The comment above `coverage-tooling` describes the rule the list actually follows. Today it
       says the list is what `run-coverage.ps1` dot-sources, and the list also carries
       `test-fast.ps1` and what that script loads.
-- [ ] A branch whose only change is `scripts/test-results.common.ps1` reads as a code change, so
+- [x] A branch whose only change is `scripts/test-results.common.ps1` reads as a code change, so
       the coverage slice runs. `tests/CoverageSliceSkip.Tests.ps1` covers it.
 
 ## Out of scope
@@ -62,4 +63,15 @@ All three move together.
 - Found while working backlog 124, on 2026-09-07. Raised there and kept out of that item on
   purpose, so 124 stayed one concern.
 - Spec: none — the gap and its fix are both one line each.
-- Plan: none — filed at intake. A plan is written when somebody picks the item up.
+- Plan: `docs/superpowers/plans/2026-09-07-coverage-tooling-filter-plan-141.md`
+- Reclassified from `trivial` to `moderate` at Pickup on 2026-09-07. A filed backlog item is
+  never `trivial` (`docs/development/workflow.md:825`, "**A filed backlog item is never `trivial`.**").
+  The size of the change did not decide this; the rule did.
+- Out of scope check, done on 2026-09-07: the two entry points hold eleven dot-source statements
+  naming seven distinct modules, and none of those seven dot-sources anything further. Those
+  seven plus the two entry points are the nine files the list must hold. Only
+  `scripts/test-results.common.ps1` was missing, so there is nothing else to file.
+  `scripts/run-powershell-suites.ps1` stays off the list: `test-fast.ps1` starts it as a child
+  process in PowerShell mode, which is a different slice.
+- The suite now derives the expected set by reading both entry points, so the list cannot go
+  stale again the way it did for backlog 123 and backlog 128.

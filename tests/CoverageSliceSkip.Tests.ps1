@@ -147,9 +147,118 @@ Invoke-TestCase 'Matching is case-sensitive, the way the action matches' {
     }
 }
 
-Invoke-TestCase 'The coverage tooling list is exactly the eight files the slice runs' {
+# Reads the file names one entry point dot-sources, so the coverage-tooling list can be derived
+# instead of remembered. Backlog 123 and backlog 128 each added a module and left the list alone,
+# and a hand-kept list is what let both slip past.
+#
+# It reads the parse tree, not the lines. A line-anchored regex only sees a dot-source that
+# starts its own line, so one written as `if ($x) { . "$PSScriptRoot\extra.ps1" }` is dropped
+# with no word said. That is the same silent miss the hand-kept list had, moved one level down.
+# The parser finds a dot-source wherever it sits, and ignores one inside a comment or a string.
+#
+# Two target shapes appear in these scripts, and both are read:
+#
+#   . "$PSScriptRoot\name.ps1"
+#   $variable = Join-Path $PSScriptRoot 'name.ps1'    ... later ...    . $variable
+#
+# Any other target throws, naming the file and the line. An unreadable target must be loud.
+#
+# System.Management.Automation.Language.Parser is present in Windows PowerShell 5.1, which this
+# suite still supports, and both hosts return the same tree for these files.
+function Get-DotSourcedScriptName {
+    param([Parameter(Mandatory = $true)][string] $Path)
+
+    $fileName = [System.IO.Path]::GetFileName($Path)
+    $tokens = $null
+    $parseError = $null
+    $ast = [System.Management.Automation.Language.Parser]::ParseFile($Path, [ref] $tokens, [ref] $parseError)
+
+    # A file that does not parse yields a partial tree, so the derived set comes back short and
+    # the mismatch message blames the YAML for a file the reader never understood.
+    if ($parseError.Count -gt 0) {
+        throw ("{0}: the parser reported {1} error(s), the first at line {2}: {3}" -f `
+                $fileName, $parseError.Count, $parseError[0].Extent.StartLineNumber, $parseError[0].Message)
+    }
+
+    $dotSourced = $ast.FindAll({
+            param($node)
+            $node -is [System.Management.Automation.Language.CommandAst] -and $node.InvocationOperator -eq 'Dot'
+        }, $true)
+
+    $names = New-Object System.Collections.Generic.List[string]
+
+    foreach ($command in $dotSourced) {
+        $target = $command.CommandElements[0]
+        $line = $target.Extent.StartLineNumber
+
+        # . "$PSScriptRoot\name.ps1" - an expandable string, because it holds a variable.
+        if ($target -is [System.Management.Automation.Language.ExpandableStringExpressionAst] -and
+            $target.Value -match '^\$PSScriptRoot[\\/](?<name>[^\\/]+\.ps1)$') {
+            $names.Add($Matches.name)
+            continue
+        }
+
+        # . $variable, assigned from Join-Path $PSScriptRoot 'name.ps1' earlier in the file.
+        if ($target -is [System.Management.Automation.Language.VariableExpressionAst]) {
+            $assigned = Get-JoinPathAssignedName -Ast $ast `
+                -VariableName $target.VariablePath.UserPath -BeforeOffset $target.Extent.StartOffset
+
+            if (-not $assigned) {
+                throw ("{0} line {1}: dot-sources the variable {2}, and no 'Join-Path `$PSScriptRoot' assignment for it appears above. Teach Get-DotSourcedScriptName the new shape." -f `
+                        $fileName, $line, $target.Extent.Text)
+            }
+
+            $names.Add($assigned)
+            continue
+        }
+
+        throw ("{0} line {1}: unsupported dot-source target '{2}'. Teach Get-DotSourcedScriptName the new shape rather than leaving it unread." -f `
+                $fileName, $line, $target.Extent.Text)
+    }
+
+    return $names
+}
+
+# The nearest `$<name> = Join-Path $PSScriptRoot '<file>.ps1'` above a given offset, or $null.
+# Assignments come back in document order, so keeping the last match before the offset is what
+# makes it the nearest one.
+function Get-JoinPathAssignedName {
+    param(
+        [Parameter(Mandatory = $true)] $Ast,
+        [Parameter(Mandatory = $true)][string] $VariableName,
+        [Parameter(Mandatory = $true)][int] $BeforeOffset
+    )
+
+    $assignments = $Ast.FindAll({
+            param($node)
+            $node -is [System.Management.Automation.Language.AssignmentStatementAst]
+        }, $true)
+
+    $found = $null
+    foreach ($assignment in $assignments) {
+        if ($assignment.Extent.StartOffset -ge $BeforeOffset) { continue }
+        if (-not ($assignment.Left -is [System.Management.Automation.Language.VariableExpressionAst])) { continue }
+        if ($assignment.Left.VariablePath.UserPath -ne $VariableName) { continue }
+
+        $call = $assignment.Right.Find({
+                param($node)
+                $node -is [System.Management.Automation.Language.CommandAst]
+            }, $true)
+
+        if (-not $call -or $call.GetCommandName() -ne 'Join-Path') { continue }
+
+        $literal = @($call.CommandElements |
+                Where-Object { $_ -is [System.Management.Automation.Language.StringConstantExpressionAst] -and $_.Value -match '\.ps1$' })
+
+        if ($literal.Count -eq 1) { $found = $literal[0].Value }
+    }
+
+    return $found
+}
+
+Invoke-TestCase 'The coverage tooling list is exactly the nine files the slice runs' {
     # The exact set, not a couple of spot checks. Asserting only that two entries are present,
-    # and that whatever entries remain exist on disk, lets any of the other six be deleted
+    # and that whatever entries remain exist on disk, lets any of the other seven be deleted
     # from the YAML with the suite still green - and a deleted entry silently stops protecting
     # that file.
     $path = Get-AhkFlowCodePathFilterPath -RepoRoot $repoRoot
@@ -162,11 +271,12 @@ Invoke-TestCase 'The coverage tooling list is exactly the eight files the slice 
         'scripts/progress.common.ps1'
         'scripts/run-coverage.ps1'
         'scripts/test-fast.ps1'
+        'scripts/test-results.common.ps1'
         'scripts/test-run-lock.common.ps1'
         'scripts/test-sql-container.common.ps1'
     ) | Sort-Object
 
-    Assert-True ($tooling.Count -eq 8) "Expected 8 coverage-tooling entries, got $($tooling.Count): $($tooling -join ', ')"
+    Assert-True ($tooling.Count -eq 9) "Expected 9 coverage-tooling entries, got $($tooling.Count): $($tooling -join ', ')"
     Assert-True (($tooling -join '|') -ceq ($expected -join '|')) `
         "Coverage tooling list does not match. Got: $($tooling -join ', ')"
 
@@ -175,13 +285,140 @@ Invoke-TestCase 'The coverage tooling list is exactly the eight files the slice 
         Assert-True (Test-Path -LiteralPath (Join-Path $repoRoot $entry)) "Coverage tooling entry '$entry' does not exist."
     }
 
-    # The list must stay in step with what run-coverage.ps1 actually loads. A new dot-source
-    # there with no entry here is the failure this catches.
-    $runCoverage = Get-Content -LiteralPath (Join-Path $repoRoot 'scripts/run-coverage.ps1') -Raw
-    foreach ($name in @('test-sql-container.common.ps1', 'Common.ps1', 'test-run-lock.common.ps1', 'coverage-inputs.common.ps1', 'progress.common.ps1')) {
-        Assert-True ($runCoverage -match [regex]::Escape($name)) `
-            "run-coverage.ps1 no longer mentions $name. Re-derive the coverage-tooling list."
+    # The literal above says what the set should be. This derives what it must be, by reading the
+    # dot-source statements out of both entry points. A new dot-source in either script, with no
+    # entry in the YAML, fails here. That is the failure backlog 123 and backlog 128 both slipped
+    # past, because the check this replaces read run-coverage.ps1 only and matched a hand-kept
+    # list of names against it.
+    $derived = New-Object System.Collections.Generic.List[string]
+    foreach ($entryPoint in @('scripts/run-coverage.ps1', 'scripts/test-fast.ps1')) {
+        $derived.Add($entryPoint)
+        foreach ($name in Get-DotSourcedScriptName -Path (Join-Path $repoRoot $entryPoint)) {
+            $derived.Add("scripts/$name")
+        }
     }
+
+    $derivedSet = @($derived | Sort-Object -Unique)
+    Assert-True (($tooling -join '|') -ceq ($derivedSet -join '|')) `
+        "The coverage tooling list does not match what the entry points dot-source. Derived: $($derivedSet -join ', ')"
+}
+
+# A throwaway script holding the dot-source lines a case wants Get-DotSourcedScriptName to read.
+# It never runs; only its text is parsed.
+function New-DotSourceFixture {
+    param([string[]] $Line)
+
+    $path = Join-Path ([System.IO.Path]::GetTempPath()) ('ahkflow-dotsource-' + [guid]::NewGuid().ToString('N') + '.ps1')
+    Set-Content -LiteralPath $path -Value $Line -Encoding utf8
+    return $path
+}
+
+Invoke-TestCase 'A dot-source target the reader cannot parse is rejected, never skipped' {
+    # Both throws in Get-DotSourcedScriptName are load-bearing, so both need a case. Delete either
+    # one with no case here and the suite stays green while the derived set quietly loses a name -
+    # which is the same silent failure the hand-kept list had.
+    $path = New-DotSourceFixture -Line @(
+        '. "$PSScriptRoot\Common.ps1"'
+        '. (Join-Path $PSScriptRoot ''slug.common.ps1'')'
+    )
+
+    try {
+        $threw = $false
+        try { Get-DotSourcedScriptName -Path $path | Out-Null }
+        catch {
+            $threw = $true
+            Assert-True ($_.Exception.Message -match 'unsupported dot-source target') `
+                "The message must say the target is unsupported. Got: $($_.Exception.Message)"
+            Assert-True ($_.Exception.Message -match 'line 2') `
+                "The message must name the line the reader stopped on. Got: $($_.Exception.Message)"
+        }
+
+        Assert-True $threw 'An unreadable dot-source target must throw. Skipping it derives an incomplete set.'
+    }
+    finally { Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue }
+}
+
+Invoke-TestCase 'A dot-sourced variable with no resolvable assignment is rejected' {
+    # The variable shape resolves by searching upwards for a Join-Path assignment. When there is
+    # none, the name is unknowable, and guessing would be worse than stopping.
+    $path = New-DotSourceFixture -Line @(
+        '$sharedScript = Get-SomethingElse'
+        '. $sharedScript'
+    )
+
+    try {
+        $threw = $false
+        try { Get-DotSourcedScriptName -Path $path | Out-Null }
+        catch {
+            $threw = $true
+            Assert-True ($_.Exception.Message -match 'dot-sources the variable') `
+                "The message must name the variable it could not resolve. Got: $($_.Exception.Message)"
+            Assert-True ($_.Exception.Message -match 'line 2') `
+                "The message must name the line the reader stopped on. Got: $($_.Exception.Message)"
+        }
+
+        Assert-True $threw 'An unresolvable variable must throw rather than drop the name.'
+    }
+    finally { Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue }
+}
+
+Invoke-TestCase 'Both dot-source shapes are read, and only dot-source lines are read' {
+    # The positive side of the two cases above. Without it, a reader that threw on everything
+    # would also pass them.
+    $path = New-DotSourceFixture -Line @(
+        '$sharedSqlScript = Join-Path $PSScriptRoot ''test-sql-container.common.ps1'''
+        '. $sharedSqlScript'
+        '. "$PSScriptRoot\Common.ps1"'
+        '# . "$PSScriptRoot\not-loaded.common.ps1"'
+        '$path = Join-Path $PSScriptRoot ''also-not-loaded.ps1'''
+    )
+
+    try {
+        $names = @(Get-DotSourcedScriptName -Path $path)
+        Assert-True (($names -join '|') -ceq 'test-sql-container.common.ps1|Common.ps1') `
+            "Expected both shapes and nothing else. Got: $($names -join ', ')"
+    }
+    finally { Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue }
+}
+
+Invoke-TestCase 'A dot-source nested inside a block is read, not skipped' {
+    # The first reader matched only a line whose first token was the dot operator. A dot-source
+    # inside a block, or after any other token, was dropped with no word said - the exact silent
+    # miss this helper exists to prevent. Reading the parse tree removes the line-start
+    # assumption instead of adding another pattern to it.
+    $path = New-DotSourceFixture -Line @(
+        '. "$PSScriptRoot\Common.ps1"'
+        'if ($IsWindows) { . "$PSScriptRoot\windows-only.common.ps1" }'
+    )
+
+    try {
+        $names = @(Get-DotSourcedScriptName -Path $path)
+        Assert-True (($names -join '|') -ceq 'Common.ps1|windows-only.common.ps1') `
+            "The nested dot-source must be read too. Got: $($names -join ', ')"
+    }
+    finally { Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue }
+}
+
+Invoke-TestCase 'A file the parser cannot read stops the run' {
+    # Without this, a syntax error yields an empty parse tree, the derived set comes back short,
+    # and the mismatch message blames the YAML for a file the reader never understood.
+    $path = New-DotSourceFixture -Line @(
+        '. "$PSScriptRoot\Common.ps1"'
+        'if ($true) {'
+    )
+
+    try {
+        $threw = $false
+        try { Get-DotSourcedScriptName -Path $path | Out-Null }
+        catch {
+            $threw = $true
+            Assert-True ($_.Exception.Message -match 'parser reported') `
+                "The message must say the parser failed. Got: $($_.Exception.Message)"
+        }
+
+        Assert-True $threw 'A file that does not parse must throw rather than derive a short set.'
+    }
+    finally { Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue }
 }
 
 Invoke-TestCase 'A pattern shape the matcher cannot read is rejected, never ignored' {
@@ -374,8 +611,25 @@ Invoke-TestCase 'Changing the coverage runner is a code change even though it is
     finally { Remove-Fixture -Root $root }
 }
 
+Invoke-TestCase 'Changing the test results module is a code change' {
+    # test-fast.ps1 dot-sources this module, and test-fast.ps1 is what runs the coverage slice.
+    # Backlog 128 added the module and left it off the list, so a change to it read as a
+    # documentation change and the Gate skipped the only local check that would have run it.
+    $root = New-DiffFixture
+    try {
+        Add-FixtureFile -Root $root -RelativePath 'scripts/test-results.common.ps1' -Content '# changed'
+        Save-Fixture -Root $root -Message 'edit the test results module'
+
+        $decision = Get-AhkFlowCoverageDecision -RepoRoot $root -BaseRef 'main'
+        Assert-True $decision.CoverageRequired `
+            'test-results.common.ps1 is loaded by the coverage slice, so a change to it must run it.'
+    }
+    finally { Remove-Fixture -Root $root }
+}
+
 Invoke-TestCase 'An ordinary script is still not a code change' {
-    # The guard above must protect seven named files, not re-admit every .ps1 under scripts/.
+    # The coverage-tooling guard protects nine named files, and must not re-admit every .ps1
+    # under scripts/. The two cases above prove two of those nine; this one proves the boundary.
     $root = New-DiffFixture
     try {
         Add-FixtureFile -Root $root -RelativePath 'scripts/deploy.ps1' -Content '# changed'
