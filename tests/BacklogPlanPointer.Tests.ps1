@@ -67,7 +67,15 @@ $cases = @(
     @{ Name = 'Stage 3-plan is skipped';              Stage = '3-plan';     Notes = @();                    Folder = '';        ShouldPass = $true }
     @{ Name = 'Stage 4-execute needs a pointer';      Stage = '4-execute';  Notes = @();                    Folder = '';        ShouldPass = $false }
     @{ Name = 'Stage 10-cleanup needs a pointer';     Stage = '10-cleanup'; Notes = @();                    Folder = '';        ShouldPass = $false }
-    @{ Name = 'done/ is skipped';                     Stage = '9-ship';     Notes = @();                    Folder = 'done';    ShouldPass = $true }
+    # done/ is half in scope. A shipped item is never asked for a pointer, because 71 items
+    # shipped before the rule existed. A pointer it does carry must still be readable, because
+    # somebody who wants that plan has to follow it. See backlog 142.
+    @{ Name = 'done/ needs no pointer';               Stage = '9-ship';     Notes = @();                    Folder = 'done';    ShouldPass = $true }
+    @{ Name = 'done/ takes a valid plan path';        Stage = '9-ship';     Notes = @($validPlan);          Folder = 'done';    ShouldPass = $true }
+    @{ Name = 'done/ takes none with a reason';       Stage = '9-ship';     Notes = @("- Plan: none $([char]0x2014) shipped without a plan"); Folder = 'done'; ShouldPass = $true }
+    @{ Name = 'done/ rejects a bare path';            Stage = '9-ship';     Notes = @('- Plan: docs/superpowers/plans/a-plan-101.md'); Folder = 'done'; ShouldPass = $false }
+    @{ Name = 'done/ rejects the placeholder';        Stage = '9-ship';     Notes = @('- Plan: <path, or "none ' + [char]0x2014 + ' reason">'); Folder = 'done'; ShouldPass = $false }
+    @{ Name = 'done/ rejects both a path and none';   Stage = '9-ship';     Notes = @($validPlan, "- Plan: none $([char]0x2014) why"); Folder = 'done'; ShouldPass = $false }
     @{ Name = 'blocked/ is checked';                  Stage = '4-execute';  Notes = @();                    Folder = 'blocked'; ShouldPass = $false }
     @{ Name = 'One valid plan path passes';           Stage = '4-execute';  Notes = @($validPlan);          Folder = '';        ShouldPass = $true }
     @{ Name = 'Two valid plan paths pass';            Stage = '4-execute';  Notes = @($validPlan, $secondPlan); Folder = '';     ShouldPass = $true }

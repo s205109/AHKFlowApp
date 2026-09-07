@@ -6,7 +6,7 @@
 - **Type**: Tooling
 - **Interfaces**: none (repository check)
 - **Difficulty**: moderate
-- **Stage**: 3-plan
+- **Stage**: 4-execute
 
 ## Summary
 

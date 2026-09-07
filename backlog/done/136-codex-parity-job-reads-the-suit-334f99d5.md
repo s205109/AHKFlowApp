@@ -48,7 +48,7 @@ place I write that down, so that a suite cannot be listed in one place and run f
 - The suite is one file and the job runs it directly today, so the drift this closes is small.
   The value is that the manifest becomes true for all three jobs rather than two.
 - Spec: none — the change is mechanical once 127 ships.
-- Plan: docs/superpowers/plans/2026-09-06-codex-parity-job-manifest-plan-136.md
+- Plan: `docs/superpowers/plans/2026-09-06-codex-parity-job-manifest-plan-136.md`
 - The job stays on `ubuntu-latest`. `scripts/agents/setup-cross-agent-skills.sh` refuses to run
   under Windows Git Bash, and the suite compares that script's hash against the PowerShell one.
   Both bash and pwsh are preinstalled on the ubuntu runner.

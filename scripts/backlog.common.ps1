@@ -188,42 +188,60 @@ function Get-BacklogPointerProblem {
     foreach ($item in Get-BacklogItem -BacklogRoot $BacklogRoot) {
         if ((Split-Path -Leaf $item.Path) -eq '000-backlog-item-template.md') { continue }
 
-        # backlog/done/ is out of scope. The failure this check prevents happens when a session
-        # picks work up, and nobody picks up a finished item. See backlog 090.
-        if ($item.Folder -eq 'done') { continue }
+        # backlog/done/ is half in scope, and the two halves have different reasons.
+        #
+        # A pointer is not required there. The failure backlog 090 fixed happens when a session
+        # picks work up, and nobody picks up a finished item. 71 items also shipped before the
+        # rule existed, so demanding a pointer from every one of them would be a large back-fill
+        # with no reader waiting for it.
+        #
+        # A pointer that is there must be readable. That one does have a reader: somebody who
+        # wants the plan behind a finished item, and can only follow what the item wrote down.
+        # Items 104, 124 and 136 each named a real plan file in a form this check cannot read,
+        # and the folder skip hid all three. The stage trigger below never saw them either: an
+        # item can move from a stage before 4-execute straight into done/. See backlog 142.
+        $shipped = $item.Folder -eq 'done'
 
-        if ($item.Stages.Count -eq 0) { continue }
+        # A finished item's Stage line belongs to Get-BacklogProblem, which already requires
+        # '9-ship' there. Reading it again here would report the same fault twice.
+        if (-not $shipped) {
+            if ($item.Stages.Count -eq 0) { continue }
 
-        if ($item.Stages.Count -gt 1) {
-            $problems += @"
+            if ($item.Stages.Count -gt 1) {
+                $problems += @"
 Backlog $($item.Key) has more than one Stage line.
   File:   $($item.RelativePath)
   Found:  $($item.Stages -join ', ')
   Fix:    keep exactly one '- **Stage**:' line.
 "@
-            continue
-        }
+                continue
+            }
 
-        $stage = $item.Stages[0]
-        $index = [array]::IndexOf($script:BacklogStageOrder, $stage)
+            $stage = $item.Stages[0]
+            $index = [array]::IndexOf($script:BacklogStageOrder, $stage)
 
-        if ($index -lt 0) {
-            $problems += @"
+            if ($index -lt 0) {
+                $problems += @"
 Backlog $($item.Key) has an unknown Stage value.
   File:   $($item.RelativePath)
   Found:  $stage
   Expect: one of $($script:BacklogStageOrder -join ', ')
 "@
-            continue
-        }
+                continue
+            }
 
-        if ($index -lt $script:BacklogPointerTriggerIndex) { continue }
+            if ($index -lt $script:BacklogPointerTriggerIndex) { continue }
+        }
 
         $notes = @(Get-BacklogNotesLine -Line (Get-Content -LiteralPath $item.Path))
         $planLines = @($notes | Where-Object { $_ -match '^\s*-\s+Plan:' })
         $values = @($planLines | ForEach-Object { ($_ -replace '^\s*-\s+Plan:\s*', '').Trim() })
 
         if ($values.Count -eq 0) {
+            # The presence half of the done/ rule above. Everything below this point is the shape
+            # half, and it runs for a shipped item exactly as it runs for an open one.
+            if ($shipped) { continue }
+
             $problems += @"
 Backlog $($item.Key) has no plan pointer.
   File:    $($item.RelativePath)

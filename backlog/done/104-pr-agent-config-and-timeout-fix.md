@@ -80,4 +80,4 @@ does not silently get zero review and reviewers do not have to sort noise.
 - Follow-up: renamed to backlog 108. See that item for the corrected reading:
   the call returns; `ai_timeout` is not enforced.
 - Spec: docs/superpowers/specs/2026-08-17-pr-agent-config-timeout-design-104.md
-- Plan: docs/superpowers/plans/2026-08-17-pr-agent-config-timeout-plan-104.md
+- Plan: `docs/superpowers/plans/2026-08-17-pr-agent-config-timeout-plan-104.md`
