@@ -457,4 +457,48 @@ try {
 
 
 
+# --- Test: a merged worktree kept for uncommitted changes is named, not dropped (backlog 147) ---
+# The two skip paths above this one in Get-EligibleMergedWorktrees both write a stderr line and a
+# Kept: log line. Without them a reader cannot tell a worktree the sweep kept from one it never saw.
+$repo = New-TempGitRepo
+try {
+    $dirtyPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-dirty-reported' -Dirty
+
+    $res = Invoke-CleanupChild -RepoDir $repo
+    Assert-True ($res.Stderr -match 'because the worktree has uncommitted changes \(dirty\.txt\)\.') `
+        "The sweep must name the dirty worktree on stderr, got: $($res.Stderr)"
+    Assert-True ($res.Stderr -match 'git add clears a stale index entry') `
+        "The stderr line must stay actionable for a reader who sees no diff, got: $($res.Stderr)"
+    Assert-True (Test-Path -LiteralPath $dirtyPath) 'Reporting must not remove the dirty worktree'
+
+    $log = Join-Path $repo '.claude\worktrees\worktree-removal.log'
+    Assert-True (Test-Path -LiteralPath $log) 'Keeping a dirty worktree must write an outcome line'
+    $outcome = @(Get-Content -LiteralPath $log)
+    Assert-Equal 1 $outcome.Count "One dirty worktree writes one outcome line, got $($outcome.Count)"
+    Assert-True ($outcome[0] -match [regex]::Escape((Split-Path -Leaf $dirtyPath))) `
+        "The outcome line must name the worktree, got '$($outcome[0])'"
+    Assert-True ($outcome[0] -match ('Kept: the worktree has uncommitted changes \(dirty\.txt\)\. ' +
+            'Run git status there\. When git diff is empty, git add clears a stale index entry\.$')) `
+        "Expected the dirty line, got '$($outcome[0])'"
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- Test: more than one change is counted, and the first path is named (backlog 147) ---
+# Without this case a message that only ever named one path would pass every assertion above.
+$repo = New-TempGitRepo
+try {
+    $dirtyPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-dirty-many' -Dirty
+    Set-Content -LiteralPath (Join-Path $dirtyPath 'extra.txt') -Value 'also uncommitted' -Encoding utf8
+
+    Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'main' | Out-Null
+
+    $outcome = @(Get-Content -LiteralPath (Join-Path $repo '.claude\worktrees\worktree-removal.log'))
+    Assert-Equal 1 $outcome.Count "One dirty worktree writes one outcome line, got $($outcome.Count)"
+    Assert-True ($outcome[0] -match 'uncommitted changes \(2 paths, first dirty\.txt\)') `
+        "Two changes must be counted and the first named, got '$($outcome[0])'"
+} finally {
+    Remove-TempTree $repo
+}
+
 Write-Host 'Worktree merged-cleanup eligibility tests passed.'
