@@ -6,7 +6,7 @@
 - **Type**: Chore
 - **Interfaces**: none — test code only
 - **Difficulty**: moderate
-- **Stage**: 0-intake
+- **Stage**: 3-plan
 
 ## Summary
 
