@@ -6,7 +6,7 @@
 - **Type**: Tooling
 - **Interfaces**: none (repository check)
 - **Difficulty**: moderate
-- **Stage**: 7-document
+- **Stage**: 9-ship
 
 ## Summary
 
