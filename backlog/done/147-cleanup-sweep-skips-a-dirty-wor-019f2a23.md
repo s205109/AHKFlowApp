@@ -54,7 +54,7 @@ removed" and "tests cover the new API" cannot.
   worth naming in the message, because the message would have to be actionable for a reader
   who sees no diff.
 - Spec: none — the change is one reporting path, not a design question.
-- Plan: docs/superpowers/plans/2026-09-07-dirty-worktree-report-plan-147.md
+- Plan: `docs/superpowers/plans/2026-09-07-dirty-worktree-report-plan-147.md`
 - The stderr line follows the plan-guard shape, not the locked-worktree shape: `cleanup:
   keeping <path> because <reason>.` The two existing skip paths already word their lines
   differently, and this path keeps the worktree rather than skipping it, so the plan-guard
