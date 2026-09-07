@@ -141,6 +141,14 @@ The compression-on median of 7.16 s is well below the 12.37 s median this item f
 earlier number came from a tree that was not as warm. The saving is the difference between the two
 sets measured together, so it does not depend on that.
 
+## Decision
+
+**Adopt the flag.** The plan's rule adopts when the saving is at least 2 s and all five pair
+savings are above zero. The saving is 2.65 s, and 5 of 5 pairs saved time. Both conditions hold,
+so no extension run is needed.
+
+This outcome was written down before any file changed.
+
 ## Notes / dependencies
 
 - Filed out of backlog 131, which measured the publish step while answering a different question.
