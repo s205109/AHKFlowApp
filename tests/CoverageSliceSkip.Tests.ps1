@@ -151,52 +151,109 @@ Invoke-TestCase 'Matching is case-sensitive, the way the action matches' {
 # instead of remembered. Backlog 123 and backlog 128 each added a module and left the list alone,
 # and a hand-kept list is what let both slip past.
 #
-# Two shapes appear in these scripts, and both are read:
+# It reads the parse tree, not the lines. A line-anchored regex only sees a dot-source that
+# starts its own line, so one written as `if ($x) { . "$PSScriptRoot\extra.ps1" }` is dropped
+# with no word said. That is the same silent miss the hand-kept list had, moved one level down.
+# The parser finds a dot-source wherever it sits, and ignores one inside a comment or a string.
+#
+# Two target shapes appear in these scripts, and both are read:
 #
 #   . "$PSScriptRoot\name.ps1"
 #   $variable = Join-Path $PSScriptRoot 'name.ps1'    ... later ...    . $variable
 #
-# Any other target throws, naming the file and the line. A regex that quietly stopped matching
-# would turn the check below into a check of nothing, which is the failure the hand-kept list
-# already had. An unreadable target must be loud.
+# Any other target throws, naming the file and the line. An unreadable target must be loud.
+#
+# System.Management.Automation.Language.Parser is present in Windows PowerShell 5.1, which this
+# suite still supports, and both hosts return the same tree for these files.
 function Get-DotSourcedScriptName {
     param([Parameter(Mandatory = $true)][string] $Path)
 
-    $lines = @(Get-Content -LiteralPath $Path)
-    $names = New-Object System.Collections.Generic.List[string]
     $fileName = [System.IO.Path]::GetFileName($Path)
+    $tokens = $null
+    $parseError = $null
+    $ast = [System.Management.Automation.Language.Parser]::ParseFile($Path, [ref] $tokens, [ref] $parseError)
 
-    for ($i = 0; $i -lt $lines.Count; $i++) {
-        if ($lines[$i] -notmatch '^\s*\.\s+(?<target>\S.*?)\s*$') { continue }
-        $target = $Matches.target
+    # A file that does not parse yields a partial tree, so the derived set comes back short and
+    # the mismatch message blames the YAML for a file the reader never understood.
+    if ($parseError.Count -gt 0) {
+        throw ("{0}: the parser reported {1} error(s), the first at line {2}: {3}" -f `
+                $fileName, $parseError.Count, $parseError[0].Extent.StartLineNumber, $parseError[0].Message)
+    }
 
-        # . "$PSScriptRoot\name.ps1"
-        if ($target -match '^"\$PSScriptRoot[\\/](?<name>[^"\\/]+\.ps1)"$') {
+    $dotSourced = $ast.FindAll({
+            param($node)
+            $node -is [System.Management.Automation.Language.CommandAst] -and $node.InvocationOperator -eq 'Dot'
+        }, $true)
+
+    $names = New-Object System.Collections.Generic.List[string]
+
+    foreach ($command in $dotSourced) {
+        $target = $command.CommandElements[0]
+        $line = $target.Extent.StartLineNumber
+
+        # . "$PSScriptRoot\name.ps1" - an expandable string, because it holds a variable.
+        if ($target -is [System.Management.Automation.Language.ExpandableStringExpressionAst] -and
+            $target.Value -match '^\$PSScriptRoot[\\/](?<name>[^\\/]+\.ps1)$') {
             $names.Add($Matches.name)
             continue
         }
 
-        # . $variable, assigned from Join-Path $PSScriptRoot 'name.ps1' somewhere above.
-        if ($target -match '^\$(?<variable>[A-Za-z_][A-Za-z0-9_]*)$') {
-            $variable = $Matches.variable
-            $assignment = '^\s*\$' + [regex]::Escape($variable) + '\s*=\s*Join-Path \$PSScriptRoot ''(?<name>[^'']+\.ps1)''\s*$'
-            $assigned = $null
-            for ($j = $i - 1; $j -ge 0; $j--) {
-                if ($lines[$j] -match $assignment) { $assigned = $Matches.name; break }
-            }
+        # . $variable, assigned from Join-Path $PSScriptRoot 'name.ps1' earlier in the file.
+        if ($target -is [System.Management.Automation.Language.VariableExpressionAst]) {
+            $assigned = Get-JoinPathAssignedName -Ast $ast `
+                -VariableName $target.VariablePath.UserPath -BeforeOffset $target.Extent.StartOffset
 
             if (-not $assigned) {
-                throw ("{0} line {1}: dot-sources the variable {2}, and no 'Join-Path `$PSScriptRoot' assignment for it appears above. Teach Get-DotSourcedScriptName the new shape." -f $fileName, ($i + 1), $target)
+                throw ("{0} line {1}: dot-sources the variable {2}, and no 'Join-Path `$PSScriptRoot' assignment for it appears above. Teach Get-DotSourcedScriptName the new shape." -f `
+                        $fileName, $line, $target.Extent.Text)
             }
 
             $names.Add($assigned)
             continue
         }
 
-        throw ("{0} line {1}: unsupported dot-source target '{2}'. Teach Get-DotSourcedScriptName the new shape rather than leaving it unread." -f $fileName, ($i + 1), $target)
+        throw ("{0} line {1}: unsupported dot-source target '{2}'. Teach Get-DotSourcedScriptName the new shape rather than leaving it unread." -f `
+                $fileName, $line, $target.Extent.Text)
     }
 
     return $names
+}
+
+# The nearest `$<name> = Join-Path $PSScriptRoot '<file>.ps1'` above a given offset, or $null.
+# Assignments come back in document order, so keeping the last match before the offset is what
+# makes it the nearest one.
+function Get-JoinPathAssignedName {
+    param(
+        [Parameter(Mandatory = $true)] $Ast,
+        [Parameter(Mandatory = $true)][string] $VariableName,
+        [Parameter(Mandatory = $true)][int] $BeforeOffset
+    )
+
+    $assignments = $Ast.FindAll({
+            param($node)
+            $node -is [System.Management.Automation.Language.AssignmentStatementAst]
+        }, $true)
+
+    $found = $null
+    foreach ($assignment in $assignments) {
+        if ($assignment.Extent.StartOffset -ge $BeforeOffset) { continue }
+        if (-not ($assignment.Left -is [System.Management.Automation.Language.VariableExpressionAst])) { continue }
+        if ($assignment.Left.VariablePath.UserPath -ne $VariableName) { continue }
+
+        $call = $assignment.Right.Find({
+                param($node)
+                $node -is [System.Management.Automation.Language.CommandAst]
+            }, $true)
+
+        if (-not $call -or $call.GetCommandName() -ne 'Join-Path') { continue }
+
+        $literal = @($call.CommandElements |
+                Where-Object { $_ -is [System.Management.Automation.Language.StringConstantExpressionAst] -and $_.Value -match '\.ps1$' })
+
+        if ($literal.Count -eq 1) { $found = $literal[0].Value }
+    }
+
+    return $found
 }
 
 Invoke-TestCase 'The coverage tooling list is exactly the nine files the slice runs' {
@@ -320,6 +377,46 @@ Invoke-TestCase 'Both dot-source shapes are read, and only dot-source lines are 
         $names = @(Get-DotSourcedScriptName -Path $path)
         Assert-True (($names -join '|') -ceq 'test-sql-container.common.ps1|Common.ps1') `
             "Expected both shapes and nothing else. Got: $($names -join ', ')"
+    }
+    finally { Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue }
+}
+
+Invoke-TestCase 'A dot-source nested inside a block is read, not skipped' {
+    # The first reader matched only a line whose first token was the dot operator. A dot-source
+    # inside a block, or after any other token, was dropped with no word said - the exact silent
+    # miss this helper exists to prevent. Reading the parse tree removes the line-start
+    # assumption instead of adding another pattern to it.
+    $path = New-DotSourceFixture -Line @(
+        '. "$PSScriptRoot\Common.ps1"'
+        'if ($IsWindows) { . "$PSScriptRoot\windows-only.common.ps1" }'
+    )
+
+    try {
+        $names = @(Get-DotSourcedScriptName -Path $path)
+        Assert-True (($names -join '|') -ceq 'Common.ps1|windows-only.common.ps1') `
+            "The nested dot-source must be read too. Got: $($names -join ', ')"
+    }
+    finally { Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue }
+}
+
+Invoke-TestCase 'A file the parser cannot read stops the run' {
+    # Without this, a syntax error yields an empty parse tree, the derived set comes back short,
+    # and the mismatch message blames the YAML for a file the reader never understood.
+    $path = New-DotSourceFixture -Line @(
+        '. "$PSScriptRoot\Common.ps1"'
+        'if ($true) {'
+    )
+
+    try {
+        $threw = $false
+        try { Get-DotSourcedScriptName -Path $path | Out-Null }
+        catch {
+            $threw = $true
+            Assert-True ($_.Exception.Message -match 'parser reported') `
+                "The message must say the parser failed. Got: $($_.Exception.Message)"
+        }
+
+        Assert-True $threw 'A file that does not parse must throw rather than derive a short set.'
     }
     finally { Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue }
 }
