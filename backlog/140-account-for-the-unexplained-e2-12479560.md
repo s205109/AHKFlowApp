@@ -10,8 +10,14 @@
 
 ## Summary
 
-Between 34 and 47 seconds of an E2E run belong to no named step. This item measures where that
-time goes before anybody proposes a fix for it.
+Roughly 33 to 46 seconds of an E2E run is not accounted for by any named step. This item measures
+where that time goes before anybody proposes a fix for it.
+
+**That range is an estimated remainder, not measured time.** It is what is left after subtracting
+three figures from two whole-run times, and the three figures come from different places. One of
+them, the 237 s test host, does not record which measurement round produced it. So the remainder
+could move once somebody measures the run directly, and that is the work here. Treat the range as
+"tens of seconds, owner unknown" rather than as a quantity anybody has observed.
 
 **Do not assume the solution build owns it.** Backlog 128 measured one `dotnet build` of an
 up-to-date tree at 10 s, and the runs this arithmetic uses passed `-NoBuild`, so they contain no
@@ -46,8 +52,12 @@ of the wall clock, so that the next speed item attacks the real cost instead of 
 - Backlog 128 measured E2E two ways. Letting every project build itself gave one run of 321.65 s.
   Building the solution once and then passing `-NoBuild` gave 293.38 s and 306.22 s. The
   `-NoBuild` pair is the repeatable measurement, so the arithmetic uses it.
-- Subtract 237 s in the test host, about 11 s of Blazor publish from backlog 131, and about 11 s of
-  SQL container start from backlog 128, and 34.38 s to 47.22 s is left.
+- Subtract 237 s in the test host, 12.37 s for the Blazor publish target from backlog 131, and
+  about 11 s of SQL container start from backlog 128. That leaves about 33 s and about 46 s.
+- The publish figure is the target's whole cost, because the target deletes and then publishes.
+  An earlier draft used 11 s, which was the cost of publishing without the delete, and got
+  34.38 s to 47.22 s. The 1.4 s difference is far inside the uncertainty of the estimate, which
+  is why this item rounds and does not quote decimals.
 - The 237 s test-host figure does not record which of the two measurement rounds produced it. That
   uncertainty is real and it is one more reason to measure rather than to reason from the table.
 - `scripts/measure-test-modes.ps1` builds once and then runs with `-NoBuild`, so its numbers
