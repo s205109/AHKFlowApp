@@ -6,7 +6,7 @@
 - **Type**: Tooling
 - **Interfaces**: none (repository check)
 - **Difficulty**: moderate
-- **Stage**: 4-execute
+- **Stage**: 7-document
 
 ## Summary
 
@@ -33,13 +33,13 @@ readable, so that I can find the plan without guessing.
 
 ## Acceptance criteria
 
-- [ ] This item records why `done/` is skipped today. The skip is asserted by a named test case, so
+- [x] This item records why `done/` is skipped today. The skip is asserted by a named test case, so
       the reason is a decision somebody made and it must be found before it is changed.
-- [ ] This item states whether the skip stays, and why. Both answers are acceptable; silence is
+- [x] This item states whether the skip stays, and why. Both answers are acceptable; silence is
       not.
-- [ ] If the skip goes, every existing item in `backlog/done/` passes the check, or the ones that
+- [x] If the skip goes, every existing item in `backlog/done/` passes the check, or the ones that
       do not are fixed in the same change.
-- [ ] If the skip stays, the reason is written where a reader of the check will find it.
+- [x] If the skip stays, the reason is written where a reader of the check will find it.
 
 ## The answer
 
