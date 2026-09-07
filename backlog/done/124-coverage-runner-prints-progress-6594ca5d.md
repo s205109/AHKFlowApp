@@ -89,4 +89,4 @@ shared module could prove itself against two shapes before it took on a third.
   `Stop-ProgressUnit` call commented out, eight of its ten cases failed. The two that stayed
   green cover failure paths that read no progress line.
 - Spec: none — this item reuses the design written for item 123.
-- Plan: docs/superpowers/plans/2026-09-06-coverage-runner-progress-plan-124.md
+- Plan: `docs/superpowers/plans/2026-09-06-coverage-runner-progress-plan-124.md`

@@ -902,6 +902,10 @@ its remaining changes and closes normally.
   `none — <reason>`. `tests/BacklogPlanPointer.Tests.ps1` checks it for `backlog/` and
   `backlog/blocked/` from `4-execute` onward. It cannot check that the file exists, because
   `.gitignore:473` keeps `docs/superpowers/` out of this repository.
+- A shipped item in `backlog/done/` is never asked for a pointer, because 71 items shipped
+  before this rule existed. A pointer it does carry must still be readable, and the same check
+  reads it. An item can move from a stage before `4-execute` straight into `backlog/done/`, so
+  the stage trigger above is not enough on its own. See backlog 142.
 - When design starts before an item exists, [Intake](#stage-0-intake) runs first: file the
   item, then design.
 - A pull request body may use a closing keyword for a GitHub issue. It must never use a
