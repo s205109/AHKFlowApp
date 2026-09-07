@@ -147,9 +147,9 @@ Invoke-TestCase 'Matching is case-sensitive, the way the action matches' {
     }
 }
 
-Invoke-TestCase 'The coverage tooling list is exactly the seven files the slice runs' {
+Invoke-TestCase 'The coverage tooling list is exactly the eight files the slice runs' {
     # The exact set, not a couple of spot checks. Asserting only that two entries are present,
-    # and that whatever entries remain exist on disk, lets any of the other five be deleted
+    # and that whatever entries remain exist on disk, lets any of the other six be deleted
     # from the YAML with the suite still green - and a deleted entry silently stops protecting
     # that file.
     $path = Get-AhkFlowCodePathFilterPath -RepoRoot $repoRoot
@@ -159,13 +159,14 @@ Invoke-TestCase 'The coverage tooling list is exactly the seven files the slice 
         'scripts/Common.ps1'
         'scripts/code-change-filter.common.ps1'
         'scripts/coverage-inputs.common.ps1'
+        'scripts/progress.common.ps1'
         'scripts/run-coverage.ps1'
         'scripts/test-fast.ps1'
         'scripts/test-run-lock.common.ps1'
         'scripts/test-sql-container.common.ps1'
     ) | Sort-Object
 
-    Assert-True ($tooling.Count -eq 7) "Expected 7 coverage-tooling entries, got $($tooling.Count): $($tooling -join ', ')"
+    Assert-True ($tooling.Count -eq 8) "Expected 8 coverage-tooling entries, got $($tooling.Count): $($tooling -join ', ')"
     Assert-True (($tooling -join '|') -ceq ($expected -join '|')) `
         "Coverage tooling list does not match. Got: $($tooling -join ', ')"
 
@@ -177,7 +178,7 @@ Invoke-TestCase 'The coverage tooling list is exactly the seven files the slice 
     # The list must stay in step with what run-coverage.ps1 actually loads. A new dot-source
     # there with no entry here is the failure this catches.
     $runCoverage = Get-Content -LiteralPath (Join-Path $repoRoot 'scripts/run-coverage.ps1') -Raw
-    foreach ($name in @('test-sql-container.common.ps1', 'Common.ps1', 'test-run-lock.common.ps1', 'coverage-inputs.common.ps1')) {
+    foreach ($name in @('test-sql-container.common.ps1', 'Common.ps1', 'test-run-lock.common.ps1', 'coverage-inputs.common.ps1', 'progress.common.ps1')) {
         Assert-True ($runCoverage -match [regex]::Escape($name)) `
             "run-coverage.ps1 no longer mentions $name. Re-derive the coverage-tooling list."
     }

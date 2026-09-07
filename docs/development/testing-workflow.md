@@ -53,7 +53,7 @@ Renames count as two paths. Moving `src/Foo.cs` to `docs/Foo.md` still runs the 
 build lost a file. Matching is case-sensitive: `scripts/Thing.PS1` is not `scripts/Thing.ps1`, and
 `README.MD` is not `README.md`. Only lowercase `.md` is excluded.
 
-The same file lists seven scripts under `coverage-tooling`. Changing one of those runs the slice
+The same file lists eight scripts under `coverage-tooling`. Changing one of those runs the slice
 even though the patterns above exclude it, because the coverage step is the only local check that
 runs `run-coverage.ps1` and what it loads.
 
@@ -63,7 +63,7 @@ check itself cannot decide, it says so and runs the slice.
 
 `ci.yml` reads the `code` patterns from that same file, so the two cannot drift apart. CI ignores
 `coverage-tooling`, and that is correct rather than a gap: CI never runs `run-coverage.ps1`. Its
-coverage step is a plain `dotnet test`. So on those seven paths this Gate is stricter than CI, and
+coverage step is a plain `dotnet test`. So on those eight paths this Gate is stricter than CI, and
 never looser.
 
 Then verify the change actually works — see **Verification After Implementation** in [`AGENTS.md`](../../AGENTS.md). A green gate proves nothing regressed; it does not prove the new behavior happened.
