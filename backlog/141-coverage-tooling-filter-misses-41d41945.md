@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: CLI
 - **Difficulty**: moderate
-- **Stage**: 3-plan
+- **Stage**: 6-verify
 
 ## Summary
 
@@ -41,14 +41,14 @@ All three move together.
 
 ## Acceptance criteria
 
-- [ ] `.github/code-paths-filter.yml` lists `scripts/test-results.common.ps1` under
+- [x] `.github/code-paths-filter.yml` lists `scripts/test-results.common.ps1` under
       `coverage-tooling`.
-- [ ] The `$expected` literal in `tests/CoverageSliceSkip.Tests.ps1` names the same set as the
+- [x] The `$expected` literal in `tests/CoverageSliceSkip.Tests.ps1` names the same set as the
       YAML file, and its count assertion agrees.
-- [ ] The comment above `coverage-tooling` describes the rule the list actually follows. Today it
+- [x] The comment above `coverage-tooling` describes the rule the list actually follows. Today it
       says the list is what `run-coverage.ps1` dot-sources, and the list also carries
       `test-fast.ps1` and what that script loads.
-- [ ] A branch whose only change is `scripts/test-results.common.ps1` reads as a code change, so
+- [x] A branch whose only change is `scripts/test-results.common.ps1` reads as a code change, so
       the coverage slice runs. `tests/CoverageSliceSkip.Tests.ps1` covers it.
 
 ## Out of scope
@@ -66,3 +66,10 @@ All three move together.
 - Reclassified from `trivial` to `moderate` at Pickup on 2026-09-07. A filed backlog item is
   never `trivial` (`docs/development/workflow.md:825`, "**A filed backlog item is never `trivial`.**").
   The size of the change did not decide this; the rule did.
+- Out of scope check, done on 2026-09-07: the two entry points hold eleven dot-source statements
+  naming nine distinct files, and none of those nine dot-sources anything further. Only
+  `scripts/test-results.common.ps1` was missing, so there is nothing else to file.
+  `scripts/run-powershell-suites.ps1` stays off the list: `test-fast.ps1` starts it as a child
+  process in PowerShell mode, which is a different slice.
+- The suite now derives the expected set by reading both entry points, so the list cannot go
+  stale again the way it did for backlog 123 and backlog 128.
