@@ -92,4 +92,4 @@ today. Raising xUnit1045 to a warning would stop new cases appearing.
   failing one in the middle, produced one test id, four result rows, and outcomes of one failed
   and three passed. The console reported the failure.
 - Spec: none — the defect and its fix are both small and named above.
-- Plan: none — filed at intake. A plan is written when somebody picks the item up.
+- Plan: `docs/superpowers/plans/2026-09-07-serializable-theory-ids-plan-143.md`
