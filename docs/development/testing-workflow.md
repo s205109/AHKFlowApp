@@ -245,9 +245,9 @@ Three CI jobs run suites, and each one runs on the platform it needs:
   this repository's own product lives. The git hooks, the worktree scripts, and the `.ahk`
   emitters are all Windows-first, so a suite that reads paths, git refs, or file bytes has to be
   proved there.
-- `codex-skills-hash-parity` runs on Linux, and it runs one suite. That suite compares a bash
-  implementation against a PowerShell one, and the bash setup script refuses under Windows Git
-  Bash, so Linux is the only platform it can run on.
+- `codex-skills-hash-parity` runs on Linux, and it runs the manifest's `codex-parity` set. That
+  set holds one suite, which compares a bash implementation against a PowerShell one. The bash
+  setup script refuses under Windows Git Bash, so Linux is the only platform it can run on.
 
 The five invariant suites run in both of the first two jobs, and that overlap is deliberate. The
 second run costs about nothing: a parallel run ends when its slowest suite ends, so removing work

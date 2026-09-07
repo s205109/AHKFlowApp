@@ -10,6 +10,7 @@
     { "name": "CitationFreshness.Tests.ps1", "jobs": ["invariants", "suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 78.8 },
     { "name": "CleanupEventLabels.Tests.ps1", "jobs": ["suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 0.4 },
     { "name": "CleanupEventScripts.Tests.ps1", "jobs": ["suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 1.7 },
+    { "name": "CodexParityCiJob.Tests.ps1", "jobs": ["suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 0.8 },
     { "name": "CodexSkillsHashParity.Tests.ps1", "jobs": ["codex-parity"], "platform": ["linux"], "execution": "parallel", "baselineSeconds": null },
     { "name": "CoverageInputCompleteness.Tests.ps1", "jobs": ["suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 0.8 },
     { "name": "CoverageRunLock.Tests.ps1", "jobs": ["suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 0.5 },
