@@ -52,3 +52,4 @@ coverage-tooling:
   - 'scripts/test-run-lock.common.ps1'
   - 'scripts/test-sql-container.common.ps1'
   - 'scripts/code-change-filter.common.ps1'
+  - 'scripts/progress.common.ps1'
