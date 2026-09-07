@@ -37,8 +37,9 @@ that the slice finishes in the time its slowest flow takes rather than the sum o
 
 ## Out of scope
 
-- The incremental Blazor publish. That is backlog 131, and it is deliberately separate: bundled,
-  the contained change would wait behind this risky one.
+- The incremental Blazor publish. That was backlog 131, and it closed on 2026-09-06 without a code
+  change: the publish step costs about 11 s warm, not the 85 s the framing implied, and the saving
+  never reaches CI. Do not expect that item to reduce the wall clock this item measures against.
 - The Fast and Integration Modes. Backlog 128 covered those.
 
 ## Notes / dependencies
