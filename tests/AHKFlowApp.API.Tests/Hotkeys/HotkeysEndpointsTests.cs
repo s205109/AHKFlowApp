@@ -572,18 +572,23 @@ public sealed class HotkeysEndpointsTests(ApiTestFixture fixture)
     // the round trip through validation, persistence, and HotkeyEmitter produced exactly
     // the expected AHK v2 syntax for every one of the seven kinds, not merely that some
     // string came back.
+    // Takes the action kind alone. The payload used to be the theory argument, but a
+    // CreateHotkeyDto is a record and does not serialize, so xUnit put all seven cases under one
+    // test id — one Test Explorer row, and no way to re-run a single kind. The kind is a stable
+    // serializable id, and the payload table resolves it. The old expectedKind parameter is gone:
+    // it was always equal to the payload's own ActionKind, and it is now the key.
     [Theory]
     [MemberData(nameof(KindPayloads))]
-    public async Task Post_EachActionKind_Returns201AndPersistsTypedColumns(
-        CreateHotkeyDto dto, HotkeyActionKind expectedKind, string expectedSnippet)
+    public async Task Post_EachActionKind_Returns201AndPersistsTypedColumns(HotkeyActionKind kind)
     {
+        (CreateHotkeyDto dto, string expectedSnippet) = s_kindPayloads[kind];
         using HttpClient client = CreateAuthed();
 
         HttpResponseMessage res = await client.PostAsJsonAsync("/api/v1/hotkeys", dto);
 
         res.StatusCode.Should().Be(HttpStatusCode.Created);
         HotkeyDto? created = await res.Content.ReadFromJsonAsync<HotkeyDto>();
-        created!.ActionKind.Should().Be(expectedKind);
+        created!.ActionKind.Should().Be(kind);
 
         // Unconditional, for every kind: the persisted typed columns must echo exactly what was
         // submitted. Since the request DTO only ever populates the column(s) its own kind owns —
@@ -605,7 +610,7 @@ public sealed class HotkeysEndpointsTests(ApiTestFixture fixture)
         // returned entity would hide.
         HotkeyDto? reloaded = await (await client.GetAsync($"/api/v1/hotkeys/{created.Id}"))
             .Content.ReadFromJsonAsync<HotkeyDto>();
-        reloaded!.ActionKind.Should().Be(expectedKind);
+        reloaded!.ActionKind.Should().Be(kind);
         reloaded.Text.Should().Be(dto.Text);
         reloaded.SendKeysContent.Should().Be(dto.SendKeysContent);
         reloaded.RunTarget.Should().Be(dto.RunTarget);
@@ -680,44 +685,35 @@ public sealed class HotkeysEndpointsTests(ApiTestFixture fixture)
     // AppliesToAllProfiles: true on every case — the create validator requires it (or a
     // non-empty ProfileIds) regardless of action kind; without it every case 400s on
     // Input.ProfileIds before the kind-specific logic under test ever runs.
-    public static TheoryData<CreateHotkeyDto, HotkeyActionKind, string> KindPayloads() => new()
-    {
+    private static readonly IReadOnlyDictionary<HotkeyActionKind, (CreateHotkeyDto Dto, string Snippet)>
+        s_kindPayloads = new Dictionary<HotkeyActionKind, (CreateHotkeyDto Dto, string Snippet)>
         {
-            new("Type text", "a", HotkeyActionKind.SendText, Ctrl: true, Text: "hi", AppliesToAllProfiles: true),
-            HotkeyActionKind.SendText,
-            "; Type text\n^a::SendText(\"hi\")"
-        },
-        {
-            new("Send keys", "b", HotkeyActionKind.SendKeys, Ctrl: true, SendKeysContent: "{Up}", AppliesToAllProfiles: true),
-            HotkeyActionKind.SendKeys,
-            "; Send keys\n$^b::Send(\"{Up}\")"
-        },
-        {
-            new("Run app", "c", HotkeyActionKind.Run, Ctrl: true, RunTarget: "notepad.exe", RunTargetKind: RunTargetKind.Application, AppliesToAllProfiles: true),
-            HotkeyActionKind.Run,
-            "; Run app\n^c::Run(\"notepad.exe\")"
-        },
-        {
-            new("Minimize", "d", HotkeyActionKind.Window, Ctrl: true, WindowOp: WindowOp.Minimize, AppliesToAllProfiles: true),
-            HotkeyActionKind.Window,
-            "; Minimize\n^d::WinMinimize(\"A\")"
-        },
-        {
-            new("Remap", "CapsLock", HotkeyActionKind.Remap, RemapDest: "Ctrl", AppliesToAllProfiles: true),
-            HotkeyActionKind.Remap,
-            "; Remap\nCapsLock::Ctrl"
-        },
-        {
-            new("Disable", "F1", HotkeyActionKind.Disable, AppliesToAllProfiles: true),
-            HotkeyActionKind.Disable,
-            "; Disable\nF1::return"
-        },
-        {
-            new("Raw", "e", HotkeyActionKind.Raw, Ctrl: true, Body: "MsgBox \"hi\"", AppliesToAllProfiles: true),
-            HotkeyActionKind.Raw,
-            "; Raw\n^e::MsgBox \"hi\""
-        },
-    };
+            [HotkeyActionKind.SendText] = (
+                new("Type text", "a", HotkeyActionKind.SendText, Ctrl: true, Text: "hi", AppliesToAllProfiles: true),
+                "; Type text\n^a::SendText(\"hi\")"),
+            [HotkeyActionKind.SendKeys] = (
+                new("Send keys", "b", HotkeyActionKind.SendKeys, Ctrl: true, SendKeysContent: "{Up}", AppliesToAllProfiles: true),
+                "; Send keys\n$^b::Send(\"{Up}\")"),
+            [HotkeyActionKind.Run] = (
+                new("Run app", "c", HotkeyActionKind.Run, Ctrl: true, RunTarget: "notepad.exe", RunTargetKind: RunTargetKind.Application, AppliesToAllProfiles: true),
+                "; Run app\n^c::Run(\"notepad.exe\")"),
+            [HotkeyActionKind.Window] = (
+                new("Minimize", "d", HotkeyActionKind.Window, Ctrl: true, WindowOp: WindowOp.Minimize, AppliesToAllProfiles: true),
+                "; Minimize\n^d::WinMinimize(\"A\")"),
+            [HotkeyActionKind.Remap] = (
+                new("Remap", "CapsLock", HotkeyActionKind.Remap, RemapDest: "Ctrl", AppliesToAllProfiles: true),
+                "; Remap\nCapsLock::Ctrl"),
+            [HotkeyActionKind.Disable] = (
+                new("Disable", "F1", HotkeyActionKind.Disable, AppliesToAllProfiles: true),
+                "; Disable\nF1::return"),
+            [HotkeyActionKind.Raw] = (
+                new("Raw", "e", HotkeyActionKind.Raw, Ctrl: true, Body: "MsgBox \"hi\"", AppliesToAllProfiles: true),
+                "; Raw\n^e::MsgBox \"hi\""),
+        };
+
+    // Enumerates the enum rather than the table's own keys on purpose: a kind added later with no
+    // entry above fails loudly on the lookup instead of quietly losing its coverage.
+    public static TheoryData<HotkeyActionKind> KindPayloads() => new(Enum.GetValues<HotkeyActionKind>());
 
     // KindPayloads exercises at most one modifier per case, so it can never pin the emitter's
     // fixed modifier order (^ ! + # — Ctrl, Alt, Shift, Win per HotkeyEmitter). This case sets

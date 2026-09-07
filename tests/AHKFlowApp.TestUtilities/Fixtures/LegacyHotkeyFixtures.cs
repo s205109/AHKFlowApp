@@ -66,6 +66,29 @@ public static class LegacyHotkeyFixtures
 
     public static IReadOnlyList<LegacyHotkeyFixture> All { get; } = Build();
 
+    /// <summary>
+    /// Every fixture's <see cref="LegacyHotkeyFixture.Name"/>, in <see cref="All"/> order. This is
+    /// what a theory takes as its argument, not the fixture itself: xUnit writes a theory's
+    /// arguments into the test id, and it cannot write a record that does not serialize. Passing
+    /// the fixture put all 340 cases under one id, so Test Explorer showed one row and no case
+    /// could be re-run on its own. A string serializes, so each case gets its own id and row.
+    /// </summary>
+    public static IReadOnlyList<string> AllNames { get; } = [.. All.Select(f => f.Name)];
+
+    /// <summary>
+    /// Ordinal on purpose. The generated set holds names that differ only by case —
+    /// <c>send-token-{vk1}</c> against <c>send-token-{VK1}</c>, and <c>send-token-{sc01B}</c>
+    /// against <c>send-token-{SC01B}</c> — because the frozen SQL classifier's case handling has
+    /// to stay pinned. A case-insensitive comparer would throw here on a duplicate key.
+    /// </summary>
+    private static readonly Dictionary<string, LegacyHotkeyFixture> s_byName =
+        All.ToDictionary(f => f.Name, StringComparer.Ordinal);
+
+    /// <summary>The fixture a theory case names. Throws when the name is unknown, which is the
+    /// right failure: a theory naming a fixture that no longer exists is a broken test, not a
+    /// skipped one.</summary>
+    public static LegacyHotkeyFixture ByName(string name) => s_byName[name];
+
     /// <summary>A lone C1 control character (U+0085), written as an escape so the source file
     /// stays plain ASCII — U+0085 is a Unicode line break that editors rewrite in place.</summary>
     private const string LoneC1 = "\u0085";
