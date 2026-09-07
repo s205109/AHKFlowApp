@@ -12,10 +12,14 @@ namespace AHKFlowApp.Application.Tests.Services;
 
 public sealed class LegacyHotkeySnapshotConverterTests
 {
+    // Takes the fixture's name, not the fixture — see the note on the converter test. A record
+    // does not serialize, so every case shared one test id.
     [Theory]
     [MemberData(nameof(Legacy))]
-    public void ToDefinition_LegacySnapshot_ConvertsViaSameRules(LegacyHotkeyFixture f)
+    public void ToDefinition_LegacySnapshot_ConvertsViaSameRules(string fixtureName)
     {
+        LegacyHotkeyFixture f = LegacyHotkeyFixtures.ByName(fixtureName);
+
         HotkeySnapshot legacy = Snapshot() with { Action = f.Action, Parameters = f.Parameters };
 
         HotkeyDefinition def = LegacyHotkeySnapshotConverter.ToDefinition(legacy);
@@ -33,9 +37,11 @@ public sealed class LegacyHotkeySnapshotConverterTests
     }
 
     [Theory]
-    [MemberData(nameof(TypedSnapshots))]
-    public void ToDefinition_TypedSnapshot_PassesEveryKindThrough(HotkeySnapshot typed)
+    [MemberData(nameof(TypedSnapshotKinds))]
+    public void ToDefinition_TypedSnapshot_PassesEveryKindThrough(HotkeyActionKind kind)
     {
+        HotkeySnapshot typed = TypedSnapshot(kind);
+
         HotkeyDefinition def = LegacyHotkeySnapshotConverter.ToDefinition(typed);
 
         def.ActionKind.Should().Be(typed.ActionKind);
@@ -160,9 +166,11 @@ public sealed class LegacyHotkeySnapshotConverterTests
     }
 
     [Theory]
-    [MemberData(nameof(TypedSnapshots))]
-    public void Serialize_TypedSnapshot_RoundTripsLosslessly(HotkeySnapshot typed)
+    [MemberData(nameof(TypedSnapshotKinds))]
+    public void Serialize_TypedSnapshot_RoundTripsLosslessly(HotkeyActionKind kind)
     {
+        HotkeySnapshot typed = TypedSnapshot(kind);
+
         string json = JsonSerializer.Serialize(typed);
 
         HotkeySnapshot? roundTripped = JsonSerializer.Deserialize<HotkeySnapshot>(json);
@@ -174,30 +182,40 @@ public sealed class LegacyHotkeySnapshotConverterTests
             .Should().Be(LegacyHotkeySnapshotConverter.ToDefinition(typed));
     }
 
-    public static TheoryData<LegacyHotkeyFixture> Legacy()
-    {
-        TheoryData<LegacyHotkeyFixture> d = [];
-        foreach (LegacyHotkeyFixture f in LegacyHotkeyFixtures.All)
-            d.Add(f);
-        return d;
-    }
+    public static TheoryData<string> Legacy() => new(LegacyHotkeyFixtures.AllNames);
+
+    /// <summary>
+    /// The action kind is the theory argument, because a <c>HotkeySnapshot</c> is a record and does
+    /// not serialize — passing one put all seven cases under a single test id. Enumerating the enum
+    /// rather than listing kinds means a kind added later cannot quietly miss this coverage:
+    /// <see cref="TypedSnapshot"/> has no arm for it and the case fails loudly.
+    /// </summary>
+    public static TheoryData<HotkeyActionKind> TypedSnapshotKinds() =>
+        new(Enum.GetValues<HotkeyActionKind>());
 
     /// <summary>One typed snapshot per action kind — all seven must survive the round trip.</summary>
-    public static TheoryData<HotkeySnapshot> TypedSnapshots() =>
-    [
-        Snapshot() with { ActionKind = HotkeyActionKind.SendText, Text = "hello world" },
-        Snapshot() with { ActionKind = HotkeyActionKind.SendKeys, SendKeysContent = "^v" },
-        Snapshot() with
+    private static HotkeySnapshot TypedSnapshot(HotkeyActionKind kind) => kind switch
+    {
+        HotkeyActionKind.SendText =>
+            Snapshot() with { ActionKind = HotkeyActionKind.SendText, Text = "hello world" },
+        HotkeyActionKind.SendKeys =>
+            Snapshot() with { ActionKind = HotkeyActionKind.SendKeys, SendKeysContent = "^v" },
+        HotkeyActionKind.Run => Snapshot() with
         {
             ActionKind = HotkeyActionKind.Run,
             RunTarget = "https://github.com",
             RunTargetKind = RunTargetKind.Url,
         },
-        Snapshot() with { ActionKind = HotkeyActionKind.Window, WindowOp = WindowOp.Close },
-        Snapshot() with { ActionKind = HotkeyActionKind.Remap, RemapDest = "b" },
-        Snapshot() with { ActionKind = HotkeyActionKind.Disable },
-        Snapshot() with { ActionKind = HotkeyActionKind.Raw, Body = "MsgBox \"hi\"" },
-    ];
+        HotkeyActionKind.Window =>
+            Snapshot() with { ActionKind = HotkeyActionKind.Window, WindowOp = WindowOp.Close },
+        HotkeyActionKind.Remap =>
+            Snapshot() with { ActionKind = HotkeyActionKind.Remap, RemapDest = "b" },
+        HotkeyActionKind.Disable =>
+            Snapshot() with { ActionKind = HotkeyActionKind.Disable },
+        HotkeyActionKind.Raw =>
+            Snapshot() with { ActionKind = HotkeyActionKind.Raw, Body = "MsgBox \"hi\"" },
+        _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "No typed snapshot for this kind."),
+    };
 
     private static HotkeySnapshot Snapshot() => new(
         "d", "a", false, false, false, false, true, [], [],

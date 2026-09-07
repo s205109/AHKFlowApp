@@ -8,10 +8,15 @@ namespace AHKFlowApp.Application.Tests.Services;
 
 public sealed class LegacyHotkeyDefinitionConverterTests
 {
+    // Takes the fixture's name, not the fixture. A record does not serialize, so xUnit could not
+    // write it into the test id and all 340 cases reported under one id — one Test Explorer row,
+    // no way to re-run a single case. A string serializes, so each case gets its own id.
     [Theory]
     [MemberData(nameof(Cases))]
-    public void ToTyped_LegacyPair_MatchesFixtureExpectation(LegacyHotkeyFixture f)
+    public void ToTyped_LegacyPair_MatchesFixtureExpectation(string fixtureName)
     {
+        LegacyHotkeyFixture f = LegacyHotkeyFixtures.ByName(fixtureName);
+
         LegacyHotkeyDefinitionConverter.TypedAction typed =
             LegacyHotkeyDefinitionConverter.ToTyped(f.Action, f.Parameters);
 
@@ -23,13 +28,7 @@ public sealed class LegacyHotkeyDefinitionConverterTests
         typed.Body.Should().Be(f.ExpectedBody, "fixture '{0}'", f.Name);
     }
 
-    public static TheoryData<LegacyHotkeyFixture> Cases()
-    {
-        var data = new TheoryData<LegacyHotkeyFixture>();
-        foreach (LegacyHotkeyFixture f in LegacyHotkeyFixtures.All)
-            data.Add(f);
-        return data;
-    }
+    public static TheoryData<string> Cases() => new(LegacyHotkeyFixtures.AllNames);
 
     // The other half of the divergence ADR 0004 records. The live converter resolves LControl
     // through the alias map, so a legacy history snapshot restores as SendKeys where the migrated
