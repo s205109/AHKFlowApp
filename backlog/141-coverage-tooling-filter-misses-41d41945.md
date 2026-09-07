@@ -62,7 +62,7 @@ All three move together.
 - Found while working backlog 124, on 2026-09-07. Raised there and kept out of that item on
   purpose, so 124 stayed one concern.
 - Spec: none — the gap and its fix are both one line each.
-- Plan: none — filed at intake. A plan is written when somebody picks the item up.
+- Plan: `docs/superpowers/plans/2026-09-07-coverage-tooling-filter-plan-141.md`
 - Reclassified from `trivial` to `moderate` at Pickup on 2026-09-07. A filed backlog item is
   never `trivial` (`docs/development/workflow.md:825`, "**A filed backlog item is never `trivial`.**").
   The size of the change did not decide this; the rule did.
