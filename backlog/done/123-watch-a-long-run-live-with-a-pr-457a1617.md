@@ -137,13 +137,13 @@ Two things went wrong on 2026-08-29, and both are fixed by this item:
 - Follow-up: item 124 adds the same progress lines to `scripts/run-coverage.ps1`.
 - The final review found that `scripts/run-coverage.ps1` deleted all of `TestResults/`, including
   the new history store. Coverage cleanup now removes only its own inputs and report.
-  (`scripts/run-coverage.ps1:47`, "Remove-AhkFlowCoverageArtifacts")
+  (`scripts/run-coverage.ps1:48`, "Remove-AhkFlowCoverageArtifacts")
 - The final review also added bounded log reads, terminal `[killed]` handling, a bounded failure
   path when a selected output file disappears, and object-only history parsing.
 - A second independent review capped newline-free output at 1 MiB, made read retries consecutive,
   limited ReportGenerator to the cleaned coverage folder, and checked replacements at the last
   consumed offset. (`scripts/watch-task.ps1:63`, "$script:MaxTailTextBytes");
-  (`scripts/run-coverage.ps1:116`, "$coverageResultsRoot/**/coverage.cobertura.xml")
+  (`scripts/run-coverage.ps1:138`, "$coverageResultsRoot/**/coverage.cobertura.xml")
 - A third review found four more watcher defects, all now fixed. Two directories that mangle to
   one folder name no longer let either one claim it. The byte bound now caps a single line, not
   the whole initial tail. Output written while the terminal state is read is now printed. The

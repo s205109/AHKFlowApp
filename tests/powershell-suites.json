@@ -13,6 +13,7 @@
     { "name": "CodexSkillsHashParity.Tests.ps1", "jobs": ["codex-parity"], "platform": ["linux"], "execution": "parallel", "baselineSeconds": null },
     { "name": "CoverageInputCompleteness.Tests.ps1", "jobs": ["suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 0.8 },
     { "name": "CoverageRunLock.Tests.ps1", "jobs": ["suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 0.5 },
+    { "name": "CoverageRunnerProgress.Tests.ps1", "jobs": ["suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 15.4 },
     { "name": "CoverageSliceSkip.Tests.ps1", "jobs": ["suites"], "platform": ["windows"], "execution": "parallel", "baselineSeconds": 10.0 },
     { "name": "FrictionRecallSample.Tests.ps1", "jobs": ["suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 5.1 },
     { "name": "GateWording.Tests.ps1", "jobs": ["suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 8.0 },
