@@ -5,7 +5,7 @@
 - **Epic**: Developer workflow
 - **Type**: Bug
 - **Interfaces**: CLI
-- **Difficulty**: trivial
+- **Difficulty**: moderate
 - **Stage**: 0-intake
 
 ## Summary
@@ -63,3 +63,6 @@ All three move together.
   purpose, so 124 stayed one concern.
 - Spec: none — the gap and its fix are both one line each.
 - Plan: none — filed at intake. A plan is written when somebody picks the item up.
+- Reclassified from `trivial` to `moderate` at Pickup on 2026-09-07. A filed backlog item is
+  never `trivial` (`docs/development/workflow.md:825`, "**A filed backlog item is never `trivial`.**").
+  The size of the change did not decide this; the rule did.
