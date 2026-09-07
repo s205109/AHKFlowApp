@@ -14,16 +14,14 @@ The E2E publish step compresses every framework asset into `.br` and `.gz` sibli
 SPA host may not need them. This item measures what `-p:CompressionEnabled=false` saves, and
 whether the E2E stack still works without those files.
 
-**The saving is preliminary, and the number below is not yet a ceiling.** Two runs with the flag
-gave 7.52 s and 10.00 s against a 12.37 s median for the normal publish, so the observed saving
-ranges from 2.37 s to 4.85 s. Two runs are not evidence, and the two are 2.48 s apart, which is
-most of the range itself. The first task is five paired runs, and only those fix the real ceiling.
+**The flag saves 2.65 s on a warm publish.** That is the compression-on median of 7.16 s minus the
+compression-off median of 4.51 s, over five counterbalanced pairs. All five pairs saved time. The
+full runs are in `## Measurement` below. This number replaces the preliminary 2.37 s to 4.85 s
+range that two runs suggested earlier; those two runs were not counterbalanced and not evidence.
 
-Nothing here says the change is safe yet either. `SpaHost` calls `app.UseStaticFiles` with no
-compression negotiation (`tests/AHKFlowApp.E2E.Tests/Fixtures/SpaHost.cs:61`, "app.UseStaticFiles(new StaticFileOptions"),
-which is a starting point and not a finding. The service worker and the PWA tests read
-`service-worker-assets.js`, which lists asset hashes, so check those before calling the flag
-harmless.
+`## Findings` below records who reads the compressed output. Nothing in the E2E stack does. The
+flag also changes one other file, the static web assets endpoint list, and it changes that file
+only by removing the compression entries.
 
 ## User story
 
@@ -107,6 +105,41 @@ URL changed, and no URL started pointing at a different file.
 
 Nothing in the E2E stack reads the `.br` and `.gz` files, and nothing reads the one other file the
 flag changes.
+
+## Measurement
+
+Task 2 ran five counterbalanced pairs on 2026-09-07. Each pair publishes twice, once with
+compression and once with `-p:CompressionEnabled=false`, and deletes the output folder before each
+publish. Odd pairs publish with compression first, even pairs publish without it first, so neither
+setting always gets the warm second slot. Two extra publishes ran first and were discarded, one of
+each kind.
+
+Conditions:
+
+- Commit `1f0a24e4`, branch `chore/wt-e2e-publish-without-brotli`, working tree clean.
+- .NET SDK 10.0.400, `Release`, `--no-restore --disable-build-servers -p:UseSharedCompilation=false`.
+- Intel Core i9-11900H, 8 cores and 16 logical processors, 32 GB RAM, Windows 11 Pro 10.0.26200.
+- Every publish was warm. No code changed during the run, and nothing else built at the time.
+
+| Set | Runs (s) | Median (s) | Max (s) |
+|---|---|---|---|
+| Compression on | 7.67, 7.59, 5.87, 6.68, 7.16 | 7.16 | 7.67 |
+| Compression off | 4.37, 4.82, 4.45, 4.51, 5.91 | 4.51 | 5.91 |
+
+| Pair | Order | On (s) | Off (s) | Saving (s) |
+|---|---|---|---|---|
+| 1 | on first | 7.67 | 4.37 | 3.30 |
+| 2 | off first | 7.59 | 4.82 | 2.77 |
+| 3 | on first | 5.87 | 4.45 | 1.42 |
+| 4 | off first | 6.68 | 4.51 | 2.17 |
+| 5 | on first | 7.16 | 5.91 | 1.25 |
+
+Saving, compression-on median minus compression-off median: 2.65 s.
+Pair savings above zero: 5 of 5.
+
+The compression-on median of 7.16 s is well below the 12.37 s median this item first recorded. The
+earlier number came from a tree that was not as warm. The saving is the difference between the two
+sets measured together, so it does not depend on that.
 
 ## Notes / dependencies
 
