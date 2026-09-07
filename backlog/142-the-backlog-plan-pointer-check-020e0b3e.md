@@ -6,7 +6,7 @@
 - **Type**: Tooling
 - **Interfaces**: none (repository check)
 - **Difficulty**: moderate
-- **Stage**: 0-intake
+- **Stage**: 3-plan
 
 ## Summary
 
@@ -60,4 +60,4 @@ readable, so that I can find the plan without guessing.
   see how many existing items would fail. A large number changes the answer.
 - Filed out of backlog 131, where the gap was found.
 - Spec: none — the change is one check and its tests.
-- Plan: none — not yet at Plan.
+- Plan: `docs/superpowers/plans/2026-09-07-plan-pointer-reads-done-plan-142.md`
