@@ -56,7 +56,13 @@ The lines below are rules; each links to the stage that owns the narrative.
 
 - A background command must let its output reach stdout. Never redirect a run's output to another
   file and echo only an exit code. The task output file is the log the human tails.
-- Hand over the watch command by name, `pwsh ./scripts/watch-task.ps1`, never a temporary path.
+- Hand over the watch command with the full absolute path of `scripts/watch-task.ps1`, in the
+  checkout the run belongs to. For example
+  `pwsh C:\Dev\segocom-github\AHKFlowApp\scripts\watch-task.ps1`. Never hand over the temporary
+  task-output path.
+- Write the absolute path even though it is longer. Several worktrees are usually open at once,
+  and each holds its own copy of the script, so `./scripts/watch-task.ps1` does not say which
+  checkout to run it from. The reader should never have to work that out.
 
 ## Out of Scope
 
