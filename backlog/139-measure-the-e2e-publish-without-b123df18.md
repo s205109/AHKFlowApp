@@ -6,7 +6,7 @@
 - **Type**: Tooling
 - **Interfaces**: none (test project build)
 - **Difficulty**: moderate
-- **Stage**: 0-intake
+- **Stage**: 1-pickup
 
 ## Summary
 
