@@ -76,6 +76,10 @@ $cases = @(
     @{ Name = 'done/ rejects a bare path';            Stage = '9-ship';     Notes = @('- Plan: docs/superpowers/plans/a-plan-101.md'); Folder = 'done'; ShouldPass = $false }
     @{ Name = 'done/ rejects the placeholder';        Stage = '9-ship';     Notes = @('- Plan: <path, or "none ' + [char]0x2014 + ' reason">'); Folder = 'done'; ShouldPass = $false }
     @{ Name = 'done/ rejects both a path and none';   Stage = '9-ship';     Notes = @($validPlan, "- Plan: none $([char]0x2014) why"); Folder = 'done'; ShouldPass = $false }
+    # A shipped item is judged without its Stage line being read at all. This case fails if the
+    # stage gate ever moves back above the done/ flag, which would let a shipped item with a
+    # missing or mis-typed Stage line skip the pointer check again.
+    @{ Name = 'done/ with no Stage line is checked';  Stage = '';           Notes = @('- Plan: docs/superpowers/plans/a-plan-101.md'); Folder = 'done'; ShouldPass = $false }
     @{ Name = 'blocked/ is checked';                  Stage = '4-execute';  Notes = @();                    Folder = 'blocked'; ShouldPass = $false }
     @{ Name = 'One valid plan path passes';           Stage = '4-execute';  Notes = @($validPlan);          Folder = '';        ShouldPass = $true }
     @{ Name = 'Two valid plan paths pass';            Stage = '4-execute';  Notes = @($validPlan, $secondPlan); Folder = '';     ShouldPass = $true }
@@ -183,6 +187,31 @@ try {
     if ($problems.Count -ge 1) {
         Assert-True ($problems[0] -like '*4-executed*') "The unknown-stage message must quote the value, got: $($problems[0])"
     }
+}
+finally {
+    Remove-Item -LiteralPath $tempRoot -Recurse -Force
+}
+
+# --- An empty item is read, not thrown on ---
+#
+# Get-Content returns $null for a zero-byte file. backlog/done/ is the only folder an item can
+# reach the notes reader from without a Stage line, so this input exists only since backlog 142.
+
+$tempRoot = New-TemporaryBacklogRoot
+try {
+    New-Item -ItemType File -Path (Join-Path $tempRoot 'done/133-empty.md') -Force | Out-Null
+
+    $threw = $false
+    try {
+        $problems = @(Get-BacklogPointerProblem -BacklogRoot $tempRoot)
+    }
+    catch {
+        $threw = $true
+        $problems = @()
+    }
+
+    Assert-True (-not $threw) 'An empty item in done/ must not throw.'
+    Assert-True ($problems.Count -eq 0) "An empty item in done/ has no pointer, so it must pass, got: $($problems -join ' | ')"
 }
 finally {
     Remove-Item -LiteralPath $tempRoot -Recurse -Force

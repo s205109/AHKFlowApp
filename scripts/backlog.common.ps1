@@ -233,7 +233,11 @@ Backlog $($item.Key) has an unknown Stage value.
             if ($index -lt $script:BacklogPointerTriggerIndex) { continue }
         }
 
-        $notes = @(Get-BacklogNotesLine -Line (Get-Content -LiteralPath $item.Path))
+        # Get-Content returns $null for an empty file, and Get-BacklogNotesLine refuses a null
+        # argument, so wrap it. done/ is the only folder that can reach this line without a Stage
+        # line, which makes an empty item there the one input that would throw. Get-BacklogItem
+        # wraps the same call for the same reason.
+        $notes = @(Get-BacklogNotesLine -Line @(Get-Content -LiteralPath $item.Path))
         $planLines = @($notes | Where-Object { $_ -match '^\s*-\s+Plan:' })
         $values = @($planLines | ForEach-Object { ($_ -replace '^\s*-\s+Plan:\s*', '').Trim() })
 
