@@ -5,8 +5,8 @@
 - **Epic**: Developer workflow
 - **Type**: Bug
 - **Interfaces**: CLI
-- **Difficulty**: to-be-determined
-- **Stage**: 0-intake
+- **Difficulty**: moderate
+- **Stage**: 3-plan
 
 ## Summary
 
@@ -54,4 +54,4 @@ removed" and "tests cover the new API" cannot.
   worth naming in the message, because the message would have to be actionable for a reader
   who sees no diff.
 - Spec: none — the change is one reporting path, not a design question.
-- Plan: <path, or "none — reason">
+- Plan: docs/superpowers/plans/2026-09-07-dirty-worktree-report-plan-147.md
