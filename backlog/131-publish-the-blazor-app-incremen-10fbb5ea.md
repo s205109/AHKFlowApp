@@ -6,11 +6,11 @@
 - **Type**: Tooling
 - **Interfaces**: none (test project build)
 - **Difficulty**: moderate
-- **Stage**: 9-ship
+- **Stage**: 4-execute
 
-## Outcome: closed on the measurement, no code change
+## Outcome: closing on the measurement, no code change
 
-**Decided 2026-09-06. The item was measured, not built.**
+**Decided 2026-09-06. The item was measured, not built. The close itself waits for Review.**
 
 The premise below is wrong. `RemoveDir` deletes `bin/<config>/<tfm>/publish`, and the IL linker
 writes into `obj/`. The two folders do not overlap, so the delete does not make the linker run
@@ -28,8 +28,9 @@ item was about 11 s out of 321.65 s, which is 3.5 percent, not the 85 s the note
 
 Three things closed it.
 
-1. The saving is about 11 s, and the observed E2E spread is 6.4 s. The change sits close to the
-   noise.
+1. The saving is about 11 s, and the observed E2E spread is 12.84 s. Backlog 128's two `-NoBuild`
+   E2E runs were 293.38 s and 306.22 s. So the whole saving is smaller than the run-to-run
+   variation already measured.
 2. CI never benefits. CI builds, then runs one solution-wide `dotnet test --no-build`. A fresh
    runner has no publish folder and no stamp, so the target always runs, and in CI the publish is
    the cold 95 s one.
@@ -74,7 +75,7 @@ None of these became true, because the change was not made. Each one carries its
       the median of five warm runs is written into this item beside the 321.65 s baseline, with
       all five runs and the maximum.
       Replaced: five warm E2E runs cost about 30 minutes and would have tried to separate an 11 s
-      change from a 6.4 s spread. The publish step was timed directly instead, four runs per
+      change from a 12.84 s spread. The publish step was timed directly instead, four runs per
       scenario, and those numbers are in the Outcome section. They answer the question the item
       was really asking.
 
@@ -96,8 +97,13 @@ None of these became true, because the change was not made. Each one carries its
 - Spec: none — the design is in
   `docs/superpowers/specs/2026-09-03-net-test-speed-and-reliability-design-128.md`, under D7. That
   spec is shipped and frozen, so its D7 text keeps the 85 s framing. This item is the correction.
-- Plan: docs/superpowers/plans/2026-09-06-e2e-incremental-publish-plan-131.md
+- Plan: `docs/superpowers/plans/2026-09-06-e2e-incremental-publish-plan-131.md`
 - Two follow-ups came out of the measurement. Backlog 139 measures the publish without Brotli
-  compression, which is a smaller and safer lever. Backlog 140 chases the roughly 60 s that the
-  arithmetic leaves unaccounted once the test host, the publish and the SQL container start are
-  subtracted from the 321.65 s.
+  compression, which is a smaller lever. Backlog 140 chases the 34.38 s to 47.22 s that the
+  arithmetic leaves unaccounted once 237 s of test host, about 11 s of publish and about 11 s of
+  SQL container start are subtracted from backlog 128's two `-NoBuild` E2E runs of 293.38 s and
+  306.22 s.
+- A first attempt at closing this item set `Stage: 9-ship` and flipped the pull request to ready
+  while no review existed. `workflow.md` puts Review before Ship, so the item came back to
+  `4-execute` on 2026-09-06 and the recovery tasks are in `PLAN-PROGRESS.md`. The closing decision
+  above did not change; only the stage did.
