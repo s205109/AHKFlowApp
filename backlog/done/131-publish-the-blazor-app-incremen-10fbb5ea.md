@@ -6,15 +6,25 @@
 - **Type**: Tooling
 - **Interfaces**: none (test project build)
 - **Difficulty**: moderate
-- **Stage**: 4-execute
+- **Stage**: 9-ship
 
-## Outcome: the premise is wrong, and the decision is open
+## Outcome: closed without a code change, and reopenable
 
-**Measured 2026-09-06. The stated root cause is disproved. Whether to build the change is an open
-owner decision, reopened by the review of 2026-09-07.**
+**Measured 2026-09-06. The stated root cause is disproved. The owner decided on 2026-09-07 to
+close the item for now rather than build the change.**
 
-Read the two halves separately. The first is settled by measurement. The second is a judgement
-call, and an earlier draft of this section wrongly presented it as settled too.
+The decision is "for now", and that word is deliberate. Nothing here says the saving is not real
+or that the design is wrong. It says the saving is the smallest of the E2E speed items and it is
+the only one that costs a correctness guarantee, so it is not the one to spend on first. Reopening
+is cheap: the plan keeps the whole design.
+
+**What would justify reopening.** Backlog 140 measures a remainder three to four times larger. If
+it finds that remainder is somewhere dull, and somebody still wants the publish time back, revisit
+this item then. Read the "A cheaper shape, if this is ever reopened" section below before
+reaching for the plan's design.
+
+Read the two halves below separately. The first is settled by measurement. The second is a
+judgement call, and an earlier draft of this section wrongly presented it as settled too.
 
 The premise below is wrong. `RemoveDir` deletes `bin/<config>/<tfm>/publish`, and the IL linker
 writes into `obj/`. The two folders do not overlap, so the delete does not make the linker run
@@ -71,11 +81,47 @@ Against the saving, the change would reverse commit `53ef9f99`, which removed an
 from this target because it served a stale app. The plan holds a design that addresses why the old
 check went stale. That design is a proposal and has never been executed or verified.
 
-**So the open question is a trade, and it belongs to the owner:** about 12.37 s per skipping local
-E2E run, against reintroducing a mechanism that once served a stale app, with no benefit to CI.
+### The trade, and how it was decided
+
+The question was a trade and it belonged to the owner: about 12.37 s per skipping local E2E run,
+against reintroducing a mechanism that once served a stale app, with no benefit to CI.
+
+The owner closed it on 2026-09-07. Four things carried the decision.
+
+1. **The failure mode lands in the worst place.** A wrong skip does not usually fail loudly. It
+   lets E2E tests pass against an old app. E2E is the last check before merge, so a stale pass
+   means a real regression ships green.
+2. **The design is unproven.** No part of it has been run. The traps section names real hazards
+   and reasons around them, and reasoning is not evidence.
+3. **It is the smallest of the E2E speed items.** Backlog 140 has roughly 33 s to 46 s that no
+   step accounts for. Backlog 132 attacks the 237 s test host. Backlog 139 offers a smaller saving
+   at no correctness cost. Spending a correctness guarantee on the smallest one, before the
+   largest is even measured, is the wrong order.
+4. **The owner runs E2E about once per branch.** A first E2E run usually follows an app change, so
+   it would not skip. For that workflow the saving is close to zero. This is a fact about one
+   person's habits, not about the repository, and it is recorded here as such.
 
 The design is kept in the plan, labelled there as a proposal that has never been executed or
 verified, so the next reader does not have to work it out again.
+
+### A cheaper shape, if this is ever reopened
+
+The plan's design puts an up-to-date check in `tests/AHKFlowApp.E2E.Tests/AHKFlowApp.E2E.Tests.csproj`.
+There is a second shape that was raised during design and never written down properly, and it is
+the one to start from if somebody reopens this.
+
+Put the skip in `scripts/test-fast.ps1` instead of the project file.
+
+- CI calls `dotnet test` directly and never goes through that script, so CI cannot skip. That is
+  safety by construction rather than by argument.
+- The contract that commit `53ef9f99` established stays intact. No reversal, no ADR, and no
+  rewrite of `tests/AHKFlowApp.CLI.Tests/Launcher/E2EPublishTargetTests.cs`.
+- A script can say "publish skipped, inputs unchanged" in its output. MSBuild's own skip is silent,
+  and a silent skip is what makes a stale run hard to diagnose.
+- The risk reaches only a developer who ran the script, not everyone who builds the project.
+
+The cost is that the input comparison becomes code this repository owns and tests, rather than a
+built-in MSBuild feature. That is more code, in exchange for a much smaller blast radius.
 
 ## Summary
 
@@ -93,12 +139,13 @@ done, so that a repeat run starts testing sooner.
 
 ## Acceptance criteria
 
-None of these are true yet, because no change has been made. Each one carries its state. They stay
-here rather than being deleted, because the decision is open and they still describe the work if
-the owner says to build it.
+None of these are true, because the item closed without a code change. Each one carries its
+reason. They stay here rather than being deleted, so that a reopened item starts from a real list
+instead of a blank one.
 
 - [ ] An E2E run on an unchanged tree does not delete and republish the whole Blazor output.
-      Not started: the publish target is untouched, pending the owner's decision.
+      Not done: the publish target is untouched, and the owner closed the item rather than change
+      it.
 - [ ] `PublishedFramework_AfterAnyE2ERun_HoldsExactlyOneCopyOfEachBootAsset` passes. That test is
       the guard against the stale-asset problem the current `RemoveDir` avoids by force, so it is
       the thing that says an incremental publish is safe.
@@ -113,8 +160,8 @@ the owner says to build it.
       Not run, and it is the wrong instrument for this size of change. A 12.37 s deterministic
       saving would sit inside a wall-clock spread that two runs already put at 12.84 s. Timing the
       publish target directly is what measures the saving, and those numbers are in the Outcome
-      section. If the owner decides to build the change, replace this criterion with a paired
-      before-and-after timing of the target itself, skipped and not skipped.
+      section. If this item is ever reopened, replace this criterion with a paired before-and-after
+      timing of the target itself, skipped and not skipped.
 
 ## Out of scope
 
@@ -146,5 +193,6 @@ the owner says to build it.
   written as 11 s when the target's own cost is 12.37 s, the delete was given 1.3 s that the
   overlapping samples cannot support, run-to-run variance was used to dismiss a deterministic
   saving, one person's workflow was written as a repository fact, and a CI publish duration was
-  claimed without measuring it. All five are corrected above, and the decision is open again.
+  claimed without measuring it. All five are corrected above. That round reopened the decision, and
+  the owner then closed the item on the corrected record.
 - The recovery tasks for both rounds are in `PLAN-PROGRESS.md`.
