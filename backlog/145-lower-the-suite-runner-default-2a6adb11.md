@@ -71,9 +71,14 @@ workers it can benefit from, so that the machine stays usable while the suites r
   suite, 169.4 seconds of 171.2. In the eight-worker run above the slowest suite finished at
   36.5 seconds. The suite set has grown and rebalanced since, so any further tuning needs a
   fresh measurement rather than that number.
-- **Which "75%" this item means.** 75% of the 8 physical cores is 6, and the measurement
-  supports it. 75% of the 16 logical processors is 12, which is above today's default and which
-  nothing here supports. This item takes the first reading.
+- **"75%" means physical cores. That is decided, not open.** 75% of the 8 physical cores is 6,
+  and the measurement supports it. 75% of the 16 logical processors is 12, which is above
+  today's default and which nothing here supports. The reading was confirmed on 2026-09-07. The
+  second reading stays written down only so that nobody reopens the question.
+- **The machine stayed usable.** A full run at six workers, at BelowNormal priority, with the
+  Defender exclusions in place, gave one short pause over the whole run. Before this the laptop
+  became hard to use while the suites ran. No stopwatch can measure that difference, so it is
+  recorded here as the reason the item exists.
 - Two runs at once, at 4 workers each, took 296.2 and 296.1 seconds and both passed. That is 8
   lanes in total, the same load as one run at today's default. It is the evidence behind
   backlog 146.
