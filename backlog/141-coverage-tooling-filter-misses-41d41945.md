@@ -24,8 +24,9 @@ coverage slice, so that a defect in one of them cannot reach a pull request unno
 The patterns above `coverage-tooling` exclude every `.ps1` file under `scripts/`
 (`.github/code-paths-filter.yml:33`, "- '!scripts/*.ps1'"). The `coverage-tooling` key is the
 exception list that pulls the coverage run's own scripts back in
-(`.github/code-paths-filter.yml:47`, "coverage-tooling:"). Its comment says the list is the entry
-points plus everything `run-coverage.ps1` dot-sources.
+(`.github/code-paths-filter.yml:55`, "coverage-tooling:"). Its comment said the list was the entry
+points plus everything `run-coverage.ps1` dot-sources. The fix rewrote that comment, so the line
+number moved from 47 to 55.
 
 `scripts/test-fast.ps1` is one of those entry points, and it dot-sources
 `scripts/test-results.common.ps1` (`scripts/test-fast.ps1:52`, "$PSScriptRoot\test-results.common.ps1").
