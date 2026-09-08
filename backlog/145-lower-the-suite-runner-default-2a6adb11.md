@@ -6,7 +6,7 @@
 - **Type**: Feature
 - **Interfaces**: none (test runner scripts)
 - **Difficulty**: moderate
-- **Stage**: 0-intake
+- **Stage**: 3-plan
 
 ## Summary
 
@@ -83,4 +83,4 @@ workers it can benefit from, so that the machine stays usable while the suites r
   lanes in total, the same load as one run at today's default. It is the evidence behind
   backlog 146.
 - Spec: none — the change is one default and the tests around it.
-- Plan: none — filed at intake, not picked up yet.
+- Plan: `docs/superpowers/plans/2026-09-08-suite-runner-worker-default-plan-145.md`
