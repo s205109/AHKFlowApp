@@ -1617,7 +1617,7 @@ Invoke-TestCase 'A stored entry whose suite file no longer exists is dropped' {
 # -Suite names the suites, each of which gets a plain passing body. -Body overrides the body of any
 # of them, as an array of script lines.
 function New-StoringRepoFixture {
-    param([string[]] $Suite, [hashtable] $Body = @{}, [switch] $CountSaves)
+    param([string[]] $Suite, [hashtable] $Body = @{}, [switch] $CountSaves, [switch] $CountCoreProbes)
 
     $repo = Join-Path ([System.IO.Path]::GetTempPath()) ('ahkflow-suiterepo-' + [guid]::NewGuid().ToString('N'))
     try {
@@ -1639,6 +1639,21 @@ $global:AhkflowSaveTimingsInner = ${function:Save-ProgressTimings}
 function Save-ProgressTimings {
     Add-Content -LiteralPath (Join-Path $PSScriptRoot '..\markers\savecalls') -Value 'called'
     & $global:AhkflowSaveTimingsInner @args
+}
+'@
+        }
+
+        if ($CountCoreProbes) {
+            # The same trick as -CountSaves, on the reader this time. Reading the Workers line tells
+            # you which number a branch chose; it cannot tell you whether the run asked the machine
+            # to get there. Only a count can, and only a count fails when the probe drifts back
+            # above the precedence chain. The real module is untouched.
+            Add-Content -LiteralPath (Join-Path $repo 'scripts/powershell-suites.common.ps1') -Value @'
+
+$global:AhkflowCoreProbeInner = ${function:Get-PhysicalCoreCount}
+function Get-PhysicalCoreCount {
+    Add-Content -LiteralPath (Join-Path $PSScriptRoot '../markers/coreprobes') -Value 'called'
+    & $global:AhkflowCoreProbeInner @args
 }
 '@
         }
@@ -1672,7 +1687,7 @@ function Save-ProgressTimings {
 # and "-Suite a,b" binds the single string "a,b". Passing the array inside "-Suite @('a','b')"
 # is the only form that binds every pattern.
 function Invoke-DriverAt {
-    param([string] $Repo, [int] $MaxParallel = 0, [string[]] $Suite = @())
+    param([string] $Repo, [int] $MaxParallel = 0, [string[]] $Suite = @(), [hashtable] $EnvVar = @{})
 
     $command = "& $(ConvertTo-ScriptLiteral (Join-Path $Repo 'scripts/run-powershell-suites.ps1'))"
     if ($PSBoundParameters.ContainsKey('MaxParallel')) { $command += " -MaxParallel $MaxParallel" }
@@ -1681,7 +1696,64 @@ function Invoke-DriverAt {
     }
     $command += '; exit $LASTEXITCODE'
 
-    return Invoke-RunnerProcess -ArgumentList @('-NoProfile', '-Command', $command)
+    # Saved and restored so one case cannot leak a value into the next one, the same way
+    # Invoke-Driver does it. A case that asserts a default has to clear both AHKFLOW_SUITE_MAX_PARALLEL
+    # and GITHUB_ACTIONS, because this suite runs inside Actions with a developer's own shell values.
+    $previousEnv = @{}
+    foreach ($name in $EnvVar.Keys) {
+        $previousEnv[$name] = [System.Environment]::GetEnvironmentVariable($name)
+        [System.Environment]::SetEnvironmentVariable($name, $EnvVar[$name])
+    }
+
+    try {
+        return Invoke-RunnerProcess -ArgumentList @('-NoProfile', '-Command', $command)
+    } finally {
+        foreach ($name in $previousEnv.Keys) {
+            [System.Environment]::SetEnvironmentVariable($name, $previousEnv[$name])
+        }
+    }
+}
+
+Invoke-TestCase 'Only the adaptive default asks the machine about its hardware' {
+    # Backlog 145 review round 2, finding 1. The cases that read the Workers line prove which number
+    # each branch picks. None of them would notice the probe moving back above the precedence chain,
+    # because the number would not change - only the wasted CIM query would come back. So count the
+    # calls instead of reading the output.
+    $repo = New-StoringRepoFixture -Suite @('01-a.Tests.ps1', '02-b.Tests.ps1', '03-c.Tests.ps1') -CountCoreProbes
+    $probes = Join-Path $repo 'markers/coreprobes'
+    try {
+        $overrides = @(
+            @{ Name = 'An explicit -MaxParallel'; MaxParallel = 2; Env = @{ AHKFLOW_SUITE_MAX_PARALLEL = $null; GITHUB_ACTIONS = $null } }
+            @{ Name = 'AHKFLOW_SUITE_MAX_PARALLEL'; Env = @{ AHKFLOW_SUITE_MAX_PARALLEL = '2'; GITHUB_ACTIONS = $null } }
+            @{ Name = 'GitHub Actions'; Env = @{ AHKFLOW_SUITE_MAX_PARALLEL = $null; GITHUB_ACTIONS = 'true' } }
+        )
+
+        foreach ($case in $overrides) {
+            Remove-Item -LiteralPath $probes -Force -ErrorAction SilentlyContinue
+
+            $result = if ($case.ContainsKey('MaxParallel')) {
+                Invoke-DriverAt -Repo $repo -MaxParallel $case.MaxParallel -EnvVar $case.Env
+            } else {
+                Invoke-DriverAt -Repo $repo -EnvVar $case.Env
+            }
+
+            Assert-True ($result.ExitCode -eq 0) "$($case.Name): expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
+
+            $calls = @(if (Test-Path -LiteralPath $probes) { Get-Content -LiteralPath $probes }).Count
+            Assert-True ($calls -eq 0) "$($case.Name) settles the count on its own, so it must not read the hardware. Got $calls call(s)."
+        }
+
+        Remove-Item -LiteralPath $probes -Force -ErrorAction SilentlyContinue
+        $result = Invoke-DriverAt -Repo $repo -EnvVar @{ AHKFLOW_SUITE_MAX_PARALLEL = $null; GITHUB_ACTIONS = $null }
+        Assert-True ($result.ExitCode -eq 0) "The default run must pass. Output: $($result.Output)"
+
+        # Exactly one. Zero would mean the default stopped reading the machine; more than one would
+        # mean the run pays for the query again on a path nobody intended.
+        $calls = @(if (Test-Path -LiteralPath $probes) { Get-Content -LiteralPath $probes }).Count
+        Assert-True ($calls -eq 1) "The adaptive default must read the hardware exactly once, got $calls call(s)."
+    } finally {
+        Remove-Item -LiteralPath $repo -Recurse -Force -ErrorAction SilentlyContinue
+    }
 }
 
 Invoke-TestCase 'The timings file is written once, after the last suite ends' {
