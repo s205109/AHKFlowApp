@@ -1903,6 +1903,116 @@ Invoke-TestCase 'The cpuinfo parser reports nothing when the text names no cores
     Assert-True ((ConvertFrom-ProcCpuInfoCoreCount -Text 'nonsense') -eq 0) 'Text that is not cpuinfo must report zero.'
 }
 
+# GITHUB_ACTIONS is cleared on purpose in the cases below that assert the developer default. This
+# suite runs inside Actions in the suites job, and a run there takes the all-processors branch,
+# which is not the branch those cases are about. AHKFLOW_SUITE_MAX_PARALLEL is cleared for the
+# same kind of reason: a developer may have set it in their own shell, and it would hide the
+# default.
+Invoke-TestCase 'A developer run with no worker argument uses 75% of the physical cores' {
+    $expected = Get-DefaultSuiteWorkerCount -PhysicalCoreCount (Get-PhysicalCoreCount)
+
+    $root = New-SuiteFixture
+    try {
+        # One more suite than the expected worker count, so the shared-suite cap cannot lower the
+        # number and make a broken default look right.
+        for ($i = 1; $i -le $expected + 1; $i++) {
+            Add-FakeSuite -Root $root -Name ('{0:d2}-pass.Tests.ps1' -f $i) -Ending 'pass'
+        }
+        Set-FixtureManifest -Root $root
+
+        $result = Invoke-Driver -SuiteRoot $root -EnvVar @{ AHKFLOW_SUITE_MAX_PARALLEL = $null; GITHUB_ACTIONS = $null }
+        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
+        Assert-True ($result.Output -match "Workers: $expected\b") "Expected the default worker count $expected. Output: $($result.Output)"
+        Assert-True ($result.Output -match 'Workers: \d+ \(default:') "The line must say the number came from the default. Output: $($result.Output)"
+    } finally {
+        Remove-SuiteFixture -Root $root
+    }
+}
+
+Invoke-TestCase 'A run inside GitHub Actions uses every logical processor' {
+    # The whole point of the branch: a hosted runner has fewer physical cores than processors, and
+    # 75% of them would cut the CI job to a quarter of the lanes it uses today.
+    $expected = [Math]::Max(1, [Environment]::ProcessorCount)
+
+    $root = New-SuiteFixture
+    try {
+        for ($i = 1; $i -le $expected + 1; $i++) {
+            Add-FakeSuite -Root $root -Name ('{0:d2}-pass.Tests.ps1' -f $i) -Ending 'pass'
+        }
+        Set-FixtureManifest -Root $root
+
+        $result = Invoke-Driver -SuiteRoot $root -EnvVar @{ AHKFLOW_SUITE_MAX_PARALLEL = $null; GITHUB_ACTIONS = 'true' }
+        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
+        Assert-True ($result.Output -match "Workers: $expected \(GitHub Actions:") "Actions must take every processor. Output: $($result.Output)"
+    } finally {
+        Remove-SuiteFixture -Root $root
+    }
+}
+
+Invoke-TestCase 'The Workers line reports the number the pool really used' {
+    $expected = Get-DefaultSuiteWorkerCount -PhysicalCoreCount (Get-PhysicalCoreCount)
+
+    $root = New-SuiteFixture
+    try {
+        # A barrier the size of the expected number. No suite holds until that many are signed in
+        # beside it, so a runner that starts fewer workers times out and the peak reads low. One
+        # spare suite keeps the shared-suite cap out of the way.
+        $names = @()
+        for ($i = 1; $i -le $expected + 1; $i++) {
+            $name = ('{0:d2}-hold.Tests.ps1' -f $i)
+            $names += $name
+            Add-IntervalSuite -Root $root -Name $name -BarrierCount $expected
+        }
+        Set-FixtureManifest -Root $root
+
+        $result = Invoke-Driver -SuiteRoot $root -EnvVar @{ AHKFLOW_SUITE_MAX_PARALLEL = $null; GITHUB_ACTIONS = $null }
+        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
+
+        Assert-True ($result.Output -match 'Workers: (\d+)\b') "The run must print a worker count. Output: $($result.Output)"
+        $printed = [int] $Matches[1]
+
+        $peak = Get-PeakOverlap -Root $root -Name $names
+        Assert-True ($peak -eq $printed) "The line printed $printed workers and the pool ran $peak at once."
+    } finally {
+        Remove-SuiteFixture -Root $root
+    }
+}
+
+Invoke-TestCase 'AHKFLOW_SUITE_MAX_PARALLEL still wins over both defaults and the line names it' {
+    $root = New-SuiteFixture
+    try {
+        foreach ($name in @('01-a.Tests.ps1', '02-b.Tests.ps1', '03-c.Tests.ps1')) {
+            Add-FakeSuite -Root $root -Name $name -Ending 'pass'
+        }
+        Set-FixtureManifest -Root $root
+
+        # Once on each side of the Actions branch, so the variable is proved to win over both.
+        foreach ($actions in @($null, 'true')) {
+            $result = Invoke-Driver -SuiteRoot $root -EnvVar @{ AHKFLOW_SUITE_MAX_PARALLEL = '2'; GITHUB_ACTIONS = $actions }
+            Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
+            Assert-True ($result.Output -match 'Workers: 2 \(AHKFLOW_SUITE_MAX_PARALLEL\)') "The variable must win and be named. Output: $($result.Output)"
+        }
+    } finally {
+        Remove-SuiteFixture -Root $root
+    }
+}
+
+Invoke-TestCase 'An explicit -MaxParallel is named on the Workers line' {
+    $root = New-SuiteFixture
+    try {
+        foreach ($name in @('01-a.Tests.ps1', '02-b.Tests.ps1', '03-c.Tests.ps1')) {
+            Add-FakeSuite -Root $root -Name $name -Ending 'pass'
+        }
+        Set-FixtureManifest -Root $root
+
+        $result = Invoke-Driver -SuiteRoot $root -MaxParallel 2 -EnvVar @{ AHKFLOW_SUITE_MAX_PARALLEL = '3' }
+        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
+        Assert-True ($result.Output -match 'Workers: 2 \(-MaxParallel\)') "The parameter must win and be named. Output: $($result.Output)"
+    } finally {
+        Remove-SuiteFixture -Root $root
+    }
+}
+
 Write-Host ''
 if ($script:Failures.Count -gt 0) {
     Write-Host "FAILED: $($script:Failures.Count) test(s)" -ForegroundColor Red

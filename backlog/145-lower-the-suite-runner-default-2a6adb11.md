@@ -23,8 +23,11 @@ workers it can benefit from, so that the machine stays usable while the suites r
 ## Acceptance criteria
 
 - [ ] The default worker count is about 75% of the machine's physical cores, with a floor of
-      one. Today it is the logical processor count capped at eight
-      (`scripts/run-powershell-suites.ps1:123`, "$workerCount = [Math]::Min([Environment]::ProcessorCount, 8)").
+      one. Before this item it was the logical processor count capped at eight, written as
+      `$workerCount = [Math]::Min([Environment]::ProcessorCount, 8)` on line 123 of
+      `scripts/run-powershell-suites.ps1`. That line no longer exists, so this record quotes it
+      rather than citing it. <!-- citation-check:ignore -->
+      Text quoted from commit e6821d86, the branch point for this work.
 - [ ] The count comes from physical cores, not from `[Environment]::ProcessorCount`. That
       property returns logical processors. On the measured machine it returns 16 for 8 physical
       cores, and 75% of 16 is 12, which is more than today's default.
