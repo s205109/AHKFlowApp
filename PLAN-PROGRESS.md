@@ -5,3 +5,4 @@ Plan: `docs/superpowers/plans/2026-09-08-powershell-worktree-suite-readiness-pla
 One line follows each completed implementation task.
 
 Task 1 | 882ff9f0 | tests: pass (pwsh and Windows PowerShell 5.1) | -
+Task 2 | c20b723a | tests: pass (pwsh and Windows PowerShell 5.1) | -
