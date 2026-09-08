@@ -137,5 +137,7 @@ when a first page load does not arrive.
 - Related: `backlog/blocked/068-two-flaky-tests-fail-intermittently-in-full-suite-runs.md` holds
   the repository's reasoning on what to do with a failure seen only once.
 - Related: `backlog/140-account-for-the-unexplained-e2-12479560.md`.
-- Spec: none — no design question until the cause is known.
-- Plan: none — Stage 3 writes the pointer here once Difficulty is settled.
+- Spec: none — the cause is now known, and it left no design question. Difficulty was
+  reclassified from `to-be-determined` to `moderate` at Design entry, so the work went
+  straight to Plan.
+- Plan: `docs/superpowers/plans/2026-09-08-e2e-first-page-load-budget-plan-148.md`
