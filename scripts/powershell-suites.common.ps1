@@ -331,6 +331,15 @@ function Get-SuiteSchedule {
 # suites run, and nobody is using a hosted runner while it works. A runner should finish and stop,
 # so it takes every processor it has. That is also what CI did before backlog 145, which is why
 # the job is no slower than it was.
+# The raw 75% share, before any bound is applied. Get-DefaultSuiteWorkerCount applies the bounds
+# and Get-DefaultSuiteWorkerReason explains which one bit, so both read the share from here and the
+# 0.75 lives in exactly one place.
+function Get-PhysicalCoreShare {
+    param([int] $PhysicalCoreCount)
+
+    return [int] [Math]::Floor($PhysicalCoreCount * 0.75)
+}
+
 function Get-DefaultSuiteWorkerCount {
     param(
         [int] $PhysicalCoreCount,
@@ -349,7 +358,53 @@ function Get-DefaultSuiteWorkerCount {
         return [Math]::Max(1, [Math]::Min($LogicalProcessorCount, 8))
     }
 
-    return [Math]::Max(1, [Math]::Min([int] [Math]::Floor($PhysicalCoreCount * 0.75), 8))
+    # Capped by the processors as well as by the ceiling. The two readers behind $PhysicalCoreCount
+    # describe the machine: Win32_Processor and /proc/cpuinfo both count hardware that exists, and
+    # neither knows about process affinity or a container CPU limit. [Environment]::ProcessorCount
+    # does know: .NET reports the processors available to this process. So a machine can honestly
+    # report 8 cores while this run may use 2, and 75% of 8 would then start six workers on two
+    # processors. Backlog 145 review, finding 1.
+    $share = Get-PhysicalCoreShare -PhysicalCoreCount $PhysicalCoreCount
+    return [Math]::Max(1, [Math]::Min([Math]::Min($share, $LogicalProcessorCount), 8))
+}
+
+# Says, in one short phrase, how the default reached its number. The run prints it after 'default:'
+# on the Workers line.
+#
+# It names a bound only when a bound decided the answer. Printing '75% of 16 physical cores' beside
+# a worker count of 8 invites the reader to check the arithmetic and conclude the run is broken.
+# Backlog 145 review, finding 4.
+function Get-DefaultSuiteWorkerReason {
+    param(
+        [int] $PhysicalCoreCount,
+        [int] $LogicalProcessorCount = [Environment]::ProcessorCount
+    )
+
+    if ($PhysicalCoreCount -lt 1) {
+        return "physical cores unreadable, $LogicalProcessorCount logical processors capped at eight"
+    }
+
+    $noun = if ($PhysicalCoreCount -eq 1) { 'physical core' } else { 'physical cores' }
+    $rule = "75% of $PhysicalCoreCount $noun"
+
+    $share = Get-PhysicalCoreShare -PhysicalCoreCount $PhysicalCoreCount
+    $count = Get-DefaultSuiteWorkerCount -PhysicalCoreCount $PhysicalCoreCount -LogicalProcessorCount $LogicalProcessorCount
+
+    if ($count -eq $share) {
+        return $rule
+    }
+
+    if ($count -gt $share) {
+        return "$rule is $share, raised to the floor of one"
+    }
+
+    # Both bounds can be below the share at once. Name the one that equals the answer, and prefer
+    # the processor limit: it is the surprising one, and the ceiling is documented everywhere else.
+    if ($count -eq $LogicalProcessorCount) {
+        return "$rule is $share, capped at $LogicalProcessorCount available processors"
+    }
+
+    return "$rule is $share, capped at the ceiling of eight"
 }
 
 # Counts physical cores in the text of /proc/cpuinfo. Kept apart from the file read so a Windows
@@ -391,34 +446,47 @@ function ConvertFrom-ProcCpuInfoCoreCount {
     return $pairs.Count
 }
 
-# The host's physical core count, or zero when it cannot be read. Never throws: a run must not
+# -Query and -ReadCpuInfo below are test seams. Each defaults to the real machine, so a caller
+# never passes one. A test does, because the real machine always answers: without a stand-in there
+# is no way to reach the catch blocks, and 'returns zero rather than throwing' would be a promise
+# nothing checks. Backlog 145 review, finding 2.
+function Get-WindowsPhysicalCoreCount {
+    param([scriptblock] $Query = { Get-CimInstance -ClassName Win32_Processor -ErrorAction Stop })
+
+    try {
+        # NumberOfCores is per processor package, so a two-socket machine needs the sum.
+        $sum = (& $Query | Measure-Object -Property NumberOfCores -Sum).Sum
+        if ($null -ne $sum -and $sum -ge 1) { return [int] $sum }
+    } catch {
+        # A locked-down machine can refuse the CIM query. Unknown, not fatal.
+    }
+
+    return 0
+}
+
+function Get-LinuxPhysicalCoreCount {
+    param([scriptblock] $ReadCpuInfo = { Get-Content -LiteralPath '/proc/cpuinfo' -Raw -ErrorAction Stop })
+
+    try {
+        $text = & $ReadCpuInfo
+    } catch {
+        return 0
+    }
+
+    return (ConvertFrom-ProcCpuInfoCoreCount -Text $text)
+}
+
+# The machine's physical core count, or zero when it cannot be read. Never throws: a run must not
 # fail because a machine would not answer a question about itself.
+#
+# This counts hardware that exists. It is not the number of processors this run may use, which
+# affinity and container limits can lower. Get-DefaultSuiteWorkerCount caps by that separately.
 #
 # macOS returns zero. Get-CurrentSuitePlatform above throws on macOS before a run reaches here, so
 # that path is only reachable from a test that calls this function directly.
 function Get-PhysicalCoreCount {
-    if ($IsWindows) {
-        try {
-            # NumberOfCores is per processor package, so a two-socket machine needs the sum.
-            $sum = (Get-CimInstance -ClassName Win32_Processor -ErrorAction Stop |
-                    Measure-Object -Property NumberOfCores -Sum).Sum
-            if ($null -ne $sum -and $sum -ge 1) { return [int] $sum }
-        } catch {
-            # A locked-down machine can refuse the CIM query. Unknown, not fatal.
-        }
-
-        return 0
-    }
-
-    if ($IsLinux) {
-        try {
-            $text = Get-Content -LiteralPath '/proc/cpuinfo' -Raw -ErrorAction Stop
-        } catch {
-            return 0
-        }
-
-        return (ConvertFrom-ProcCpuInfoCoreCount -Text $text)
-    }
+    if ($IsWindows) { return (Get-WindowsPhysicalCoreCount) }
+    if ($IsLinux) { return (Get-LinuxPhysicalCoreCount) }
 
     return 0
 }

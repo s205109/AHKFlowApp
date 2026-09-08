@@ -1268,6 +1268,11 @@ Invoke-TestCase 'Two suites really do run at the same time' {
         # Exactly two: below two the runner is sequential, above two it ignored -MaxParallel.
         $peak = Get-PeakOverlap -Root $root -Name $names
         Assert-True ($peak -eq 2) "Peak overlap must be 2 under -MaxParallel 2, got $peak."
+
+        # The printed number is the number the pool used. Asserted here, against a count this case
+        # fixes at two, rather than in a second case sized from the host: a case that reads its own
+        # expectation from the code under test passes when both sides are wrong together.
+        Assert-True ($result.Output -match 'Workers: 2\b') "The run must print the count it used. Output: $($result.Output)"
     } finally {
         Remove-SuiteFixture -Root $root
     }
@@ -1838,19 +1843,80 @@ Invoke-TestCase 'CodexSkillsHashParity is the only suite outside the suites job'
     Assert-True ($outside[0] -eq 'CodexSkillsHashParity.Tests.ps1') "Got: $($outside[0])"
 }
 
+# Every case here passes -LogicalProcessorCount. The parameter defaults to the real machine, which
+# is 16 on the laptop this rule was measured on and 4 on a GitHub runner, and the count is now
+# capped by it. A case that left it out would assert a different number in each place.
 Invoke-TestCase 'The default worker count is 75% of the physical cores, rounded down' {
-    Assert-True ((Get-DefaultSuiteWorkerCount -PhysicalCoreCount 8) -eq 6) 'Eight physical cores must give six workers.'
-    Assert-True ((Get-DefaultSuiteWorkerCount -PhysicalCoreCount 4) -eq 3) 'Four physical cores must give three workers.'
-    Assert-True ((Get-DefaultSuiteWorkerCount -PhysicalCoreCount 3) -eq 2) 'Three physical cores must give two workers, not two and a quarter.'
+    Assert-True ((Get-DefaultSuiteWorkerCount -PhysicalCoreCount 8 -LogicalProcessorCount 16) -eq 6) 'Eight physical cores must give six workers.'
+    # Five is the case that tells 75% from 80%: three workers, where 80% would give four.
+    Assert-True ((Get-DefaultSuiteWorkerCount -PhysicalCoreCount 5 -LogicalProcessorCount 16) -eq 3) 'Five physical cores must give three workers, not four.'
+    Assert-True ((Get-DefaultSuiteWorkerCount -PhysicalCoreCount 4 -LogicalProcessorCount 16) -eq 3) 'Four physical cores must give three workers.'
+    Assert-True ((Get-DefaultSuiteWorkerCount -PhysicalCoreCount 3 -LogicalProcessorCount 16) -eq 2) 'Three physical cores must give two workers, not two and a quarter.'
 }
 
 Invoke-TestCase 'The default worker count never rises above eight or drops below one' {
     # The ceiling is the number this repository has run with for months. Nobody has measured a
     # machine bigger than eight cores, so the rule stops there rather than guessing.
-    Assert-True ((Get-DefaultSuiteWorkerCount -PhysicalCoreCount 16) -eq 8) 'Sixteen physical cores must cap at eight, not twelve.'
-    Assert-True ((Get-DefaultSuiteWorkerCount -PhysicalCoreCount 64) -eq 8) 'A large machine must cap at eight.'
-    Assert-True ((Get-DefaultSuiteWorkerCount -PhysicalCoreCount 2) -eq 1) 'Two physical cores round down to one, not to zero.'
-    Assert-True ((Get-DefaultSuiteWorkerCount -PhysicalCoreCount 1) -eq 1) 'One physical core must give one worker.'
+    Assert-True ((Get-DefaultSuiteWorkerCount -PhysicalCoreCount 16 -LogicalProcessorCount 32) -eq 8) 'Sixteen physical cores must cap at eight, not twelve.'
+    Assert-True ((Get-DefaultSuiteWorkerCount -PhysicalCoreCount 64 -LogicalProcessorCount 128) -eq 8) 'A large machine must cap at eight.'
+    Assert-True ((Get-DefaultSuiteWorkerCount -PhysicalCoreCount 2 -LogicalProcessorCount 16) -eq 1) 'Two physical cores round down to one, not to zero.'
+    Assert-True ((Get-DefaultSuiteWorkerCount -PhysicalCoreCount 1 -LogicalProcessorCount 16) -eq 1) 'One physical core must give one worker.'
+}
+
+Invoke-TestCase 'The default worker count never exceeds the processors the run may actually use' {
+    # Win32_Processor and /proc/cpuinfo both describe the machine. Neither knows about process
+    # affinity or a container CPU limit, and [Environment]::ProcessorCount does: .NET reports the
+    # processors available to this process. Eight cores behind a two-processor limit must start
+    # two workers, not six.
+    Assert-True ((Get-DefaultSuiteWorkerCount -PhysicalCoreCount 8 -LogicalProcessorCount 2) -eq 2) 'Eight cores behind two processors must give two workers.'
+    Assert-True ((Get-DefaultSuiteWorkerCount -PhysicalCoreCount 16 -LogicalProcessorCount 4) -eq 4) 'The processor limit wins over the ceiling of eight.'
+    Assert-True ((Get-DefaultSuiteWorkerCount -PhysicalCoreCount 8 -LogicalProcessorCount 1) -eq 1) 'A single available processor must give one worker.'
+    Assert-True ((Get-DefaultSuiteWorkerCount -PhysicalCoreCount 8 -LogicalProcessorCount 16) -eq 6) 'A machine with room to spare keeps the 75% number.'
+}
+
+Invoke-TestCase 'A refused hardware query reports nothing rather than failing the run' {
+    # The reader promises never to throw. These two cases are the only deterministic proof of that
+    # promise: the real machine always answers, so the catch blocks would otherwise never run.
+    Assert-True ((Get-WindowsPhysicalCoreCount -Query { throw 'Access denied' }) -eq 0) 'A refused CIM query must report zero.'
+    Assert-True ((Get-LinuxPhysicalCoreCount -ReadCpuInfo { throw 'No such file or directory' }) -eq 0) 'An unreadable /proc/cpuinfo must report zero.'
+    Assert-True ((Get-WindowsPhysicalCoreCount -Query { @() }) -eq 0) 'A CIM query that names no processor must report zero.'
+}
+
+Invoke-TestCase 'The Windows reader sums the cores of every processor package' {
+    # NumberOfCores is per package, so a two-socket machine needs the sum, not the first row.
+    $twoSockets = { @([pscustomobject]@{ NumberOfCores = 4 }, [pscustomobject]@{ NumberOfCores = 4 }) }
+    Assert-True ((Get-WindowsPhysicalCoreCount -Query $twoSockets) -eq 8) 'Two four-core packages must report eight.'
+
+    $onePackage = { @([pscustomobject]@{ NumberOfCores = 8 }) }
+    Assert-True ((Get-WindowsPhysicalCoreCount -Query $onePackage) -eq 8) 'One eight-core package must report eight.'
+}
+
+Invoke-TestCase 'The Linux reader counts the cores its cpuinfo text names' {
+    $text = @(
+        'processor : 0', 'physical id : 0', 'core id : 0', ''
+        'processor : 1', 'physical id : 0', 'core id : 1', ''
+    ) -join "`n"
+
+    Assert-True ((Get-LinuxPhysicalCoreCount -ReadCpuInfo { $text }) -eq 2) 'Two distinct core ids must report two.'
+}
+
+Invoke-TestCase 'The printed reason names the bound that actually decided the number' {
+    # Backlog 145 review finding 4. Printing 75% of 16 physical cores next to a worker count of 8
+    # invites the reader to check the arithmetic and conclude the run is broken.
+    $plain = Get-DefaultSuiteWorkerReason -PhysicalCoreCount 8 -LogicalProcessorCount 16
+    Assert-True ($plain -eq '75% of 8 physical cores') "Unbounded case must state the rule alone. Got: $plain"
+
+    $ceiling = Get-DefaultSuiteWorkerReason -PhysicalCoreCount 16 -LogicalProcessorCount 32
+    Assert-True ($ceiling -match 'is 12, capped at the ceiling of eight') "The ceiling must be named. Got: $ceiling"
+
+    $processors = Get-DefaultSuiteWorkerReason -PhysicalCoreCount 8 -LogicalProcessorCount 2
+    Assert-True ($processors -match 'is 6, capped at 2 available processors') "The processor limit must be named. Got: $processors"
+
+    $floor = Get-DefaultSuiteWorkerReason -PhysicalCoreCount 1 -LogicalProcessorCount 16
+    Assert-True ($floor -match 'is 0, raised to the floor of one') "The floor must be named. Got: $floor"
+
+    $unreadable = Get-DefaultSuiteWorkerReason -PhysicalCoreCount 0 -LogicalProcessorCount 16
+    Assert-True ($unreadable -match 'physical cores unreadable') "The fallback must say why. Got: $unreadable"
 }
 
 Invoke-TestCase 'An unreadable physical core count falls back to the logical count capped at eight' {
@@ -1944,35 +2010,6 @@ Invoke-TestCase 'A run inside GitHub Actions uses every logical processor' {
         $result = Invoke-Driver -SuiteRoot $root -EnvVar @{ AHKFLOW_SUITE_MAX_PARALLEL = $null; GITHUB_ACTIONS = 'true' }
         Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
         Assert-True ($result.Output -match "Workers: $expected \(GitHub Actions:") "Actions must take every processor. Output: $($result.Output)"
-    } finally {
-        Remove-SuiteFixture -Root $root
-    }
-}
-
-Invoke-TestCase 'The Workers line reports the number the pool really used' {
-    $expected = Get-DefaultSuiteWorkerCount -PhysicalCoreCount (Get-PhysicalCoreCount)
-
-    $root = New-SuiteFixture
-    try {
-        # A barrier the size of the expected number. No suite holds until that many are signed in
-        # beside it, so a runner that starts fewer workers times out and the peak reads low. One
-        # spare suite keeps the shared-suite cap out of the way.
-        $names = @()
-        for ($i = 1; $i -le $expected + 1; $i++) {
-            $name = ('{0:d2}-hold.Tests.ps1' -f $i)
-            $names += $name
-            Add-IntervalSuite -Root $root -Name $name -BarrierCount $expected
-        }
-        Set-FixtureManifest -Root $root
-
-        $result = Invoke-Driver -SuiteRoot $root -EnvVar @{ AHKFLOW_SUITE_MAX_PARALLEL = $null; GITHUB_ACTIONS = $null }
-        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
-
-        Assert-True ($result.Output -match 'Workers: (\d+)\b') "The run must print a worker count. Output: $($result.Output)"
-        $printed = [int] $Matches[1]
-
-        $peak = Get-PeakOverlap -Root $root -Name $names
-        Assert-True ($peak -eq $printed) "The line printed $printed workers and the pool ran $peak at once."
     } finally {
         Remove-SuiteFixture -Root $root
     }
