@@ -27,8 +27,16 @@ stops at eight workers, which the list below never asked for. And a run inside G
 skips the 75% rule and uses every processor it has, which is how the seventh criterion is met.
 Both are argued in full in the plan.
 
+A third change came from the review of PR #398, after the plan was frozen. The default is also
+capped by `[Environment]::ProcessorCount`. The two readers behind the core count describe the
+machine's hardware, and neither sees process affinity or a container CPU limit, so a run allowed
+two processors on an eight-core machine would otherwise have started six workers. The same review
+made the live reader test insist on a positive core count only inside CI, because a machine that
+refuses the query reads zero by design and must still pass the Gate.
+
 - [x] The default worker count is about 75% of the machine's physical cores, with a floor of
-      one, and a new ceiling of eight. Before this item it was the logical processor count capped at eight, written as
+      one, a ceiling of eight, and a second ceiling at the processors the run may actually use.
+      Before this item it was the logical processor count capped at eight, written as
       `$workerCount = [Math]::Min([Environment]::ProcessorCount, 8)` on line 123 of
       `scripts/run-powershell-suites.ps1`. That line no longer exists, so this record quotes it
       rather than citing it. <!-- citation-check:ignore -->

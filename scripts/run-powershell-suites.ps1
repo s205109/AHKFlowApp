@@ -121,29 +121,17 @@ foreach ($file in $discovered) { $byName[$file.Name] = $file }
 $suites = @($selected | ForEach-Object { $byName[$_.Name] })
 
 $inActions = $env:GITHUB_ACTIONS -eq 'true'
+$envMaxParallel = $env:AHKFLOW_SUITE_MAX_PARALLEL
 
 # Backlog 145. Get-DefaultSuiteWorkerCount in powershell-suites.common.ps1 carries the measurement
 # behind the 75%, the reason a hosted runner takes every processor instead, and the reason an
 # unreadable core count falls back to the old rule.
 #
-# The reader is skipped inside Actions on purpose. Its answer would be thrown away there, and a
-# CIM query costs time for nothing.
-$physicalCoreCount = if ($inActions) { 0 } else { Get-PhysicalCoreCount }
-$workerCount = Get-DefaultSuiteWorkerCount -PhysicalCoreCount $physicalCoreCount -AllProcessors:$inActions
-
-# Why this run chose this number. A developer who wonders why the count changed reads the answer on
-# the line the run prints, without opening this script.
-$workerSource = if ($inActions) {
-    "GitHub Actions: all $([Environment]::ProcessorCount) logical processors"
-} elseif ($physicalCoreCount -ge 1) {
-    "default: 75% of $physicalCoreCount physical cores"
-} else {
-    'default: physical cores unreadable, logical processors capped at eight'
-}
-
-# The explicit parameter is settled first, and the variable is then never read. "An explicit value
-# wins over the variable" has to mean this: validating the variable first would fail the run on a
-# value the caller has already overridden.
+# One chain, highest precedence first, and only the last branch looks at the hardware. The explicit
+# parameter is settled before the variable is read at all: "an explicit value wins over the
+# variable" has to mean this, because validating the variable first would fail the run on a value
+# the caller has already overridden. A blank or whitespace variable is no value, so it falls
+# through to the default.
 if ($PSBoundParameters.ContainsKey('MaxParallel')) {
     $parsedMaxParallel = 0
     if (-not [int]::TryParse($MaxParallel.Trim(), [ref] $parsedMaxParallel) -or $parsedMaxParallel -lt 1) {
@@ -152,18 +140,27 @@ if ($PSBoundParameters.ContainsKey('MaxParallel')) {
     }
     $workerCount = $parsedMaxParallel
     $workerSource = '-MaxParallel'
-} else {
-    $envMaxParallel = $env:AHKFLOW_SUITE_MAX_PARALLEL
-    if (-not [string]::IsNullOrWhiteSpace($envMaxParallel)) {
-        $parsedMaxParallel = 0
-        if (-not [int]::TryParse($envMaxParallel.Trim(), [ref] $parsedMaxParallel) -or $parsedMaxParallel -lt 1) {
-            # Falling back to the default here would hide a misconfigured CI job for months.
-            Write-Failure "AHKFLOW_SUITE_MAX_PARALLEL must be a whole number of at least one. Got: '$envMaxParallel'"
-            exit 1
-        }
-        $workerCount = $parsedMaxParallel
-        $workerSource = 'AHKFLOW_SUITE_MAX_PARALLEL'
+} elseif (-not [string]::IsNullOrWhiteSpace($envMaxParallel)) {
+    $parsedMaxParallel = 0
+    if (-not [int]::TryParse($envMaxParallel.Trim(), [ref] $parsedMaxParallel) -or $parsedMaxParallel -lt 1) {
+        # Falling back to the default here would hide a misconfigured CI job for months.
+        Write-Failure "AHKFLOW_SUITE_MAX_PARALLEL must be a whole number of at least one. Got: '$envMaxParallel'"
+        exit 1
     }
+    $workerCount = $parsedMaxParallel
+    $workerSource = 'AHKFLOW_SUITE_MAX_PARALLEL'
+} elseif ($inActions) {
+    $workerCount = Get-DefaultSuiteWorkerCount -PhysicalCoreCount 0 -AllProcessors
+    $workerSource = "GitHub Actions: all $([Environment]::ProcessorCount) logical processors"
+} else {
+    # The only branch that asks the machine anything. An override has already won above, and inside
+    # Actions the answer would be thrown away, so a CIM query in either case costs time and changes
+    # nothing. Backlog 145 review, finding 3.
+    $physicalCoreCount = Get-PhysicalCoreCount
+    $logicalProcessorCount = [Environment]::ProcessorCount
+
+    $workerCount = Get-DefaultSuiteWorkerCount -PhysicalCoreCount $physicalCoreCount -LogicalProcessorCount $logicalProcessorCount
+    $workerSource = 'default: ' + (Get-DefaultSuiteWorkerReason -PhysicalCoreCount $physicalCoreCount -LogicalProcessorCount $logicalProcessorCount)
 }
 
 # The suites are written for the host that runs this script, so run them under the same one.
