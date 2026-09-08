@@ -5,8 +5,8 @@
 - **Epic**: Testing infrastructure
 - **Type**: Bug
 - **Interfaces**: none (CI and test harness)
-- **Difficulty**: to-be-determined
-- **Stage**: 1-pickup
+- **Difficulty**: moderate
+- **Stage**: 3-plan
 
 ## Summary
 
@@ -50,12 +50,40 @@ at 158.6 s.
 Backlog 126 made the PowerShell suites run in parallel, and measured that the whole run took as
 long as its slowest single suite, because the suites competed for the disk. Both failing suites
 create and delete git worktrees under the temporary folder, which is the most disk-heavy work
-the set does. The CI job runs on `windows-latest` with 8 workers.
+the set does. The runner allows up to 8 workers. Both failed attempts used 4 workers.
 
 One thing this item must not assume: that the branch under test was innocent. The same commit
 added test cases that made `MeasureTestModes.Tests.ps1` slower, 22.3 s to 25 s, and gave it more
 temporary-directory work. That could shift the parallel schedule enough to expose a race that
 was always there. Nobody has evidence either way yet.
+
+## Root cause
+
+The parallel runner exposes two readiness races inside the suites. It does not make their
+temporary paths overlap.
+
+`WorktreeSweepRemoteBase.Tests.ps1` waits only until a process marker path exists at
+`tests/WorktreeSweepRemoteBase.Tests.ps1:491`. It then reads the marker and calls `.Trim()` at
+`tests/WorktreeSweepRemoteBase.Tests.ps1:493`. The path can become visible before `Set-Content`
+at `tests/WorktreeSweepRemoteBase.Tests.ps1:486` has made content readable. `Get-Content -Raw`
+then returns `$null`, which produces the exact CI error.
+
+`WorktreeRemoveHook.Tests.ps1` waits only until the worktree folder is gone at
+`tests/WorktreeRemoveHook.Tests.ps1:545`. It reads the diagnostic file at
+`tests/WorktreeRemoveHook.Tests.ps1:550` before it waits for the watcher outcome. The watcher
+deletes the folder at `scripts/remove-worktree-local-dev.ps1:1292`, then keeps writing while it
+prunes Git and deletes the branch. It does not finish diagnostics and write the outcome until
+`scripts/remove-worktree-local-dev.ps1:1395-1401`. A concurrent raw read can return multiple
+objects. PowerShell applies `-match` to each object, so line 551 passes `System.Object[]` to
+`Assert-True`. That is the exact type and line reported by CI attempt 2.
+
+The `feat-forced` branch error is expected. The fixture creates an unmerged branch at
+`tests/WorktreeRemoveHook.Tests.ps1:540`. The watcher deliberately uses safe `git branch -d` at
+`scripts/remove-worktree-local-dev.ps1:1320`, so Git preserves that branch. The branch refusal
+was text captured during the premature diagnostic read. It did not cause the test failure.
+
+The failed suites have unique GUID-based fixture paths and run in separate PowerShell processes.
+Parallel disk and process contention changes timing. It exposes each suite's incomplete wait.
 
 ## Acceptance criteria
 
@@ -84,5 +112,5 @@ was always there. Nobody has evidence either way yet.
 - Related: backlog 126, which added the parallel suite runner and recorded the disk contention.
 - Start by reading `scripts/run-powershell-suites.ps1` and `tests/powershell-suites.json`, then
   the two named suites.
-- Spec: none yet — Difficulty is to-be-determined, so Design settles that first.
-- Plan: none yet — see the line above.
+- Spec: none — the root cause is bounded to two test readiness races.
+- Plan: pending.
