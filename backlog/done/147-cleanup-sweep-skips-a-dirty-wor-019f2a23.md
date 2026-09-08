@@ -26,8 +26,8 @@ Write each criterion as state a reader can observe in the repository, not as a c
 removed" and "tests cover the new API" cannot.
 
 - [x] The sweep writes a stderr line naming a merged worktree it keeps because
-      `git status --porcelain` returned output, in the same shape as the locked-worktree line
-      it already writes.
+      `git status --porcelain` returned output, in the shape
+      `cleanup: keeping '<path>' because <reason>.`
 - [x] The sweep writes a `Kept: ...` line to `worktree-removal.log` for that worktree, giving
       the same reason.
 - [x] A test covers the dirty-worktree path and asserts both the stderr line and the log line.
@@ -55,7 +55,11 @@ removed" and "tests cover the new API" cannot.
   who sees no diff.
 - Spec: none — the change is one reporting path, not a design question.
 - Plan: `docs/superpowers/plans/2026-09-07-dirty-worktree-report-plan-147.md`
-- The stderr line follows the plan-guard shape, not the locked-worktree shape: `cleanup:
-  keeping <path> because <reason>.` The two existing skip paths already word their lines
-  differently, and this path keeps the worktree rather than skipping it, so the plan-guard
-  wording is the truthful one. Both lines still name the worktree and give the same reason.
+- The first criterion originally asked for the locked-worktree shape. Review approved the
+  plan-guard shape instead, and the criterion was rewritten to say so. The two existing skip
+  paths already word their lines differently, and this path keeps the worktree rather than
+  skipping it, so the plan-guard wording is the truthful one.
+- The message names `git update-index --refresh`, not `git add`. Review found that `git diff`
+  reports neither staged nor untracked work, so a reader could run `git add` on a clean-looking
+  worktree and stage real changes. `git update-index --refresh` only rewrites cached stat
+  information, which is the actual cure for the case this item was filed over.

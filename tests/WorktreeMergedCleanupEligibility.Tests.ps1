@@ -467,8 +467,17 @@ try {
     $res = Invoke-CleanupChild -RepoDir $repo
     Assert-True ($res.Stderr -match 'because the worktree has uncommitted changes \(dirty\.txt\)\.') `
         "The sweep must name the dirty worktree on stderr, got: $($res.Stderr)"
-    Assert-True ($res.Stderr -match 'git add clears a stale index entry') `
-        "The stderr line must stay actionable for a reader who sees no diff, got: $($res.Stderr)"
+    # The path, not just the reason. Naming the wrong worktree would otherwise pass every
+    # assertion here, and the whole point of the line is telling one worktree from another.
+    Assert-True ($res.Stderr -match [regex]::Escape($dirtyPath)) `
+        "The stderr line must carry the worktree path, got: $($res.Stderr)"
+    # The cure has to be safe for the state that produced the message. The fixture's dirty.txt is
+    # untracked, and 'git diff' reports neither untracked nor staged work, so a reader following a
+    # bare 'git add' would stage real work while believing they were clearing a stale stat entry.
+    Assert-True ($res.Stderr -match 'run git update-index --refresh') `
+        "The stderr line must name the safe cure, got: $($res.Stderr)"
+    Assert-True (-not ($res.Stderr -match 'git add clears')) `
+        "The stderr line must not tell a reader to run git add, got: $($res.Stderr)"
     Assert-True (Test-Path -LiteralPath $dirtyPath) 'Reporting must not remove the dirty worktree'
 
     $log = Join-Path $repo '.claude\worktrees\worktree-removal.log'
@@ -478,14 +487,15 @@ try {
     Assert-True ($outcome[0] -match [regex]::Escape((Split-Path -Leaf $dirtyPath))) `
         "The outcome line must name the worktree, got '$($outcome[0])'"
     Assert-True ($outcome[0] -match ('Kept: the worktree has uncommitted changes \(dirty\.txt\)\. ' +
-            'Run git status there\. When git diff is empty, git add clears a stale index entry\.$')) `
+            'Run git status there\. If git diff and git diff --cached are both empty and nothing ' +
+            'is untracked, run git update-index --refresh\.$')) `
         "Expected the dirty line, got '$($outcome[0])'"
 } finally {
     Remove-TempTree $repo
 }
 
-# --- Test: more than one change is counted, and the first path is named (backlog 147) ---
-# Without this case a message that only ever named one path would pass every assertion above.
+# --- Test: more than one record is counted, and the first entry is named (backlog 147) ---
+# Without this case a message that only ever named one entry would pass every assertion above.
 $repo = New-TempGitRepo
 try {
     $dirtyPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-dirty-many' -Dirty
@@ -495,8 +505,31 @@ try {
 
     $outcome = @(Get-Content -LiteralPath (Join-Path $repo '.claude\worktrees\worktree-removal.log'))
     Assert-Equal 1 $outcome.Count "One dirty worktree writes one outcome line, got $($outcome.Count)"
-    Assert-True ($outcome[0] -match 'uncommitted changes \(2 paths, first dirty\.txt\)') `
-        "Two changes must be counted and the first named, got '$($outcome[0])'"
+    Assert-True ($outcome[0] -match 'uncommitted changes \(2 changes, first entry dirty\.txt\)') `
+        "Two records must be counted and the first entry named, got '$($outcome[0])'"
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- Test: a rename is one record holding two paths, so the count says changes (backlog 147) ---
+# `git status --porcelain` writes a rename as a single 'R  old -> new' record. Calling that one
+# entry a path made the count wrong and put an arrow where a file name belonged.
+$repo = New-TempGitRepo
+try {
+    $renamePath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-dirty-rename'
+    # A staged rename plus one untracked file: two records, four paths named between them.
+    # Porcelain lists the staged record before the untracked one, so the rename is entry one.
+    Invoke-TestGit $renamePath @('mv', 'work.txt', 'renamed.txt') | Out-Null
+    Set-Content -LiteralPath (Join-Path $renamePath 'extra.txt') -Value 'also uncommitted' -Encoding utf8
+
+    Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'main' | Out-Null
+
+    $outcome = @(Get-Content -LiteralPath (Join-Path $repo '.claude\worktrees\worktree-removal.log'))
+    Assert-Equal 1 $outcome.Count "One dirty worktree writes one outcome line, got $($outcome.Count)"
+    Assert-True ($outcome[0] -match 'uncommitted changes \(2 changes, first entry work\.txt -> renamed\.txt\)') `
+        "A rename record must be reported as one change, got '$($outcome[0])'"
+    Assert-True (-not ($outcome[0] -match 'paths')) `
+        "A rename record holds two paths, so the count must not claim paths, got '$($outcome[0])'"
 } finally {
     Remove-TempTree $repo
 }
