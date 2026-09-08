@@ -5,8 +5,8 @@
 - **Epic**: Test reliability
 - **Type**: Bug
 - **Interfaces**: UI | API | CLI (none — test code only)
-- **Difficulty**: to-be-determined
-- **Stage**: 1-pickup
+- **Difficulty**: moderate
+- **Stage**: 3-plan
 
 ## Summary
 
@@ -46,9 +46,73 @@ Four facts point away from a defect in the page and towards a slow runner:
   projects were loading the runner while this test waited.
 - The whole E2E suite passed locally on the same commit: 58 of 58.
 
-None of this proves the cause, which is why Difficulty is `to-be-determined`. A one-off timeout
-that nobody can reproduce may need a recurrence before anyone can name the line, the way
-backlog 068 does.
+None of this proves the cause. The reading above was the reading at filing time, and Findings
+below overturns it: the SPA host's request log shows the app failed to boot, twice, inside the
+30 seconds. Difficulty moved from `to-be-determined` to `moderate` on that evidence.
+
+## Findings
+
+The wait was not too short. The app never booted. The four facts above pointed the wrong
+way, and the SPA host's own request log overturns them.
+
+`tests/AHKFlowApp.E2E.Tests/Fixtures/SpaHost.cs` runs a real Kestrel host, so CI run
+34200726352 logged every request the browser made. The whole 30 seconds is on the record.
+
+### The page loaded the document twice
+
+```
+07:47:51.243  GET /hotkeys   <- the test's own navigation
+07:47:51.832  GET /hotkeys   <- the page reloaded itself, 0.59 s later
+07:47:52.274  last request of any kind
+07:48:21.428  GET /hotkeys   <- the next test, 29 seconds later
+```
+
+Across the whole E2E run, every test loads exactly one document. This test loaded two. The
+only other double load in the run belongs to `BootFailureFlowTests`, which reloads on purpose.
+
+### Neither boot finished
+
+A healthy boot fetches 139 files from `_framework/`, then asks for `appsettings.json` about
+0.6 seconds after the document. The sibling test did exactly that at 07:47:43.602 and
+07:47:44.182.
+
+The failing test did not. The first boot fetched 20 files before the reload cut it off. The
+second fetched 76 and then stopped. `appsettings.json` was never requested, so `Program.Main`
+never ran, and nothing the page needed was ever rendered.
+
+### The server was healthy throughout
+
+Every request in the window returned 200. None failed, and none was left unfinished. The
+stall is entirely inside the browser.
+
+### What reloaded the page
+
+`src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/js/bootBlazor.js` is the only code that reloads
+during boot. It reloads at once for a platform-start failure and waits 10 seconds for a
+download failure, so a reload 0.59 seconds in was a start failure. Its guard allows one
+retry per tab, so the second failure showed the "Couldn't load the app" screen instead of
+reloading again.
+
+`wwwroot/js/registerServiceWorker.js` also reloads, but only when a service worker already
+controls the page. Each test opens a fresh browser context with its own storage, so no
+service worker existed and that branch could not run.
+
+### What is still unknown
+
+Why the .NET WebAssembly runtime failed to start. The run captured no browser console, no
+page errors, and no screenshot, and the E2E project captures none of these today. The likely
+explanation is resource pressure: `dotnet test` runs every test project in parallel on a
+four-core runner, and `AHKFlowApp.UI.Blazor.Tests` was still running its 956 tests when this
+boot failed. That is unproven, and this evidence cannot prove it.
+
+This failure has happened once in the last 40 CI runs.
+
+### What this means for the fix
+
+A longer wait would not have saved this run, because the page had already given up. So the
+wait budget is worth stating once and using once, but it is not the repair. The repair is to
+make the next occurrence name itself: capture the browser console and the boot-error state
+when a first page load does not arrive.
 
 ## Acceptance criteria
 
