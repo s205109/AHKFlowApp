@@ -62,25 +62,29 @@ was always there. Nobody has evidence either way yet.
 The parallel runner exposes two readiness races inside the suites. It does not make their
 temporary paths overlap.
 
-`WorktreeSweepRemoteBase.Tests.ps1` waits only until a process marker path exists at
-`tests/WorktreeSweepRemoteBase.Tests.ps1:491`. It then reads the marker and calls `.Trim()` at
-`tests/WorktreeSweepRemoteBase.Tests.ps1:493`. The path can become visible before `Set-Content`
-at `tests/WorktreeSweepRemoteBase.Tests.ps1:486` has made content readable. `Get-Content -Raw`
-then returns `$null`, which produces the exact CI error.
+`WorktreeSweepRemoteBase.Tests.ps1` used to wait only until a process marker path existed. The
+fixture now makes that race deterministic. It creates the empty marker
+(`tests/WorktreeSweepRemoteBase.Tests.ps1:484`, "New-Item -ItemType File -Path"), waits before
+writing (`tests/WorktreeSweepRemoteBase.Tests.ps1:485`, "Start-Sleep -Milliseconds 750;"), then
+writes the PID (`tests/WorktreeSweepRemoteBase.Tests.ps1:488`, "Set-Content -LiteralPath"). The
+old path-only wait could read `$null` and call `.Trim()`, which produced the exact CI error. The
+fixed wait reads the content (`tests/WorktreeSweepRemoteBase.Tests.ps1:495`, "$markerValue = Get-Content -Raw -LiteralPath $parentMarker -ErrorAction SilentlyContinue") and accepts only a
+positive parsed PID (`tests/WorktreeSweepRemoteBase.Tests.ps1:497`, "[int]::TryParse([string] $markerValue, [ref] $candidateChildId)").
 
-`WorktreeRemoveHook.Tests.ps1` waits only until the worktree folder is gone at
-`tests/WorktreeRemoveHook.Tests.ps1:545`. It reads the diagnostic file at
-`tests/WorktreeRemoveHook.Tests.ps1:550` before it waits for the watcher outcome. The watcher
-deletes the folder at `scripts/remove-worktree-local-dev.ps1:1292`, then keeps writing while it
-prunes Git and deletes the branch. It does not finish diagnostics and write the outcome until
-`scripts/remove-worktree-local-dev.ps1:1395-1401`. A concurrent raw read can return multiple
-objects. PowerShell applies `-match` to each object, so line 551 passes `System.Object[]` to
-`Assert-True`. That is the exact type and line reported by CI attempt 2.
+`WorktreeRemoveHook.Tests.ps1` used to wait only until the worktree folder was gone
+(`tests/WorktreeRemoveHook.Tests.ps1:545`, "$removed = Wait-ForCondition { -not (Test-Path -LiteralPath $wtPath) }"). It then read the diagnostic file without waiting for the watcher. The
+fixed ordering waits for the outcome (`tests/WorktreeRemoveHook.Tests.ps1:549`, "$outcomeLines = @(Wait-ForOutcomeLine -RepoDir $repo)") before the raw diagnostic read
+(`tests/WorktreeRemoveHook.Tests.ps1:556`, "$diagnostics = Get-Content -Raw -LiteralPath (Get-RemovalDiagnosticsPath $repo)"). The watcher deletes the folder
+(`scripts/remove-worktree-local-dev.ps1:1292`, "Remove-Item -LiteralPath $tempName -Recurse -Force -ErrorAction Stop"), then prunes Git and deletes the branch
+(`scripts/remove-worktree-local-dev.ps1:1320`, "$branchDelete = Invoke-GitCapture @('-C', $mainCheckout, 'branch', '-d', '--', $branchName)"). It writes its final diagnostic
+(`scripts/remove-worktree-local-dev.ps1:1395`, "Write-DiagnosticLog 'Watcher done (worktree removed; branch preserved).'") before the outcome
+(`scripts/remove-worktree-local-dev.ps1:1401`, "Write-Outcome 'Removed.'"). The premature read
+produced the `System.Object[]` passed to `Assert-True` in CI attempt 2.
 
-The `feat-forced` branch error is expected. The fixture creates an unmerged branch at
-`tests/WorktreeRemoveHook.Tests.ps1:540`. The watcher deliberately uses safe `git branch -d` at
-`scripts/remove-worktree-local-dev.ps1:1320`, so Git preserves that branch. The branch refusal
-was text captured during the premature diagnostic read. It did not cause the test failure.
+The `feat-forced` branch error is expected. The fixture creates an unmerged branch
+(`tests/WorktreeRemoveHook.Tests.ps1:540`, "$wtPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-forced' -Unmerged"). The watcher deliberately uses safe `git branch -d`
+(`scripts/remove-worktree-local-dev.ps1:1320`, "$branchDelete = Invoke-GitCapture @('-C', $mainCheckout, 'branch', '-d', '--', $branchName)"), so Git preserves that branch. The branch
+refusal was text captured during the premature diagnostic read. It did not cause the failure.
 
 The failed suites have unique GUID-based fixture paths and run in separate PowerShell processes.
 Parallel disk and process contention changes timing. It exposes each suite's incomplete wait.
