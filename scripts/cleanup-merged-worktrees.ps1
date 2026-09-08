@@ -179,7 +179,31 @@ function Get-EligibleMergedWorktrees {
             Write-Stderr "cleanup: status check failed for '$wtFull'; skipping it."
             continue
         }
-        if ($status) { continue }
+        if ($status) {
+            # The third skip path, and the only one that used to be silent. A merged worktree the
+            # sweep keeps has to be told apart from a worktree the sweep never saw, and the outcome
+            # log is where a reader looks. The sweep never hands this one over, so it owns the line.
+            $changes = @($status)
+            # One porcelain record, not one path: a rename is written as 'R  old -> new', so the
+            # count says changes and the text says entry. The regex strips the 'XY ' prefix and
+            # never throws on a short line; Substring(3) would.
+            $firstEntry = (([string] $changes[0]) -replace '^..\s', '').Trim()
+            if ($firstEntry.Length -gt 80) { $firstEntry = $firstEntry.Substring(0, 79) + [char] 0x2026 }
+            $changeSummary = if ($changes.Count -eq 1) { $firstEntry }
+                             else { "$($changes.Count) changes, first entry $firstEntry" }
+            # One reason for both lines, so the report and the log can never drift apart. The last
+            # sentence is the actionable part: backlog 147 was filed over a file git status reported
+            # while git diff was empty, which a stale index stat entry causes. The cure has to be
+            # safe for a reader who has not looked yet, so it names both diffs and the untracked
+            # set first: 'git diff' alone reports neither staged nor untracked work, and 'git add'
+            # in that state stages real changes instead of refreshing a stat entry.
+            $dirtyReason = "the worktree has uncommitted changes ($changeSummary). Run git status there. " +
+                'If git diff and git diff --cached are both empty and nothing is untracked, run git update-index --refresh.'
+            Write-Stderr "cleanup: keeping '$wtFull' because $dirtyReason"
+            Write-SweepOutcome -RepoRoot $RepoRoot -WorktreePath $wtFull `
+                -Message ('Kept: ' + (Format-WorktreeLogReason -Text $dirtyReason))
+            continue
+        }
 
         $eligible += [pscustomobject]@{ Path = $wtFull; Branch = $wt.Branch }
     }
