@@ -6,7 +6,7 @@
 - **Type**: Feature
 - **Interfaces**: none (test runner scripts)
 - **Difficulty**: moderate
-- **Stage**: 6-verify
+- **Stage**: 9-ship
 
 ## Summary
 
@@ -37,10 +37,10 @@ Both are argued in full in the plan.
       property returns logical processors. On the measured machine it returns 16 for 8 physical
       cores, and 75% of 16 is 12, which is more than the old default. `Get-PhysicalCoreCount`
       reads the real number and the local run reports 8 physical of 16 logical.
-- [ ] The runner reads the physical core count on Windows and on Linux, and a test covers both.
+- [x] The runner reads the physical core count on Windows and on Linux, and a test covers both.
       The test is one case in `tests/SuiteRunnerLinux.Tests.ps1`, which the `suites` job runs on
-      Windows and the `invariants` job runs on Linux. It passes on Windows locally. Ticked when
-      the Linux job reports its count too.
+      Windows and the `invariants` job runs on Linux. CI run 34227961515 reported
+      `physical cores: 2 of 4 logical, on linux` and `physical cores: 2 of 4 logical, on windows`.
 - [x] A machine whose physical core count cannot be read still runs. The fallback is the logical
       processor count capped at eight, which is the rule this item replaced, and the reason is
       written into `Get-DefaultSuiteWorkerCount`. Three assertions cover the path.
@@ -51,10 +51,15 @@ Both are argued in full in the plan.
       proves the printed number is the number the pool used. The test sizes a barrier at the
       printed number and compares it against the real peak overlap. The line now also names the
       reason for the number.
-- [ ] The CI `powershell-suites` job is no slower than it is today, measured on one commit
+- [x] The CI `powershell-suites` job is no slower than it is today, measured on one commit
       before and after. A run inside GitHub Actions takes every processor it has, which is what
-      the job did before this item, so the count should not move. Ticked when the branch's own
-      CI run reports `Workers: 4`, the same number as run 34206922028 on 2026-09-08.
+      the job did before this item, so the count did not move. Before, run 34206922028:
+      `Workers: 4`. After, run 34227961515:
+      `Workers: 4 (GitHub Actions: all 4 logical processors)`. Both jobs that run suites report
+      the same number, and both runs passed.
+
+      The exemption was needed, not a precaution. Both runners report 2 physical cores of 4
+      logical, so the 75% rule would have given this job 1 worker.
 
 ## Out of scope
 
