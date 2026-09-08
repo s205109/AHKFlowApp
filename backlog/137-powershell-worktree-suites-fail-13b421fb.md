@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: none (CI and test harness)
 - **Difficulty**: moderate
-- **Stage**: 3-plan
+- **Stage**: 4-execute
 
 ## Summary
 
@@ -113,4 +113,4 @@ Parallel disk and process contention changes timing. It exposes each suite's inc
 - Start by reading `scripts/run-powershell-suites.ps1` and `tests/powershell-suites.json`, then
   the two named suites.
 - Spec: none — the root cause is bounded to two test readiness races.
-- Plan: pending.
+- Plan: `docs/superpowers/plans/2026-09-08-powershell-worktree-suite-readiness-plan-137.md`
