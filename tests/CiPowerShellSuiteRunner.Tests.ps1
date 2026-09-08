@@ -1838,6 +1838,71 @@ Invoke-TestCase 'CodexSkillsHashParity is the only suite outside the suites job'
     Assert-True ($outside[0] -eq 'CodexSkillsHashParity.Tests.ps1') "Got: $($outside[0])"
 }
 
+Invoke-TestCase 'The default worker count is 75% of the physical cores, rounded down' {
+    Assert-True ((Get-DefaultSuiteWorkerCount -PhysicalCoreCount 8) -eq 6) 'Eight physical cores must give six workers.'
+    Assert-True ((Get-DefaultSuiteWorkerCount -PhysicalCoreCount 4) -eq 3) 'Four physical cores must give three workers.'
+    Assert-True ((Get-DefaultSuiteWorkerCount -PhysicalCoreCount 3) -eq 2) 'Three physical cores must give two workers, not two and a quarter.'
+}
+
+Invoke-TestCase 'The default worker count never rises above eight or drops below one' {
+    # The ceiling is the number this repository has run with for months. Nobody has measured a
+    # machine bigger than eight cores, so the rule stops there rather than guessing.
+    Assert-True ((Get-DefaultSuiteWorkerCount -PhysicalCoreCount 16) -eq 8) 'Sixteen physical cores must cap at eight, not twelve.'
+    Assert-True ((Get-DefaultSuiteWorkerCount -PhysicalCoreCount 64) -eq 8) 'A large machine must cap at eight.'
+    Assert-True ((Get-DefaultSuiteWorkerCount -PhysicalCoreCount 2) -eq 1) 'Two physical cores round down to one, not to zero.'
+    Assert-True ((Get-DefaultSuiteWorkerCount -PhysicalCoreCount 1) -eq 1) 'One physical core must give one worker.'
+}
+
+Invoke-TestCase 'An unreadable physical core count falls back to the logical count capped at eight' {
+    # The fallback is the rule this change replaces. A machine we cannot measure keeps the number
+    # it has been running with all along.
+    Assert-True ((Get-DefaultSuiteWorkerCount -PhysicalCoreCount 0 -LogicalProcessorCount 16) -eq 8) 'The fallback must cap at eight.'
+    Assert-True ((Get-DefaultSuiteWorkerCount -PhysicalCoreCount 0 -LogicalProcessorCount 4) -eq 4) 'The fallback must use the logical count below the cap.'
+    Assert-True ((Get-DefaultSuiteWorkerCount -PhysicalCoreCount -1 -LogicalProcessorCount 4) -eq 4) 'A negative count is unreadable too.'
+}
+
+Invoke-TestCase 'AllProcessors uses every logical processor and ignores the physical count' {
+    # A GitHub runner is nobody's desk. Nothing there needs the machine kept usable, so the run
+    # takes what the machine has. The physical count is passed and must make no difference.
+    Assert-True ((Get-DefaultSuiteWorkerCount -PhysicalCoreCount 2 -LogicalProcessorCount 4 -AllProcessors) -eq 4) 'A four-processor runner must use four workers.'
+    Assert-True ((Get-DefaultSuiteWorkerCount -PhysicalCoreCount 8 -LogicalProcessorCount 16 -AllProcessors) -eq 16) 'AllProcessors must not cap at eight.'
+    Assert-True ((Get-DefaultSuiteWorkerCount -PhysicalCoreCount 0 -LogicalProcessorCount 0 -AllProcessors) -eq 1) 'The floor of one still holds.'
+}
+
+Invoke-TestCase 'The cpuinfo parser counts physical cores, not hardware threads' {
+    # Two cores, two threads each. Four processor blocks, two distinct core ids.
+    $text = @(
+        'processor : 0', 'physical id : 0', 'core id : 0', ''
+        'processor : 1', 'physical id : 0', 'core id : 1', ''
+        'processor : 2', 'physical id : 0', 'core id : 0', ''
+        'processor : 3', 'physical id : 0', 'core id : 1', ''
+    ) -join "`n"
+
+    $count = ConvertFrom-ProcCpuInfoCoreCount -Text $text
+    Assert-True ($count -eq 2) "Expected two cores, got $count."
+}
+
+Invoke-TestCase 'The cpuinfo parser counts a second socket separately' {
+    # Core id 0 exists on both sockets and must not collapse into one core.
+    $text = @(
+        'processor : 0', 'physical id : 0', 'core id : 0', ''
+        'processor : 1', 'physical id : 1', 'core id : 0', ''
+    ) -join "`n"
+
+    $count = ConvertFrom-ProcCpuInfoCoreCount -Text $text
+    Assert-True ($count -eq 2) "Two sockets with one core each must give two, got $count."
+}
+
+Invoke-TestCase 'The cpuinfo parser reports nothing when the text names no cores' {
+    # An ARM board lists processors and no core id. Nothing there says how many physical cores sit
+    # behind them, so the answer is zero and the caller falls back.
+    $arm = @('processor : 0', 'model name : Cortex-A72', '', 'processor : 1', 'model name : Cortex-A72', '') -join "`n"
+
+    Assert-True ((ConvertFrom-ProcCpuInfoCoreCount -Text $arm) -eq 0) 'Text with no core id must report zero.'
+    Assert-True ((ConvertFrom-ProcCpuInfoCoreCount -Text '') -eq 0) 'Empty text must report zero.'
+    Assert-True ((ConvertFrom-ProcCpuInfoCoreCount -Text 'nonsense') -eq 0) 'Text that is not cpuinfo must report zero.'
+}
+
 Write-Host ''
 if ($script:Failures.Count -gt 0) {
     Write-Host "FAILED: $($script:Failures.Count) test(s)" -ForegroundColor Red
