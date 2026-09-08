@@ -130,7 +130,14 @@ names 38 tasks the reader cannot reach.
 ## Out of scope
 
 - Any change to how Claude Code names or writes the task output files.
-- The `-List` and `-Index` paths, which already work and are the current way around this.
+- Reworking what `-List` and `-Index` are for. They keep their shape and meaning.
+
+**Corrected at Design on 2026-09-08.** This section first put the `-List` and `-Index` paths out of
+scope entirely. Acceptance criterion 5 cannot hold while `-List` stops at a fixed 20 rows
+(`scripts/watch-task.ps1:1225`, "$recent = @($records | Select-Object -First 20)"): with more than
+20 running tasks, the count line names tasks that `-Index` cannot reach. So `-List` now shows every
+running task, then enough newest stopped tasks to reach 20 rows. Nothing else about the two
+switches changes.
 
 ## Notes / dependencies
 

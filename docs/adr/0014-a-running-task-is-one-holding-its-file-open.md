@@ -53,17 +53,33 @@ mean reading agent-harness internals the watcher has no contract with.
 **A live-session check, from the session transcript's last write time**, was rejected for the same
 reason and because it is still an age cutoff, just on a different file.
 
-## What this narrows
+## What this supersedes
 
 Item 123 shipped "it tails the newest still-running task output file for this repository,
-including files that belong to any of the repository's worktrees". That is still true. The search
-still reaches every checkout. What changes is the order of preference: the caller's session first,
-then the script's own checkout, then the newest by last write. `AGENTS.md` already tells an agent
-to hand over the watcher path in the checkout the run belongs to, and that instruction only means
-something if the checkout narrows the choice.
+including files that belong to any of the repository's worktrees".
+
+**This decision supersedes the newest-across-everything half of that rule.** Selection is no
+longer the newest running file wherever it sits. Three preferences apply in order — the caller's
+session, then the script's own checkout, then the newest by last write — and each is skipped when
+it matches no running task. Newest is now the last resort, not the rule.
+
+The other half stands. The search still reaches every checkout, so a worktree's task files are
+still found (`scripts/watch-task.ps1:109`, "function Get-RepositoryCheckoutPath").
+
+`AGENTS.md` already tells an agent to hand over the watcher path in the checkout the run belongs
+to. That instruction only means anything if the checkout narrows the choice, and until now it did
+not.
 
 ## Consequences
 
+- **A third terminal state exists.** A file that ends with no terminal marker and that nobody
+  holds open is not running and has no exit code. Under the old rule that combination could not
+  occur, so a missing exit code meant killed. It no longer does: the watcher reports "stopped
+  without a terminal marker", and only a `[killed]` marker means killed. Five display sites in
+  `scripts/watch-task.ps1` carry the old assumption and all five change.
+- **Liveness ends a follow.** A writer that closes without writing a marker leaves the marker rule
+  saying "running" for ever. The follow loop now stops once the writer has released the file and
+  the reader has caught up to the end.
 - A task whose runner keeps the file open but never writes is correctly reported as running. That
   is a hung run, and telling a hung run from a finished one is the point of the watcher.
 - A file held open for writing by anything else would read as running. In practice only the
