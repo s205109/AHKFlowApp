@@ -159,9 +159,10 @@ public sealed class MyFeatureFlowTests(StackFixture fixture) : IAsyncLifetime
     public async Task DoingTheThing_ProducesTheVisibleResult()
     {
         await using IBrowserContext ctx = await fixture.Browser.NewContextAsync();
-        IPage page = await ctx.NewPageAsync();
 
-        await page.GotoAsync($"{fixture.Spa.BaseUrl}/hotkeys");
+        IPage page = await FirstPageLoad.OpenAsync(
+            ctx, $"{fixture.Spa.BaseUrl}/hotkeys", "button.add-hotkey");
+
         await page.ClickAsync("[data-test=\"some-control\"]");
 
         await Assertions.Expect(page.Locator("[data-test=\"result\"]"))
@@ -170,8 +171,13 @@ public sealed class MyFeatureFlowTests(StackFixture fixture) : IAsyncLifetime
 }
 ```
 
-Four rules that are easy to get wrong:
+Five rules that are easy to get wrong:
 
+- **Open the first page with `FirstPageLoad.OpenAsync`.** It carries the repository's one wait
+  budget for a first page load, 30 seconds, and it is measured: a healthy boot reaches the app in
+  under two seconds. Do not raise it to cure a flaky run. When a first page load spends the whole
+  budget, the app failed to boot, and `OpenAsync` says so, with the document count and the
+  browser's own errors.
 - **Select on `data-test`**, not MudBlazor's generated classes — they change between MudBlazor versions.
 - **Scope grid assertions to `.desktop-branch` or the mobile branch.** Both render into the DOM; the mobile one is hidden by CSS only, so an unscoped selector can match twice.
 - **`MudAutocomplete` with `CoerceValue` needs a blur to commit.** `FillAsync` sets the text but not the bound value — follow it with `PressAsync("Tab")`.
