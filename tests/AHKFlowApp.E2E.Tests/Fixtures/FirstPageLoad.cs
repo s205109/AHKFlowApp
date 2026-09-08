@@ -80,12 +80,12 @@ public static class FirstPageLoad
         }
         catch (TimeoutException timeout)
         {
-            throw new TimeoutException(await DescribeAsync(page, readySelector, watch), timeout);
+            throw new TimeoutException(await DescribeAsync(page, readySelector, watch, spent), timeout);
         }
 
         if (await bootError.CountAsync() > 0)
         {
-            throw new TimeoutException(await DescribeAsync(page, readySelector, watch));
+            throw new TimeoutException(await DescribeAsync(page, readySelector, watch, spent));
         }
 
         return page;
@@ -100,10 +100,20 @@ public static class FirstPageLoad
     private static float Remaining(Stopwatch spent) =>
         Math.Max(1L, TimeoutMs - spent.ElapsedMilliseconds);
 
-    private static async Task<string> DescribeAsync(IPage page, string readySelector, BootWatch watch)
+    private static async Task<string> DescribeAsync(
+        IPage page,
+        string readySelector,
+        BootWatch watch,
+        Stopwatch spent)
     {
         StringBuilder report = new();
-        report.AppendLine($"The first page load never showed '{readySelector}' within {TimeoutMs} ms.");
+
+        // Both numbers, because they answer different questions. The elapsed time says what really
+        // happened, and a boot that gave up early spends far less than the budget. The budget says
+        // what the limit was, so a reader can tell a slow page from a page that stopped.
+        report.AppendLine(
+            $"The first page load never showed '{readySelector}'. "
+            + $"Gave up after {spent.ElapsedMilliseconds} ms of a {TimeoutMs} ms budget.");
 
         // Reading the page can itself fail, and a broken diagnosis must never hide the timeout it
         // was called to explain. Both types are needed: Playwright 1.59 has no timeout exception of

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.RegularExpressions;
 using AHKFlowApp.E2E.Tests.Fixtures;
 using FluentAssertions;
 using Microsoft.Playwright;
@@ -84,13 +85,22 @@ public sealed class FirstPageLoadDiagnosticsTests(StackFixture fixture) : IAsync
 
         Func<Task> open = () => FirstPageLoad.OpenAsync(
             ctx, $"{fixture.Spa.BaseUrl}/hotkeys", "button.add-hotkey");
-        await open.Should().ThrowAsync<TimeoutException>();
+        TimeoutException thrown = (await open.Should().ThrowAsync<TimeoutException>()).Which;
 
         spent.Stop();
 
         // Generous on purpose. Half the budget still proves the wait ended on the error screen and
         // not on the clock, and it will not turn red on a loaded runner.
         spent.Elapsed.Should().BeLessThan(TimeSpan.FromMilliseconds(FirstPageLoad.TimeoutMs / 2));
+
+        // The message has to report the time that really passed, not the budget it was allowed.
+        // A boot that gave up in a second saying it waited thirty would send the next reader
+        // hunting for a slow runner, which is the wrong trail and the one backlog 148 followed.
+        Match reported = Regex.Match(thrown.Message, @"Gave up after (\d+) ms");
+        reported.Success.Should().BeTrue("the message states how long it actually waited");
+
+        int.Parse(reported.Groups[1].Value)
+            .Should().BeLessThan(FirstPageLoad.TimeoutMs / 2);
     }
 
     // The healthy path has to keep working, and the returned page has to be usable by the caller.
