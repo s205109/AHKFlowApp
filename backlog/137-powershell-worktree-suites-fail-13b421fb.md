@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: none (CI and test harness)
 - **Difficulty**: to-be-determined
-- **Stage**: 0-intake
+- **Stage**: 1-pickup
 
 ## Summary
 
