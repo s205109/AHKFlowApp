@@ -56,9 +56,10 @@ refuses the query reads zero by design and must still pass the Gate.
       over the default. The precedence does not change, and the variable is now proved to win on
       both sides of the GitHub Actions branch.
 - [x] The `Workers:` line the run prints reports the count the run really used, and a test
-      proves the printed number is the number the pool used. The test sizes a barrier at the
-      printed number and compares it against the real peak overlap. The line now also names the
-      reason for the number.
+      proves the printed number is the number the pool used. The test fixes `-MaxParallel 2`, a
+      barrier sized at 2, and the assertion that the printed line reads `Workers: 2`, so the
+      printed number and the pool's real peak overlap are checked against the same fixed value
+      rather than against each other. The line now also names the reason for the number.
 - [x] The CI `powershell-suites` job is no slower than it is today, measured on one commit
       before and after. A run inside GitHub Actions takes every processor it has, which is what
       the job did before this item, so the count did not move. Before, run 34206922028:

@@ -120,6 +120,10 @@ $byName = @{}
 foreach ($file in $discovered) { $byName[$file.Name] = $file }
 $suites = @($selected | ForEach-Object { $byName[$_.Name] })
 
+# Reading the variable's text here does not settle precedence - the branches below do, in order.
+# "An explicit value wins over the variable" has to mean this: validating the variable's text
+# before the -MaxParallel branch is checked would fail the run on a value the caller has already
+# overridden. A blank or whitespace variable is no value, so it falls through to the default.
 $inActions = $env:GITHUB_ACTIONS -eq 'true'
 $envMaxParallel = $env:AHKFLOW_SUITE_MAX_PARALLEL
 
@@ -127,11 +131,7 @@ $envMaxParallel = $env:AHKFLOW_SUITE_MAX_PARALLEL
 # behind the 75%, the reason a hosted runner takes every processor instead, and the reason an
 # unreadable core count falls back to the old rule.
 #
-# One chain, highest precedence first, and only the last branch looks at the hardware. The explicit
-# parameter is settled before the variable is read at all: "an explicit value wins over the
-# variable" has to mean this, because validating the variable first would fail the run on a value
-# the caller has already overridden. A blank or whitespace variable is no value, so it falls
-# through to the default.
+# One chain, highest precedence first, and only the last branch looks at the hardware.
 if ($PSBoundParameters.ContainsKey('MaxParallel')) {
     $parsedMaxParallel = 0
     if (-not [int]::TryParse($MaxParallel.Trim(), [ref] $parsedMaxParallel) -or $parsedMaxParallel -lt 1) {
