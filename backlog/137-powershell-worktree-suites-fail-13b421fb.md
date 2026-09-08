@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: none (CI and test harness)
 - **Difficulty**: moderate
-- **Stage**: 4-execute
+- **Stage**: 5-simplify
 
 ## Summary
 
