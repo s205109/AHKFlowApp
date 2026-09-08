@@ -492,7 +492,7 @@ try {
     $deadline = (Get-Date).AddSeconds(20)
     $childId = $null
     while ((Get-Date) -lt $deadline) {
-        $markerValue = [string] (Get-Content -Raw -LiteralPath $parentMarker -ErrorAction SilentlyContinue)
+        $markerValue = Get-Content -Raw -LiteralPath $parentMarker -ErrorAction SilentlyContinue
         $candidateChildId = 0
         if ([int]::TryParse([string] $markerValue, [ref] $candidateChildId) -and $candidateChildId -gt 0) {
             $childId = $candidateChildId
