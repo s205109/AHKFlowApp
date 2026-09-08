@@ -307,6 +307,24 @@ Invoke-TestCase 'A selection emptied by the platform filter fails the run and sa
     }
 }
 
+# Backlog 145. The reader is the only part of the worker default that behaves differently per
+# platform: CIM on Windows, /proc/cpuinfo on Linux. This suite runs in the invariants job on Linux
+# and in the suites job on Windows, so this one case covers both.
+Invoke-TestCase 'The physical core count reads on this platform and is not the thread count' {
+    . (Join-Path $repoRoot 'scripts/powershell-suites.common.ps1')
+
+    $cores = Get-PhysicalCoreCount
+    $logical = [Environment]::ProcessorCount
+
+    Assert-True ($cores -ge 1) "Get-PhysicalCoreCount returned $cores on $($script:ThisPlatform). A CI runner must be readable."
+    Assert-True ($cores -le $logical) "Physical cores ($cores) cannot exceed logical processors ($logical)."
+
+    # Printed so a CI log records what each runner reads. Backlog 145 decided the Actions branch on
+    # the belief that a hosted runner has fewer cores than processors, and this is where that
+    # belief becomes a measurement.
+    Write-Host "        physical cores: $cores of $logical logical, on $($script:ThisPlatform)"
+}
+
 # --- Report ---
 
 if ($script:Failures.Count -gt 0) {
