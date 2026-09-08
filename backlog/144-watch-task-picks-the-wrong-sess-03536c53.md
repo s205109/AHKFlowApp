@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: CLI
 - **Difficulty**: complex
-- **Stage**: 2-design
+- **Stage**: 3-plan
 
 ## Summary
 
@@ -150,4 +150,4 @@ switches changes.
 - Spec: `docs/superpowers/specs/2026-09-08-watch-task-session-and-liveness-design-144.md`
 - ADR: `docs/adr/0014-a-running-task-is-one-holding-its-file-open.md` — a running task is one
   holding its output file open. It narrows the preference order item 123 shipped.
-- Plan: none — filed at intake. A plan is written when somebody picks the item up.
+- Plan: `docs/superpowers/plans/2026-09-08-watch-task-session-and-liveness-plan-144.md`
