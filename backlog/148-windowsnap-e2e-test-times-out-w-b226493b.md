@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: UI | API | CLI (none — test code only)
 - **Difficulty**: moderate
-- **Stage**: 4-execute
+- **Stage**: 8-review
 
 ## Summary
 
@@ -116,11 +116,19 @@ when a first page load does not arrive.
 
 ## Acceptance criteria
 
-- [ ] This item names why the wait timed out, with the evidence behind the answer: a loaded
+- [x] This item names why the wait timed out, with the evidence behind the answer: a loaded
       runner, a slow WebAssembly boot, or a defect in the page.
-- [ ] The repository states one wait budget for a first page load in an E2E test, and
+      None of the three. `## Findings` names the cause and shows the evidence: the app failed
+      to boot, reloaded itself, and failed again, all inside the 30 seconds. The page has no
+      defect, the boot was not slow, and a loaded runner does not explain a page that stopped
+      asking for files. Why the WebAssembly runtime failed to start is still unknown, and this
+      branch makes the next occurrence carry that evidence.
+- [x] The repository states one wait budget for a first page load in an E2E test, and
       `tests/AHKFlowApp.E2E.Tests/WindowSnapFlowTests.cs` uses it.
-- [ ] `pwsh ./scripts/test-fast.ps1 -Mode E2E` passes.
+      `FirstPageLoad.TimeoutMs` states it in code with the measurement behind the number, and
+      `docs/development/testing-workflow.md` states it in prose. Both `WindowSnapFlowTests`
+      tests open through `FirstPageLoad.OpenAsync`.
+- [x] `pwsh ./scripts/test-fast.ps1 -Mode E2E` passes.
 
 ## Out of scope
 
