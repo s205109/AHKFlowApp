@@ -262,3 +262,19 @@ _Avoid_: locking process, blocker, owner
 **Locked worktree**:
 A worktree a human marked with `git worktree lock`. Every removal path leaves it alone, and no environment variable clears it. This is not the folder lock a Holder process causes; that one is nobody's decision.
 _Avoid_: pinned worktree, protected worktree, held worktree
+
+**Task output file**:
+The file the agent harness writes for one background command, under a folder named for the checkout and then for the session. It is the log a human tails while a long run is going.
+_Avoid_: log file, output log, task log
+
+**Running task**:
+A background command whose Task output file is held open for writing. Nothing else makes a task running: the file's text says how a finished task ended, not whether one is still going.
+_Avoid_: live task, active task, in-flight task
+
+**Stale task file**:
+A Task output file that ends with no terminal marker and that nobody holds open. Its session is gone and it will never gain a marker, so it reads as a Running task and is not one.
+_Avoid_: orphan log, dead task, zombie task
+
+**Watcher**:
+`scripts/watch-task.ps1`, which finds the Running task a human should be shown and tails it. There is one, so "the watcher" always means it.
+_Avoid_: tailer, follower, monitor

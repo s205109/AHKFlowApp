@@ -140,5 +140,7 @@ names 38 tasks the reader cannot reach.
   3 and 4 each need a decision with more than one reasonable answer: what identifies the caller's
   own session, and how to tell that a session is gone. Criterion 5's wording follows from both.
   The change also alters CLI output text, so it needs a spec.
-- Spec: none yet — Design writes it. The bug gate is now satisfied, so Design can be entered.
+- Spec: `docs/superpowers/specs/2026-09-08-watch-task-session-and-liveness-design-144.md`
+- ADR: `docs/adr/0014-a-running-task-is-one-holding-its-file-open.md` — a running task is one
+  holding its output file open. It narrows the preference order item 123 shipped.
 - Plan: none — filed at intake. A plan is written when somebody picks the item up.
