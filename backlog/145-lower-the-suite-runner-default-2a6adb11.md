@@ -6,7 +6,7 @@
 - **Type**: Feature
 - **Interfaces**: none (test runner scripts)
 - **Difficulty**: moderate
-- **Stage**: 3-plan
+- **Stage**: 6-verify
 
 ## Summary
 
@@ -22,25 +22,39 @@ workers it can benefit from, so that the machine stays usable while the suites r
 
 ## Acceptance criteria
 
-- [ ] The default worker count is about 75% of the machine's physical cores, with a floor of
-      one. Before this item it was the logical processor count capped at eight, written as
+Two decisions in this list changed during the grilling round on 2026-09-08. The default now
+stops at eight workers, which the list below never asked for. And a run inside GitHub Actions
+skips the 75% rule and uses every processor it has, which is how the seventh criterion is met.
+Both are argued in full in the plan.
+
+- [x] The default worker count is about 75% of the machine's physical cores, with a floor of
+      one, and a new ceiling of eight. Before this item it was the logical processor count capped at eight, written as
       `$workerCount = [Math]::Min([Environment]::ProcessorCount, 8)` on line 123 of
       `scripts/run-powershell-suites.ps1`. That line no longer exists, so this record quotes it
       rather than citing it. <!-- citation-check:ignore -->
       Text quoted from commit e6821d86, the branch point for this work.
-- [ ] The count comes from physical cores, not from `[Environment]::ProcessorCount`. That
+- [x] The count comes from physical cores, not from `[Environment]::ProcessorCount`. That
       property returns logical processors. On the measured machine it returns 16 for 8 physical
-      cores, and 75% of 16 is 12, which is more than today's default.
+      cores, and 75% of 16 is 12, which is more than the old default. `Get-PhysicalCoreCount`
+      reads the real number and the local run reports 8 physical of 16 logical.
 - [ ] The runner reads the physical core count on Windows and on Linux, and a test covers both.
-- [ ] A machine whose physical core count cannot be read still runs. The fallback value is
-      recorded in the code, and a test covers that path.
-- [ ] `-MaxParallel` still wins over `AHKFLOW_SUITE_MAX_PARALLEL`, and the variable still wins
-      over the default. The precedence does not change.
-- [ ] The `Workers:` line the run prints reports the count the run really used, and a test
-      proves the printed number is the number the pool used.
+      The test is one case in `tests/SuiteRunnerLinux.Tests.ps1`, which the `suites` job runs on
+      Windows and the `invariants` job runs on Linux. It passes on Windows locally. Ticked when
+      the Linux job reports its count too.
+- [x] A machine whose physical core count cannot be read still runs. The fallback is the logical
+      processor count capped at eight, which is the rule this item replaced, and the reason is
+      written into `Get-DefaultSuiteWorkerCount`. Three assertions cover the path.
+- [x] `-MaxParallel` still wins over `AHKFLOW_SUITE_MAX_PARALLEL`, and the variable still wins
+      over the default. The precedence does not change, and the variable is now proved to win on
+      both sides of the GitHub Actions branch.
+- [x] The `Workers:` line the run prints reports the count the run really used, and a test
+      proves the printed number is the number the pool used. The test sizes a barrier at the
+      printed number and compares it against the real peak overlap. The line now also names the
+      reason for the number.
 - [ ] The CI `powershell-suites` job is no slower than it is today, measured on one commit
-      before and after. The CI runner has fewer cores than a developer laptop, so the new
-      default may give it a smaller number than it uses now.
+      before and after. A run inside GitHub Actions takes every processor it has, which is what
+      the job did before this item, so the count should not move. Ticked when the branch's own
+      CI run reports `Workers: 4`, the same number as run 34206922028 on 2026-09-08.
 
 ## Out of scope
 

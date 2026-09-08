@@ -204,13 +204,22 @@ rest. Each suite's output prints as one block after that suite ends, so two suit
 each other. The run prints a table naming every suite, its result, and how long it took. The whole
 run takes about three minutes, where running the same suites one after another takes about ten.
 
-`-MaxParallel` sets how many suites run at once. With no value the run uses the processor count,
-capped at eight. `AHKFLOW_SUITE_MAX_PARALLEL` overrides that default, and an explicit `-MaxParallel`
-overrides the variable. Both take a whole number of at least one; anything else fails the run
-rather than being rounded. The run never starts more workers than it has suites to share out, so a
-number far above the suite count is capped rather than refused. A selection where every suite runs
-alone shares nothing, and the run reports one worker. The line the run prints reports the count it
-used.
+`-MaxParallel` sets how many suites run at once. With no value your own machine uses about 75% of
+its physical cores, never more than eight and never fewer than one. A machine whose physical core
+count cannot be read falls back to its logical processor count, capped at eight. A run inside
+GitHub Actions uses every processor it has instead. `AHKFLOW_SUITE_MAX_PARALLEL` overrides all of
+that, and an explicit `-MaxParallel` overrides the variable. Both take a whole number of at least
+one; anything else fails the run rather than being rounded. The run never starts more workers than
+it has suites to share out, so a number far above the suite count is capped rather than refused. A
+selection where every suite runs alone shares nothing, and the run reports one worker. The line the
+run prints reports the count it used.
+
+The 75% comes from a measurement on 2026-09-07. Six workers ran 56 suites in the same wall clock as
+eight on an eight-core laptop, and the machine stayed usable at six. GitHub Actions is exempt
+because nobody is using a hosted runner while it works, and because a hosted runner has two
+physical cores, where 75% would leave it one worker. The line the run prints also names the reason
+for its number, so `Workers: 6 (default: 75% of 8 physical cores)` and
+`Workers: 4 (GitHub Actions: all 4 logical processors)` are both possible.
 
 `scripts/run-powershell-suites.ps1` needs PowerShell 7, so start it with `pwsh`. `test-fast.ps1`
 still runs under Windows PowerShell 5.1: in `-Mode PowerShell` it starts the runner as its own
