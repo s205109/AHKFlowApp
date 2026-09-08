@@ -5,8 +5,8 @@
 - **Epic**: Developer workflow
 - **Type**: Bug
 - **Interfaces**: CLI
-- **Difficulty**: to-be-determined
-- **Stage**: 0-intake
+- **Difficulty**: complex
+- **Stage**: 1-pickup
 
 ## Summary
 
@@ -42,11 +42,40 @@ where `AllowEmptyCollection` permits an empty array but not `$null`. The call th
 fed by
 (`scripts/watch-task.ps1:785`, "$consumed = if ($chunks.Count -gt 0) { $chunks[0] } else { [byte[]]::new(0) }").
 
-**The root cause is not yet known.** `$chunks` is a `List[byte[]]` that only ever receives a
-freshly allocated array, so `$chunks[0]` should not be null on that path. Either the null arrives
-from somewhere else, or an assumption above is wrong. Nobody has reproduced it yet, so this item
-must not enter Design until somebody can point at the line that produces the null. That is the
-bug gate in [`docs/development/workflow.md`](../docs/development/workflow.md), not a formality.
+**The root cause, proven on 2026-09-08.** The bug gate in
+[`docs/development/workflow.md`](../docs/development/workflow.md) is satisfied.
+
+PowerShell unrolls an array when it captures a statement's value, and a zero-length array unrolls
+to nothing at all. So the `else` branch below stores `$null`, not an empty array:
+
+```powershell
+$a = if ($false) { 1 } else { [byte[]]::new(0) }
+$null -eq $a   # True
+```
+
+That is the branch at
+(`scripts/watch-task.ps1:785`, "else { [byte[]]::new(0) }"). The earlier reading in this item was
+right that `$chunks[0]` is never null. It is the `else` branch that is null, and it is already
+null before `Set-TailReaderCheckpoint` ever sees it.
+
+`$chunks` is empty when the backward scan never runs a round. The scan's first condition is
+(`scripts/watch-task.ps1:735`, "while ($position -gt 0 -and"), and `$position` starts at the file
+length. So a task output file of **zero bytes** takes the `else` branch, and the call at
+(`scripts/watch-task.ps1:786`, "Set-TailReaderCheckpoint -Reader $Reader -Consumed $consumed")
+then fails to bind.
+
+Reproduced end to end with the real script against a fixture holding one zero-byte `.output`
+file. The output matches the report word for word:
+
+```
+Tailing ...\tasks\task.output
+
+Task output could no longer be read: ...\tasks\task.output. Cannot bind argument to parameter 'Consumed' because it is null.
+```
+
+A zero-byte file is also why the watcher chose that file. An empty file holds no terminal marker,
+so it counts as running, and a file created moments ago has the newest last write time. The two
+faults in this item share one trigger.
 
 **The wrong session.** The folder match is case-insensitive
 (`scripts/watch-task.ps1:212`, "if ($Name.Equals($mangled, [System.StringComparison]::OrdinalIgnoreCase)) {"),
@@ -54,14 +83,37 @@ so `c--Dev-...` and `C--Dev-...` both belong to this repository and the differin
 the fault. The default pick is the newest running file by last write time
 (`scripts/watch-task.ps1:21`, "3. It picks the newest running file by last write time and tails it, following by byte").
 With several live sessions that is a guess, and the watcher has no way to prefer the caller's own
-session, because nothing tells it which session id it belongs to.
+session. The default pick is
+(`scripts/watch-task.ps1:1289`, "return (Watch-Record -Record $running[0]").
 
-The candidate list also looks inflated. A file counts as running when it does not end with a
-terminal marker
+**A session id is available after all.** Claude Code sets `CLAUDE_CODE_SESSION_ID` in the
+environment of a command it runs, and its value is the `<session id>` folder holding that
+session's task files. Checked on 2026-09-08: the variable held
+`3a54464d-70f2-4c8e-a05c-7185fbbb4412`, and that same name was the session folder under
+`...\claude\C--Dev-segocom-github-AHKFlowApp\` holding this session's `.output` file. A human
+running the watcher in their own terminal has no such variable. So it can be a preference with a
+fallback, never a filter. Design decides.
+
+The candidate list is inflated, and the numbers are now measured. A file counts as running when
+it does not end with a terminal marker
 (`scripts/watch-task.ps1:19`, "2. Among <match>\<session id>\tasks\<task id>.output, a file is running when its content"),
-so a task from a session that died without writing one counts as running for ever. Thirty-eight
-at once suggests that is happening, but the count has not been checked against how many sessions
-were actually alive.
+and nothing checks whether the session that wrote it still exists
+(`scripts/watch-task.ps1:311`, "return [pscustomobject]@{ Running = $true;").
+
+Measured on 2026-09-08, with the real watcher against the real temp tree:
+
+- 482 output files matched this repository.
+- 39 of them counted as running.
+- The oldest of those 39 last changed 15 days ago, in a session long gone.
+- Only 4 live checkouts exist on disk.
+
+**The count line and the two ways out of it disagree.** The line counts every running record
+(`scripts/watch-task.ps1:1283`, "$others = $running.Count - 1"), so it said 38 others. But `-List`
+and `-Index` see only the newest 20 records
+(`scripts/watch-task.ps1:1225`, "$recent = @($records | Select-Object -First 20)"), and only 4 of
+those 20 were running. So
+(`scripts/watch-task.ps1:1285`, "other $noun also running. Use -List to see them and -Index to pick one.")
+names 38 tasks the reader cannot reach.
 
 ## Acceptance criteria
 
@@ -84,7 +136,9 @@ were actually alive.
 
 - Raised on 2026-09-07 while working backlog 141, from a real failed run. Kept out of 141 on
   purpose, so that item stayed one concern.
-- The last two acceptance criteria may turn out to be one change or three. That is why Difficulty
-  is `to-be-determined` rather than a guess.
-- Spec: none yet — Design decides, once the null has a proven cause.
+- Difficulty was `to-be-determined` at filing. Set to `complex` at pickup on 2026-09-08. Criteria
+  3 and 4 each need a decision with more than one reasonable answer: what identifies the caller's
+  own session, and how to tell that a session is gone. Criterion 5's wording follows from both.
+  The change also alters CLI output text, so it needs a spec.
+- Spec: none yet — Design writes it. The bug gate is now satisfied, so Design can be entered.
 - Plan: none — filed at intake. A plan is written when somebody picks the item up.
