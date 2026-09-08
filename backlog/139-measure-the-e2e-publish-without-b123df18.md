@@ -6,7 +6,7 @@
 - **Type**: Tooling
 - **Interfaces**: none (test project build)
 - **Difficulty**: moderate
-- **Stage**: 3-plan
+- **Stage**: 9-ship
 
 ## Summary
 
@@ -30,16 +30,19 @@ so that a run starts testing sooner.
 
 ## Acceptance criteria
 
-- [ ] Five paired warm runs are recorded in this item, five with `-p:CompressionEnabled=false` and
+- [x] Five paired warm runs are recorded in this item, five with `-p:CompressionEnabled=false` and
       five without, with every run, the median and the maximum for each set.
-- [ ] This item states the saving as the difference of those two medians, and that number replaces
+- [x] This item states the saving as the difference of those two medians, and that number replaces
       the preliminary 2.37 s to 4.85 s range in the Summary.
-- [ ] The item states whether the E2E SPA host reads the `.br` or `.gz` files, and whether the
+- [x] The item states whether the E2E SPA host reads the `.br` or `.gz` files, and whether the
       service worker or the PWA tests depend on them. Name the code that decides, in
       `tests/AHKFlowApp.E2E.Tests`, and quote it.
-- [ ] If the flag is adopted, `pwsh ./scripts/test-fast.ps1 -Mode E2E` passes and reports the same
+- [x] If the flag is adopted, `pwsh ./scripts/test-fast.ps1 -Mode E2E` passes and reports the same
       test count as before the change.
 - [ ] If the flag is not adopted, this item records the reason and closes.
+
+The last box stays unticked because it does not apply. The flag was adopted, so the do-not-adopt
+path never ran. See `## Decision`.
 
 ## Out of scope
 
