@@ -747,6 +747,62 @@ finally {
     Remove-Item -LiteralPath $root -Recurse -Force
 }
 
+# --- A task that stopped without a terminal marker is not reported as killed ---
+#
+# Under the old rule a file with no marker was running for ever, so a missing exit code could only
+# mean killed. Liveness makes a third state real: nobody holds the file, and it never said how it
+# ended. Reporting that as killed is a guess presented as a fact.
+
+$root = New-WatchTestRoot
+try {
+    $noMarker = New-FakeTaskOutput -Root $root -ProjectFolder "$prefix-nomarker" -LastWrite (Get-Date) -Lines @(
+        'work started', 'NO-MARKER-MARKER'
+    )
+
+    $newest = Invoke-WatchScript -ScriptArgs @('-Root', $root, '-NoFollow')
+    Assert-True ($newest.Output -match 'No task is running now') `
+        "No marker: a file nobody holds open is not running. Output: $($newest.Output)"
+    Assert-True ($newest.Output -match 'State: stopped without a terminal marker') `
+        "No marker: the newest stopped task must name the third state. Output: $($newest.Output)"
+    Assert-True ($newest.Output -notmatch 'State: killed') `
+        "No marker: killed must not be claimed without a killed marker. Output: $($newest.Output)"
+
+    $listOut = Invoke-WatchScript -ScriptArgs @('-Root', $root, '-List')
+    Assert-True ($listOut.Output -match 'stopped \(no marker\)') `
+        "No marker: the list column must name the third state. Output: $($listOut.Output)"
+
+    $picked = Invoke-WatchScript -ScriptArgs @('-Root', $root, '-NoFollow', '-Index', '1')
+    Assert-True ($picked.Output -match 'This task has already stopped. State: stopped without a terminal marker') `
+        "No marker: picking the task by index must name the third state. Output: $($picked.Output)"
+    Assert-True ($picked.Output.Contains($noMarker)) `
+        "No marker: the path must be named. Output: $($picked.Output)"
+}
+finally {
+    Remove-Item -LiteralPath $root -Recurse -Force
+}
+
+# --- A real killed marker is still reported as killed ---
+
+$root = New-WatchTestRoot
+try {
+    New-FakeTaskOutput -Root $root -ProjectFolder "$prefix-killed" -LastWrite (Get-Date) -Lines @(
+        'work started', '[killed]'
+    ) | Out-Null
+
+    $result = Invoke-WatchScript -ScriptArgs @('-Root', $root, '-NoFollow')
+    Assert-True ($result.Output -match 'State: killed') `
+        "Killed marker: a [killed] marker must still report killed. Output: $($result.Output)"
+    Assert-True ($result.Output -notmatch 'without a terminal marker') `
+        "Killed marker: a killed task must not be called marker-less. Output: $($result.Output)"
+
+    $listOut = Invoke-WatchScript -ScriptArgs @('-Root', $root, '-List')
+    Assert-True ($listOut.Output -match '\bkilled\b') `
+        "Killed marker: the list column must still say killed. Output: $($listOut.Output)"
+}
+finally {
+    Remove-Item -LiteralPath $root -Recurse -Force
+}
+
 # --- No matching files at all is a visible failure ---
 
 $root = New-WatchTestRoot

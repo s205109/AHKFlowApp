@@ -1147,11 +1147,14 @@ function Watch-Record {
 
     if (-not $Record.Running) {
         Write-Host ''
-        if ($null -eq $Record.ExitCode) {
+        if ($Record.Terminal -eq 'exited') {
+            Write-Host "This task has already finished. Exit code: $($Record.ExitCode)"
+        }
+        elseif ($Record.Terminal -eq 'killed') {
             Write-Host 'This task has already stopped. State: killed'
         }
         else {
-            Write-Host "This task has already finished. Exit code: $($Record.ExitCode)"
+            Write-Host 'This task has already stopped. State: stopped without a terminal marker'
         }
         return 0
     }
@@ -1336,11 +1339,15 @@ function Watch-Record {
                 }
 
                 Write-Host ''
-                if ($null -eq $state.ExitCode) {
+                if ($null -ne $state.ExitCode) {
+                    Write-Host "Exit code: $($state.ExitCode)"
+                }
+                elseif (-not $state.Running) {
                     Write-Host 'State: killed'
                 }
                 else {
-                    Write-Host "Exit code: $($state.ExitCode)"
+                    # No marker and no writer. The run ended without saying how.
+                    Write-Host 'State: stopped without a terminal marker'
                 }
                 return 0
             }
@@ -1413,11 +1420,14 @@ function Invoke-WatchTask {
                 State = if ($record.Running) {
                     'running'
                 }
-                elseif ($null -eq $record.ExitCode) {
+                elseif ($record.Terminal -eq 'exited') {
+                    "exited $($record.ExitCode)"
+                }
+                elseif ($record.Terminal -eq 'killed') {
                     'killed'
                 }
                 else {
-                    "exited $($record.ExitCode)"
+                    'stopped (no marker)'
                 }
                 Age   = Format-Age -When $record.LastWrite
                 Path  = $record.Path
@@ -1451,11 +1461,14 @@ function Invoke-WatchTask {
         }
         Write-Host ''
         Write-Host "Path: $($newest.Path)"
-        if ($null -eq $newest.ExitCode) {
+        if ($newest.Terminal -eq 'exited') {
+            Write-Host "Exit code: $($newest.ExitCode)"
+        }
+        elseif ($newest.Terminal -eq 'killed') {
             Write-Host 'State: killed'
         }
         else {
-            Write-Host "Exit code: $($newest.ExitCode)"
+            Write-Host 'State: stopped without a terminal marker'
         }
         return 0
     }
