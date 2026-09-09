@@ -700,12 +700,18 @@ try {
         "Session preference: another session's newer task must not be tailed. Output: $($result.Output)"
     Assert-True ($result.Output -match [regex]::Escape("Session: $mySession (this session)")) `
         "Session preference: the chosen session must be named as the caller's own. Output: $($result.Output)"
+    Assert-True ($result.Output -match 'Checkout: ') `
+        "Session preference: the chosen task's checkout must be named. Output: $($result.Output)"
 
     # With the variable gone, the newest running task wins again.
     $env:CLAUDE_CODE_SESSION_ID = $null
     $without = Invoke-WatchScript -ScriptArgs @('-Root', $root, '-NoFollow')
     Assert-True ($without.Output -match 'OTHER-SESSION-MARKER') `
         "Session preference: with no session id the newest running task wins. Output: $($without.Output)"
+    Assert-True ($without.Output -match [regex]::Escape("Session: $otherSession")) `
+        "Session preference: the session must be named even when it is not the caller's. Output: $($without.Output)"
+    Assert-True ($without.Output -notmatch 'this session') `
+        "Session preference: an unrelated session must not be called this session. Output: $($without.Output)"
 }
 finally {
     $env:CLAUDE_CODE_SESSION_ID = $previousSession

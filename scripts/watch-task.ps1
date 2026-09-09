@@ -1450,7 +1450,15 @@ function Invoke-WatchTask {
             Write-Host "No task at index $Index. There are $($recent.Count) recent tasks. Run -List to see them."
             return 1
         }
-        return (Watch-Record -Record $recent[$Index - 1] -Tail $Tail -NoFollow:$NoFollow)
+
+        $picked = $recent[$Index - 1]
+        return (Watch-Record `
+            -Record $picked `
+            -Tail $Tail `
+            -Session $picked.Session `
+            -Checkout $picked.Checkout `
+            -OwnSessionId $sessionId `
+            -NoFollow:$NoFollow)
     }
 
     $chosen = Select-WatchTaskRecord -Record $records -SessionId $sessionId -OwnCheckoutPath $ownCheckout
