@@ -241,29 +241,34 @@ $selectionRecords = @(
     (New-SelectionRecord -Path 'stopped'        -Running $false -Session 'session-a' -OwnCheckout $true)
 )
 
-$bySession = Select-WatchTaskRecord -Record $selectionRecords -SessionId 'session-a' -OwnCheckoutPath 'C:\repo\App'
+$bySession = Select-WatchTaskRecord -Record $selectionRecords -SessionId 'session-a'
 Assert-True ($bySession.Path -eq 'my-session') `
     "Selection: the caller's own session wins over everything else. Got '$($bySession.Path)'."
 
-$byCheckout = Select-WatchTaskRecord -Record $selectionRecords -SessionId '' -OwnCheckoutPath 'C:\repo\App'
+$byCheckout = Select-WatchTaskRecord -Record $selectionRecords -SessionId ''
 Assert-True ($byCheckout.Path -eq 'own-checkout') `
     "Selection: with no session id, the script's own checkout decides. Got '$($byCheckout.Path)'."
 
-$byNewest = Select-WatchTaskRecord -Record $selectionRecords -SessionId '' -OwnCheckoutPath ''
-Assert-True ($byNewest.Path -eq 'newest-other') `
+# With no session match and nothing in the script's own checkout, the newest running task wins.
+$noPrefRecords = @(
+    (New-SelectionRecord -Path 'newest-elsewhere' -Running $true -Session 'session-b' -OwnCheckout $false),
+    (New-SelectionRecord -Path 'older-elsewhere'  -Running $true -Session 'session-c' -OwnCheckout $false)
+)
+$byNewest = Select-WatchTaskRecord -Record $noPrefRecords -SessionId ''
+Assert-True ($byNewest.Path -eq 'newest-elsewhere') `
     "Selection: with neither preference, the newest running task wins. Got '$($byNewest.Path)'."
 
 # A session id that matches nothing must be skipped, not treated as a filter. A human running the
 # watcher in their own terminal has no such variable at all.
-$unknownSession = Select-WatchTaskRecord -Record $selectionRecords -SessionId 'session-z' -OwnCheckoutPath 'C:\repo\App'
+$unknownSession = Select-WatchTaskRecord -Record $selectionRecords -SessionId 'session-z'
 Assert-True ($unknownSession.Path -eq 'own-checkout') `
     "Selection: a session that matches nothing falls through to the checkout. Got '$($unknownSession.Path)'."
 
 $noneRunning = @(New-SelectionRecord -Path 'stopped-only' -Running $false -Session 'session-a' -OwnCheckout $true)
-Assert-True ($null -eq (Select-WatchTaskRecord -Record $noneRunning -SessionId 'session-a' -OwnCheckoutPath 'C:\repo\App')) `
+Assert-True ($null -eq (Select-WatchTaskRecord -Record $noneRunning -SessionId 'session-a')) `
     'Selection: nothing running means nothing selected.'
 
-Assert-True ($null -eq (Select-WatchTaskRecord -Record @() -SessionId '' -OwnCheckoutPath '')) `
+Assert-True ($null -eq (Select-WatchTaskRecord -Record @() -SessionId '')) `
     'Selection: no records at all means nothing selected.'
 
 # --- Reading the end of a file says whether the task finished, and with which code ---
@@ -1151,11 +1156,10 @@ finally {
 
 # --- A replacement that opens during the settle probe is still followed, not called stopped ---
 #
-# The settle reconciliation drains and re-reads on the assumption that the file is stable once
-# the writer is gone. A replacement run that opens the file between the liveness probe and the
-# state read breaks that assumption: the probe missed the new writer, and a reconciliation that
-# trusts the stale "not held" prints the replacement's output and then reports it stopped. The
-# reconciliation must probe liveness once more before it declares a markerless file stopped.
+# A replacement run can open the file between the settle loop's liveness probe and its state
+# read: the probe misses the new writer, so that round sees "not held" and "no marker". The loop
+# does another round, and by then the new writer is holding the file, so the round after the one
+# that missed it sees "held" and the watch keeps following.
 
 $job = $null
 $replPath = Join-Path ([System.IO.Path]::GetTempPath()) ("watch-task-repl-race-$([guid]::NewGuid()).output")
@@ -1201,10 +1205,10 @@ Watch-Record -Record `$record -Tail 40 | Out-Null
     $entered = Wait-ForJobOutput -Job $job -Pattern 'RUN-A-LINE'
     Assert-True $entered 'Replacement race: the watcher must print the first run before the replacement.'
 
-    # Nothing holds the fixture, so the watcher goes straight into the settle reconciliation on
-    # its first pass. The stubbed Get-TaskState then opens the replacement on its second call.
-    # Without the re-probe the watcher prints its verdict and exits in about a second, so ten is
-    # a wide margin for "it kept following".
+    # Nothing holds the fixture, so the watcher goes straight into the settle loop on its first
+    # pass. The stubbed Get-TaskState opens the replacement on its second call. If the loop did
+    # not do another round the watcher would print its verdict and exit in about a second, so ten
+    # is a wide margin for "it kept following".
     $finished = Wait-Job -Job $job -Timeout 10
     Assert-True ($null -eq $finished) `
         "Replacement race: the watcher must keep following a replacement that is still open. Output: $(Get-JobOutputSoFar -Job $job)"
@@ -1218,6 +1222,130 @@ Watch-Record -Record `$record -Tail 40 | Out-Null
 finally {
     if ($job) { Remove-Job -Job $job -Force -ErrorAction SilentlyContinue }
     Remove-Item -LiteralPath $replPath -Force -ErrorAction SilentlyContinue
+}
+
+# --- A marker written just after the last quiet settle round is still the verdict ---
+#
+# The settle loop reads to the file end, then probes liveness, then reads the state. A writer that
+# appends its marker and closes in the gap after that state read leaves the loop with "no marker"
+# and "not held". It must not report the file stopped without a marker: it does one more round,
+# which reads the marker and re-reads the state, before it settles.
+
+$job = $null
+$gapPath = Join-Path ([System.IO.Path]::GetTempPath()) ("watch-task-settle-gap-$([guid]::NewGuid()).output")
+try {
+    [System.IO.File]::WriteAllText($gapPath, "RUN-LINE`n")
+
+    $job = Start-Job -ScriptBlock {
+        param($exe, $script, $path)
+        & $exe -NoProfile -Command @"
+. '$script'
+
+`$script:stateCalls = 0
+`$script:realGetTaskState = `${function:Get-TaskState}
+function Get-TaskState {
+    param([Parameter(Mandatory)][string] `$Path)
+
+    `$script:stateCalls++
+    if (`$script:stateCalls -eq 3) {
+        # The run appends its last line and its marker and closes, in the gap right after this
+        # state read. This call returns the state as it was just before.
+        [System.IO.File]::AppendAllText(`$Path, 'LAST-LINE' + [char]10 + '[exited with code 7]' + [char]10)
+        return [pscustomobject]@{ Running = `$true; ExitCode = `$null; BytesRead = 0 }
+    }
+    return (& `$script:realGetTaskState -Path `$Path)
+}
+
+`$record = [pscustomobject]@{
+    Path = '$path'; LastWrite = (Get-Date); Running = `$true; ExitCode = `$null; Terminal = 'none'
+}
+Watch-Record -Record `$record -Tail 40 | Out-Null
+"@ 2>&1
+    } -ArgumentList $hostExe, $watchScript, $gapPath
+
+    $finished = Wait-Job -Job $job -Timeout 30
+    Assert-True ($null -ne $finished) 'Settle gap: the watcher must stop, but it was still running after 30s.'
+
+    $output = Get-JobOutputSoFar -Job $job
+    Assert-True ($output -match 'LAST-LINE') `
+        "Settle gap: the last line written in the gap must still be printed. Output: $output"
+    Assert-True ($output -match '\[exited with code 7\]') `
+        "Settle gap: the marker written in the gap must still be printed. Output: $output"
+    Assert-True ((Get-LastNonEmptyLine -Text $output) -eq 'Exit code: 7') `
+        "Settle gap: the verdict must be the real terminal state. Output: $output"
+    Assert-True ($output -notmatch 'without a terminal marker') `
+        "Settle gap: a marked file must not be reported markerless. Output: $output"
+}
+finally {
+    if ($job) { Remove-Job -Job $job -Force -ErrorAction SilentlyContinue }
+    Remove-Item -LiteralPath $gapPath -Force -ErrorAction SilentlyContinue
+}
+
+# --- A failed read during the settle catch-up is retried, not swallowed into the verdict ---
+#
+# The extra rounds that confirm a markerless file has really stopped read through the same catch-up
+# path as the rest of the settle loop. A read that fails there must go through the same bounded
+# retry, so a run's last line is never dropped on the way to the verdict.
+
+$job = $null
+$failPath = Join-Path ([System.IO.Path]::GetTempPath()) ("watch-task-settle-readfail-$([guid]::NewGuid()).output")
+try {
+    [System.IO.File]::WriteAllText($failPath, "RUN-LINE`n")
+
+    $job = Start-Job -ScriptBlock {
+        param($exe, $script, $path)
+        & $exe -NoProfile -Command @"
+. '$script'
+
+`$script:realRead = `${function:Read-TailText}
+`$script:readCalls = 0
+function Read-TailText {
+    param([Parameter(Mandatory)][object] `$Reader)
+
+    `$script:readCalls++
+    if (`$script:readCalls -eq 3) {
+        `$Reader.ReadSucceeded = `$false
+        `$Reader.ReadError = 'stubbed failure'
+        `$Reader.AtEnd = `$false
+        return ''
+    }
+    return (& `$script:realRead -Reader `$Reader)
+}
+
+`$script:stateCalls = 0
+`$script:realGetTaskState = `${function:Get-TaskState}
+function Get-TaskState {
+    param([Parameter(Mandatory)][string] `$Path)
+
+    `$script:stateCalls++
+    if (`$script:stateCalls -eq 2) {
+        [System.IO.File]::AppendAllText(`$Path, 'LAST-LINE' + [char]10 + '[exited with code 7]' + [char]10)
+        return [pscustomobject]@{ Running = `$true; ExitCode = `$null; BytesRead = 0 }
+    }
+    return (& `$script:realGetTaskState -Path `$Path)
+}
+
+`$record = [pscustomobject]@{
+    Path = '$path'; LastWrite = (Get-Date); Running = `$true; ExitCode = `$null; Terminal = 'none'
+}
+Watch-Record -Record `$record -Tail 40 | Out-Null
+"@ 2>&1
+    } -ArgumentList $hostExe, $watchScript, $failPath
+
+    $finished = Wait-Job -Job $job -Timeout 30
+    Assert-True ($null -ne $finished) 'Settle read failure: the watcher must stop, but it was still running after 30s.'
+
+    $output = Get-JobOutputSoFar -Job $job
+    Assert-True ($output -match 'LAST-LINE') `
+        "Settle read failure: the line before the failed read must still be printed. Output: $output"
+    Assert-True ((Get-LastNonEmptyLine -Text $output) -eq 'Exit code: 7') `
+        "Settle read failure: the verdict must be the real terminal state. Output: $output"
+    Assert-True ($output -notmatch 'was being followed') `
+        "Settle read failure: a failed read must be retried, not answered with the missing-output notice. Output: $output"
+}
+finally {
+    if ($job) { Remove-Job -Job $job -Force -ErrorAction SilentlyContinue }
+    Remove-Item -LiteralPath $failPath -Force -ErrorAction SilentlyContinue
 }
 
 # --- A successful read resets earlier read failures ---

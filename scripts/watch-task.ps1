@@ -492,16 +492,16 @@ function Select-WatchTaskRecord {
            runs, and its value is the <session id> folder holding that session's task files. A
            human running the watcher in their own terminal has no such variable, so this is a
            preference and never a filter.
-        2. The checkout this copy of the script sits in. A checkout holds several sessions, so
-           this signal is weaker than the session and comes second.
+        2. The checkout this copy of the script sits in, read from each record's OwnCheckout
+           flag. A checkout holds several sessions, so this signal is weaker than the session
+           and comes second. It is skipped when no running task belongs to that checkout.
         3. The newest by last write. $Record arrives newest first, so this is the first survivor.
 
       Returns $null when nothing is running.
     #>
     param(
         [Parameter(Mandatory)][AllowEmptyCollection()][object[]] $Record,
-        [AllowEmptyString()][string] $SessionId = '',
-        [AllowEmptyString()][string] $OwnCheckoutPath = ''
+        [AllowEmptyString()][string] $SessionId = ''
     )
 
     $candidates = @($Record | Where-Object { $_.Running })
@@ -514,10 +514,8 @@ function Select-WatchTaskRecord {
         if ($inSession.Count -gt 0) { $candidates = $inSession }
     }
 
-    if (-not [string]::IsNullOrWhiteSpace($OwnCheckoutPath)) {
-        $inCheckout = @($candidates | Where-Object { $_.OwnCheckout })
-        if ($inCheckout.Count -gt 0) { $candidates = $inCheckout }
-    }
+    $inCheckout = @($candidates | Where-Object { $_.OwnCheckout })
+    if ($inCheckout.Count -gt 0) { $candidates = $inCheckout }
 
     return $candidates[0]
 }
@@ -1250,6 +1248,13 @@ function Watch-Record {
                 $settledHeld = $false
                 $settleRounds = 0
                 $catchUpFailed = $false
+
+                # Consecutive rounds that read nothing and found no marker and no writer. The
+                # marker rule and liveness are read one after the other, so a marker written in
+                # the gap between them is missed by that round; a later round's read catches it.
+                # Only after three such rounds in a row is the file really stopped without a
+                # marker. Bounded above by MaxSettleRounds as well.
+                $confirmRounds = 0
                 do {
                     $settleRounds++
                     $roundBytes = 0
@@ -1273,13 +1278,22 @@ function Watch-Record {
                     # observation, so a marker written between the two is on the side that wins.
                     $settledHeld = Test-TaskFileHeldOpen -Path $reader.Path
                     $settled = Get-TaskState -Path $reader.Path
+
+                    if (-not $settledHeld -and $null -ne $settled -and $settled.Running -and $roundBytes -eq 0) {
+                        $confirmRounds++
+                    }
+                    else {
+                        $confirmRounds = 0
+                    }
                     # A deferred read returns nothing, but the file still has everything the new
                     # run wrote. Settling on it would print the verdict over output that never
                     # reached the screen, so it counts as a round that read something.
-                } while (($roundBytes -gt 0 -or $reader.ReadDeferred) -and
+                } while ($settleRounds -lt $script:MaxSettleRounds -and
                          $null -ne $settled -and
                          (-not $settled.Running -or -not $settledHeld) -and
-                         $settleRounds -lt $script:MaxSettleRounds)
+                         ($roundBytes -gt 0 -or
+                          $reader.ReadDeferred -or
+                          (-not $settledHeld -and $settled.Running -and $confirmRounds -lt 3)))
 
                 # A catch-up read that failed is not the same as a file with nothing left to
                 # read. Its lines are still on disk, unread. Taking the state now would print
@@ -1333,41 +1347,14 @@ function Watch-Record {
                 }
                 $settleDeferrals = 0
 
-                # A replacement that is still running keeps the watch going. The carry stays in
-                # the reader, because its last line is not finished yet.
+                # A run that is still going keeps the watch going. This covers a replacement that
+                # opened during a probe: the round after it opens sees the new writer, so
+                # $settledHeld is true here. The carry stays in the reader, because its last line
+                # is not finished yet.
                 if ($settled.Running -and $settledHeld) {
                     continue
                 }
                 $state = $settled
-
-                # The state read and the liveness probe were taken at different instants. A writer
-                # that appended its marker and then closed in the gap leaves "no marker" from the
-                # read and "not held" from the probe. The writer is gone now, so the file cannot
-                # change again: drain to its end and read the state once more, both on the stable
-                # file, so a marker written in that gap is neither missed nor left unprinted.
-                if (-not $settledHeld -and $state.Running) {
-                    $drained = 0
-                    do {
-                        $more = Read-TailText -Reader $reader
-                        if (-not $reader.ReadSucceeded) { break }
-                        foreach ($line in @(Split-TailLine -Reader $reader -Text $more)) {
-                            Write-Host $line
-                        }
-                        $drained += $more.Length
-                    } while ($more.Length -gt 0 -and -not $reader.AtEnd)
-                    $caughtUp += $drained
-
-                    $stable = Get-TaskState -Path $reader.Path
-                    if ($null -ne $stable) { $state = $stable }
-
-                    # A replacement run may have opened the file between the probe and the state
-                    # read, so "not held" is stale. The drain printed its output and the file has
-                    # no marker. Probe once more: if something holds it now, that run is still
-                    # going, so keep following it rather than call it stopped.
-                    if ($state.Running -and (Test-TaskFileHeldOpen -Path $reader.Path)) {
-                        continue
-                    }
-                }
 
                 if ($reader.Carry.Trim().Length -gt 0) {
                     Write-Host $reader.Carry
@@ -1507,7 +1494,7 @@ function Invoke-WatchTask {
             -NoFollow:$NoFollow)
     }
 
-    $chosen = Select-WatchTaskRecord -Record $records -SessionId $sessionId -OwnCheckoutPath $ownCheckout
+    $chosen = Select-WatchTaskRecord -Record $records -SessionId $sessionId
 
     if ($null -eq $chosen) {
         # The no-running-task path, moved off $running.Count and on to the selection result.
