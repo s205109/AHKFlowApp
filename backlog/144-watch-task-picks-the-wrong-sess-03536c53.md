@@ -1,5 +1,10 @@
 # 144 - Watch task picks the wrong session and crashes on a null checkpoint
 
+<!-- citation-check:ignore-file -->
+<!-- The Background section is the pre-fix record: it cites scripts/watch-task.ps1 at the line
+     numbers that proved the bug. This same change fixes the bug and moves those lines, so the
+     citations are frozen here as history rather than repointed at the fixed code. -->
+
 ## Metadata
 
 - **Epic**: Developer workflow

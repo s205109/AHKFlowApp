@@ -1,5 +1,9 @@
 # A running task is one holding its output file open
 
+<!-- citation-check:ignore-file -->
+<!-- This ADR is a point-in-time record. Its code citations were true when it was written, on
+     2026-09-08. Backlog 144 then moved those lines while carrying out the decision here. -->
+
 The watcher decides that a background command is still running by asking the operating system
 whether anything holds its Task output file open for writing. It opens the file for reading while
 denying others write access, and treats one outcome as running: a sharing violation, HResult
