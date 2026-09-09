@@ -481,16 +481,32 @@ if (Test-Path -LiteralPath $windowsPowerShell) {
 # A timed-out fetch must take its helpers with it. Git starts askpass, SSH, and credential helpers
 # as children, and killing only the parent leaves whichever one is waiting for input alive.
 $parentMarker = Join-Path ([System.IO.Path]::GetTempPath()) ("wt-treekill-" + [guid]::NewGuid().ToString('N').Substring(0, 8) + '.txt')
-$childScript = "Start-Process -FilePath '$([System.Diagnostics.Process]::GetCurrentProcess().Path)' " +
+$parentMarkerObserved = "$parentMarker.observed"
+$childScript = "New-Item -ItemType File -Path '$parentMarker' | Out-Null; " +
+    "`$deadline = (Get-Date).AddSeconds(20); " +
+    "while (((Get-Date) -lt `$deadline) -and -not (Test-Path -LiteralPath '$parentMarkerObserved')) { Start-Sleep -Milliseconds 50 }; " +
+    "if (-not (Test-Path -LiteralPath '$parentMarkerObserved')) { exit 1 }; " +
+    "Start-Process -FilePath '$([System.Diagnostics.Process]::GetCurrentProcess().Path)' " +
     "-ArgumentList '-NoProfile','-Command','Start-Sleep -Seconds 120' -PassThru -WindowStyle Hidden | " +
     "ForEach-Object { Set-Content -LiteralPath '$parentMarker' -Value `$_.Id }; Start-Sleep -Seconds 120"
 $parent = Start-Process -FilePath ([System.Diagnostics.Process]::GetCurrentProcess().Path) `
     -ArgumentList @('-NoProfile', '-Command', $childScript) -PassThru -WindowStyle Hidden
+$childId = $null
 try {
     $deadline = (Get-Date).AddSeconds(20)
-    while (((Get-Date) -lt $deadline) -and -not (Test-Path -LiteralPath $parentMarker)) { Start-Sleep -Milliseconds 200 }
-    Assert-True (Test-Path -LiteralPath $parentMarker) 'The fixture child process never started.'
-    $childId = [int] ((Get-Content -Raw -LiteralPath $parentMarker).Trim())
+    while ((Get-Date) -lt $deadline) {
+        $markerValue = Get-Content -Raw -LiteralPath $parentMarker -ErrorAction SilentlyContinue
+        $candidateChildId = 0
+        if ([int]::TryParse([string] $markerValue, [ref] $candidateChildId) -and $candidateChildId -gt 0) {
+            $childId = $candidateChildId
+            break
+        }
+        if (Test-Path -LiteralPath $parentMarker) {
+            Set-Content -LiteralPath $parentMarkerObserved -Value 'observed'
+        }
+        Start-Sleep -Milliseconds 200
+    }
+    Assert-True ($null -ne $childId) 'The fixture child process did not write a process ID.'
 
     Assert-True (Stop-ProcessTree -ProcessId $parent.Id -WaitMilliseconds 10000) 'Stop-ProcessTree must report the tree gone.'
 
@@ -500,10 +516,12 @@ try {
         Assert-True (-not $alive) "Process $id survived Stop-ProcessTree."
     }
 } finally {
-    foreach ($id in @($parent.Id)) {
+    foreach ($id in @($parent.Id, $childId)) {
+        if ($null -eq $id) { continue }
         try { (Get-Process -Id $id -ErrorAction SilentlyContinue) | Stop-Process -Force -ErrorAction SilentlyContinue } catch { }
     }
     Remove-Item -LiteralPath $parentMarker -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $parentMarkerObserved -Force -ErrorAction SilentlyContinue
 }
 
 Write-Host 'Worktree sweep remote-base tests passed.'
