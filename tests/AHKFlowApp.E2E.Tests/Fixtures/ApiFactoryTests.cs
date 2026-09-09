@@ -5,6 +5,7 @@ using Xunit;
 
 namespace AHKFlowApp.E2E.Tests.Fixtures;
 
+[Collection(ExclusiveTestCollection.Name)]
 public sealed class ApiFactoryTests : IDisposable
 {
     private readonly string? _previousConnectionString = Environment.GetEnvironmentVariable(
@@ -16,7 +17,7 @@ public sealed class ApiFactoryTests : IDisposable
             _previousConnectionString);
 
     [Fact]
-    public void ConnectionString_WhenExternalConnectionConfigured_UsesPerAssemblyDatabase()
+    public async Task ConnectionString_WhenExternalConnectionConfigured_UsesPerGroupDatabase()
     {
         // Arrange
         const string externalConnectionString = "Server=127.0.0.1,11433;Database=master;User Id=sa;Password=not-a-secret;TrustServerCertificate=True;MultipleActiveResultSets=true";
@@ -25,12 +26,13 @@ public sealed class ApiFactoryTests : IDisposable
             externalConnectionString);
 
         // Act
-        var factory = new ApiFactory();
+        string server = await E2ESqlServer.GetConnectionStringAsync();
+        string actual = SqlTestDatabase.CreateConnectionString(server, "AHKFlowApp.E2E.Tests.A");
 
         // Assert
-        var builder = new SqlConnectionStringBuilder(factory.ConnectionString);
+        var builder = new SqlConnectionStringBuilder(actual);
         builder.DataSource.Should().Be("127.0.0.1,11433");
-        builder.InitialCatalog.Should().Be(SqlTestDatabase.CreateName("AHKFlowApp.E2E.Tests"));
+        builder.InitialCatalog.Should().Be(SqlTestDatabase.CreateName("AHKFlowApp.E2E.Tests.A"));
         builder.UserID.Should().Be("sa");
         builder.TrustServerCertificate.Should().BeTrue();
         builder.MultipleActiveResultSets.Should().BeTrue();

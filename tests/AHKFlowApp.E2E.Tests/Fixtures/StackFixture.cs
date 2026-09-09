@@ -9,7 +9,9 @@ namespace AHKFlowApp.E2E.Tests.Fixtures;
 
 public sealed class StackFixture : IAsyncLifetime
 {
-    public ApiFactory Api { get; } = new();
+    // Task 4 replaces this with the group's own discriminator. Until then the suite has one
+    // collection, so one database named after the assembly is exactly what it had before.
+    public ApiFactory Api { get; } = new("AHKFlowApp.E2E.Tests");
     public SpaHost Spa { get; private set; } = default!;
     public IPlaywright Playwright { get; private set; } = default!;
     public IBrowser Browser { get; private set; } = default!;
