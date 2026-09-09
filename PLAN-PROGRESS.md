@@ -10,3 +10,5 @@ Recovery 1 | command: pwsh ./scripts/test-fast.ps1 -Mode PowerShell | fail: Cita
 Recovery 1 complete | 0c76146d | tests: CitationFreshness.Tests.ps1 pass | -
 Recovery simplify | verdict: nothing further to simplify after the citation-only repair
 Verification | PASS | build and format green; 56 PowerShell suites green in 00:03:26.8651521; coverage skipped five excluded files; diff check green; CI run 34269850009 attempts 1-5 green on 774930b1
+Review recovery 2a | confirmed: replace the timed empty-marker delay with an explicit parent-observation handshake
+Review recovery 2b | confirmed: cleanup must stop both known process IDs if an assertion exits early
