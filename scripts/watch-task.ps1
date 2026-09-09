@@ -462,6 +462,47 @@ function Get-WatchTaskRecord {
     )
 }
 
+function Select-WatchTaskRecord {
+    <#
+      Which running task the watcher tails when the caller named no index.
+
+      Three preferences, applied in order, each skipped when it matches no running task, so the
+      chain always ends somewhere:
+
+        1. The caller's own session. Claude Code sets CLAUDE_CODE_SESSION_ID for a command it
+           runs, and its value is the <session id> folder holding that session's task files. A
+           human running the watcher in their own terminal has no such variable, so this is a
+           preference and never a filter.
+        2. The checkout this copy of the script sits in. A checkout holds several sessions, so
+           this signal is weaker than the session and comes second.
+        3. The newest by last write. $Record arrives newest first, so this is the first survivor.
+
+      Returns $null when nothing is running.
+    #>
+    param(
+        [Parameter(Mandatory)][AllowEmptyCollection()][object[]] $Record,
+        [AllowEmptyString()][string] $SessionId = '',
+        [AllowEmptyString()][string] $OwnCheckoutPath = ''
+    )
+
+    $candidates = @($Record | Where-Object { $_.Running })
+    if ($candidates.Count -eq 0) { return $null }
+
+    if (-not [string]::IsNullOrWhiteSpace($SessionId)) {
+        $inSession = @($candidates | Where-Object {
+                $_.Session.Equals($SessionId, [System.StringComparison]::OrdinalIgnoreCase)
+            })
+        if ($inSession.Count -gt 0) { $candidates = $inSession }
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($OwnCheckoutPath)) {
+        $inCheckout = @($candidates | Where-Object { $_.OwnCheckout })
+        if ($inCheckout.Count -gt 0) { $candidates = $inCheckout }
+    }
+
+    return $candidates[0]
+}
+
 function Format-Age {
     param([Parameter(Mandatory)][datetime] $When)
 
@@ -1066,10 +1107,24 @@ function Watch-Record {
     param(
         [Parameter(Mandatory)][object] $Record,
         [Parameter(Mandatory)][int] $Tail,
+
+        # Where the task came from, when the caller knows. A caller that passes nothing gets the
+        # path alone, which is what a case driving one file directly wants.
+        [AllowEmptyString()][string] $Session = '',
+        [AllowEmptyString()][string] $Checkout = '',
+        [AllowEmptyString()][string] $OwnSessionId = '',
+
         [switch] $NoFollow
     )
 
     Write-Host "Tailing $($Record.Path)"
+    if ($Session -ne '') {
+        $mine = if ($Session.Equals($OwnSessionId, [System.StringComparison]::OrdinalIgnoreCase)) { ' (this session)' } else { '' }
+        Write-Host "Session: $Session$mine"
+    }
+    if ($Checkout -ne '') {
+        Write-Host "Checkout: $Checkout"
+    }
     Write-Host ''
 
     $following = $Record.Running -and -not $NoFollow
@@ -1330,6 +1385,9 @@ function Invoke-WatchTask {
         -NeighbourPath $neighbours `
         -OwnCheckoutPath $ownCheckout)
 
+    # Absent in a plain terminal, in which case it is simply skipped.
+    $sessionId = if ($null -eq $env:CLAUDE_CODE_SESSION_ID) { '' } else { $env:CLAUDE_CODE_SESSION_ID }
+
     if ($records.Count -eq 0) {
         Write-Host "No task output files found for this repository under $searchRoot"
         Write-Host "Looked under $($checkouts.Count) checkout(s), starting at: $mainRoot"
@@ -1371,7 +1429,10 @@ function Invoke-WatchTask {
 
     $running = @($records | Where-Object { $_.Running })
 
-    if ($running.Count -eq 0) {
+    $chosen = Select-WatchTaskRecord -Record $records -SessionId $sessionId -OwnCheckoutPath $ownCheckout
+
+    if ($null -eq $chosen) {
+        # The no-running-task path, moved off $running.Count and on to the selection result.
         $newest = $records[0]
         Write-Host 'No task is running now. Showing the newest stopped task.'
         Write-Host ''
@@ -1400,7 +1461,13 @@ function Invoke-WatchTask {
         Write-Host ''
     }
 
-    return (Watch-Record -Record $running[0] -Tail $Tail -NoFollow:$NoFollow)
+    return (Watch-Record `
+        -Record $chosen `
+        -Tail $Tail `
+        -Session $chosen.Session `
+        -Checkout $chosen.Checkout `
+        -OwnSessionId $sessionId `
+        -NoFollow:$NoFollow)
 }
 
 # Dot-sourced by the test suite to reach the functions above without running anything.

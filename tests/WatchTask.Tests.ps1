@@ -50,11 +50,12 @@ function New-FakeTaskOutput {
         [Parameter(Mandatory)][string] $Root,
         [Parameter(Mandatory)][string] $ProjectFolder,
         [Parameter(Mandatory)][AllowEmptyCollection()][AllowEmptyString()][string[]] $Lines,
-        [Parameter(Mandatory)][datetime] $LastWrite
+        [Parameter(Mandatory)][datetime] $LastWrite,
+        [string] $Session = ''
     )
 
-    $session = [guid]::NewGuid().ToString()
-    $tasksDir = Join-Path (Join-Path (Join-Path $Root $ProjectFolder) $session) 'tasks'
+    $sessionName = if ([string]::IsNullOrWhiteSpace($Session)) { [guid]::NewGuid().ToString() } else { $Session }
+    $tasksDir = Join-Path (Join-Path (Join-Path $Root $ProjectFolder) $sessionName) 'tasks'
     New-Item -ItemType Directory -Path $tasksDir -Force | Out-Null
     $file = Join-Path $tasksDir 'task.output'
     Set-Content -LiteralPath $file -Value $Lines -Encoding UTF8
@@ -192,6 +193,65 @@ Assert-True (
 Assert-True (
     (Get-OwningCheckoutPath -Name 'C--repo-Other' -CheckoutPath $nestedCheckouts) -eq ''
 ) 'Owning checkout: a folder no checkout claims has no owner.'
+
+# --- Which running task the watcher tails ---
+#
+# Three preferences in order: the caller's session, then the script's own checkout, then the
+# newest. Each is skipped when it matches no running task, so the chain always ends somewhere.
+# The records are built here rather than found on disk, because the rule is about fields.
+
+function New-SelectionRecord {
+    param(
+        [Parameter(Mandatory)][string] $Path,
+        [Parameter(Mandatory)][bool] $Running,
+        [Parameter(Mandatory)][string] $Session,
+        [Parameter(Mandatory)][bool] $OwnCheckout
+    )
+
+    return [pscustomobject]@{
+        Path        = $Path
+        LastWrite   = (Get-Date)
+        Running     = $Running
+        ExitCode    = $null
+        Terminal    = 'none'
+        Session     = $Session
+        Checkout    = 'C:\repo\App'
+        OwnCheckout = $OwnCheckout
+    }
+}
+
+# Newest first, as Get-WatchTaskRecord returns them.
+$selectionRecords = @(
+    (New-SelectionRecord -Path 'newest-other'   -Running $true  -Session 'session-b' -OwnCheckout $false),
+    (New-SelectionRecord -Path 'own-checkout'   -Running $true  -Session 'session-b' -OwnCheckout $true),
+    (New-SelectionRecord -Path 'my-session'     -Running $true  -Session 'session-a' -OwnCheckout $false),
+    (New-SelectionRecord -Path 'stopped'        -Running $false -Session 'session-a' -OwnCheckout $true)
+)
+
+$bySession = Select-WatchTaskRecord -Record $selectionRecords -SessionId 'session-a' -OwnCheckoutPath 'C:\repo\App'
+Assert-True ($bySession.Path -eq 'my-session') `
+    "Selection: the caller's own session wins over everything else. Got '$($bySession.Path)'."
+
+$byCheckout = Select-WatchTaskRecord -Record $selectionRecords -SessionId '' -OwnCheckoutPath 'C:\repo\App'
+Assert-True ($byCheckout.Path -eq 'own-checkout') `
+    "Selection: with no session id, the script's own checkout decides. Got '$($byCheckout.Path)'."
+
+$byNewest = Select-WatchTaskRecord -Record $selectionRecords -SessionId '' -OwnCheckoutPath ''
+Assert-True ($byNewest.Path -eq 'newest-other') `
+    "Selection: with neither preference, the newest running task wins. Got '$($byNewest.Path)'."
+
+# A session id that matches nothing must be skipped, not treated as a filter. A human running the
+# watcher in their own terminal has no such variable at all.
+$unknownSession = Select-WatchTaskRecord -Record $selectionRecords -SessionId 'session-z' -OwnCheckoutPath 'C:\repo\App'
+Assert-True ($unknownSession.Path -eq 'own-checkout') `
+    "Selection: a session that matches nothing falls through to the checkout. Got '$($unknownSession.Path)'."
+
+$noneRunning = @(New-SelectionRecord -Path 'stopped-only' -Running $false -Session 'session-a' -OwnCheckout $true)
+Assert-True ($null -eq (Select-WatchTaskRecord -Record $noneRunning -SessionId 'session-a' -OwnCheckoutPath 'C:\repo\App')) `
+    'Selection: nothing running means nothing selected.'
+
+Assert-True ($null -eq (Select-WatchTaskRecord -Record @() -SessionId '' -OwnCheckoutPath '')) `
+    'Selection: no records at all means nothing selected.'
 
 # --- Reading the end of a file says whether the task finished, and with which code ---
 #
@@ -592,6 +652,50 @@ try {
     Assert-True ($result.Output -match 'RUN-TWO') "Two running: the newest running file is tailed. Output: $($result.Output)"
 }
 finally {
+    foreach ($writer in $writers) { $writer.Dispose() }
+    Remove-Item -LiteralPath $root -Recurse -Force
+}
+
+# --- The watcher prefers the caller's own session ---
+#
+# Claude Code sets CLAUDE_CODE_SESSION_ID in the environment of a command it runs, and its value
+# is the <session id> folder holding that session's task files. A human's own terminal has no such
+# variable, so it is a preference and never a filter.
+
+$root = New-WatchTestRoot
+$writers = @()
+$previousSession = $env:CLAUDE_CODE_SESSION_ID
+try {
+    $mySession = [guid]::NewGuid().ToString()
+    $otherSession = [guid]::NewGuid().ToString()
+
+    $mine = New-FakeTaskOutput -Root $root -ProjectFolder "$prefix-mine" -Session $mySession -LastWrite (Get-Date).AddMinutes(-10) -Lines @(
+        'my run', 'MY-SESSION-MARKER'
+    )
+    $theirs = New-FakeTaskOutput -Root $root -ProjectFolder "$prefix-theirs" -Session $otherSession -LastWrite (Get-Date) -Lines @(
+        'their run', 'OTHER-SESSION-MARKER'
+    )
+
+    $writers = @((Open-FakeTaskWriter -Path $mine), (Open-FakeTaskWriter -Path $theirs))
+
+    $env:CLAUDE_CODE_SESSION_ID = $mySession
+    $result = Invoke-WatchScript -ScriptArgs @('-Root', $root, '-NoFollow')
+
+    Assert-True ($result.Output -match 'MY-SESSION-MARKER') `
+        "Session preference: the caller's own session must be tailed, even though it is older. Output: $($result.Output)"
+    Assert-True ($result.Output -notmatch 'OTHER-SESSION-MARKER') `
+        "Session preference: another session's newer task must not be tailed. Output: $($result.Output)"
+    Assert-True ($result.Output -match [regex]::Escape("Session: $mySession (this session)")) `
+        "Session preference: the chosen session must be named as the caller's own. Output: $($result.Output)"
+
+    # With the variable gone, the newest running task wins again.
+    $env:CLAUDE_CODE_SESSION_ID = $null
+    $without = Invoke-WatchScript -ScriptArgs @('-Root', $root, '-NoFollow')
+    Assert-True ($without.Output -match 'OTHER-SESSION-MARKER') `
+        "Session preference: with no session id the newest running task wins. Output: $($without.Output)"
+}
+finally {
+    $env:CLAUDE_CODE_SESSION_ID = $previousSession
     foreach ($writer in $writers) { $writer.Dispose() }
     Remove-Item -LiteralPath $root -Recurse -Force
 }
