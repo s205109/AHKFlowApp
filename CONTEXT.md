@@ -272,7 +272,7 @@ A background command whose Task output file is held open for writing. Nothing el
 _Avoid_: live task, active task, in-flight task
 
 **Stale task file**:
-A Task output file that ends with no terminal marker and that nobody holds open. Its session is gone and it will never gain a marker, so it reads as a Running task and is not one.
+A Task output file that ends with no terminal marker and that nobody holds open. Its session is gone, so it will never gain a marker. The old rule read the file's text alone and called this a Running task. The Watcher now also asks whether a writer holds the file, so it reads this one as stopped.
 _Avoid_: orphan log, dead task, zombie task
 
 **Watcher**:
