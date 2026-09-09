@@ -37,7 +37,7 @@
     { "name": "SuiteRunnerLinux.Tests.ps1", "jobs": ["invariants", "suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 9.0 },
     { "name": "TestFastDotnetProgress.Tests.ps1", "jobs": ["suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 6.7 },
     { "name": "TestFastPowerShellMode.Tests.ps1", "jobs": ["suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 5.6 },
-    { "name": "WatchTask.Tests.ps1", "jobs": ["suites"], "platform": ["windows"], "execution": "parallel", "baselineSeconds": 45.0 },
+    { "name": "WatchTask.Tests.ps1", "jobs": ["suites"], "platform": ["windows"], "execution": "parallel", "baselineSeconds": 65.0 },
     { "name": "WorkflowPdfGenerator.Tests.ps1", "jobs": ["suites"], "platform": ["windows"], "execution": "parallel", "baselineSeconds": 6.6 },
     { "name": "WorktreeBaseRef.Tests.ps1", "jobs": ["suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 1.1 },
     { "name": "WorktreeBranchName.Tests.ps1", "jobs": ["suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 0.4 },
