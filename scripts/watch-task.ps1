@@ -16,17 +16,22 @@
        started in a subdirectory is still found. A folder that a neighbouring directory claims
        as closely, or more closely, is refused, because the mangling turns a path separator and
        a literal '-' into the same character.
-    2. Among <match>\<session id>\tasks\<task id>.output, a file is running when its content
-       does not end with '[exited with code N]' or '[killed]'. This needs no state of its own.
-    3. It picks the newest running file by last write time and tails it, following by byte
-       offset so a line written in two pieces is printed once, in full. The tail stops on its
-       own when a terminal marker is the last line, and prints the exit code or killed state last.
+    2. Among <match>\<session id>\tasks\<task id>.output, a file is running when something holds
+       it open for writing. That is asked of the operating system, not read from the file, so a
+       file left behind by a session that is gone does not count as running. The file's text still
+       decides the terminal state: an exit code, killed, or stopped without a terminal marker.
+    3. Among the running files it prefers, in order, the caller's own session, then the checkout
+       this copy of the script sits in, then the newest by last write time. Each preference is
+       skipped when it matches no running task. It tails the winner, following by byte offset so a
+       line written in two pieces is printed once, in full. The tail stops when the file ends with
+       a terminal marker, or when nothing holds it open any more.
 
   With no running task it prints the newest stopped task's last lines, terminal state, and path,
   then exits 0. With more than one running it tails the newest and names the count.
 
 .PARAMETER List
-  Print the recent tasks with their state, age, and index, then exit.
+  Print tasks with their state, age, and index, then exit. Every running task gets a row, and
+  newest stopped tasks fill the rest up to twenty rows.
 .PARAMETER Index
   Select one task from the same list -List prints (1-based) instead of the newest running one.
 .PARAMETER Tail
