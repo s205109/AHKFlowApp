@@ -11,7 +11,7 @@
 - **Type**: Bug
 - **Interfaces**: CLI
 - **Difficulty**: complex
-- **Stage**: 4-execute
+- **Stage**: 7-document
 
 ## Summary
 
@@ -122,15 +122,39 @@ names 38 tasks the reader cannot reach.
 
 ## Acceptance criteria
 
-- [ ] Tailing a task file whose read hits the condition in the report prints output instead of
+Line numbers below were read on 2026-09-09, after the fix landed. This file is frozen for the
+citation check (see the note at the top), so these are plain references, not the canonical form.
+
+- [x] Tailing a task file whose read hits the condition in the report prints output instead of
       throwing a binding error. `tests/WatchTask.Tests.ps1` covers the case.
-- [ ] `Set-TailReaderCheckpoint` cannot receive `$null`: either its call sites are proven to pass
+  - The `else` branches now use the comma operator, so a zero-length array survives assignment
+    instead of unrolling to `$null`: `scripts/watch-task.ps1:585` and `:588` in `Read-FileHead`,
+    `:641` and `:645` in `Read-FileCheckpoint`, `:706` in `Read-InitialTailText`.
+  - Tests: "A zero-byte output file is tailed, not turned into a binding error" and "The whole
+    script tails a zero-byte task file without a binding error" in `tests/WatchTask.Tests.ps1`.
+- [x] `Set-TailReaderCheckpoint` cannot receive `$null`: either its call sites are proven to pass
       an array, or the parameter states what a null means.
-- [ ] With more than one running task, the watcher tails a task from the caller's own session when
+  - Both call sites now pass an array. The parameter is left mandatory and `$null`-rejecting on
+    purpose, so the next version of this bug fails loudly rather than binding.
+- [x] With more than one running task, the watcher tails a task from the caller's own session when
       one exists, rather than the newest across every session.
-- [ ] A task file left behind by a session that is gone does not count as running.
-- [ ] The report line naming how many other tasks are running matches how many the watcher would
+  - `Select-WatchTaskRecord` (`scripts/watch-task.ps1:475`) prefers, in order, the caller's
+    session, then the script's own checkout, then the newest. The session id comes from
+    `CLAUDE_CODE_SESSION_ID` (`scripts/watch-task.ps1:1414`), a preference and never a filter.
+  - Test: "The watcher prefers the caller's own session" in `tests/WatchTask.Tests.ps1`.
+- [x] A task file left behind by a session that is gone does not count as running.
+  - `Test-TaskFileHeldOpen` (`scripts/watch-task.ps1:359`) asks the operating system whether a
+    writer holds the file. `Get-WatchTaskRecord` sets `Running` from that probe
+    (`scripts/watch-task.ps1:463`), not from the file's text.
+  - Tests: "A running task is one whose output file is held open for writing", "A task that
+    stopped without a terminal marker is not reported as killed", and "A writer that closes
+    without a marker ends the follow" in `tests/WatchTask.Tests.ps1`.
+- [x] The report line naming how many other tasks are running matches how many the watcher would
       actually choose between.
+  - `-List` now prints a row for every running task, then fills the rest to `$script:ListRowCount`
+    (20) with the newest stopped tasks (`scripts/watch-task.ps1:84` and `:1424`). `-Index`
+    addresses that same list, so the count line names only tasks the reader can reach.
+  - Test: "Every running task gets a row, past the twenty-row window" in `tests/WatchTask.Tests.ps1`.
 
 ## Out of scope
 
