@@ -23,8 +23,13 @@ candidates.
 
 ## Why the file handle
 
-It is exact. It needs no threshold anyone has to tune, and no clock. A run that goes quiet for an
-hour is still running, and a file abandoned a second ago is already not.
+It needs no threshold anyone has to tune, and no clock. A run that goes quiet for an hour is
+still running, and a file abandoned a second ago is already not.
+
+It is not a perfect "is a writer present" test. Any handle that a writer could not share with —
+a write handle, or a read handle opened with no sharing — produces the same sharing violation.
+Nothing but the runner opens these files, so in practice the violation is the runner's write
+handle.
 
 It costs almost nothing. Probing all 489 files took 62 ms, against 1649 ms for the discovery pass
 that already reads the end of every file.
@@ -36,11 +41,12 @@ once every three seconds: held on 24 of 24 probes across 14 seconds.
 
 `FileNotFoundException` and `DirectoryNotFoundException` both derive from `IOException`, and a
 task output file can be deleted between the folder listing and the probe. Catching `IOException`
-would report a file that no longer exists as running. Only `0x80070020` means a writer holds it.
+would report a file that no longer exists as running. Only `0x80070020`, the sharing violation,
+is treated as running.
 
 | Situation | Exception | HResult | Verdict |
 |---|---|---|---|
-| A writer holds the file | `System.IO.IOException` | `0x80070020` | running |
+| A handle a writer could not share with is open (the runner's write handle in practice) | `System.IO.IOException` | `0x80070020` | running |
 | Nobody holds it | none, the open succeeds | — | not running |
 | The file was deleted | `System.IO.FileNotFoundException` | `0x80070002` | not running |
 | The folder was deleted | `System.IO.DirectoryNotFoundException` | `0x80070003` | not running |
@@ -86,7 +92,7 @@ not.
   the reader has caught up to the end.
 - A task whose runner keeps the file open but never writes is correctly reported as running. That
   is a hung run, and telling a hung run from a finished one is the point of the watcher.
-- A file held open for writing by anything else would read as running. In practice only the
-  harness writes these files.
+- A file held open by anything that a writer could not share with would read as running. In
+  practice only the harness opens these files.
 - The watcher now opens every candidate file once more per pass. The cost is measured above and is
   small next to the reads it already does.

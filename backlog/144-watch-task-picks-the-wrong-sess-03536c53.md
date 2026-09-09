@@ -127,9 +127,11 @@ citation check (see the note at the top), so these are plain references, not the
 
 - [x] Tailing a task file whose read hits the condition in the report prints output instead of
       throwing a binding error. `tests/WatchTask.Tests.ps1` covers the case.
-  - The `else` branches now use the comma operator, so a zero-length array survives assignment
-    instead of unrolling to `$null`: `scripts/watch-task.ps1:585` and `:588` in `Read-FileHead`,
-    `:641` and `:645` in `Read-FileCheckpoint`, `:706` in `Read-InitialTailText`.
+  - The zero-length returns now use the comma operator, so an empty array survives assignment
+    instead of unrolling to `$null`: the `$want -le 0` return in `Read-FileHead`, the
+    `$end -le 0` return in `Read-FileCheckpoint`, and the `$chunks.Count -eq 0` else branch in
+    `Read-InitialTailText`. The two `return , $exact` sites in the same functions get the comma
+    for consistency; the read there always fills the buffer, so they cannot be reached.
   - Tests: "A zero-byte output file is tailed, not turned into a binding error" and "The whole
     script tails a zero-byte task file without a binding error" in `tests/WatchTask.Tests.ps1`.
 - [x] `Set-TailReaderCheckpoint` cannot receive `$null`: either its call sites are proven to pass
@@ -138,22 +140,23 @@ citation check (see the note at the top), so these are plain references, not the
     purpose, so the next version of this bug fails loudly rather than binding.
 - [x] With more than one running task, the watcher tails a task from the caller's own session when
       one exists, rather than the newest across every session.
-  - `Select-WatchTaskRecord` (`scripts/watch-task.ps1:475`) prefers, in order, the caller's
-    session, then the script's own checkout, then the newest. The session id comes from
-    `CLAUDE_CODE_SESSION_ID` (`scripts/watch-task.ps1:1414`), a preference and never a filter.
-  - Test: "The watcher prefers the caller's own session" in `tests/WatchTask.Tests.ps1`.
+  - `Select-WatchTaskRecord` in `scripts/watch-task.ps1` prefers, in order, the caller's session,
+    then the script's own checkout, then the newest. `Invoke-WatchTask` reads the session id from
+    `CLAUDE_CODE_SESSION_ID` and passes it as a preference, never a filter.
+  - Tests: "The watcher prefers the caller's own session" and "With no session id, the script's
+    own checkout wins over a newer task elsewhere" in `tests/WatchTask.Tests.ps1`.
 - [x] A task file left behind by a session that is gone does not count as running.
-  - `Test-TaskFileHeldOpen` (`scripts/watch-task.ps1:359`) asks the operating system whether a
-    writer holds the file. `Get-WatchTaskRecord` sets `Running` from that probe
-    (`scripts/watch-task.ps1:463`), not from the file's text.
+  - `Test-TaskFileHeldOpen` in `scripts/watch-task.ps1` asks the operating system whether a
+    writer still holds the file. `Get-WatchTaskRecord` sets each record's `Running` from that
+    probe, not from the file's text.
   - Tests: "A running task is one whose output file is held open for writing", "A task that
     stopped without a terminal marker is not reported as killed", and "A writer that closes
     without a marker ends the follow" in `tests/WatchTask.Tests.ps1`.
 - [x] The report line naming how many other tasks are running matches how many the watcher would
       actually choose between.
   - `-List` now prints a row for every running task, then fills the rest to `$script:ListRowCount`
-    (20) with the newest stopped tasks (`scripts/watch-task.ps1:84` and `:1424`). `-Index`
-    addresses that same list, so the count line names only tasks the reader can reach.
+    (20) with the newest stopped tasks. `-Index` addresses that same list, so the count line names
+    only tasks the reader can reach.
   - Test: "Every running task gets a row, past the twenty-row window" in `tests/WatchTask.Tests.ps1`.
 
 ## Out of scope
