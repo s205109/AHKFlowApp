@@ -1359,6 +1359,14 @@ function Watch-Record {
 
                     $stable = Get-TaskState -Path $reader.Path
                     if ($null -ne $stable) { $state = $stable }
+
+                    # A replacement run may have opened the file between the probe and the state
+                    # read, so "not held" is stale. The drain printed its output and the file has
+                    # no marker. Probe once more: if something holds it now, that run is still
+                    # going, so keep following it rather than call it stopped.
+                    if ($state.Running -and (Test-TaskFileHeldOpen -Path $reader.Path)) {
+                        continue
+                    }
                 }
 
                 if ($reader.Carry.Trim().Length -gt 0) {

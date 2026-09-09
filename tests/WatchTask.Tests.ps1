@@ -730,38 +730,64 @@ finally {
 # --- With no session id, the script's own checkout wins over a newer task elsewhere ---
 #
 # The selection unit test pins this with hand-built records. This drives the whole script, so a
-# regression in discovery or the wiring in Invoke-WatchTask would show here. One task belongs to
-# the checkout the script runs from, the other to the main checkout, and the own-checkout one is
-# older, so only the checkout preference can pick it.
+# regression in discovery or the wiring in Invoke-WatchTask would show here.
+#
+# The script derives its own checkout from where its file sits, so this cannot use the ambient
+# checkout: outside a worktree that is also the main checkout, and the preference cannot tell the
+# two folders apart. It builds an isolated repo with a real main and a real worktree, drops a copy
+# of the script in the worktree, and runs that. The own-checkout task is older, so only the
+# checkout preference can pick it over the newer one from the main checkout.
 
-$ownPrefix = ConvertTo-ClaudeProjectFolder -Path $repoRoot
+$gitExe = Get-Command git -ErrorAction SilentlyContinue
+if ($gitExe) {
+    $checkoutGitRoot = Join-Path ([System.IO.Path]::GetTempPath()) "watch-task-checkout-$([guid]::NewGuid())"
+    $checkoutMain = Join-Path $checkoutGitRoot 'main'
+    $checkoutOwn = Join-Path $checkoutGitRoot 'wt-own'
+    $root = New-WatchTestRoot
+    $writers = @()
+    $previousSession = $env:CLAUDE_CODE_SESSION_ID
+    try {
+        $env:CLAUDE_CODE_SESSION_ID = $null
 
-$root = New-WatchTestRoot
-$writers = @()
-$previousSession = $env:CLAUDE_CODE_SESSION_ID
-try {
-    $env:CLAUDE_CODE_SESSION_ID = $null
+        New-Item -ItemType Directory -Path $checkoutMain -Force | Out-Null
+        & $gitExe.Source -C $checkoutMain init -q . 2>&1 | Out-Null
+        & $gitExe.Source -C $checkoutMain commit -q --allow-empty -m 'init' 2>&1 | Out-Null
+        & $gitExe.Source -C $checkoutMain worktree add -q $checkoutOwn -b own 2>&1 | Out-Null
 
-    $mine = New-FakeTaskOutput -Root $root -ProjectFolder "$ownPrefix-a" -LastWrite (Get-Date).AddMinutes(-10) -Lines @(
-        'own checkout run', 'OWN-CHECKOUT-MARKER'
-    )
-    $elsewhere = New-FakeTaskOutput -Root $root -ProjectFolder "$prefix-b" -LastWrite (Get-Date) -Lines @(
-        'other checkout run', 'OTHER-CHECKOUT-MARKER'
-    )
+        $ownScriptDir = Join-Path $checkoutOwn 'scripts'
+        New-Item -ItemType Directory -Path $ownScriptDir -Force | Out-Null
+        Copy-Item -LiteralPath $watchScript -Destination (Join-Path $ownScriptDir 'watch-task.ps1')
+        $ownScript = Join-Path $ownScriptDir 'watch-task.ps1'
 
-    $writers = @((Open-FakeTaskWriter -Path $mine), (Open-FakeTaskWriter -Path $elsewhere))
+        $ownPrefix = ConvertTo-ClaudeProjectFolder -Path $checkoutOwn
+        $mainPrefix = ConvertTo-ClaudeProjectFolder -Path $checkoutMain
 
-    $result = Invoke-WatchScript -ScriptArgs @('-Root', $root, '-NoFollow')
+        $mine = New-FakeTaskOutput -Root $root -ProjectFolder $ownPrefix -LastWrite (Get-Date).AddMinutes(-10) -Lines @(
+            'own checkout run', 'OWN-CHECKOUT-MARKER'
+        )
+        $elsewhere = New-FakeTaskOutput -Root $root -ProjectFolder $mainPrefix -LastWrite (Get-Date) -Lines @(
+            'other checkout run', 'OTHER-CHECKOUT-MARKER'
+        )
 
-    Assert-True ($result.Output -match 'OWN-CHECKOUT-MARKER') `
-        "Checkout preference: the task in the script's own checkout must be tailed, even though it is older. Output: $($result.Output)"
-    Assert-True ($result.Output -notmatch 'OTHER-CHECKOUT-MARKER') `
-        "Checkout preference: a newer task from another checkout must not be tailed. Output: $($result.Output)"
+        $writers = @((Open-FakeTaskWriter -Path $mine), (Open-FakeTaskWriter -Path $elsewhere))
+
+        $output = & $hostExe -NoProfile -File $ownScript -Root $root -NoFollow 2>&1 | Out-String
+
+        Assert-True ($output -match 'OWN-CHECKOUT-MARKER') `
+            "Checkout preference: the task in the script's own checkout must be tailed, even though it is older. Output: $output"
+        Assert-True ($output -notmatch 'OTHER-CHECKOUT-MARKER') `
+            "Checkout preference: a newer task from another checkout must not be tailed. Output: $output"
+    }
+    finally {
+        $env:CLAUDE_CODE_SESSION_ID = $previousSession
+        foreach ($writer in $writers) { $writer.Dispose() }
+        Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+        & $gitExe.Source -C $checkoutMain worktree remove --force $checkoutOwn 2>&1 | Out-Null
+        Remove-Item -LiteralPath $checkoutGitRoot -Recurse -Force -ErrorAction SilentlyContinue
+    }
 }
-finally {
-    $env:CLAUDE_CODE_SESSION_ID = $previousSession
-    foreach ($writer in $writers) { $writer.Dispose() }
-    Remove-Item -LiteralPath $root -Recurse -Force
+else {
+    Write-Host 'Checkout preference check skipped: git is not available.' -ForegroundColor Yellow
 }
 
 # --- Every running task gets a row, past the twenty-row window ---
@@ -1121,6 +1147,77 @@ Watch-Record -Record `$record -Tail 40 | Out-Null
 finally {
     if ($job) { Remove-Job -Job $job -Force -ErrorAction SilentlyContinue }
     Remove-Item -LiteralPath $racePath -Force -ErrorAction SilentlyContinue
+}
+
+# --- A replacement that opens during the settle probe is still followed, not called stopped ---
+#
+# The settle reconciliation drains and re-reads on the assumption that the file is stable once
+# the writer is gone. A replacement run that opens the file between the liveness probe and the
+# state read breaks that assumption: the probe missed the new writer, and a reconciliation that
+# trusts the stale "not held" prints the replacement's output and then reports it stopped. The
+# reconciliation must probe liveness once more before it declares a markerless file stopped.
+
+$job = $null
+$replPath = Join-Path ([System.IO.Path]::GetTempPath()) ("watch-task-repl-race-$([guid]::NewGuid()).output")
+try {
+    [System.IO.File]::WriteAllText($replPath, "RUN-A-LINE`n")
+
+    $job = Start-Job -ScriptBlock {
+        param($exe, $script, $path)
+        & $exe -NoProfile -Command @"
+. '$script'
+
+`$script:stateCalls = 0
+`$script:replacementWriter = `$null
+`$script:realGetTaskState = `${function:Get-TaskState}
+function Get-TaskState {
+    param([Parameter(Mandatory)][string] `$Path)
+
+    `$script:stateCalls++
+    if (`$script:stateCalls -eq 2) {
+        # A replacement run opens the file here, between the settle liveness probe and this state
+        # read. The handle stays open for the rest of this process, so the file is really held.
+        [System.IO.File]::Delete(`$Path)
+        `$script:replacementWriter = [System.IO.FileStream]::new(
+            `$Path,
+            [System.IO.FileMode]::Create,
+            [System.IO.FileAccess]::Write,
+            ([System.IO.FileShare]::ReadWrite -bor [System.IO.FileShare]::Delete))
+        `$bytes = [System.Text.Encoding]::UTF8.GetBytes('REPLACEMENT-LINE' + [char]10)
+        `$script:replacementWriter.Write(`$bytes, 0, `$bytes.Length)
+        `$script:replacementWriter.Flush()
+        return [pscustomobject]@{ Running = `$true; ExitCode = `$null; BytesRead = 0 }
+    }
+    return (& `$script:realGetTaskState -Path `$Path)
+}
+
+`$record = [pscustomobject]@{
+    Path = '$path'; LastWrite = (Get-Date); Running = `$true; ExitCode = `$null; Terminal = 'none'
+}
+Watch-Record -Record `$record -Tail 40 | Out-Null
+"@ 2>&1
+    } -ArgumentList $hostExe, $watchScript, $replPath
+
+    $entered = Wait-ForJobOutput -Job $job -Pattern 'RUN-A-LINE'
+    Assert-True $entered 'Replacement race: the watcher must print the first run before the replacement.'
+
+    # Nothing holds the fixture, so the watcher goes straight into the settle reconciliation on
+    # its first pass. The stubbed Get-TaskState then opens the replacement on its second call.
+    # Without the re-probe the watcher prints its verdict and exits in about a second, so ten is
+    # a wide margin for "it kept following".
+    $finished = Wait-Job -Job $job -Timeout 10
+    Assert-True ($null -eq $finished) `
+        "Replacement race: the watcher must keep following a replacement that is still open. Output: $(Get-JobOutputSoFar -Job $job)"
+
+    $output = Get-JobOutputSoFar -Job $job
+    Assert-True ($output -match 'REPLACEMENT-LINE') `
+        "Replacement race: the replacement's output must be printed. Output: $output"
+    Assert-True ($output -notmatch 'without a terminal marker') `
+        "Replacement race: a running replacement must not be reported stopped. Output: $output"
+}
+finally {
+    if ($job) { Remove-Job -Job $job -Force -ErrorAction SilentlyContinue }
+    Remove-Item -LiteralPath $replPath -Force -ErrorAction SilentlyContinue
 }
 
 # --- A successful read resets earlier read failures ---
