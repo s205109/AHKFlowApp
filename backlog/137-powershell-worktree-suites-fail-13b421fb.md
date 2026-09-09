@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: none (CI and test harness)
 - **Difficulty**: moderate
-- **Stage**: 7-document
+- **Stage**: 8-review
 
 ## Summary
 
@@ -89,18 +89,49 @@ refusal was text captured during the premature diagnostic read. It did not cause
 The failed suites have unique GUID-based fixture paths and run in separate PowerShell processes.
 Parallel disk and process contention changes timing. It exposes each suite's incomplete wait.
 
+## Verification evidence
+
+Both targeted suites passed under `pwsh` and Windows PowerShell 5.1 after the fix. Their
+consecutive `pwsh` repetition runs were:
+
+| Suite | Passing run numbers |
+|---|---|
+| `WorktreeSweepRemoteBase.Tests.ps1` | 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20 |
+| `WorktreeRemoveHook.Tests.ps1` | 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20 |
+
+The full local PowerShell slice passed all 56 suites in 206.865 seconds with six workers. The
+starting observations were 98.6 seconds and 158.6 seconds. The change keeps both suites marked
+`execution: "parallel"` in `tests/powershell-suites.json`. No serialization was introduced, so
+its measured cost is zero.
+
+The five-step local Gate passed. Build and format reported no errors. The coverage slice skipped
+all five changed files under its test-only exclusions. `git diff --check main...HEAD` passed.
+
+GitHub Actions run `34269850009` passed five consecutive attempts on verification commit
+`774930b1d2aeabf1feddb437c226e28a6be037dd`:
+
+| Attempt | `powershell-suites` job | Result |
+|---|---|---|
+| 1 | `102208987508` | pass |
+| 2 | `102349931778` | pass |
+| 3 | `102351861390` | pass |
+| 4 | `102353998330` | pass |
+| 5 | `102356110090` | pass |
+
+Nothing else needs documentation. The change affects only the two test readiness conditions.
+
 ## Acceptance criteria
 
-- [ ] A written statement of what makes a worktree suite fail under the parallel runner, with
+- [x] A written statement of what makes a worktree suite fail under the parallel runner, with
       the `file:line` that shows it. "It is flaky" is not an answer.
-- [ ] `WorktreeSweepRemoteBase.Tests.ps1` and `WorktreeRemoveHook.Tests.ps1` each pass 20 times
+- [x] `WorktreeSweepRemoteBase.Tests.ps1` and `WorktreeRemoveHook.Tests.ps1` each pass 20 times
       in a row, on CI or on a machine that reproduces the failure, with the run numbers written
       into this item.
-- [ ] Either the cause is fixed, or both suites carry a recorded limit the runner honours, such
+- [x] Either the cause is fixed, or both suites carry a recorded limit the runner honours, such
       as `execution` set to `exclusive` in `tests/powershell-suites.json`, with the measured cost
       of that choice written here.
-- [ ] The whole `powershell-suites` job passes 5 times in a row on one commit.
-- [ ] `pwsh ./scripts/test-fast.ps1 -Mode PowerShell` still passes locally, and its run time is
+- [x] The whole `powershell-suites` job passes 5 times in a row on one commit.
+- [x] `pwsh ./scripts/test-fast.ps1 -Mode PowerShell` still passes locally, and its run time is
       written here beside the number this item started from.
 
 ## Out of scope
