@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: none (CI and test harness)
 - **Difficulty**: moderate
-- **Stage**: 8-review
+- **Stage**: 9-ship
 
 ## Summary
 
