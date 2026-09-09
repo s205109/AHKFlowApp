@@ -63,6 +63,30 @@ foreach ($section in @('config', 'openrouter', 'pr_reviewer', 'pr_code_suggestio
     }
 }
 
+# Every other key the repository is allowed to set. A key outside this list and
+# $expectedConfig is either a typo or a setting nobody approved, so reject it.
+# Docker is not available on every machine that runs this suite, so this list is
+# how the repository rejects an unsupported setting without the pinned image.
+$allowedExtraKeys = [System.Collections.Generic.HashSet[string]]::new(
+    [string[]] @(
+        'config.restricted_mode'
+        'config.custom_model_max_tokens'
+        'config.max_model_tokens'
+        'pr_reviewer.require_security_review'
+        'pr_reviewer.require_tests_review'
+        'pr_reviewer.require_estimate_effort_to_review'
+        'pr_reviewer.persistent_comment'
+        'pr_reviewer.extra_instructions'
+        'pr_code_suggestions.extra_instructions'
+    ),
+    [StringComparer]::Ordinal)
+
+foreach ($key in $settings.Keys) {
+    if (-not $expectedConfig.ContainsKey($key) -and -not $allowedExtraKeys.Contains($key)) {
+        $failures.Add("Unsupported PR-Agent setting: $key")
+    }
+}
+
 foreach ($setting in $expectedConfig.GetEnumerator()) {
     if (-not $settings.ContainsKey($setting.Key) -or $settings[$setting.Key] -ne $setting.Value) {
         $failures.Add("Expected $($setting.Key) = $($setting.Value)")
