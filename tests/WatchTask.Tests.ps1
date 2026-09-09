@@ -498,13 +498,21 @@ try {
     $reader = New-TailReader -Path $emptyPath
     $text = Read-InitialTailText -Reader $reader -LineCount 40
 
+    # ReadSucceeded is what proves Set-TailReaderCheckpoint bound: a $null Consumed argument
+    # throws a binding error inside Read-InitialTailText, which its catch turns into
+    # ReadSucceeded = $false. This case locks the three reachable comma sites: the zero-length
+    # returns in Read-FileHead and Read-FileCheckpoint, and the else branch in Read-InitialTailText.
+    # The two "return , $exact" sites cannot be reached (the read there always fills the buffer),
+    # so no black-box case can cover them.
     Assert-True ($reader.ReadSucceeded) `
         "Zero bytes: the read must succeed, but it failed with: $($reader.ReadError)"
     Assert-True ($text -eq '') 'Zero bytes: an empty file has no text to show.'
     Assert-True ($null -ne $reader.Head) 'Zero bytes: the remembered file start must be an array, not null.'
     Assert-True ($reader.Head.Length -eq 0) 'Zero bytes: the remembered file start must be empty.'
-    Assert-True ($null -ne $reader.Checkpoint -or $reader.CheckpointOffset -eq 0) `
-        'Zero bytes: the checkpoint must be set without throwing.'
+    Assert-True ($reader.CheckpointOffset -eq 0) `
+        "Zero bytes: the checkpoint offset must be zero, got $($reader.CheckpointOffset)."
+    Assert-True ($null -eq $reader.Checkpoint) `
+        'Zero bytes: an empty file consumes nothing, so the checkpoint stays unset.'
 }
 finally {
     Remove-Item -LiteralPath $emptyPath -Force -ErrorAction SilentlyContinue
@@ -712,6 +720,43 @@ try {
         "Session preference: the session must be named even when it is not the caller's. Output: $($without.Output)"
     Assert-True ($without.Output -notmatch 'this session') `
         "Session preference: an unrelated session must not be called this session. Output: $($without.Output)"
+}
+finally {
+    $env:CLAUDE_CODE_SESSION_ID = $previousSession
+    foreach ($writer in $writers) { $writer.Dispose() }
+    Remove-Item -LiteralPath $root -Recurse -Force
+}
+
+# --- With no session id, the script's own checkout wins over a newer task elsewhere ---
+#
+# The selection unit test pins this with hand-built records. This drives the whole script, so a
+# regression in discovery or the wiring in Invoke-WatchTask would show here. One task belongs to
+# the checkout the script runs from, the other to the main checkout, and the own-checkout one is
+# older, so only the checkout preference can pick it.
+
+$ownPrefix = ConvertTo-ClaudeProjectFolder -Path $repoRoot
+
+$root = New-WatchTestRoot
+$writers = @()
+$previousSession = $env:CLAUDE_CODE_SESSION_ID
+try {
+    $env:CLAUDE_CODE_SESSION_ID = $null
+
+    $mine = New-FakeTaskOutput -Root $root -ProjectFolder "$ownPrefix-a" -LastWrite (Get-Date).AddMinutes(-10) -Lines @(
+        'own checkout run', 'OWN-CHECKOUT-MARKER'
+    )
+    $elsewhere = New-FakeTaskOutput -Root $root -ProjectFolder "$prefix-b" -LastWrite (Get-Date) -Lines @(
+        'other checkout run', 'OTHER-CHECKOUT-MARKER'
+    )
+
+    $writers = @((Open-FakeTaskWriter -Path $mine), (Open-FakeTaskWriter -Path $elsewhere))
+
+    $result = Invoke-WatchScript -ScriptArgs @('-Root', $root, '-NoFollow')
+
+    Assert-True ($result.Output -match 'OWN-CHECKOUT-MARKER') `
+        "Checkout preference: the task in the script's own checkout must be tailed, even though it is older. Output: $($result.Output)"
+    Assert-True ($result.Output -notmatch 'OTHER-CHECKOUT-MARKER') `
+        "Checkout preference: a newer task from another checkout must not be tailed. Output: $($result.Output)"
 }
 finally {
     $env:CLAUDE_CODE_SESSION_ID = $previousSession
@@ -1021,6 +1066,61 @@ finally {
     if ($writer) { $writer.Dispose() }
     if ($job) { Remove-Job -Job $job -Force -ErrorAction SilentlyContinue }
     Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+# --- A marker written between the settle state read and the liveness probe is still the verdict ---
+#
+# The settle loop reads the terminal state, then probes liveness. A writer that appends its marker
+# and closes in that gap leaves the loop with a stale "no marker" state and a fresh "not held"
+# probe. The old code fell through to "stopped without a terminal marker" and never printed the
+# marker line. The writer is gone, so the file is stable: its real end is the verdict.
+
+$job = $null
+$racePath = Join-Path ([System.IO.Path]::GetTempPath()) ("watch-task-settle-race-$([guid]::NewGuid()).output")
+try {
+    [System.IO.File]::WriteAllText($racePath, "RUN-LINE`n")
+
+    $job = Start-Job -ScriptBlock {
+        param($exe, $script, $path)
+        & $exe -NoProfile -Command @"
+. '$script'
+
+`$script:stateCalls = 0
+`$script:realGetTaskState = `${function:Get-TaskState}
+function Get-TaskState {
+    param([Parameter(Mandatory)][string] `$Path)
+
+    `$script:stateCalls++
+    if (`$script:stateCalls -eq 2) {
+        # The writer appends its marker and closes in the window between this state read and the
+        # liveness probe that follows it. This call returns the state as it was just before.
+        [System.IO.File]::AppendAllText(`$Path, '[exited with code 7]' + [char]10)
+        return [pscustomobject]@{ Running = `$true; ExitCode = `$null; BytesRead = 0 }
+    }
+    return (& `$script:realGetTaskState -Path `$Path)
+}
+
+`$record = [pscustomobject]@{
+    Path = '$path'; LastWrite = (Get-Date); Running = `$true; ExitCode = `$null; Terminal = 'none'
+}
+Watch-Record -Record `$record -Tail 40 | Out-Null
+"@ 2>&1
+    } -ArgumentList $hostExe, $watchScript, $racePath
+
+    $finished = Wait-Job -Job $job -Timeout 30
+    Assert-True ($null -ne $finished) 'Settle race: the watcher must stop, but it was still running after 30s.'
+
+    $output = Get-JobOutputSoFar -Job $job
+    Assert-True ($output -match '\[exited with code 7\]') `
+        "Settle race: the marker line written in the window must still be printed. Output: $output"
+    Assert-True ((Get-LastNonEmptyLine -Text $output) -eq 'Exit code: 7') `
+        "Settle race: the verdict must be the real terminal state. Output: $output"
+    Assert-True ($output -notmatch 'without a terminal marker') `
+        "Settle race: a marked file must not be reported markerless. Output: $output"
+}
+finally {
+    if ($job) { Remove-Job -Job $job -Force -ErrorAction SilentlyContinue }
+    Remove-Item -LiteralPath $racePath -Force -ErrorAction SilentlyContinue
 }
 
 # --- A successful read resets earlier read failures ---

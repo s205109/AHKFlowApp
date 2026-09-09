@@ -27,13 +27,15 @@
        a terminal marker, or when nothing holds it open any more.
 
   With no running task it prints the newest stopped task's last lines, terminal state, and path,
-  then exits 0. With more than one running it tails the newest and names the count.
+  then exits 0. With more than one running it tails the one the preference order in step 3 picks
+  and names how many others are running.
 
 .PARAMETER List
   Print tasks with their state, age, and index, then exit. Every running task gets a row, and
   newest stopped tasks fill the rest up to twenty rows.
 .PARAMETER Index
-  Select one task from the same list -List prints (1-based) instead of the newest running one.
+  Select one task from the same list -List prints (1-based) instead of the one the preference
+  order would pick.
 .PARAMETER Tail
   How many trailing lines to print before following. Default 40.
 .PARAMETER Root
@@ -45,9 +47,9 @@
 param(
     [switch] $List,
 
-    # 1-based, matching the numbers -List prints. Left at 0 it means "pick the newest running
-    # task". The range stops 0 and a negative from reading as that default and quietly ignoring
-    # what the caller asked for.
+    # 1-based, matching the numbers -List prints. Left at 0 it means "let the preference order in
+    # step 3 pick". The range stops 0 and a negative from reading as that default and quietly
+    # ignoring what the caller asked for.
     [ValidateRange(1, [int]::MaxValue)]
     [int] $Index,
 
@@ -358,15 +360,19 @@ $script:SharingViolationHResult = -2147024864
 
 function Test-TaskFileHeldOpen {
     <#
-      Whether anything holds this file open for writing. That is what a running task means.
+      Whether another handle is holding this file open in a mode that a writer needs. For a task
+      output file, the only thing that opens such a handle is the runner writing it, so this is
+      "is the task still running".
 
-      The file is opened for reading while write access is denied to everyone else. The open fails
-      only while some other handle holds write access, so the failure is the answer.
+      The file is opened for reading while write access is denied to everyone else. The open
+      fails with a sharing violation whenever some other handle would not share that: a writer,
+      or a reader opened with no sharing at all. Nothing but the runner opens these files, so in
+      practice the sharing violation is the runner's write handle.
 
       The exception type is not the test. FileNotFoundException and DirectoryNotFoundException
       both derive from IOException, and a task output file can be deleted between the folder
       listing and this call, so a broad catch would call a file that is gone a running task. Only
-      the sharing violation's HResult means a writer holds it.
+      the sharing violation's HResult is treated as running.
 
       PowerShell wraps a failing .NET constructor in a MethodInvocationException, so the real
       exception is found by walking InnerException.
@@ -447,6 +453,9 @@ function Get-WatchTaskRecord {
             ForEach-Object {
                 $file = $_.File
                 $owner = $_.Checkout
+                # Probe liveness first, then read the state, so the state read is the newer
+                # observation. A task that finishes between the two is then read as finished.
+                $held = Test-TaskFileHeldOpen -Path $file.FullName
                 $state = Get-TaskState -Path $file.FullName
                 if ($null -ne $state) {
                     $terminal = if ($state.Running) { 'none' }
@@ -460,7 +469,7 @@ function Get-WatchTaskRecord {
                     [pscustomobject]@{
                         Path        = $file.FullName
                         LastWrite   = $file.LastWriteTime
-                        Running     = (Test-TaskFileHeldOpen -Path $file.FullName)
+                        Running     = $held
                         ExitCode    = $state.ExitCode
                         Terminal    = $terminal
                         Session     = $session
@@ -1209,6 +1218,11 @@ function Watch-Record {
         }
 
         if ($reader.AtEnd) {
+            # The marker rule cannot see a writer that stopped without writing one, and the loop
+            # would then poll a dead file for ever. Liveness answers the other half. Probe it
+            # before the state read, so the state read is the newer observation and a marker
+            # written between the two is on the side that wins.
+            $held = Test-TaskFileHeldOpen -Path $reader.Path
             $state = Get-TaskState -Path $reader.Path
             if ($null -eq $state) {
                 $stateReadFailures++
@@ -1221,10 +1235,6 @@ function Watch-Record {
             else {
                 $stateReadFailures = 0
             }
-
-            # The marker rule cannot see a writer that stopped without writing one, and the loop
-            # would then poll a dead file for ever. Liveness answers the other half.
-            $held = Test-TaskFileHeldOpen -Path $reader.Path
 
             if ($null -ne $state -and (-not $state.Running -or -not $held)) {
                 # The state above was read after the tail read returned, so the run can have
@@ -1259,8 +1269,10 @@ function Watch-Record {
                     $caughtUp += $roundBytes
 
                     if ($catchUpFailed) { break }
-                    $settled = Get-TaskState -Path $reader.Path
+                    # Probe liveness first, then read the state. The state read is then the newer
+                    # observation, so a marker written between the two is on the side that wins.
                     $settledHeld = Test-TaskFileHeldOpen -Path $reader.Path
+                    $settled = Get-TaskState -Path $reader.Path
                     # A deferred read returns nothing, but the file still has everything the new
                     # run wrote. Settling on it would print the verdict over output that never
                     # reached the screen, so it counts as a round that read something.
@@ -1327,6 +1339,27 @@ function Watch-Record {
                     continue
                 }
                 $state = $settled
+
+                # The state read and the liveness probe were taken at different instants. A writer
+                # that appended its marker and then closed in the gap leaves "no marker" from the
+                # read and "not held" from the probe. The writer is gone now, so the file cannot
+                # change again: drain to its end and read the state once more, both on the stable
+                # file, so a marker written in that gap is neither missed nor left unprinted.
+                if (-not $settledHeld -and $state.Running) {
+                    $drained = 0
+                    do {
+                        $more = Read-TailText -Reader $reader
+                        if (-not $reader.ReadSucceeded) { break }
+                        foreach ($line in @(Split-TailLine -Reader $reader -Text $more)) {
+                            Write-Host $line
+                        }
+                        $drained += $more.Length
+                    } while ($more.Length -gt 0 -and -not $reader.AtEnd)
+                    $caughtUp += $drained
+
+                    $stable = Get-TaskState -Path $reader.Path
+                    if ($null -ne $stable) { $state = $stable }
+                }
 
                 if ($reader.Carry.Trim().Length -gt 0) {
                     Write-Host $reader.Carry
