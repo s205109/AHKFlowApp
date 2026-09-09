@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace AHKFlowApp.E2E.Tests.Fixtures;
 
@@ -30,10 +31,18 @@ public sealed class ApiFactory(string discriminator) : WebApplicationFactory<Pro
         _connectionString = SqlTestDatabase.CreateConnectionString(
             await E2ESqlServer.GetConnectionStringAsync(), discriminator);
 
-        // Force the factory to build the host (triggers ConfigureWebHost).
-        _ = Services;
-        using AsyncServiceScope scope = Services.CreateAsyncScope();
-        await scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.MigrateAsync();
+        await HostStartGate.RunAsync(async () =>
+        {
+            // Force the factory to build the host (triggers ConfigureWebHost).
+            _ = Services;
+
+            // Resolving ILoggerFactory is what runs Serilog's registration, and that is where the
+            // bootstrap logger is frozen. Doing it here keeps the freeze inside the gate.
+            _ = Services.GetRequiredService<ILoggerFactory>();
+
+            using AsyncServiceScope scope = Services.CreateAsyncScope();
+            await scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.MigrateAsync();
+        });
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
