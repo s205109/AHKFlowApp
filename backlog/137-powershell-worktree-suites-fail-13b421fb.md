@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: none (CI and test harness)
 - **Difficulty**: moderate
-- **Stage**: 6-verify
+- **Stage**: 8-review
 
 ## Summary
 
@@ -104,7 +104,7 @@ consecutive `pwsh` repetition runs were:
 | `WorktreeSweepRemoteBase.Tests.ps1` | 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20 |
 | `WorktreeRemoveHook.Tests.ps1` | 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20 |
 
-The full local PowerShell slice passed all 56 suites in 206.865 seconds with six workers. The
+The full local PowerShell slice passed all 56 suites in 187.766 seconds with six workers. The
 starting observations were 98.6 seconds and 158.6 seconds. The change keeps both suites marked
 `execution: "parallel"` in `tests/powershell-suites.json`. No serialization was introduced, so
 its measured cost is zero.
@@ -112,18 +112,19 @@ its measured cost is zero.
 The five-step local Gate passed. Build and format reported no errors. The coverage slice skipped
 all five changed files under its test-only exclusions. `git diff --check main...HEAD` passed.
 
-GitHub Actions run `34269850009` passed five consecutive attempts on verification commit
-`774930b1d2aeabf1feddb437c226e28a6be037dd`:
+GitHub Actions run `34319532845` passed five consecutive attempts on verification commit
+`b292ba67a4c6e9c7e782218a3755f47acdd0b41b`:
 
 | Attempt | `powershell-suites` job | Result |
 |---|---|---|
-| 1 | `102208987508` | pass |
-| 2 | `102349931778` | pass |
-| 3 | `102351861390` | pass |
-| 4 | `102353998330` | pass |
-| 5 | `102356110090` | pass |
+| 1 | `102363230410` | pass |
+| 2 | `102368680429` | pass |
+| 3 | `102371090862` | pass |
+| 4 | `102373452297` | pass |
+| 5 | `102375926834` | pass |
 
-Nothing else needs documentation. The change affects only the two test readiness conditions.
+The durable verification artifacts are the two changed PowerShell suites. No manual verification
+is required. Nothing else needs documentation because the change affects only test readiness.
 
 ## Acceptance criteria
 

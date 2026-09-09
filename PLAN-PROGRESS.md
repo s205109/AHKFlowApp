@@ -14,3 +14,5 @@ Review recovery 2a | confirmed: replace the timed empty-marker delay with an exp
 Review recovery 2b | confirmed: cleanup must stop both known process IDs if an assertion exits early
 Review recovery 2 complete | 4f4ffe18 | tests: sweep suite pass under pwsh and Windows PowerShell 5.1 | plan: df51e9f
 Review recovery simplify | verdict: nothing further to simplify
+Final verification | PASS | both target suites 20/20; build and format green; 56 PowerShell suites green in 187.766s; coverage skipped five excluded files; diff check green; CI run 34319532845 attempts 1-5 green on b292ba67
+Document | complete: final evidence recorded; all acceptance criteria remain met; no other documentation needed
