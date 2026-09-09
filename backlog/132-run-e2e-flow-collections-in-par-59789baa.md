@@ -6,7 +6,7 @@
 - **Type**: Tooling
 - **Interfaces**: none (test project)
 - **Difficulty**: complex
-- **Stage**: 2-design
+- **Stage**: 3-plan
 
 ## Summary
 
@@ -59,7 +59,7 @@ that the slice finishes in the time its slowest flow takes rather than the sum o
 - Spec: `docs/superpowers/specs/2026-09-09-parallel-e2e-stacks-design-132.md`. The framing that
   led to it is in `docs/superpowers/specs/2026-09-03-net-test-speed-and-reliability-design-128.md`,
   under D7.
-- Plan: none — not yet at Plan.
+- Plan: `docs/superpowers/plans/2026-09-09-parallel-e2e-stacks-plan-132.md`
 - **Measured baseline, one warm run, this machine, 2026-09-09.** Wall clock 306.96 s, not the
   321.65 s this item was filed with. The test host reported 270 s, the 62 test durations sum to
   260.22 s, `StackFixture.InitializeAsync` costs 6.24 s once, and all 57 `ResetDataAsync` calls
