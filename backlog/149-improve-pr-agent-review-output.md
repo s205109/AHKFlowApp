@@ -44,3 +44,10 @@ As a maintainer, I want focused and attributable PR-Agent feedback so that autom
   runs the old configuration. Plan Task 5 proves all three after merge and records the run and
   comment URLs. The configuration for all three is committed and checked by
   `tests/PrAgentConfiguration.Tests.ps1`.
+- The five-finding limit is a request to the model, not a cap PR-Agent enforces. In 0.45.0,
+  `num_max_findings` reaches the prompt, and it also decides when PR-Agent may resolve an earlier
+  finding. Nothing trims `key_issues_to_review` before the comment is rendered. The reviewer
+  instructions now repeat the limit, so it is stated twice. A hard cap would need a new workflow
+  step that edits the published comment, and that step could hide a real finding. That trade is
+  not settled, so it is not built here. Plan Task 5 must count the findings in the live run, and
+  a separate item should be filed if the live count goes above five.

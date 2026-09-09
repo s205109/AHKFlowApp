@@ -38,6 +38,12 @@ require_priority_files = true
 # 0.45.0 already defaults this to true. Set it anyway, so the policy cannot
 # drift with an upstream default.
 persistent_finding_state = true
+
+# This number reaches the model prompt, and it also decides when PR-Agent may
+# resolve an earlier finding. It does not truncate the published list: nothing
+# in 0.45.0 trims key_issues_to_review before rendering. The instructions below
+# repeat the limit for that reason. Five is a request to the model, not a cap
+# the tool enforces, so the live review has to count what actually arrives.
 num_max_findings = 5
 persistent_comment = true
 
@@ -55,6 +61,7 @@ Report only defects introduced or exposed by this pull request.
 For every finding, state the concrete failure path and the supplied evidence that proves it.
 Treat unchanged code outside the supplied context as unknown.
 Return no finding when its evidence is incomplete.
+Report at most 5 findings, ordered by severity.
 '''
 
 [pr_code_suggestions]

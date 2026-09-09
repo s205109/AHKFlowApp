@@ -11,6 +11,13 @@ $repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 $expectedImage = 'uses: docker://pragent/pr-agent@sha256:548b760b81ab4b3f729182428695ccc1194bbf87528c2b1e2b2b07e5223af7b6'
 
 $expectedConfig = @{
+    'config.restricted_mode' = 'true'
+    'config.custom_model_max_tokens' = '262144'
+    'config.max_model_tokens' = '64000'
+    'pr_reviewer.require_security_review' = 'true'
+    'pr_reviewer.require_tests_review' = 'true'
+    'pr_reviewer.require_estimate_effort_to_review' = 'false'
+    'pr_reviewer.persistent_comment' = 'true'
     'config.model' = '"openrouter/pareto-code"'
     'config.fallback_models' = '["openrouter/tencent/hy3"]'
     'config.retry_same_model_on_timeout' = 'false'
@@ -27,23 +34,31 @@ $expectedConfig = @{
     'pr_code_suggestions.dual_publishing_score_threshold' = '8'
 }
 
-# Every other key the repository is allowed to set. A key outside this list and
-# $expectedConfig is either a typo or a setting nobody approved, so reject it.
-# Docker is not available on every machine that runs this suite, so this list is
-# how the repository rejects an unsupported setting without the pinned image.
+# The only keys checked by name rather than by value. Both hold a multi-line
+# string, so the value on the key line is just the opening delimiter and says
+# nothing. $requiredInstructions below checks what those two strings must say.
+# Every other approved key lives in $expectedConfig with its exact value, so a
+# changed value fails. A key in neither place is a typo or a setting nobody
+# approved. Docker is not available on every machine that runs this suite, so
+# these lists are how the repository rejects drift without the pinned image.
 $allowedExtraKeys = [System.Collections.Generic.HashSet[string]]::new(
     [string[]] @(
-        'config.restricted_mode'
-        'config.custom_model_max_tokens'
-        'config.max_model_tokens'
-        'pr_reviewer.require_security_review'
-        'pr_reviewer.require_tests_review'
-        'pr_reviewer.require_estimate_effort_to_review'
-        'pr_reviewer.persistent_comment'
         'pr_reviewer.extra_instructions'
         'pr_code_suggestions.extra_instructions'
     ),
     [StringComparer]::Ordinal)
+
+# Sentences the instruction blocks must keep. The evidence rules exist because
+# an earlier review claimed a defect in unchanged code it could not see.
+$requiredInstructions = @(
+    'Report only defects introduced or exposed by this pull request.'
+    'For every finding, state the concrete failure path and the supplied evidence that proves it.'
+    'Treat unchanged code outside the supplied context as unknown.'
+    'Return no finding when its evidence is incomplete.'
+    'Report at most 5 findings, ordered by severity.'
+    'Each suggestion must apply to changed lines only.'
+    'Do not suggest new files, new tests, or refactors that span files.'
+)
 
 # Reads the subset of TOML this repository writes. TOML allows a bare key, a key
 # in double quotes, and a key in single quotes, and all three set the same
@@ -74,7 +89,14 @@ function ConvertTo-PrAgentSetting {
 
         if ($line -match '^\s*\[(?<section>[^\]]+)\]\s*(?:#.*)?$') {
             $currentSection = $Matches.section
-            [void] $sections.Add($currentSection)
+
+            # TOML forbids declaring a table twice, and the pinned image reads
+            # this file with Python tomllib, which raises on the second one.
+            # PR-Agent then runs no command at all, so reject it here.
+            if (-not $sections.Add($currentSection)) {
+                $problems.Add("Duplicate PR-Agent section: [$currentSection]")
+            }
+
             continue
         }
 
@@ -91,7 +113,15 @@ function ConvertTo-PrAgentSetting {
                 continue
             }
 
-            $settings["$currentSection.$key"] = $value
+            $fullKey = "$currentSection.$key"
+
+            # Same reason as a duplicate section: tomllib refuses to overwrite a
+            # value, so a repeated key stops every PR-Agent command.
+            if ($settings.ContainsKey($fullKey)) {
+                $problems.Add("Duplicate PR-Agent setting: $fullKey")
+            }
+
+            $settings[$fullKey] = $value
 
             foreach ($delimiter in @("'''", '"""')) {
                 if (-not $value.StartsWith($delimiter, [StringComparison]::Ordinal)) {
@@ -152,6 +182,12 @@ function Get-PrAgentPolicyFailure {
     foreach ($setting in $expectedConfig.GetEnumerator()) {
         if (-not $parsed.Settings.ContainsKey($setting.Key) -or $parsed.Settings[$setting.Key] -ne $setting.Value) {
             $failures.Add("Expected $($setting.Key) = $($setting.Value)")
+        }
+    }
+
+    foreach ($instruction in $requiredInstructions) {
+        if ($ConfigText.IndexOf($instruction, [StringComparison]::Ordinal) -lt 0) {
+            $failures.Add("The reviewer instructions must contain: $instruction")
         }
     }
 
@@ -227,6 +263,36 @@ $cases = @(
         Name = 'A raised step timeout is rejected'
         Workflow = $workflow.Replace('timeout-minutes: 20', 'timeout-minutes: 30')
         Expect = 'The PR-Agent step must keep its 20-minute cap.'
+    }
+    @{
+        Name = 'A disabled restricted mode is rejected'
+        Config = $config.Replace('restricted_mode = true', 'restricted_mode = false')
+        Expect = 'Expected config.restricted_mode = true'
+    }
+    @{
+        Name = 'A disabled security review is rejected'
+        Config = $config.Replace('require_security_review = true', 'require_security_review = false')
+        Expect = 'Expected pr_reviewer.require_security_review = true'
+    }
+    @{
+        Name = 'A raised input token cap is rejected'
+        Config = $config.Replace('max_model_tokens = 64000', 'max_model_tokens = 128000')
+        Expect = 'Expected config.max_model_tokens = 64000'
+    }
+    @{
+        Name = 'Dropped evidence instructions are rejected'
+        Config = $config.Replace('Treat unchanged code outside the supplied context as unknown.', 'Use your judgement.')
+        Expect = 'The reviewer instructions must contain: Treat unchanged code outside the supplied context as unknown.'
+    }
+    @{
+        Name = 'A duplicate section is rejected'
+        Config = $config + "`n[config]`n"
+        Expect = 'Duplicate PR-Agent section: [config]'
+    }
+    @{
+        Name = 'A duplicate setting is rejected'
+        Config = $config.Replace('model = "openrouter/pareto-code"', "model = `"openrouter/pareto-code`"`nmodel = `"openrouter/pareto-code`"")
+        Expect = 'Duplicate PR-Agent setting: config.model'
     }
     @{
         Name = 'Instruction text holding an equals sign is not read as a setting'
