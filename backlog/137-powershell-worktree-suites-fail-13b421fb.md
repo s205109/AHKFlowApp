@@ -64,12 +64,17 @@ temporary paths overlap.
 
 `WorktreeSweepRemoteBase.Tests.ps1` used to wait only until a process marker path existed. The
 fixture now makes that race deterministic. It creates the empty marker
-(`tests/WorktreeSweepRemoteBase.Tests.ps1:484`, "New-Item -ItemType File -Path"), waits before
-writing (`tests/WorktreeSweepRemoteBase.Tests.ps1:485`, "Start-Sleep -Milliseconds 750;"), then
-writes the PID (`tests/WorktreeSweepRemoteBase.Tests.ps1:488`, "Set-Content -LiteralPath"). The
+(`tests/WorktreeSweepRemoteBase.Tests.ps1:485`, "New-Item -ItemType File -Path"), then waits for
+the parent-observation signal (`tests/WorktreeSweepRemoteBase.Tests.ps1:487`, "Test-Path -LiteralPath '$parentMarkerObserved'") before writing the PID
+(`tests/WorktreeSweepRemoteBase.Tests.ps1:491`, "Set-Content -LiteralPath '$parentMarker'"). The
 old path-only wait could read `$null` and call `.Trim()`, which produced the exact CI error. The
-fixed wait reads the content (`tests/WorktreeSweepRemoteBase.Tests.ps1:495`, "$markerValue = Get-Content -Raw -LiteralPath $parentMarker -ErrorAction SilentlyContinue") and accepts only a
-positive parsed PID (`tests/WorktreeSweepRemoteBase.Tests.ps1:497`, "[int]::TryParse([string] $markerValue, [ref] $candidateChildId)").
+fixed wait reads the content (`tests/WorktreeSweepRemoteBase.Tests.ps1:498`, "$markerValue = Get-Content -Raw -LiteralPath $parentMarker -ErrorAction SilentlyContinue") and accepts only a
+positive parsed PID (`tests/WorktreeSweepRemoteBase.Tests.ps1:500`, "[int]::TryParse([string] $markerValue, [ref] $candidateChildId)"). It signals that the empty marker was observed before
+the child can continue (`tests/WorktreeSweepRemoteBase.Tests.ps1:505`, "Set-Content -LiteralPath $parentMarkerObserved -Value 'observed'").
+
+The failure cleanup also stops both known process IDs
+(`tests/WorktreeSweepRemoteBase.Tests.ps1:519`, "foreach ($id in @($parent.Id, $childId))"). An
+early assertion can no longer leave the fixture child running until its own timeout.
 
 `WorktreeRemoveHook.Tests.ps1` used to wait only until the worktree folder was gone
 (`tests/WorktreeRemoveHook.Tests.ps1:545`, "$removed = Wait-ForCondition { -not (Test-Path -LiteralPath $wtPath) }"). It then read the diagnostic file without waiting for the watcher. The
