@@ -11,7 +11,7 @@
 - **Type**: Bug
 - **Interfaces**: CLI
 - **Difficulty**: complex
-- **Stage**: 7-document
+- **Stage**: 9-ship
 
 ## Summary
 
