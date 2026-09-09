@@ -59,8 +59,8 @@ jobs:
       # under the job cap of 45 minutes.
       - name: Run PR-Agent
         timeout-minutes: 20
-        # pragent/pr-agent:0.41.1-github_action
-        uses: docker://pragent/pr-agent@sha256:ec267eb168375c150d75efc024e2b10e0e2768ad0c000f15fd2378fe63abfe98
+        # pragent/pr-agent:0.45.0-github_action
+        uses: docker://pragent/pr-agent@sha256:548b760b81ab4b3f729182428695ccc1194bbf87528c2b1e2b2b07e5223af7b6
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           openrouter__key: ${{ secrets.OPENROUTER_API_KEY }}
