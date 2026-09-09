@@ -9,8 +9,8 @@ namespace AHKFlowApp.E2E.Tests;
 
 // Guards the failure message of FirstPageLoad.OpenAsync. A green E2E suite never runs this
 // message, so without these tests it would rot unnoticed and be wrong on the day it matters.
-[Collection(E2ETestCollection.Name)]
-public sealed class FirstPageLoadDiagnosticsTests(StackFixture fixture) : IAsyncLifetime
+[Collection(E2ECollectionD.Name)]
+public sealed class FirstPageLoadDiagnosticsTests(StackFixtureD fixture) : IAsyncLifetime
 {
     public Task InitializeAsync() =>
         fixture.ResetDataAsync();

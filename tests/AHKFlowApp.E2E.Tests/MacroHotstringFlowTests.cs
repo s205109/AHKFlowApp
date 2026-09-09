@@ -4,8 +4,8 @@ using Xunit;
 
 namespace AHKFlowApp.E2E.Tests;
 
-[Collection(E2ETestCollection.Name)]
-public sealed class MacroHotstringFlowTests(StackFixture fixture) : IAsyncLifetime
+[Collection(E2ECollectionD.Name)]
+public sealed class MacroHotstringFlowTests(StackFixtureD fixture) : IAsyncLifetime
 {
     private static readonly BrowserNewContextOptions PhoneViewport = new()
     {

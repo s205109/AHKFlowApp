@@ -4,8 +4,8 @@ using Xunit;
 
 namespace AHKFlowApp.E2E.Tests;
 
-[Collection(E2ETestCollection.Name)]
-public sealed class DownloadsSaveFailureFlowTests(StackFixture fixture) : IAsyncLifetime
+[Collection(E2ECollectionD.Name)]
+public sealed class DownloadsSaveFailureFlowTests(StackFixtureD fixture) : IAsyncLifetime
 {
     // Trailing "undefined;" stops Playwright from auto-invoking the assignment's completion
     // value (the arrow function itself) — EvaluateAsync calls a function-valued result.

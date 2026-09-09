@@ -4,8 +4,8 @@ using Xunit;
 
 namespace AHKFlowApp.E2E.Tests;
 
-[Collection(E2ETestCollection.Name)]
-public sealed class RawHotstringFlowTests(StackFixture fixture) : IAsyncLifetime
+[Collection(E2ECollectionC.Name)]
+public sealed class RawHotstringFlowTests(StackFixtureC fixture) : IAsyncLifetime
 {
     private const string Definition = ":K1000 SE*:ftw::for the win";
     private const string ContinuationDefinition = ":*:col::\n(\nred\ngreen\nblue\n)";

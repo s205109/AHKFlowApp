@@ -4,8 +4,8 @@ using Xunit;
 
 namespace AHKFlowApp.E2E.Tests;
 
-[Collection(E2ETestCollection.Name)]
-public sealed class PublishFreshnessTests(StackFixture fixture)
+[Collection(E2ECollectionB.Name)]
+public sealed class PublishFreshnessTests(StackFixtureB fixture)
 {
     // Directory.GetFiles has a legacy quirk where a three-character extension also matches
     // longer ones. ".wasm" is four characters and ".js" is two, so both patterns below match

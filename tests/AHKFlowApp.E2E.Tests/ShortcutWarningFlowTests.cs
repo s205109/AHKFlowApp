@@ -4,8 +4,8 @@ using Xunit;
 
 namespace AHKFlowApp.E2E.Tests;
 
-[Collection(E2ETestCollection.Name)]
-public sealed class ShortcutWarningFlowTests(StackFixture fixture) : IAsyncLifetime
+[Collection(E2ECollectionA.Name)]
+public sealed class ShortcutWarningFlowTests(StackFixtureA fixture) : IAsyncLifetime
 {
     public Task InitializeAsync() => fixture.ResetDataAsync();
 

@@ -5,8 +5,8 @@ using Xunit;
 
 namespace AHKFlowApp.E2E.Tests;
 
-[Collection(E2ETestCollection.Name)]
-public sealed class HotkeysCrudFlowTests(StackFixture fixture) : IAsyncLifetime
+[Collection(E2ECollectionB.Name)]
+public sealed class HotkeysCrudFlowTests(StackFixtureB fixture) : IAsyncLifetime
 {
     public Task InitializeAsync() =>
         fixture.ResetDataAsync();
