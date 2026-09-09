@@ -139,9 +139,28 @@ Only mixed projects use `Category=Integration` in v1. Whole-project SQL/API suit
 pwsh .\scripts\test-fast.ps1 -Mode E2E
 ```
 
-E2E mode runs `AHKFlowApp.E2E.Tests`. Use it for browser flows, Playwright-covered UI behavior, mobile viewport behavior, service-worker/PWA behavior, and changes to the E2E fixture or published Blazor output. The script starts the same disposable shared SQL Server container used by Integration mode, and the E2E API fixture uses an isolated per-assembly database on that server.
+E2E mode runs `AHKFlowApp.E2E.Tests`. Use it for browser flows, Playwright-covered UI behavior, mobile viewport behavior, service-worker/PWA behavior, and changes to the E2E fixture or published Blazor output. The script starts the same disposable shared SQL Server container used by Integration mode. The suite runs in four groups at once, and each group names its own database on that one server.
 
-A normal E2E run builds the project and its references. Every E2E run clears the Blazor publish folder, then publishes the app again before Playwright starts. That publish compiles and links the current source, so the browser always loads the code in your working tree. `-NoBuild` skips the solution build, but the Blazor publish still runs, so the app under test stays current. E2E flow classes share one API/Spa/browser stack, and each test resets mutable database rows before it starts.
+A normal E2E run builds the project and its references. Every E2E run clears the Blazor publish folder, then publishes the app again before Playwright starts. That publish compiles and links the current source, so the browser always loads the code in your working tree. `-NoBuild` skips the solution build, but the Blazor publish still runs, so the app under test stays current. The flow classes in one group share that group's API, SPA host and browser, and each test resets mutable database rows before it starts.
+
+### Adding a test class to the E2E suite
+
+The E2E suite runs in four groups, `E2E-A` to `E2E-D`. Each group owns a database, an API host, a SPA host and a browser. The whole run takes as long as the slowest group.
+
+**Put a new test class in the smallest group.** The measured seconds for every group are in a comment at the top of `tests/AHKFlowApp.E2E.Tests/E2ETestCollection.cs`. Nothing checks the balance. A class put in the largest group makes every E2E run slower, and no test reports it.
+
+Give the class the group's collection attribute and the group's fixture type in its constructor. The two must agree:
+
+```csharp
+[Collection(E2ECollectionC.Name)]
+public sealed class HotstringsCrudFlowTests(StackFixtureC fixture) : IAsyncLifetime
+```
+
+xUnit matches a fixture to a constructor parameter by exact type, so a parameter typed as the shared `StackFixture` base class does not resolve and the class will not build. A private helper method may still take the base type.
+
+A test that changes process-wide state, such as an environment variable, belongs in `ExclusiveTestCollection` instead. xUnit runs every parallel collection to completion before it starts that one, so it runs last and on its own.
+
+The parallelism is capped at four in `tests/AHKFlowApp.E2E.Tests/xunit.runner.json`. Four is chosen for the CI runner, which has four cores, not for a development machine. To make the suite serial again, add `"parallelizeTestCollections": false` to that file.
 
 ### Writing a flow test
 

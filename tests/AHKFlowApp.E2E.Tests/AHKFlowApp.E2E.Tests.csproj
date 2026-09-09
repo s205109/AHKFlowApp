@@ -27,6 +27,16 @@
     <PackageReference Include="System.Security.Cryptography.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <!--
+      The runner file caps this suite at four parallel collections. xUnit reads it from the output
+      folder, not from the project folder, so without this copy rule the cap is present in git and
+      absent at run time.
+    -->
+    <None Update="xunit.runner.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\..\src\Backend\AHKFlowApp.API\AHKFlowApp.API.csproj" />
     <ProjectReference Include="..\..\src\Backend\AHKFlowApp.Infrastructure\AHKFlowApp.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\Frontend\AHKFlowApp.UI.Blazor\AHKFlowApp.UI.Blazor.csproj" />
