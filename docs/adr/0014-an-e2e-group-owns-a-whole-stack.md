@@ -1,8 +1,13 @@
 # An E2E group owns a whole stack, and the groups are balance buckets
 
 The E2E suite runs its test classes in four xUnit collections. Each collection owns a database, an
-API host, a SPA host and a browser. Nothing mutable is shared between two collections except one
-SQL Server container, and each collection names its own database on that server.
+API host, a SPA host and a browser.
+
+Two things are still shared, and both are deliberate. The four collections use one SQL Server
+container, and each names its own database on it. They also share Serilog's process-wide logger,
+because `Program.cs` owns that static and the test code cannot take it away. The logger is the
+reason host construction is serialised, and the Consequences section below gives the full rule.
+Nothing else mutable crosses a collection boundary.
 
 The four groups hold no meaning. They are balance buckets. A class belongs to the group that keeps
 the four groups closest to equal, and nothing else decides it.
