@@ -73,6 +73,11 @@ $script:MaxSettleRounds = 5
 # reader is inside a call; more than that is a writer the reader cannot keep up with anyway.
 $script:MaxReplacementRetries = 2
 
+# How many rows -List prints when nothing much is running. Every running task always gets a row,
+# and newest stopped tasks fill whatever is left, so a quiet machine still shows recent history
+# and a busy one still shows every running task. -Index addresses this same list.
+$script:ListRowCount = 20
+
 function ConvertTo-ClaudeProjectFolder {
     <#
       The rule is inferred from the folder names Claude Code writes, not from documentation.
@@ -1394,7 +1399,10 @@ function Invoke-WatchTask {
         return 1
     }
 
-    $recent = @($records | Select-Object -First 20)
+    $running = @($records | Where-Object { $_.Running })
+    $stopped = @($records | Where-Object { -not $_.Running })
+    $fill = [Math]::Max(0, $script:ListRowCount - $running.Count)
+    $recent = @($running) + @($stopped | Select-Object -First $fill)
 
     if ($List) {
         $rowIndex = 0
@@ -1426,8 +1434,6 @@ function Invoke-WatchTask {
         }
         return (Watch-Record -Record $recent[$Index - 1] -Tail $Tail -NoFollow:$NoFollow)
     }
-
-    $running = @($records | Where-Object { $_.Running })
 
     $chosen = Select-WatchTaskRecord -Record $records -SessionId $sessionId -OwnCheckoutPath $ownCheckout
 

@@ -700,6 +700,53 @@ finally {
     Remove-Item -LiteralPath $root -Recurse -Force
 }
 
+# --- Every running task gets a row, past the twenty-row window ---
+#
+# The count line names every running task, and it tells the reader to use -List and -Index. That
+# sentence is only true while the list holds every running task. A fixed window of twenty rows
+# breaks it as soon as twenty-one run at once, and that is not a rare state on this machine: the
+# spec measured thirty-nine files counted as running under the old rule.
+
+$root = New-WatchTestRoot
+$writers = @()
+try {
+    $runningCount = 23
+    $paths = [System.Collections.Generic.List[string]]::new()
+    for ($i = 0; $i -lt $runningCount; $i++) {
+        # Newest first means the oldest is last, and the oldest is the one a fixed window drops.
+        $path = New-FakeTaskOutput -Root $root -ProjectFolder "$prefix-many$i" -LastWrite (Get-Date).AddMinutes(-$i) -Lines @(
+            "running $i", "RUN-MARKER-$i"
+        )
+        $paths.Add($path)
+        $writers += (Open-FakeTaskWriter -Path $path)
+    }
+
+    # Two stopped tasks, so the list has something to drop before it drops a running one.
+    New-FakeTaskOutput -Root $root -ProjectFolder "$prefix-done" -LastWrite (Get-Date).AddHours(-2) -Lines @(
+        'finished', '[exited with code 0]', ''
+    ) | Out-Null
+
+    # Not $list. That name is case-insensitively the [switch] $List variable the dot-sourced
+    # script left in this scope, and a PSCustomObject cannot be stored in it.
+    $listResult = Invoke-WatchScript -ScriptArgs @('-Root', $root, '-List')
+    $runningRows = @($listResult.Output -split "`r?`n" | Where-Object { $_ -match '\brunning\b' })
+    Assert-True ($runningRows.Count -eq $runningCount) `
+        "List window: -List must print a row for every running task. Expected $runningCount, got $($runningRows.Count). Output: $($listResult.Output)"
+
+    $default = Invoke-WatchScript -ScriptArgs @('-Root', $root, '-NoFollow')
+    Assert-True ($default.Output -match "$($runningCount - 1) other tasks are also running") `
+        "List window: the count line must name every other running task. Output: $($default.Output)"
+
+    # The oldest running task sits past the old twenty-row window, and -Index must still reach it.
+    $byIndex = Invoke-WatchScript -ScriptArgs @('-Root', $root, '-NoFollow', '-Index', "$runningCount")
+    Assert-True ($byIndex.Output -match "RUN-MARKER-$($runningCount - 1)") `
+        "List window: -Index must reach the last running task. Output: $($byIndex.Output)"
+}
+finally {
+    foreach ($writer in $writers) { $writer.Dispose() }
+    Remove-Item -LiteralPath $root -Recurse -Force
+}
+
 # --- No matching files at all is a visible failure ---
 
 $root = New-WatchTestRoot
