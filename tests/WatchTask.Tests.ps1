@@ -92,6 +92,19 @@ function Write-FakeTaskText {
     $Writer.Flush()
 }
 
+# The follow loop ends when nothing holds the output file open. The cases below drive fixtures
+# this suite writes and closes, so the real probe would end every follow on its first poll and
+# none of them would test the machinery they are here for. They pin the probe to "held" and leave
+# the real Win32 sharing behaviour to the cases that own it, further down.
+#
+# A literal here-string, so $Path and $true reach the child as written rather than expanding here.
+$heldStub = @'
+function Test-TaskFileHeldOpen {
+    param([Parameter(Mandatory)][string] $Path)
+    return $true
+}
+'@
+
 function Invoke-WatchScript {
     param([string[]] $ScriptArgs)
 
@@ -954,6 +967,56 @@ finally {
     Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
 }
 
+# --- A writer that closes without a marker ends the follow ---
+#
+# The marker rule cannot see this: the file's text says running for ever. Liveness can. The lines
+# already on disk are printed first, because a file released mid-write still has its last bytes
+# there and reporting a verdict over unread output is the defect this whole area exists to avoid.
+
+$root = New-WatchTestRoot
+$job = $null
+$writer = $null
+try {
+    $session = [guid]::NewGuid().ToString()
+    $tasksDir = Join-Path (Join-Path (Join-Path $root "$prefix-abandoned") $session) 'tasks'
+    New-Item -ItemType Directory -Path $tasksDir -Force | Out-Null
+    $abandonedPath = Join-Path $tasksDir 'task.output'
+    [System.IO.File]::WriteAllText($abandonedPath, "FIRST-LINE`n")
+
+    $writer = Open-FakeTaskWriter -Path $abandonedPath
+
+    $job = Start-Job -ScriptBlock {
+        param($exe, $script, $searchRoot)
+        & $exe -NoProfile -File $script -Root $searchRoot -Tail 40 2>&1
+    } -ArgumentList $hostExe, $watchScript, $root
+
+    $entered = Wait-ForJobOutput -Job $job -Pattern 'FIRST-LINE'
+    Assert-True $entered 'Abandoned run: the watcher must start following within 30s.'
+
+    # Write the last line and release the file without a marker, which is what a session that dies
+    # leaves behind.
+    Write-FakeTaskText -Writer $writer -Text "LAST-LINE`n"
+    $writer.Dispose()
+    $writer = $null
+
+    $finished = Wait-Job -Job $job -Timeout 30
+    Assert-True ($null -ne $finished) `
+        'Abandoned run: the watcher must stop once nothing holds the file, but it was still running after 30s.'
+
+    $output = Get-JobOutputSoFar -Job $job
+    Assert-True ($output -match 'LAST-LINE') `
+        "Abandoned run: the last bytes on disk must be printed before the verdict. Output: $output"
+    Assert-True ((Get-LastNonEmptyLine -Text $output) -eq 'State: stopped without a terminal marker') `
+        "Abandoned run: the verdict must name the third state. Output: $output"
+    Assert-True ($output -notmatch 'The file changed while it was being followed') `
+        "Abandoned run: a released file is not a stale byte offset. Output: $output"
+}
+finally {
+    if ($writer) { $writer.Dispose() }
+    if ($job) { Remove-Job -Job $job -Force -ErrorAction SilentlyContinue }
+    Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+}
+
 # --- A successful read resets earlier read failures ---
 
 $retryPath = Join-Path ([System.IO.Path]::GetTempPath()) ("watch-task-retries-$([guid]::NewGuid()).output")
@@ -961,6 +1024,7 @@ try {
     [System.IO.File]::WriteAllText($retryPath, "START`n")
     $output = & $hostExe -NoProfile -Command @"
 . '$watchScript'
+$heldStub
 `$script:readCall = 0
 function Read-TailText {
     param([object] `$Reader)
@@ -1510,9 +1574,10 @@ try {
     [System.IO.File]::WriteAllText($catchUpPath, "RUN-A-LINE`n")
 
     $job = Start-Job -ScriptBlock {
-        param($exe, $script, $path)
+        param($exe, $script, $path, $heldStub)
         & $exe -NoProfile -Command @"
 . '$script'
+$heldStub
 
 `$script:swapPath = '$path'
 `$script:swapTexts = @(
@@ -1555,7 +1620,7 @@ function Read-FileHead {
 `$record = [pscustomobject]@{ Path = '$path'; LastWrite = (Get-Date); Running = `$true; ExitCode = `$null }
 Watch-Record -Record `$record -Tail 40 | Out-Null
 "@ 2>&1
-    } -ArgumentList $hostExe, $watchScript, $catchUpPath
+    } -ArgumentList $hostExe, $watchScript, $catchUpPath, $heldStub
 
     $entered = Wait-ForJobOutput -Job $job -Pattern 'RUN-A-LINE'
     Assert-True $entered 'Catch-up deferral: the watcher must print the first run before the swap.'
@@ -1594,9 +1659,10 @@ try {
     [System.IO.File]::WriteAllText($settlePath, "RUN-START-LINE`n")
 
     $job = Start-Job -ScriptBlock {
-        param($exe, $script, $path)
+        param($exe, $script, $path, $heldStub)
         & $exe -NoProfile -Command @"
 . '$script'
+$heldStub
 
 `$script:swapPath = '$path'
 
@@ -1644,7 +1710,7 @@ function Read-FileHead {
 `$record = [pscustomobject]@{ Path = '$path'; LastWrite = (Get-Date); Running = `$true; ExitCode = `$null }
 Watch-Record -Record `$record -Tail 40 | Out-Null
 "@ 2>&1
-    } -ArgumentList $hostExe, $watchScript, $settlePath
+    } -ArgumentList $hostExe, $watchScript, $settlePath, $heldStub
 
     $entered = Wait-ForJobOutput -Job $job -Pattern 'RUN-START-LINE'
     Assert-True $entered 'Settle deferral: the watcher must print the first run before the swaps.'
@@ -1718,15 +1784,16 @@ try {
     [System.IO.File]::WriteAllText($stalePath, "ALREADY-DONE`n[exited with code 3]`n")
 
     $job = Start-Job -ScriptBlock {
-        param($exe, $script, $path)
+        param($exe, $script, $path, $heldStub)
         # Out-Null drops the exit code Watch-Record returns, which the real script passes to
         # 'exit'. Left in, it would become the last line and hide what the watcher printed.
         & $exe -NoProfile -Command @"
 . '$script'
+$heldStub
 `$record = [pscustomobject]@{ Path = '$path'; LastWrite = (Get-Date); Running = `$true; ExitCode = `$null }
 Watch-Record -Record `$record -Tail 40 | Out-Null
 "@ 2>&1
-    } -ArgumentList $hostExe, $watchScript, $stalePath
+    } -ArgumentList $hostExe, $watchScript, $stalePath, $heldStub
 
     $finished = Wait-Job -Job $job -Timeout 20
     Assert-True ($null -ne $finished) 'Stale running: the watcher must stop when the file already holds the marker, but it was still running after 20s.'
@@ -1909,9 +1976,10 @@ try {
     [System.IO.File]::WriteAllText($gapPath, "FIRST-LINE`n")
 
     $job = Start-Job -ScriptBlock {
-        param($exe, $script, $path)
+        param($exe, $script, $path, $heldStub)
         & $exe -NoProfile -Command @"
 . '$script'
+$heldStub
 
 `$script:stateCalls = 0
 function Get-TaskState {
@@ -1930,7 +1998,7 @@ function Get-TaskState {
 `$record = [pscustomobject]@{ Path = '$path'; LastWrite = (Get-Date); Running = `$true; ExitCode = `$null }
 Watch-Record -Record `$record -Tail 40 | Out-Null
 "@ 2>&1
-    } -ArgumentList $hostExe, $watchScript, $gapPath
+    } -ArgumentList $hostExe, $watchScript, $gapPath, $heldStub
 
     $finished = Wait-Job -Job $job -Timeout 25
     Assert-True ($null -ne $finished) 'Late append: the watcher must stop, but it was still running after 25s.'
@@ -1966,9 +2034,10 @@ try {
     [System.IO.File]::WriteAllText($swapPath, "OLD-LINE`n")
 
     $job = Start-Job -ScriptBlock {
-        param($exe, $script, $path)
+        param($exe, $script, $path, $heldStub)
         & $exe -NoProfile -Command @"
 . '$script'
+$heldStub
 
 `$script:stateCalls = 0
 function Get-TaskState {
@@ -1992,7 +2061,7 @@ function Get-TaskState {
 `$record = [pscustomobject]@{ Path = '$path'; LastWrite = (Get-Date); Running = `$true; ExitCode = `$null }
 Watch-Record -Record `$record -Tail 40 | Out-Null
 "@ 2>&1
-    } -ArgumentList $hostExe, $watchScript, $swapPath
+    } -ArgumentList $hostExe, $watchScript, $swapPath, $heldStub
 
     $finished = Wait-Job -Job $job -Timeout 25
     Assert-True ($null -ne $finished) 'Catch-up swap: the watcher must stop, but it was still running after 25s.'
@@ -2029,9 +2098,10 @@ try {
     [System.IO.File]::WriteAllText($latePath, "OLD-LINE`n")
 
     $job = Start-Job -ScriptBlock {
-        param($exe, $script, $path)
+        param($exe, $script, $path, $heldStub)
         & $exe -NoProfile -Command @"
 . '$script'
+$heldStub
 
 `$script:stateCalls = 0
 function Get-TaskState {
@@ -2052,7 +2122,7 @@ function Get-TaskState {
 `$record = [pscustomobject]@{ Path = '$path'; LastWrite = (Get-Date); Running = `$true; ExitCode = `$null }
 Watch-Record -Record `$record -Tail 40 | Out-Null
 "@ 2>&1
-    } -ArgumentList $hostExe, $watchScript, $latePath
+    } -ArgumentList $hostExe, $watchScript, $latePath, $heldStub
 
     $finished = Wait-Job -Job $job -Timeout 25
     Assert-True ($null -ne $finished) 'Late swap: the watcher must stop, but it was still running after 25s.'
@@ -2086,9 +2156,10 @@ try {
     [System.IO.File]::WriteAllText($settlePath, "ONLY-LINE`n")
 
     $job = Start-Job -ScriptBlock {
-        param($exe, $script, $path)
+        param($exe, $script, $path, $heldStub)
         & $exe -NoProfile -Command @"
 . '$script'
+$heldStub
 
 `$script:stateCalls = 0
 function Get-TaskState {
@@ -2104,7 +2175,7 @@ function Get-TaskState {
 `$record = [pscustomobject]@{ Path = '$path'; LastWrite = (Get-Date); Running = `$true; ExitCode = `$null }
 exit (Watch-Record -Record `$record -Tail 40)
 "@ 2>&1
-    } -ArgumentList $hostExe, $watchScript, $settlePath
+    } -ArgumentList $hostExe, $watchScript, $settlePath, $heldStub
 
     $finished = Wait-Job -Job $job -Timeout 25
     Assert-True ($null -ne $finished) `
@@ -2167,9 +2238,10 @@ try {
     [System.IO.File]::WriteAllText($catchUpPath, "ONLY-LINE`n")
 
     $job = Start-Job -ScriptBlock {
-        param($exe, $script, $path)
+        param($exe, $script, $path, $heldStub)
         & $exe -NoProfile -Command @"
 . '$script'
+$heldStub
 
 `$script:realRead = `${function:Read-TailText}
 `$script:readCalls = 0
@@ -2201,7 +2273,7 @@ function Get-TaskState {
 `$record = [pscustomobject]@{ Path = '$path'; LastWrite = (Get-Date); Running = `$true; ExitCode = `$null }
 exit (Watch-Record -Record `$record -Tail 40)
 "@ 2>&1
-    } -ArgumentList $hostExe, $watchScript, $catchUpPath
+    } -ArgumentList $hostExe, $watchScript, $catchUpPath, $heldStub
 
     $finished = Wait-Job -Job $job -Timeout 25
     Assert-True ($null -ne $finished) 'Catch-up failure: the watcher must stop, but it was still running after 25s.'

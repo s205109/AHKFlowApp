@@ -1217,7 +1217,11 @@ function Watch-Record {
                 $stateReadFailures = 0
             }
 
-            if ($null -ne $state -and -not $state.Running) {
+            # The marker rule cannot see a writer that stopped without writing one, and the loop
+            # would then poll a dead file for ever. Liveness answers the other half.
+            $held = Test-TaskFileHeldOpen -Path $reader.Path
+
+            if ($null -ne $state -and (-not $state.Running -or -not $held)) {
                 # The state above was read after the tail read returned, so the run can have
                 # written its last lines in between. Read to the file's end, then ask the file
                 # for its state again.
@@ -1228,6 +1232,7 @@ function Watch-Record {
                 # the state reported below belong to the same file.
                 $caughtUp = 0
                 $settled = $null
+                $settledHeld = $false
                 $settleRounds = 0
                 $catchUpFailed = $false
                 do {
@@ -1250,12 +1255,13 @@ function Watch-Record {
 
                     if ($catchUpFailed) { break }
                     $settled = Get-TaskState -Path $reader.Path
+                    $settledHeld = Test-TaskFileHeldOpen -Path $reader.Path
                     # A deferred read returns nothing, but the file still has everything the new
                     # run wrote. Settling on it would print the verdict over output that never
                     # reached the screen, so it counts as a round that read something.
                 } while (($roundBytes -gt 0 -or $reader.ReadDeferred) -and
                          $null -ne $settled -and
-                         -not $settled.Running -and
+                         (-not $settled.Running -or -not $settledHeld) -and
                          $settleRounds -lt $script:MaxSettleRounds)
 
                 # A catch-up read that failed is not the same as a file with nothing left to
@@ -1312,7 +1318,7 @@ function Watch-Record {
 
                 # A replacement that is still running keeps the watch going. The carry stays in
                 # the reader, because its last line is not finished yet.
-                if ($settled.Running) {
+                if ($settled.Running -and $settledHeld) {
                     continue
                 }
                 $state = $settled
@@ -1323,8 +1329,10 @@ function Watch-Record {
                 }
 
                 # No text at all from the reader, but a terminal file end, means its byte offset
-                # went stale. Show the real end so the caller is not left with a silent gap.
-                if ($text.Length -eq 0 -and $caughtUp -eq 0) {
+                # went stale. Show the real end so the caller is not left with a silent gap. A run
+                # that stopped without a marker is not that: nothing was missed, the run simply
+                # ended without saying how.
+                if ($text.Length -eq 0 -and $caughtUp -eq 0 -and -not $state.Running) {
                     Write-Host ''
                     Write-Host 'The file changed while it was being followed, so some of its output is not above.'
                     Write-Host 'Its last lines:'
