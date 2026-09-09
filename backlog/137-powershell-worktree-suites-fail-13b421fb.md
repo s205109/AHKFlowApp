@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: none (CI and test harness)
 - **Difficulty**: moderate
-- **Stage**: 6-verify
+- **Stage**: 7-document
 
 ## Summary
 
