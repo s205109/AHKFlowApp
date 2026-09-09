@@ -26,7 +26,18 @@ One line per finished task, written after its deliverable commit.
 
       **The test count is now 64, not 62.** Task 2 added two lifecycle tests. The item's
       criterion 3 needs the same correction, and Task 6 makes it.
-- [ ] Task 4 — four collections, four fixtures, classes moved
+- [x] Task 4 — four collections, four fixtures, classes moved. The suite now runs in parallel.
+      64 tests passed, 0 failed. Test host 1 m 26 s, wall clock 128.29 s.
+
+      Against the honest serial number from Task 3, which carried the same 64 tests:
+      241.62 s to 128.29 s wall clock, and 196 s to 86 s in the test host.
+
+      The design predicted a slowest group of 70.51 s and got 86 s, so contention cost about
+      1.22 times. That is far milder than backlog 126's 2.1 times, which fits: this work is bound
+      by the processor and this machine has 16.
+
+      No `maxParallelThreads` cap yet. Task 5 adds it. It changes nothing here, because there are
+      only four parallel collections to begin with, but it is what bounds CI.
 - [ ] Task 5 — thread cap, copy rule, written balance rule
 - [ ] Task 6 — measure, and prove the way back
 - [ ] Task 7 — the soak
