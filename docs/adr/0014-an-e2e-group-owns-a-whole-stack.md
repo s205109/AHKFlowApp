@@ -64,6 +64,12 @@ reports it.
 One mistake cannot happen silently. A class that carries no collection attribute fails loudly,
 because xUnit cannot construct a test class whose constructor takes a fixture it was never handed.
 
+**A test class names its own group's fixture type in its constructor.** xUnit matches a
+constructor parameter to a fixture by exact type, through a dictionary keyed on the parameter's
+type. A parameter typed as the shared base class does not resolve. So moving a class from one
+group to another means changing its collection attribute and its constructor parameter together.
+Test bodies do not change, because every group's fixture exposes the same members.
+
 **The slowest group sets the wall clock.** When one class grows past the size of a whole group,
 the answer is to split that class, not to add a fifth group. Measured on 2026-09-09,
 `ShortcutWarningFlowTests` alone held 60.07 seconds of a 260.22 second suite, which is why it is
@@ -73,8 +79,26 @@ filed as its own item.
 which starts at most one container for the whole test process and keeps it until the process ends.
 Nothing disposes it. Testcontainers removes it through its resource reaper.
 
-**Four API hosts share Serilog's process-wide logger.** `Program.cs` assigns `Log.Logger` when a
-host starts and closes it in a `finally`. Four hosts mean the last assignment wins and an early
-close turns the logger into a no-op for the others. One host already runs this path today. If it
-ever matters, the fix belongs in the E2E `ApiFactory`, which can point its host at a logger that
-writes nothing.
+**The four API hosts must be built one at a time.** This is a rule, not a preference, and Serilog
+is the reason.
+
+`Program.cs` creates a bootstrap logger and assigns it to the process-wide `Log.Logger`. Twenty-one
+lines later it calls `AddSerilog`. Serilog reads the static logger at that second point and keeps
+the instance it found. The source comments the choice: "This check is eager; replacing the
+bootstrap logger after calling this method is not supported." The logger is then frozen much
+later, the first time anything resolves `ILogger`.
+
+So two hosts starting together can both keep the same bootstrap logger. That happens when the
+second host assigns `Log.Logger` in the window between the first host's assignment and its own
+read. Both hosts then freeze the same instance, and the second freeze throws
+`InvalidOperationException` with the message "The logger is already frozen." That fails host
+startup. It does not merely lose log lines.
+
+The fix is a process-wide gate. One stack at a time runs its host construction and then resolves
+`ILogger` once, before the gate is released. Holding the gate across both steps is what matters,
+because the read and the freeze sit at opposite ends of host start-up.
+
+Disposal stays concurrent, and one consequence remains. `Program.cs` closes the logger in a
+`finally`, so the first stack to be disposed closes the logger the others still hold. Serilog turns
+a closed logger into a no-op rather than throwing, so this costs log lines at the end of a run and
+nothing else.
