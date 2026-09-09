@@ -47,4 +47,8 @@ One line per finished task, written after its deliverable commit.
       117.67 s. Against the honest serial number of 257.14 s that is 2.33 times faster, and it
       beats the design's target of a median under 160 s. The serial fallback run passed, so the
       way back is proven rather than assumed.
-- [ ] Task 7 — the soak. Running.
+- [x] Task 7 — the soak. 30 of 30 passed, every run with 64 tests and no failure line. No new
+      flaky test appeared, so nothing was filed. Backlog 126 found a latent flake the moment it
+      went parallel; this suite did not.
+
+All seven tasks are done. The plan is finished.

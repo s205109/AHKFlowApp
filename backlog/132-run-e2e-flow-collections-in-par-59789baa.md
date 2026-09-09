@@ -38,10 +38,13 @@ that the slice finishes in the time its slowest flow takes rather than the sum o
       The number was 57 when this item was filed and 62 when the work started. This branch adds
       two lifecycle tests for the Serilog gate, so the count this item holds to is 64. Every run
       recorded below reported "Failed: 0, Passed: 64, Skipped: 0, Total: 64".
-- [ ] If it goes ahead: `pwsh ./scripts/measure-test-modes.ps1 -Soak tests/AHKFlowApp.E2E.Tests
+- [x] If it goes ahead: `pwsh ./scripts/measure-test-modes.ps1 -Soak tests/AHKFlowApp.E2E.Tests
       -Runs 30 -NoBuild` passes 30 of 30. Five runs fix a median but say little about a race
       that fires one run in fifty, and this is the slice where this repository's flakes have
       historically come from.
+      **Result: 30 of 30 passed on 2026-09-09.** Every run reported
+      "Failed: 0, Passed: 64, Skipped: 0, Total: 64", and no run produced a failure line.
+      No new flaky test appeared, so nothing was filed against this soak.
 - [x] The measured median replaces the 321.65 s baseline in this item, with all five runs and
       the maximum beside it.
 
