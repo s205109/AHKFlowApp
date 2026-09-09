@@ -381,7 +381,21 @@ function Get-DefaultSuiteWorkerReason {
     )
 
     if ($PhysicalCoreCount -lt 1) {
-        return "physical cores unreadable, $LogicalProcessorCount logical processors capped at eight"
+        # The fallback rule is the logical processor count with a ceiling of eight. Name whichever
+        # of the two set the number, the same way the measured branch below does. A fixed "capped
+        # at eight" misleads on a machine with fewer than eight logical processors, where the count
+        # equals the processor count and the ceiling never bit. Backlog 145 review, finding 4.
+        $fallback = Get-DefaultSuiteWorkerCount -PhysicalCoreCount $PhysicalCoreCount -LogicalProcessorCount $LogicalProcessorCount
+
+        if ($fallback -eq 8) {
+            return "physical cores unreadable, $LogicalProcessorCount logical processors capped at the ceiling of eight"
+        }
+
+        if ($fallback -eq $LogicalProcessorCount) {
+            return "physical cores unreadable, $LogicalProcessorCount available processors"
+        }
+
+        return "physical cores unreadable, $LogicalProcessorCount logical processors raised to the floor of one"
     }
 
     $noun = if ($PhysicalCoreCount -eq 1) { 'physical core' } else { 'physical cores' }

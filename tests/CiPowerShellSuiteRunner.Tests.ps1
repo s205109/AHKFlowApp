@@ -1987,8 +1987,16 @@ Invoke-TestCase 'The printed reason names the bound that actually decided the nu
     $floor = Get-DefaultSuiteWorkerReason -PhysicalCoreCount 1 -LogicalProcessorCount 16
     Assert-True ($floor -match 'is 0, raised to the floor of one') "The floor must be named. Got: $floor"
 
-    $unreadable = Get-DefaultSuiteWorkerReason -PhysicalCoreCount 0 -LogicalProcessorCount 16
-    Assert-True ($unreadable -match 'physical cores unreadable') "The fallback must say why. Got: $unreadable"
+    # The unreadable branch has two bounds of its own: the ceiling of eight and the logical
+    # processor count. The reason must name whichever one set the number, not always say "eight".
+    $unreadableCeiling = Get-DefaultSuiteWorkerReason -PhysicalCoreCount 0 -LogicalProcessorCount 16
+    Assert-True ($unreadableCeiling -match 'physical cores unreadable') "The fallback must say why. Got: $unreadableCeiling"
+    Assert-True ($unreadableCeiling -match 'capped at the ceiling of eight') "The fallback ceiling must be named when it decided the count. Got: $unreadableCeiling"
+
+    $unreadableProcessors = Get-DefaultSuiteWorkerReason -PhysicalCoreCount 0 -LogicalProcessorCount 4
+    Assert-True ($unreadableProcessors -match 'physical cores unreadable') "The fallback must say why. Got: $unreadableProcessors"
+    Assert-True ($unreadableProcessors -notmatch 'eight') "The fallback must not name a cap of eight when four processors decided the count. Got: $unreadableProcessors"
+    Assert-True ($unreadableProcessors -match '4 available processors') "The fallback must name the processor count that decided it. Got: $unreadableProcessors"
 }
 
 Invoke-TestCase 'An unreadable physical core count falls back to the logical count capped at eight' {

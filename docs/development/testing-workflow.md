@@ -232,7 +232,7 @@ decided the answer:
 Workers: 6 (default: 75% of 8 physical cores)
 Workers: 8 (default: 75% of 16 physical cores is 12, capped at the ceiling of eight)
 Workers: 2 (default: 75% of 8 physical cores is 6, capped at 2 available processors)
-Workers: 8 (default: physical cores unreadable, 16 logical processors capped at eight)
+Workers: 8 (default: physical cores unreadable, 16 logical processors capped at the ceiling of eight)
 Workers: 4 (GitHub Actions: all 4 logical processors)
 ```
 
