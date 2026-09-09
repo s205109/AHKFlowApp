@@ -12,3 +12,4 @@ Recovery simplify | verdict: nothing further to simplify after the citation-only
 Verification | PASS | build and format green; 56 PowerShell suites green in 00:03:26.8651521; coverage skipped five excluded files; diff check green; CI run 34269850009 attempts 1-5 green on 774930b1
 Review recovery 2a | confirmed: replace the timed empty-marker delay with an explicit parent-observation handshake
 Review recovery 2b | confirmed: cleanup must stop both known process IDs if an assertion exits early
+Review recovery 2 complete | 4f4ffe18 | tests: sweep suite pass under pwsh and Windows PowerShell 5.1 | plan: df51e9f
