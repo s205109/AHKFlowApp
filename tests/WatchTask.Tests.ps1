@@ -631,6 +631,45 @@ finally {
     Remove-Item -LiteralPath $root -Recurse -Force
 }
 
+# --- Discovery re-probes liveness when a writer opens during the first probe ---
+#
+# Get-WatchTaskRecord probes liveness, then reads the file's text. A replacement run that
+# opens the file in the gap between the two is not in the first probe, and the text read right
+# after it holds no terminal marker. The record would then say the task is not running while a
+# writer really holds the file, and Select-WatchTaskRecord would drop it, so the caller could
+# end up following another session. The discovery path re-probes once when its two signals
+# disagree, the same way the follow loop reconciles them.
+
+$root = New-WatchTestRoot
+$realHeld = ${function:Test-TaskFileHeldOpen}
+try {
+    $probeFile = New-FakeTaskOutput -Root $root -ProjectFolder "$prefix-probe" -LastWrite (Get-Date) -Lines @(
+        'work started', 'NO-MARKER-YET'
+    )
+
+    # The first probe misses the writer that opens right after it. Every later probe sees it.
+    $script:probeCalls = 0
+    function Test-TaskFileHeldOpen {
+        param([Parameter(Mandatory)][string] $Path)
+        $script:probeCalls++
+        return ($script:probeCalls -ge 2)
+    }
+
+    $records = @(Get-WatchTaskRecord -SearchRoot $root -CheckoutPath @($mainRoot) -NeighbourPath @() -OwnCheckoutPath $mainRoot)
+    Assert-True ($records.Count -eq 1) `
+        "Discovery re-probe: exactly one record must be found, got $($records.Count)."
+    Assert-True ($records.Count -eq 1 -and $records[0].Running -eq $true) `
+        'Discovery re-probe: a writer that opens during the first probe must be recorded as running, not stopped.'
+
+    $picked = Select-WatchTaskRecord -Record $records -SessionId ''
+    Assert-True ($null -ne $picked -and $picked.Path -eq $probeFile) `
+        'Discovery re-probe: the reconciled running task must survive selection, not be dropped.'
+}
+finally {
+    ${function:Test-TaskFileHeldOpen} = $realHeld
+    Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+}
+
 # --- The nothing-is-running path returns the newest finished task and exits 0 ---
 
 $root = New-WatchTestRoot

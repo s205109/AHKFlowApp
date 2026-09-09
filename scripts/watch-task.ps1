@@ -457,6 +457,19 @@ function Get-WatchTaskRecord {
                 # observation. A task that finishes between the two is then read as finished.
                 $held = Test-TaskFileHeldOpen -Path $file.FullName
                 $state = Get-TaskState -Path $file.FullName
+
+                # The probe ran before the state read, so a replacement run that opened the
+                # file in the gap between them is not in $held yet. The state read then finds
+                # no terminal marker, and the record would say the task is not running while a
+                # writer really holds the file. Select-WatchTaskRecord drops such a record, so
+                # the caller could end up following another session. Re-probe once when the
+                # two signals disagree, and let the newer observation win. This is the same
+                # reconciliation the follow loop does between its liveness probe and its
+                # state read.
+                if ($null -ne $state -and $state.Running -and -not $held) {
+                    $held = Test-TaskFileHeldOpen -Path $file.FullName
+                }
+
                 if ($null -ne $state) {
                     $terminal = if ($state.Running) { 'none' }
                                 elseif ($null -eq $state.ExitCode) { 'killed' }
