@@ -166,6 +166,33 @@ Assert-True (
     Test-WatchTaskFolderName -Name 'C--repo-App-foo' -CheckoutPath $dottedCheckout
 ) 'Folder match: with no colliding neighbour the checkout still owns its own name.'
 
+# --- Which checkout owns a project folder ---
+#
+# A worktree inside the main checkout mangles to a name that starts with the main checkout's own
+# name, so both claim it. The longest claim wins, or every worktree's tasks would be filed under
+# the main checkout and the checkout preference would never narrow anything.
+
+$nestedCheckouts = @(
+    'C:\repo\App',
+    'C:\repo\App\.claude\worktrees\wt-one'
+)
+
+Assert-True (
+    (Get-OwningCheckoutPath -Name 'C--repo-App--claude-worktrees-wt-one' -CheckoutPath $nestedCheckouts) -eq 'C:\repo\App\.claude\worktrees\wt-one'
+) 'Owning checkout: a worktree folder belongs to the worktree, not to the main checkout above it.'
+
+Assert-True (
+    (Get-OwningCheckoutPath -Name 'C--repo-App' -CheckoutPath $nestedCheckouts) -eq 'C:\repo\App'
+) 'Owning checkout: the main checkout folder belongs to the main checkout.'
+
+Assert-True (
+    (Get-OwningCheckoutPath -Name 'C--repo-App-scripts' -CheckoutPath $nestedCheckouts) -eq 'C:\repo\App'
+) 'Owning checkout: a subdirectory of the main checkout belongs to the main checkout.'
+
+Assert-True (
+    (Get-OwningCheckoutPath -Name 'C--repo-Other' -CheckoutPath $nestedCheckouts) -eq ''
+) 'Owning checkout: a folder no checkout claims has no owner.'
+
 # --- Reading the end of a file says whether the task finished, and with which code ---
 #
 # Get-TaskState is the check that ends the wait when the follower's byte offset has gone stale, so
@@ -484,19 +511,27 @@ finally {
 # --- Newest-running selection when several files exist ---
 
 $root = New-WatchTestRoot
+$writers = @()
 try {
     New-FakeTaskOutput -Root $root -ProjectFolder "$prefix-a" -LastWrite (Get-Date).AddMinutes(-30) -Lines @(
         'old finished run', '[exited with code 0]', ''
     ) | Out-Null
-    New-FakeTaskOutput -Root $root -ProjectFolder "$prefix-b" -LastWrite (Get-Date).AddMinutes(-10) -Lines @(
+    $olderRunning = New-FakeTaskOutput -Root $root -ProjectFolder "$prefix-b" -LastWrite (Get-Date).AddMinutes(-10) -Lines @(
         'older running run', 'OLDER-RUNNING-MARKER'
-    ) | Out-Null
+    )
     $newestRunning = New-FakeTaskOutput -Root $root -ProjectFolder "$prefix-c" -LastWrite (Get-Date).AddMinutes(-1) -Lines @(
         'newest running run', 'NEWEST-RUNNING-MARKER'
     )
     New-FakeTaskOutput -Root $root -ProjectFolder "$prefix-d" -LastWrite (Get-Date) -Lines @(
         'newer killed run', '[killed]'
     ) | Out-Null
+
+    # A running task is one whose file is held open. Opening a writer does not touch the file's
+    # last write time, so the order these cases depend on is unchanged.
+    $writers = @(
+        (Open-FakeTaskWriter -Path $olderRunning),
+        (Open-FakeTaskWriter -Path $newestRunning)
+    )
 
     $result = Invoke-WatchScript -ScriptArgs @('-Root', $root, '-NoFollow')
 
@@ -506,6 +541,7 @@ try {
     Assert-True ($result.Output.Contains($newestRunning)) "Newest running: the tailed path must be named. Output: $($result.Output)"
 }
 finally {
+    foreach ($writer in $writers) { $writer.Dispose() }
     Remove-Item -LiteralPath $root -Recurse -Force
 }
 
@@ -535,13 +571,19 @@ finally {
 # --- The more-than-one-running path names the count ---
 
 $root = New-WatchTestRoot
+$writers = @()
 try {
-    New-FakeTaskOutput -Root $root -ProjectFolder "$prefix-a" -LastWrite (Get-Date).AddMinutes(-5) -Lines @(
+    $runOne = New-FakeTaskOutput -Root $root -ProjectFolder "$prefix-a" -LastWrite (Get-Date).AddMinutes(-5) -Lines @(
         'running one', 'RUN-ONE'
-    ) | Out-Null
-    New-FakeTaskOutput -Root $root -ProjectFolder "$prefix-b" -LastWrite (Get-Date).AddMinutes(-1) -Lines @(
+    )
+    $runTwo = New-FakeTaskOutput -Root $root -ProjectFolder "$prefix-b" -LastWrite (Get-Date).AddMinutes(-1) -Lines @(
         'running two', 'RUN-TWO'
-    ) | Out-Null
+    )
+
+    $writers = @(
+        (Open-FakeTaskWriter -Path $runOne),
+        (Open-FakeTaskWriter -Path $runTwo)
+    )
 
     $result = Invoke-WatchScript -ScriptArgs @('-Root', $root, '-NoFollow')
 
@@ -550,6 +592,7 @@ try {
     Assert-True ($result.Output -match 'RUN-TWO') "Two running: the newest running file is tailed. Output: $($result.Output)"
 }
 finally {
+    foreach ($writer in $writers) { $writer.Dispose() }
     Remove-Item -LiteralPath $root -Recurse -Force
 }
 
@@ -641,6 +684,7 @@ function Get-LastNonEmptyLine {
 
 $root = New-WatchTestRoot
 $job = $null
+$writer = $null
 try {
     $session = [guid]::NewGuid().ToString()
     $tasksDir = Join-Path (Join-Path (Join-Path $root "$prefix-live") $session) 'tasks'
@@ -652,6 +696,10 @@ try {
     # a sleep between two appends would prove nothing, because a poll arriving after both of them
     # sees one complete line and a line counter would look correct.
     [System.IO.File]::WriteAllText($livePath, "FIRST-LINE`nSPLIT-LINE-START")
+
+    # A running task is one whose output file is held open for writing. Hold it, and write the
+    # rest of the run through that handle.
+    $writer = Open-FakeTaskWriter -Path $livePath
 
     # No Out-String inside the job. That would hold every line back until the watcher exited,
     # and then no case could wait for the watcher to reach a known point.
@@ -668,12 +716,12 @@ try {
 
     # The text that finishes the line adds no new line to the file, so a watcher that counts
     # lines has nothing to notice and drops it.
-    [System.IO.File]::AppendAllText($livePath, "-AND-END`n")
+    Write-FakeTaskText -Writer $writer -Text "-AND-END`n"
 
     $joined = Wait-ForJobOutput -Job $job -Pattern 'SPLIT-LINE-START-AND-END'
     Assert-True $joined 'Follow: a line written in two pieces must be printed in full.'
 
-    [System.IO.File]::AppendAllText($livePath, "LAST-LINE`n[exited with code 3]`n")
+    Write-FakeTaskText -Writer $writer -Text "LAST-LINE`n[exited with code 3]`n"
 
     $finished = Wait-Job -Job $job -Timeout 30
     Assert-True ($null -ne $finished) 'Follow: the watcher must stop by itself when the exit marker arrives, but it was still running after 30s.'
@@ -694,6 +742,7 @@ try {
     Assert-True ($lastLine -eq 'Exit code: 3') "Follow: the last line must be exactly 'Exit code: 3', got '$lastLine'. Output: $output"
 }
 finally {
+    if ($writer) { $writer.Dispose() }
     if ($job) { Remove-Job -Job $job -Force -ErrorAction SilentlyContinue }
     Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
 }
@@ -741,12 +790,14 @@ finally {
 
 $root = New-WatchTestRoot
 $job = $null
+$writer = $null
 try {
     $session = [guid]::NewGuid().ToString()
     $tasksDir = Join-Path (Join-Path (Join-Path $root "$prefix-marker") $session) 'tasks'
     New-Item -ItemType Directory -Path $tasksDir -Force | Out-Null
     $markerPath = Join-Path $tasksDir 'task.output'
     [System.IO.File]::WriteAllText($markerPath, "STARTED`n")
+    $writer = Open-FakeTaskWriter -Path $markerPath
 
     $job = Start-Job -ScriptBlock {
         param($exe, $script, $searchRoot)
@@ -756,11 +807,11 @@ try {
     $entered = Wait-ForJobOutput -Job $job -Pattern 'STARTED'
     Assert-True $entered 'Trailing marker: the watcher must start following within 30s.'
 
-    [System.IO.File]::AppendAllText($markerPath, "[exited with code 5]`nAFTER-NONTERMINAL-MARKER`n")
+    Write-FakeTaskText -Writer $writer -Text "[exited with code 5]`nAFTER-NONTERMINAL-MARKER`n"
     $continued = Wait-ForJobOutput -Job $job -Pattern 'AFTER-NONTERMINAL-MARKER' -TimeoutSeconds 5
     Assert-True $continued 'Trailing marker: output after a marker-shaped line must still be shown.'
 
-    [System.IO.File]::AppendAllText($markerPath, "[exited with code 6]`n")
+    Write-FakeTaskText -Writer $writer -Text "[exited with code 6]`n"
     $finished = Wait-Job -Job $job -Timeout 20
     Assert-True ($null -ne $finished) 'Trailing marker: the final marker must stop the watcher.'
 
@@ -770,6 +821,7 @@ try {
     Assert-True ($lastLine -eq 'Exit code: 6') "Trailing marker: the trailing marker must supply the verdict, got '$lastLine'. Output: $output"
 }
 finally {
+    if ($writer) { $writer.Dispose() }
     if ($job) { Remove-Job -Job $job -Force -ErrorAction SilentlyContinue }
     Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
 }
@@ -799,6 +851,7 @@ function Set-FileContentInPlace {
 
 $root = New-WatchTestRoot
 $job = $null
+$writer = $null
 try {
     $session = [guid]::NewGuid().ToString()
     $tasksDir = Join-Path (Join-Path (Join-Path $root "$prefix-checkpoint") $session) 'tasks'
@@ -808,6 +861,10 @@ try {
     $sharedStart = "SHARED-PREFIX-LINE`n" * 20
     $original = $sharedStart + ("ORIGINAL-FILLER-LINE`n" * 20)
     [System.IO.File]::WriteAllText($checkpointPath, $original)
+
+    # A running task is one whose output file is held open. Set-FileContentInPlace shares the
+    # write handle, so the in-place replacement below still works.
+    $writer = Open-FakeTaskWriter -Path $checkpointPath
 
     $job = Start-Job -ScriptBlock {
         param($exe, $script, $searchRoot)
@@ -835,6 +892,7 @@ try {
     Assert-True ((Get-LastNonEmptyLine -Text $output) -eq 'Exit code: 11') "Checkpoint replacement: the final exit code must be reported. Output: $output"
 }
 finally {
+    if ($writer) { $writer.Dispose() }
     if ($job) { Remove-Job -Job $job -Force -ErrorAction SilentlyContinue }
     Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
 }
@@ -1404,12 +1462,17 @@ finally {
 
 $root = New-WatchTestRoot
 $job = $null
+$writer = $null
 try {
     $session = [guid]::NewGuid().ToString()
     $tasksDir = Join-Path (Join-Path (Join-Path $root "$prefix-deleted") $session) 'tasks'
     New-Item -ItemType Directory -Path $tasksDir -Force | Out-Null
     $deletedPath = Join-Path $tasksDir 'task.output'
     [System.IO.File]::WriteAllText($deletedPath, "BEFORE-DELETION`n")
+
+    # A running task is one whose output file is held open. Open-FakeTaskWriter shares Delete, so
+    # the Remove-Item below still succeeds and the watcher still ends through the read-failure path.
+    $writer = Open-FakeTaskWriter -Path $deletedPath
 
     $job = Start-Job -ScriptBlock {
         param($exe, $script, $searchRoot)
@@ -1427,6 +1490,7 @@ try {
     Assert-True ($output -match 'could no longer be read') "Deleted file: the watcher must explain why it stopped. Output: $output"
 }
 finally {
+    if ($writer) { $writer.Dispose() }
     if ($job) { Remove-Job -Job $job -Force -ErrorAction SilentlyContinue }
     Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
 }
@@ -1499,6 +1563,7 @@ finally {
 
 $root = New-WatchTestRoot
 $job = $null
+$writer = $null
 try {
     $session = [guid]::NewGuid().ToString()
     $tasksDir = Join-Path (Join-Path (Join-Path $root "$prefix-replaced") $session) 'tasks'
@@ -1507,6 +1572,10 @@ try {
 
     $original = "ORIGINAL-LINE`n" * 30
     [System.IO.File]::WriteAllText($replacedPath, $original)
+
+    # A running task is one whose output file is held open. Set-FileContentInPlace shares the
+    # write handle, so the in-place replacement below still works.
+    $writer = Open-FakeTaskWriter -Path $replacedPath
 
     # The replacement below is written over the file in place, never through WriteAllText.
     # WriteAllText empties the file first, and that short moment makes the file shorter than the
@@ -1533,6 +1602,7 @@ try {
     Assert-True ($output -match 'Exit code: 7') "Replaced file: the marker in the replacement must be found. Output: $output"
 }
 finally {
+    if ($writer) { $writer.Dispose() }
     if ($job) { Remove-Job -Job $job -Force -ErrorAction SilentlyContinue }
     Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
 }
@@ -1548,6 +1618,7 @@ finally {
 
 $root = New-WatchTestRoot
 $job = $null
+$writer = $null
 try {
     $session = [guid]::NewGuid().ToString()
     $tasksDir = Join-Path (Join-Path (Join-Path $root "$prefix-samesize") $session) 'tasks'
@@ -1566,6 +1637,10 @@ try {
 
     [System.IO.File]::WriteAllText($samePath, $original)
 
+    # A running task is one whose output file is held open. Set-FileContentInPlace shares the
+    # write handle, so the in-place replacement below still works.
+    $writer = Open-FakeTaskWriter -Path $samePath
+
     $job = Start-Job -ScriptBlock {
         param($exe, $script, $searchRoot)
         & $exe -NoProfile -File $script -Root $searchRoot -Tail 100 2>&1
@@ -1583,6 +1658,7 @@ try {
     Assert-True ($output -match 'Exit code: 9') "Same-size replacement: the exit code must be reported. Output: $output"
 }
 finally {
+    if ($writer) { $writer.Dispose() }
     if ($job) { Remove-Job -Job $job -Force -ErrorAction SilentlyContinue }
     Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
 }

@@ -183,6 +183,55 @@ function Get-NeighbourPath {
     return $neighbours.ToArray()
 }
 
+function Get-CheckoutClaimLength {
+    <#
+      How strongly one checkout claims a Claude project folder name: the length of that checkout's
+      mangled name when the folder is the checkout or sits inside it, and -1 when it does not.
+    #>
+    param(
+        [Parameter(Mandatory)][string] $Name,
+        [Parameter(Mandatory)][string] $Path
+    )
+
+    $mangled = ConvertTo-ClaudeProjectFolder -Path $Path.TrimEnd('\')
+    if ($Name.Equals($mangled, [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $mangled.Length
+    }
+
+    # The separator matters. Without it 'AHKFlowAppOLD' counts as part of 'AHKFlowApp'.
+    if ($Name.StartsWith($mangled + '-', [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $mangled.Length
+    }
+
+    return -1
+}
+
+function Get-OwningCheckoutPath {
+    <#
+      Which checkout a project folder belongs to: the one whose mangled name claims it most
+      closely. A worktree inside the main checkout claims its own folder more closely than the
+      main checkout does, so the longest claim is the answer and not the first match.
+
+      Returns an empty string when no checkout claims the name.
+    #>
+    param(
+        [Parameter(Mandatory)][string] $Name,
+        [Parameter(Mandatory)][AllowEmptyCollection()][string[]] $CheckoutPath
+    )
+
+    $best = -1
+    $owner = ''
+    foreach ($path in $CheckoutPath) {
+        $claim = Get-CheckoutClaimLength -Name $Name -Path $path
+        if ($claim -gt $best) {
+            $best = $claim
+            $owner = $path.TrimEnd('\')
+        }
+    }
+
+    return $owner
+}
+
 function Test-WatchTaskFolderName {
     <#
       Decides whether one Claude project folder belongs to this repository.
@@ -204,26 +253,9 @@ function Test-WatchTaskFolderName {
         [AllowEmptyCollection()][string[]] $NeighbourPath = @()
     )
 
-    # Returns the length of the mangled path when $Name is that path or sits inside it, else -1.
-    function Get-ClaimLength {
-        param([string] $Path)
-
-        $mangled = ConvertTo-ClaudeProjectFolder -Path $Path.TrimEnd('\')
-        if ($Name.Equals($mangled, [System.StringComparison]::OrdinalIgnoreCase)) {
-            return $mangled.Length
-        }
-
-        # The separator matters. Without it 'AHKFlowAppOLD' counts as part of 'AHKFlowApp'.
-        if ($Name.StartsWith($mangled + '-', [System.StringComparison]::OrdinalIgnoreCase)) {
-            return $mangled.Length
-        }
-
-        return -1
-    }
-
     $best = -1
     foreach ($path in $CheckoutPath) {
-        $claim = Get-ClaimLength -Path $path
+        $claim = Get-CheckoutClaimLength -Name $Name -Path $path
         if ($claim -gt $best) { $best = $claim }
     }
 
@@ -232,7 +264,7 @@ function Test-WatchTaskFolderName {
     }
 
     foreach ($path in $NeighbourPath) {
-        if ((Get-ClaimLength -Path $path) -ge $best) {
+        if ((Get-CheckoutClaimLength -Name $Name -Path $path) -ge $best) {
             return $false
         }
     }
@@ -359,13 +391,19 @@ function Test-TaskFileHeldOpen {
 
 function Get-WatchTaskRecord {
     <#
-      Returns one record per <session id>\tasks\*.output file under every project folder that
-      belongs to this repository, newest first by last write time.
+      Returns one record per <session id>\tasks\<task id>.output file under every project folder
+      that belongs to this repository, newest first by last write time.
+
+      Running comes from the operating system, not from the file's text: a task is running while
+      something holds its output file open for writing. Terminal comes from the text, and the two
+      answer different questions. A file with no marker that nobody holds is a task that stopped
+      without saying so, which is a state the old rule could not produce.
     #>
     param(
         [Parameter(Mandatory)][string] $SearchRoot,
         [Parameter(Mandatory)][AllowEmptyCollection()][string[]] $CheckoutPath,
-        [AllowEmptyCollection()][string[]] $NeighbourPath = @()
+        [AllowEmptyCollection()][string[]] $NeighbourPath = @(),
+        [AllowEmptyString()][string] $OwnCheckoutPath = ''
     )
 
     if (-not (Test-Path -LiteralPath $SearchRoot -PathType Container)) {
@@ -379,26 +417,45 @@ function Get-WatchTaskRecord {
             }
     )
 
+    $own = $OwnCheckoutPath.TrimEnd('\')
+
     $outputs = [System.Collections.Generic.List[object]]::new()
     foreach ($dir in $projectDirs) {
+        $owner = Get-OwningCheckoutPath -Name $dir.Name -CheckoutPath $CheckoutPath
         $files = @(
             Get-ChildItem -LiteralPath $dir.FullName -Recurse -File -Filter '*.output' -ErrorAction SilentlyContinue |
                 Where-Object { (Split-Path -Leaf $_.DirectoryName) -eq 'tasks' }
         )
-        foreach ($file in $files) { $outputs.Add($file) }
+        foreach ($file in $files) {
+            $outputs.Add([pscustomobject]@{ File = $file; Checkout = $owner })
+        }
     }
 
     return @(
         $outputs |
-            Sort-Object LastWriteTime -Descending |
+            Sort-Object { $_.File.LastWriteTime } -Descending |
             ForEach-Object {
-                $state = Get-TaskState -Path $_.FullName
+                $file = $_.File
+                $owner = $_.Checkout
+                $state = Get-TaskState -Path $file.FullName
                 if ($null -ne $state) {
+                    $terminal = if ($state.Running) { 'none' }
+                                elseif ($null -eq $state.ExitCode) { 'killed' }
+                                else { 'exited' }
+
+                    # <project folder>\<session id>\tasks\<task id>.output
+                    $sessionDir = $file.Directory.Parent
+                    $session = if ($null -eq $sessionDir) { '' } else { $sessionDir.Name }
+
                     [pscustomobject]@{
-                        Path      = $_.FullName
-                        LastWrite = $_.LastWriteTime
-                        Running   = $state.Running
-                        ExitCode  = $state.ExitCode
+                        Path        = $file.FullName
+                        LastWrite   = $file.LastWriteTime
+                        Running     = (Test-TaskFileHeldOpen -Path $file.FullName)
+                        ExitCode    = $state.ExitCode
+                        Terminal    = $terminal
+                        Session     = $session
+                        Checkout    = $owner
+                        OwnCheckout = ($own -ne '' -and $owner.Equals($own, [System.StringComparison]::OrdinalIgnoreCase))
                     }
                 }
             }
@@ -1258,11 +1315,20 @@ function Invoke-WatchTask {
         $Root
     }
 
+    # The checkout this copy of the script sits in, which is not the main root when the script is
+    # run from a worktree. AGENTS.md tells an agent to hand over the watcher path in the checkout
+    # the run belongs to, and this is what makes that instruction mean something.
+    $ownCheckout = Split-Path -Parent $PSScriptRoot
+
     $mainRoot = Get-RepositoryMainRoot -ScriptRoot $PSScriptRoot
     $checkouts = @(Get-RepositoryCheckoutPath -MainRoot $mainRoot)
     $neighbours = @(Get-NeighbourPath -CheckoutPath $checkouts)
 
-    $records = @(Get-WatchTaskRecord -SearchRoot $searchRoot -CheckoutPath $checkouts -NeighbourPath $neighbours)
+    $records = @(Get-WatchTaskRecord `
+        -SearchRoot $searchRoot `
+        -CheckoutPath $checkouts `
+        -NeighbourPath $neighbours `
+        -OwnCheckoutPath $ownCheckout)
 
     if ($records.Count -eq 0) {
         Write-Host "No task output files found for this repository under $searchRoot"
