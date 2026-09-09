@@ -426,7 +426,9 @@ function Read-FileHead {
 
     $want = [int][Math]::Min([long] $Count, $Stream.Length)
     if ($want -le 0) {
-        return [byte[]]::new(0)
+        # A bare return unrolls a zero-length array to nothing, and the caller is handed $null.
+        # The comma wraps it, and the wrapper is what unrolls instead.
+        return , [byte[]]::new(0)
     }
 
     $Stream.Position = 0
@@ -438,7 +440,7 @@ function Read-FileHead {
 
     $exact = [byte[]]::new([Math]::Max(0, $read))
     [System.Array]::Copy($buffer, $exact, $exact.Length)
-    return $exact
+    return , $exact
 }
 
 function Test-SameHead {
@@ -482,7 +484,7 @@ function Read-FileCheckpoint {
     )
 
     $end = [Math]::Min($EndOffset, $Stream.Length)
-    if ($end -le 0) { return [byte[]]::new(0) }
+    if ($end -le 0) { return , [byte[]]::new(0) }
 
     $want = [int][Math]::Min([long] $Count, $end)
     $Stream.Position = $end - $want
@@ -492,7 +494,7 @@ function Read-FileCheckpoint {
 
     $exact = [byte[]]::new([Math]::Max(0, $read))
     [System.Array]::Copy($buffer, $exact, $exact.Length)
-    return $exact
+    return , $exact
 }
 
 function Set-TailReaderCheckpoint {
@@ -782,7 +784,7 @@ function Read-InitialTailText {
         $Reader.InitialTruncated = $lineCapReached
         $Reader.AtEnd = $true
         $Reader.FileIdentity = [System.IO.File]::GetCreationTimeUtc($Reader.Path).Ticks
-        $consumed = if ($chunks.Count -gt 0) { $chunks[0] } else { [byte[]]::new(0) }
+        $consumed = if ($chunks.Count -gt 0) { $chunks[0] } else { , [byte[]]::new(0) }
         Set-TailReaderCheckpoint -Reader $Reader -Consumed $consumed
 
         if ($total -le 0) {

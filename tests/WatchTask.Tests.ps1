@@ -49,7 +49,7 @@ function New-FakeTaskOutput {
     param(
         [Parameter(Mandatory)][string] $Root,
         [Parameter(Mandatory)][string] $ProjectFolder,
-        [Parameter(Mandatory)][AllowEmptyString()][string[]] $Lines,
+        [Parameter(Mandatory)][AllowEmptyCollection()][AllowEmptyString()][string[]] $Lines,
         [Parameter(Mandatory)][datetime] $LastWrite
     )
 
@@ -355,10 +355,56 @@ finally {
     Remove-Item -LiteralPath $root -Recurse -Force
 }
 
+# --- A zero-byte output file is tailed, not turned into a binding error ---
+#
+# PowerShell unrolls an array when it captures a statement's value, and a zero-length array
+# unrolls to nothing at all. Read-InitialTailText handed the result to a mandatory parameter that
+# accepts an empty array but not $null, and the watcher reported that binding failure instead of
+# the file.
+
+$emptyPath = Join-Path ([System.IO.Path]::GetTempPath()) ("watch-task-empty-$([guid]::NewGuid()).output")
+try {
+    [System.IO.File]::WriteAllText($emptyPath, '')
+
+    $reader = New-TailReader -Path $emptyPath
+    $text = Read-InitialTailText -Reader $reader -LineCount 40
+
+    Assert-True ($reader.ReadSucceeded) `
+        "Zero bytes: the read must succeed, but it failed with: $($reader.ReadError)"
+    Assert-True ($text -eq '') 'Zero bytes: an empty file has no text to show.'
+    Assert-True ($null -ne $reader.Head) 'Zero bytes: the remembered file start must be an array, not null.'
+    Assert-True ($reader.Head.Length -eq 0) 'Zero bytes: the remembered file start must be empty.'
+    Assert-True ($null -ne $reader.Checkpoint -or $reader.CheckpointOffset -eq 0) `
+        'Zero bytes: the checkpoint must be set without throwing.'
+}
+finally {
+    Remove-Item -LiteralPath $emptyPath -Force -ErrorAction SilentlyContinue
+}
+
 # The fixture project folder must match the real prefix, because the script derives that prefix
 # from this repository and globs '<prefix>*'.
 $mainRoot = Get-RepositoryMainRoot -ScriptRoot (Join-Path $repoRoot 'scripts')
 $prefix = ConvertTo-ClaudeProjectFolder -Path $mainRoot
+
+# --- The whole script tails a zero-byte task file without a binding error ---
+
+$root = New-WatchTestRoot
+try {
+    $emptyTask = New-FakeTaskOutput -Root $root -ProjectFolder "$prefix-empty" -LastWrite (Get-Date) -Lines @()
+    [System.IO.File]::WriteAllText($emptyTask, '')
+
+    $result = Invoke-WatchScript -ScriptArgs @('-Root', $root, '-NoFollow')
+
+    Assert-True ($result.Output -notmatch 'Cannot bind argument') `
+        "Zero bytes: the watcher must not report a binding failure. Output: $($result.Output)"
+    Assert-True ($result.Output -notmatch 'could no longer be read') `
+        "Zero bytes: the watcher must read an empty file. Output: $($result.Output)"
+    Assert-True ($result.Output.Contains($emptyTask)) `
+        "Zero bytes: the path must be named. Output: $($result.Output)"
+}
+finally {
+    Remove-Item -LiteralPath $root -Recurse -Force
+}
 
 # --- Newest-running selection when several files exist ---
 
