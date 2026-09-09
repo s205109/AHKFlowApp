@@ -62,6 +62,35 @@ function New-FakeTaskOutput {
     return $file
 }
 
+# Holds a write handle on a fake task output file, the way a task runner does. Liveness reports a
+# file as running only while some handle holds write access, so a fixture that must look running
+# has to be held open, not merely written.
+#
+# The share mode lets the watcher read the file and lets a case delete it. File.WriteAllText and
+# File.AppendAllText cannot be used on a held file: both deny write access to others, and the
+# handle below already holds it. Write through the handle instead.
+function Open-FakeTaskWriter {
+    param([Parameter(Mandatory)][string] $Path)
+
+    return [System.IO.FileStream]::new(
+        $Path,
+        [System.IO.FileMode]::Append,
+        [System.IO.FileAccess]::Write,
+        ([System.IO.FileShare]::ReadWrite -bor [System.IO.FileShare]::Delete))
+}
+
+# Appends text through a held handle and pushes it to disk, because the watcher reads by path.
+function Write-FakeTaskText {
+    param(
+        [Parameter(Mandatory)][object] $Writer,
+        [Parameter(Mandatory)][string] $Text
+    )
+
+    $bytes = [System.Text.Encoding]::UTF8.GetBytes($Text)
+    $Writer.Write($bytes, 0, $bytes.Length)
+    $Writer.Flush()
+}
+
 function Invoke-WatchScript {
     param([string[]] $ScriptArgs)
 
@@ -404,6 +433,52 @@ try {
 }
 finally {
     Remove-Item -LiteralPath $root -Recurse -Force
+}
+
+# --- A running task is one whose output file is held open for writing ---
+#
+# The probe asks Windows, not the file's text. It opens the file for reading while denying write
+# access, and only a sharing violation means a writer holds it. These cases hold a real handle, so
+# the real Win32 sharing rules are what is being tested.
+
+$liveDir = Join-Path ([System.IO.Path]::GetTempPath()) ("watch-task-live-$([guid]::NewGuid())")
+New-Item -ItemType Directory -Path $liveDir -Force | Out-Null
+$livenessPath = Join-Path $liveDir 'task.output'
+try {
+    [System.IO.File]::WriteAllText($livenessPath, "one line`n")
+
+    Assert-True (-not (Test-TaskFileHeldOpen -Path $livenessPath)) `
+        'Liveness: a file nobody holds open is not running.'
+
+    $writer = Open-FakeTaskWriter -Path $livenessPath
+    try {
+        Assert-True (Test-TaskFileHeldOpen -Path $livenessPath) `
+            'Liveness: a file held open for writing is running.'
+
+        # The watcher must still be able to read it, or liveness would cost it the tail.
+        $state = Get-TaskState -Path $livenessPath
+        Assert-True ($null -ne $state) 'Liveness: the watcher must still read a held file.'
+    }
+    finally {
+        $writer.Dispose()
+    }
+
+    Assert-True (-not (Test-TaskFileHeldOpen -Path $livenessPath)) `
+        'Liveness: a file is no longer running once its writer closes.'
+
+    Remove-Item -LiteralPath $livenessPath -Force
+    Assert-True (-not (Test-TaskFileHeldOpen -Path $livenessPath)) `
+        'Liveness: a deleted file is not running.'
+
+    $missingFolder = Join-Path (Join-Path $liveDir 'no-such-folder') 'task.output'
+    Assert-True (-not (Test-TaskFileHeldOpen -Path $missingFolder)) `
+        'Liveness: a file under a folder that is gone is not running.'
+
+    Assert-True (-not (Test-TaskFileHeldOpen -Path $liveDir)) `
+        'Liveness: a path that cannot be opened as a file is not running.'
+}
+finally {
+    Remove-Item -LiteralPath $liveDir -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 # --- Newest-running selection when several files exist ---

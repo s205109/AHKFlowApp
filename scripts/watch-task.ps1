@@ -311,6 +311,52 @@ function Get-TaskState {
     return [pscustomobject]@{ Running = $true; ExitCode = $null; BytesRead = $end.BytesRead }
 }
 
+# ERROR_SHARING_VIOLATION as .NET reports it: 0x80070020, which is -2147024864 as an Int32.
+$script:SharingViolationHResult = -2147024864
+
+function Test-TaskFileHeldOpen {
+    <#
+      Whether anything holds this file open for writing. That is what a running task means.
+
+      The file is opened for reading while write access is denied to everyone else. The open fails
+      only while some other handle holds write access, so the failure is the answer.
+
+      The exception type is not the test. FileNotFoundException and DirectoryNotFoundException
+      both derive from IOException, and a task output file can be deleted between the folder
+      listing and this call, so a broad catch would call a file that is gone a running task. Only
+      the sharing violation's HResult means a writer holds it.
+
+      PowerShell wraps a failing .NET constructor in a MethodInvocationException, so the real
+      exception is found by walking InnerException.
+
+      For the moment this handle is open it denies write access. A writer that opens the file once
+      and keeps it open, which is what the harness does, never notices. The open and the dispose
+      are one statement apart to keep that moment as short as it can be.
+    #>
+    param([Parameter(Mandatory)][string] $Path)
+
+    $stream = $null
+    try {
+        $stream = [System.IO.FileStream]::new(
+            $Path,
+            [System.IO.FileMode]::Open,
+            [System.IO.FileAccess]::Read,
+            [System.IO.FileShare]::Read)
+        return $false
+    }
+    catch {
+        $failure = $_.Exception
+        while ($null -ne $failure -and $failure -isnot [System.IO.IOException]) {
+            $failure = $failure.InnerException
+        }
+
+        return ($null -ne $failure -and $failure.HResult -eq $script:SharingViolationHResult)
+    }
+    finally {
+        if ($stream) { $stream.Dispose() }
+    }
+}
+
 function Get-WatchTaskRecord {
     <#
       Returns one record per <session id>\tasks\*.output file under every project folder that
