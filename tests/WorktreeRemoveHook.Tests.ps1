@@ -545,15 +545,16 @@ try {
     $removed = Wait-ForCondition { -not (Test-Path -LiteralPath $wtPath) }
     Assert-True $removed "Forced removal of an unmerged worktree should still remove the folder. Log: $(Get-Content -Raw -LiteralPath (Get-RemovalLogPath $repo) -ErrorAction SilentlyContinue)"
 
-    # The genuine proof this test exercises the gate: without it, an unmerged worktree would
-    # also be removed on today's script (that assertion alone is green on old and new code).
-    $diagnostics = Get-Content -Raw -LiteralPath (Get-RemovalDiagnosticsPath $repo)
-    Assert-True ($diagnostics -match '(?i)force override.*bypassing merge/clean gate') "Expected a force-override diagnostic proving the gate was consulted and bypassed. Log: $diagnostics"
-
     # The watcher owns the line on this path, and it removed the folder.
     $outcomeLines = @(Wait-ForOutcomeLine -RepoDir $repo)
     Assert-Equal 1 $outcomeLines.Count "A forced removal writes exactly one outcome line, got $($outcomeLines.Count)"
     Assert-True ($outcomeLines[0] -match 'Removed\.$') "Expected the removed line, got '$($outcomeLines[0])'"
+
+    # The watcher writes this diagnostic before it writes the outcome line.
+    # The genuine proof this test exercises the gate: without it, an unmerged worktree would
+    # also be removed on today's script (that assertion alone is green on old and new code).
+    $diagnostics = Get-Content -Raw -LiteralPath (Get-RemovalDiagnosticsPath $repo)
+    Assert-True ($diagnostics -match '(?i)force override.*bypassing merge/clean gate') "Expected a force-override diagnostic proving the gate was consulted and bypassed. Log: $diagnostics"
 } finally {
     Remove-TempTree $repo
 }
