@@ -38,6 +38,13 @@ One line per finished task, written after its deliverable commit.
 
       No `maxParallelThreads` cap yet. Task 5 adds it. It changes nothing here, because there are
       only four parallel collections to begin with, but it is what bounds CI.
-- [ ] Task 5 — thread cap, copy rule, written balance rule
-- [ ] Task 6 — measure, and prove the way back
-- [ ] Task 7 — the soak
+- [x] Task 5 — thread cap, copy rule, written balance rule. Commit `17e991a7`. The cap is proven
+      read, not only copied: the same tree gives 257.14 s at one thread and 128.29 s at four.
+      `docs/development/testing-workflow.md` gained the placement rule, and two stale sentences
+      in it were corrected.
+- [x] Task 6 — measure, and prove the way back. Commit `865d983f`. Five warm runs, all 64 tests
+      passing: 117.67 / 107.18 / 110.60 / 115.48 / 98.23. Median 110.60 s, mean 109.83 s, max
+      117.67 s. Against the honest serial number of 257.14 s that is 2.33 times faster, and it
+      beats the design's target of a median under 160 s. The serial fallback run passed, so the
+      way back is proven rather than assumed.
+- [ ] Task 7 — the soak. Running.
