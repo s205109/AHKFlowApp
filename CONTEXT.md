@@ -247,6 +247,16 @@ run at the same time. Sharing one fixture instance across test classes requires 
 classes in one Collection, which is why some Slices run one test at a time.
 _Avoid_: group, bucket, batch
 
+**Reused test server**:
+The SQL Server container that stays alive between test runs in one checkout, instead of being
+started and removed for each run. One checkout has at most one, and two checkouts never share one.
+_Avoid_: shared container, warm container, persistent database
+
+**Run-independent test**:
+Said of a test that passes whatever an earlier run left in the database. Every SQL-backed test
+needs this property, because the Reused test server outlives the run that filled it.
+_Avoid_: idempotent test, repeatable test, clean test
+
 **Merge proof**:
 The evidence that a branch's own work reached the base, which is what lets a worktree be removed. Local git proves it when the branch SHA is a non-first parent of a merge commit on the base. A rebase merge leaves no such commit, so the proof then comes from a merged pull request whose head SHA the branch really pointed at.
 _Avoid_: merged check, merge test, ancestry
