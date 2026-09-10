@@ -11,9 +11,9 @@
 ## Summary
 
 The merged-worktree sweep kept `wt-backlog-housekeeping` after its branch merged, and wrote no
-reason anywhere. Two separate defects caused that: the merged check refuses a commit a `git reset`
-dropped even when the same change later reached the base under a new SHA, and the skip that refusal
-takes writes no outcome line.
+reason anywhere. Three defects caused or hid that: the merged check refuses a commit a `git reset`
+dropped even when the same change later reached the base under a new SHA, the skip that refusal
+takes writes no outcome line, and the removal script says `Kept:` when it kept nothing.
 
 ## User story
 
@@ -47,6 +47,12 @@ later skip paths each write a `Kept:` line through `Write-SweepOutcome`
 (`scripts/cleanup-merged-worktrees.ps1:203`, "Write-SweepOutcome -RepoRoot $RepoRoot"). This one
 writes nothing, so `worktree-removal.log` held no record of the decision.
 
+The third defect showed up while clearing this up by hand. `remove-worktree-local-dev.ps1` run on a
+folder that is already gone writes
+(`scripts/remove-worktree-local-dev.ps1:815`, "Kept: the worktree folder does not exist."). Nothing
+was kept. `Kept:` is the prefix the sweep uses when it deliberately preserves a worktree, so a reader
+of the log cannot tell a real refusal from "there was nothing here".
+
 ## Acceptance criteria
 
 - [ ] `Test-StrandedWorkWasSuperseded` accepts a dropped commit whose patch-id is already reachable
@@ -64,6 +70,9 @@ writes nothing, so `worktree-removal.log` held no record of the decision.
       (`scripts/worktree-git.common.ps1:944`, "return (Test-StrandedWorkWasSuperseded -RepoRoot")
 - [ ] A Pester test asserts the sweep writes exactly one outcome line for a worktree the merged check
       refuses
+- [ ] `remove-worktree-local-dev.ps1` run on a folder that no longer exists writes an outcome line
+      that does not start with `Kept:`, because it kept nothing
+      (`scripts/remove-worktree-local-dev.ps1:815`, "Kept: the worktree folder does not exist.")
 
 ## Out of scope
 
