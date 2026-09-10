@@ -57,22 +57,50 @@ or a CI check on the pull request is the design question. The spec decides it.
 
 ## Acceptance criteria
 
-- [ ] A check reports an item that sits in `backlog/` with every acceptance box ticked and a
-      `Stage` line below `9-ship`.
-- [ ] Replaying pull request #400's head against its merge base makes the check report item 132.
+Design settled the invariant as two conditions held together. The criteria below name it that
+way. The earlier one-condition wording is superseded; see the ADR for why one condition alone
+cannot work.
+
+### The rule fires
+
+- [ ] The check reports an item still in `backlog/` when the pull request is not a draft and
+      every acceptance box in that item is ticked.
+- [ ] Replaying pull request #400's head against its merge base, with the draft state given as
+      not a draft, makes the check report item 132.
+- [ ] The check reports a `PLAN-PROGRESS.md` that survives into a not-a-draft pull request, as
+      its own problem line, separate from the folder and the `Stage` line.
+
+### The rule stays quiet
+
+- [ ] A draft pull request whose item has every box ticked does not trigger the check. That is
+      the Document-to-Ship window `workflow.md` specifies.
 - [ ] An item with at least one unticked acceptance box does not trigger the check, whatever its
-      stage. Most items ship over more than one pull request, and every pull request but the last
-      leaves boxes unticked.
-- [ ] An item with no acceptance boxes at all does not trigger the check.
+      stage and whatever the draft state. Most items ship over more than one pull request.
+- [ ] An item with no `## Acceptance criteria` section, or a section holding no boxes, does not
+      trigger the check.
 - [ ] A branch that only edits an item already in `backlog/done/` does not trigger the check.
-- [ ] A branch that had all boxes ticked in its own merge base does not trigger the check. It is
-      not the branch that finished the item.
-- [ ] The check states which invariant it uses and why the rejected candidates were rejected,
-      including the candidate item 106 already rejected.
-- [ ] A fixture proves both directions: a finished item left open fails, and a finished item
-      closed in the same branch passes.
-- [ ] Every existing PowerShell suite still passes, and the new check joins
-      `scripts/run-powershell-suites.ps1`, which discovers `tests/*.Tests.ps1` by glob.
+- [ ] `backlog/000-backlog-item-template.md` is never judged.
+
+### Parsing
+
+- [ ] A checkbox outside the `## Acceptance criteria` section is not counted. Item 072's unticked
+      box under `## Friction baselines` does not change its verdict.
+- [ ] A checkbox under a `###` subheading inside the acceptance section is counted. Items 121 and
+      122 group their criteria that way.
+- [ ] A checkbox inside a fenced code block is not counted.
+- [ ] Only a checkbox starting at column zero is counted.
+
+### Wiring
+
+- [ ] The script takes the draft state as a parameter, and the suite exercises both values.
+- [ ] `ci.yml` runs the check when a pull request is flipped to ready.
+- [ ] A third arm on `Get-BacklogStaleOpenProblem` reports an item whose records already merged
+      with every box ticked and a `Stage` below `9-ship`, with its own message, and without
+      depending on the threshold of 12.
+- [ ] The script header states the invariant, both conditions, and why each single-condition rule
+      was rejected, naming item 106.
+- [ ] Every existing PowerShell suite still passes, and the new suite joins
+      `tests/powershell-suites.json` with its `jobs` and `platform` arrays set.
 
 ## Out of scope
 
@@ -106,8 +134,9 @@ or a CI check on the pull request is the design question. The spec decides it.
   workaround for awkward ticking. It did not: `docs/development/workflow.md` stage 4 specifies it
   ("two local commits per task boundary, the deliverable then the progress line"), and stage 9
   deletes it. So both records are deliberate. What stays open is that two places record the same
-  thing and only one is checked. Settle at Design whether the plan ticks should be derived from
-  the progress file rather than written twice.
+  thing and only one is checked. **Design settled this: out of scope here, and it gets its own
+  item.** Deriving the plan ticks from the progress file changes what a plan file means, which is
+  a bigger decision than this item.
 - **The `code` filter is the wrong one to reuse.** `.github/code-paths-filter.yml` excludes
   `!scripts/**/*.ps1` and `!tests/*.ps1`, so a process-tooling pull request counts as "not code",
   including this item's own. It was drawn for the coverage gate, which asks a different question.
@@ -117,4 +146,4 @@ or a CI check on the pull request is the design question. The spec decides it.
 - ADR: `docs/adr/0016-a-shipping-pull-request-is-ready-and-fully-ticked.md`
 - Terms pinned in `CONTEXT.md`: Acceptance box, Records closed, Shipping pull request.
 - Spec: `docs/superpowers/specs/2026-09-10-close-the-item-in-the-shipping-pr-design-151.md`
-- Plan: <path, or "none — reason">
+- Plan: `docs/superpowers/plans/2026-09-10-close-the-item-in-the-shipping-pr-plan-151.md`
