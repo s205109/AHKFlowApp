@@ -6,6 +6,7 @@ namespace AHKFlowApp.E2E.Tests.Fixtures;
 /// <remarks>
 /// Every stack needs the browser, and the stacks start together. Four installs writing into one
 /// shared browser folder is a race, so the first caller does the work and the rest wait for it.
+/// One stack calls this once, so the wait costs nothing worth saving with a lock-free fast path.
 /// </remarks>
 internal static class BrowserInstall
 {
@@ -14,11 +15,6 @@ internal static class BrowserInstall
 
     public static async Task EnsureChromiumAsync()
     {
-        if (_installed)
-        {
-            return;
-        }
-
         await Gate.WaitAsync();
         try
         {
