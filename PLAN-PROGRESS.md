@@ -1,71 +1,56 @@
-# Progress — backlog 132, parallel E2E stacks
+# Progress — backlog 151, close the item in the shipping pull request
 
-Plan: `docs/superpowers/plans/2026-09-09-parallel-e2e-stacks-plan-132.md`
+Plan: `docs/superpowers/plans/2026-09-10-close-the-item-in-the-shipping-pr-plan-151.md`
 
 One line per finished task, written after its deliverable commit.
 
-- [x] Task 1 — one SQL server for the whole test process. Commit `9ef98383`. `ApiFactoryTests`
-      passed, 1 test. The plan missed one thing: `StackFixture` calls `new ApiFactory()`, so it
-      needed the assembly discriminator to keep the build green. Task 4 replaces that line.
-- [x] Task 2 — serialise host construction so Serilog cannot throw. Commit `97a11d6b`. The race
-      is real and reproduced. Three rounds passed without the gate, which is why the plan told me
-      to raise it; 20 rounds failed. The message is not the literal "already frozen" text, because
-      `Program.cs` catches its own throw — the test sees
-      "System.InvalidOperationException : The entry point exited without ever building an IHost."
-      With the gate, 20 rounds pass. Both lifecycle checks pass, 2 tests. Rounds put back to 3.
-- [x] Task 3 — one browser install per test process. Full E2E run passed: 64 tests, 0 failed,
-      test host 3 m 16 s, wall clock 241.62 s. The suite is still serial here.
+Pacing: stop after Task 2 and report. Agreed with the human at grilling on 2026-09-10.
 
-      **The 306.96 s baseline looks too high, and Task 6 must not trust it.** This run is still
-      serial and carries two new tests, so it should have been slower than the baseline, not 65
-      seconds faster. The likely reason is that the baseline was the first run in this worktree
-      and paid for a cold browser download, a cold image pull and cold file caches. Task 6
-      therefore measures the serial number again before it claims any saving.
+## Before Task 1
 
-      **The test count is now 64, not 62.** Task 2 added two lifecycle tests. The item's
-      criterion 3 needs the same correction, and Task 6 makes it.
-- [x] Task 4 — four collections, four fixtures, classes moved. The suite now runs in parallel.
-      64 tests passed, 0 failed. Test host 1 m 26 s, wall clock 128.29 s.
+This file replaced a leftover copy holding **backlog 132's** progress. That file was still
+tracked on `main`: Stage 9 requires deleting the progress file, and the housekeeping round that
+closed backlog 132 on 2026-09-10 missed that one part. Overwriting it here is not the fix for
+that defect, it just moves it out of sight on this branch. The finding is recorded in backlog
+151's notes so a housekeeping round can deal with `main`.
 
-      Against the honest serial number from Task 3, which carried the same 64 tests:
-      241.62 s to 128.29 s wall clock, and 196 s to 86 s in the test host.
+## Design evidence carried into Execute
 
-      The design predicted a slowest group of 70.51 s and got 86 s, so contention cost about
-      1.22 times. That is far milder than backlog 126's 2.1 times, which fits: this work is bound
-      by the processor and this machine has 16.
+A throwaway prototype ran the rule against pull request #400's real head and merge base on
+2026-09-10, before any task was written:
 
-      No `maxParallelThreads` cap yet. Task 5 adds it. It changes nothing here, because there are
-      only four parallel collections to begin with, but it is what bounds CI.
-- [x] Task 5 — thread cap, copy rule, written balance rule. Commit `17e991a7`. The cap is proven
-      read, not only copied: the same tree gives 257.14 s at one thread and 128.29 s at four.
-      `docs/development/testing-workflow.md` gained the placement rule, and two stale sentences
-      in it were corrected.
-- [x] Task 6 — measure, and prove the way back. Commit `865d983f`. Five warm runs, all 64 tests
-      passing: 117.67 / 107.18 / 110.60 / 115.48 / 98.23. Median 110.60 s, mean 109.83 s, max
-      117.67 s. Against the honest serial number of 257.14 s that is 2.33 times faster, and it
-      beats the design's target of a median under 160 s. The serial fallback run passed, so the
-      way back is proven rather than assumed.
-- [x] Task 7 — the soak. 30 of 30 passed, every run with 64 tests and no failure line. No new
-      flaky test appeared, so nothing was filed. Backlog 126 found a latent flake the moment it
-      went parallel; this suite did not.
+```
+PR #400 head=fd269d571ab3119e580ab847252561424fcb8cc4 base=0a43d9956ea7a82a8a494048997b55a1f9c20bd5
+candidates: 1 -> 132
+inventory status: ok, paths: 151
+  132 : backlog/132-run-e2e-flow-collections-in-par-59789baa.md boxes 5/5 -> REPORTED
+PLAN-PROGRESS.md tracked at that head: yes
+```
 
-All seven tasks are done. The plan is finished.
+A scan of all ten open backlog items found none with every acceptance box ticked, so arm 3 will
+not fire on the real backlog when Task 5 lands.
 
-## The review round
+## Tasks
 
-A review of the finished branch found two test gaps and four cleanups. All seven findings were
-accepted and fixed; none was pushed back or deferred.
+- [x] Task 1 — count acceptance boxes. `scripts/backlog-acceptance.common.ps1` plus
+      `tests/AcceptanceBoxes.Tests.ps1`. Suite passes.
 
-- The isolation tests never exercised `ApiFactory`. `ApiFactoryTests` now calls
-  `ApiFactory.ResolveConnectionStringAsync` and checks all four stack fixtures, and a new
-  `StackIsolationTests` proves at the database level that a reset in one stack leaves another
-  stack's rows alone. The CLI guard also checks that no two stacks share a discriminator, and its
-  remark about xUnit fixture instances was wrong and is corrected.
-- The three-round gate test was the only check on `HostStartGate`, and the Task 2 note says three
-  rounds passed with the gate removed. Two deterministic tests now drive the gate directly: one
-  proves a second caller waits, one proves a callback that throws still releases the gate.
-- `E2ESqlServer` wrapped a semaphore and a cache around `SharedSqlContainer`, which already does
-  both. `BrowserInstall` read its flag once outside the lock and again inside. Both are simpler now.
-- The disposal test only cleaned up after its assertion passed.
+      **The plan's own assertion was wrong, and the real backlog caught it.** The plan told me to
+      assert that backlog 072 reads as fully ticked, because its unticked box sits under
+      `## Friction baselines`. It does not. Backlog 072 has a second unticked box at line 99,
+      inside its `## Acceptance criteria` section, with the reason written beside it. `AGENTS.md`
+      asks for exactly that, so 18 of 19 is the correct reading. The counter was right and the
+      plan was wrong.
 
-Every new test was proved by breaking the code on purpose first. The E2E suite is 68 tests, not 64.
+      Replaced it with a stronger assertion built from measured numbers: backlog 072 holds 30
+      checkboxes in the file and 19 Acceptance boxes in the section, 18 of them ticked. A counter
+      with no section scope reports 30. That is real data, not a fixture.
+
+      **Mutation proof.** Replacing the section test with `$inSection = $true` turned the suite
+      red with 5 problems, including "got 30 in the file and 30 in the section. The section scope
+      is not being applied." Restored, and the suite is green again. So the scope rule is really
+      wired, not just plausibly present.
+
+      Also added a case the plan did not have: `- [X]` with an upper-case mark counts as ticked.
+      And an assertion that every open item reports at least one Acceptance box, which is the
+      failure mode a fixture cannot show.
