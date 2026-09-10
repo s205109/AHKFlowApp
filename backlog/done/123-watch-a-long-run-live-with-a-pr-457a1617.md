@@ -1,5 +1,10 @@
 # 123 - Watch a long run live with a progress estimate
 
+<!-- citation-check:ignore-file -->
+<!-- Shipped item. Its citations recorded scripts/watch-task.ps1 as it was when 123 merged.
+     Backlog 144 reorganised that file (liveness probe, session preference, terminal state),
+     so the line numbers here are the pre-144 record, not a claim about the file now. -->
+
 ## Metadata
 
 - **Epic**: Developer workflow

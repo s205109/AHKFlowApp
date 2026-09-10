@@ -16,19 +16,26 @@
        started in a subdirectory is still found. A folder that a neighbouring directory claims
        as closely, or more closely, is refused, because the mangling turns a path separator and
        a literal '-' into the same character.
-    2. Among <match>\<session id>\tasks\<task id>.output, a file is running when its content
-       does not end with '[exited with code N]' or '[killed]'. This needs no state of its own.
-    3. It picks the newest running file by last write time and tails it, following by byte
-       offset so a line written in two pieces is printed once, in full. The tail stops on its
-       own when a terminal marker is the last line, and prints the exit code or killed state last.
+    2. Among <match>\<session id>\tasks\<task id>.output, a file is running when something holds
+       it open for writing. That is asked of the operating system, not read from the file, so a
+       file left behind by a session that is gone does not count as running. The file's text still
+       decides the terminal state: an exit code, killed, or stopped without a terminal marker.
+    3. Among the running files it prefers, in order, the caller's own session, then the checkout
+       this copy of the script sits in, then the newest by last write time. Each preference is
+       skipped when it matches no running task. It tails the winner, following by byte offset so a
+       line written in two pieces is printed once, in full. The tail stops when the file ends with
+       a terminal marker, or when nothing holds it open any more.
 
   With no running task it prints the newest stopped task's last lines, terminal state, and path,
-  then exits 0. With more than one running it tails the newest and names the count.
+  then exits 0. With more than one running it tails the one the preference order in step 3 picks
+  and names how many others are running.
 
 .PARAMETER List
-  Print the recent tasks with their state, age, and index, then exit.
+  Print tasks with their state, age, and index, then exit. Every running task gets a row, and
+  newest stopped tasks fill the rest up to twenty rows.
 .PARAMETER Index
-  Select one task from the same list -List prints (1-based) instead of the newest running one.
+  Select one task from the same list -List prints (1-based) instead of the one the preference
+  order would pick.
 .PARAMETER Tail
   How many trailing lines to print before following. Default 40.
 .PARAMETER Root
@@ -40,9 +47,9 @@
 param(
     [switch] $List,
 
-    # 1-based, matching the numbers -List prints. Left at 0 it means "pick the newest running
-    # task". The range stops 0 and a negative from reading as that default and quietly ignoring
-    # what the caller asked for.
+    # 1-based, matching the numbers -List prints. Left at 0 it means "let the preference order in
+    # step 3 pick". The range stops 0 and a negative from reading as that default and quietly
+    # ignoring what the caller asked for.
     [ValidateRange(1, [int]::MaxValue)]
     [int] $Index,
 
@@ -72,6 +79,11 @@ $script:MaxSettleRounds = 5
 # gives up and leaves the next poll to try. Two covers a run swapping the file once while the
 # reader is inside a call; more than that is a writer the reader cannot keep up with anyway.
 $script:MaxReplacementRetries = 2
+
+# How many rows -List prints when nothing much is running. Every running task always gets a row,
+# and newest stopped tasks fill whatever is left, so a quiet machine still shows recent history
+# and a busy one still shows every running task. -Index addresses this same list.
+$script:ListRowCount = 20
 
 function ConvertTo-ClaudeProjectFolder {
     <#
@@ -183,6 +195,55 @@ function Get-NeighbourPath {
     return $neighbours.ToArray()
 }
 
+function Get-CheckoutClaimLength {
+    <#
+      How strongly one checkout claims a Claude project folder name: the length of that checkout's
+      mangled name when the folder is the checkout or sits inside it, and -1 when it does not.
+    #>
+    param(
+        [Parameter(Mandatory)][string] $Name,
+        [Parameter(Mandatory)][string] $Path
+    )
+
+    $mangled = ConvertTo-ClaudeProjectFolder -Path $Path.TrimEnd('\')
+    if ($Name.Equals($mangled, [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $mangled.Length
+    }
+
+    # The separator matters. Without it 'AHKFlowAppOLD' counts as part of 'AHKFlowApp'.
+    if ($Name.StartsWith($mangled + '-', [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $mangled.Length
+    }
+
+    return -1
+}
+
+function Get-OwningCheckoutPath {
+    <#
+      Which checkout a project folder belongs to: the one whose mangled name claims it most
+      closely. A worktree inside the main checkout claims its own folder more closely than the
+      main checkout does, so the longest claim is the answer and not the first match.
+
+      Returns an empty string when no checkout claims the name.
+    #>
+    param(
+        [Parameter(Mandatory)][string] $Name,
+        [Parameter(Mandatory)][AllowEmptyCollection()][string[]] $CheckoutPath
+    )
+
+    $best = -1
+    $owner = ''
+    foreach ($path in $CheckoutPath) {
+        $claim = Get-CheckoutClaimLength -Name $Name -Path $path
+        if ($claim -gt $best) {
+            $best = $claim
+            $owner = $path.TrimEnd('\')
+        }
+    }
+
+    return $owner
+}
+
 function Test-WatchTaskFolderName {
     <#
       Decides whether one Claude project folder belongs to this repository.
@@ -204,26 +265,9 @@ function Test-WatchTaskFolderName {
         [AllowEmptyCollection()][string[]] $NeighbourPath = @()
     )
 
-    # Returns the length of the mangled path when $Name is that path or sits inside it, else -1.
-    function Get-ClaimLength {
-        param([string] $Path)
-
-        $mangled = ConvertTo-ClaudeProjectFolder -Path $Path.TrimEnd('\')
-        if ($Name.Equals($mangled, [System.StringComparison]::OrdinalIgnoreCase)) {
-            return $mangled.Length
-        }
-
-        # The separator matters. Without it 'AHKFlowAppOLD' counts as part of 'AHKFlowApp'.
-        if ($Name.StartsWith($mangled + '-', [System.StringComparison]::OrdinalIgnoreCase)) {
-            return $mangled.Length
-        }
-
-        return -1
-    }
-
     $best = -1
     foreach ($path in $CheckoutPath) {
-        $claim = Get-ClaimLength -Path $path
+        $claim = Get-CheckoutClaimLength -Name $Name -Path $path
         if ($claim -gt $best) { $best = $claim }
     }
 
@@ -232,7 +276,7 @@ function Test-WatchTaskFolderName {
     }
 
     foreach ($path in $NeighbourPath) {
-        if ((Get-ClaimLength -Path $path) -ge $best) {
+        if ((Get-CheckoutClaimLength -Name $Name -Path $path) -ge $best) {
             return $false
         }
     }
@@ -311,15 +355,71 @@ function Get-TaskState {
     return [pscustomobject]@{ Running = $true; ExitCode = $null; BytesRead = $end.BytesRead }
 }
 
+# ERROR_SHARING_VIOLATION as .NET reports it: 0x80070020, which is -2147024864 as an Int32.
+$script:SharingViolationHResult = -2147024864
+
+function Test-TaskFileHeldOpen {
+    <#
+      Whether another handle is holding this file open in a mode that a writer needs. For a task
+      output file, the only thing that opens such a handle is the runner writing it, so this is
+      "is the task still running".
+
+      The file is opened for reading while write access is denied to everyone else. The open
+      fails with a sharing violation whenever some other handle would not share that: a writer,
+      or a reader opened with no sharing at all. Nothing but the runner opens these files, so in
+      practice the sharing violation is the runner's write handle.
+
+      The exception type is not the test. FileNotFoundException and DirectoryNotFoundException
+      both derive from IOException, and a task output file can be deleted between the folder
+      listing and this call, so a broad catch would call a file that is gone a running task. Only
+      the sharing violation's HResult is treated as running.
+
+      PowerShell wraps a failing .NET constructor in a MethodInvocationException, so the real
+      exception is found by walking InnerException.
+
+      For the moment this handle is open it denies write access. A writer that opens the file once
+      and keeps it open, which is what the harness does, never notices. The open and the dispose
+      are one statement apart to keep that moment as short as it can be.
+    #>
+    param([Parameter(Mandatory)][string] $Path)
+
+    $stream = $null
+    try {
+        $stream = [System.IO.FileStream]::new(
+            $Path,
+            [System.IO.FileMode]::Open,
+            [System.IO.FileAccess]::Read,
+            [System.IO.FileShare]::Read)
+        return $false
+    }
+    catch {
+        $failure = $_.Exception
+        while ($null -ne $failure -and $failure -isnot [System.IO.IOException]) {
+            $failure = $failure.InnerException
+        }
+
+        return ($null -ne $failure -and $failure.HResult -eq $script:SharingViolationHResult)
+    }
+    finally {
+        if ($stream) { $stream.Dispose() }
+    }
+}
+
 function Get-WatchTaskRecord {
     <#
-      Returns one record per <session id>\tasks\*.output file under every project folder that
-      belongs to this repository, newest first by last write time.
+      Returns one record per <session id>\tasks\<task id>.output file under every project folder
+      that belongs to this repository, newest first by last write time.
+
+      Running comes from the operating system, not from the file's text: a task is running while
+      something holds its output file open for writing. Terminal comes from the text, and the two
+      answer different questions. A file with no marker that nobody holds is a task that stopped
+      without saying so, which is a state the old rule could not produce.
     #>
     param(
         [Parameter(Mandatory)][string] $SearchRoot,
         [Parameter(Mandatory)][AllowEmptyCollection()][string[]] $CheckoutPath,
-        [AllowEmptyCollection()][string[]] $NeighbourPath = @()
+        [AllowEmptyCollection()][string[]] $NeighbourPath = @(),
+        [AllowEmptyString()][string] $OwnCheckoutPath = ''
     )
 
     if (-not (Test-Path -LiteralPath $SearchRoot -PathType Container)) {
@@ -333,30 +433,104 @@ function Get-WatchTaskRecord {
             }
     )
 
+    $own = $OwnCheckoutPath.TrimEnd('\')
+
     $outputs = [System.Collections.Generic.List[object]]::new()
     foreach ($dir in $projectDirs) {
+        $owner = Get-OwningCheckoutPath -Name $dir.Name -CheckoutPath $CheckoutPath
         $files = @(
             Get-ChildItem -LiteralPath $dir.FullName -Recurse -File -Filter '*.output' -ErrorAction SilentlyContinue |
                 Where-Object { (Split-Path -Leaf $_.DirectoryName) -eq 'tasks' }
         )
-        foreach ($file in $files) { $outputs.Add($file) }
+        foreach ($file in $files) {
+            $outputs.Add([pscustomobject]@{ File = $file; Checkout = $owner })
+        }
     }
 
     return @(
         $outputs |
-            Sort-Object LastWriteTime -Descending |
+            Sort-Object { $_.File.LastWriteTime } -Descending |
             ForEach-Object {
-                $state = Get-TaskState -Path $_.FullName
+                $file = $_.File
+                $owner = $_.Checkout
+                # Probe liveness first, then read the state, so the state read is the newer
+                # observation. A task that finishes between the two is then read as finished.
+                $held = Test-TaskFileHeldOpen -Path $file.FullName
+                $state = Get-TaskState -Path $file.FullName
+
+                # The probe ran before the state read, so a replacement run that opened the
+                # file in the gap between them is not in $held yet. The state read then finds
+                # no terminal marker, and the record would say the task is not running while a
+                # writer really holds the file. Select-WatchTaskRecord drops such a record, so
+                # the caller could end up following another session. Re-probe once when the
+                # two signals disagree, and let the newer observation win. This is the same
+                # reconciliation the follow loop does between its liveness probe and its
+                # state read.
+                if ($null -ne $state -and $state.Running -and -not $held) {
+                    $held = Test-TaskFileHeldOpen -Path $file.FullName
+                }
+
                 if ($null -ne $state) {
+                    $terminal = if ($state.Running) { 'none' }
+                                elseif ($null -eq $state.ExitCode) { 'killed' }
+                                else { 'exited' }
+
+                    # <project folder>\<session id>\tasks\<task id>.output
+                    $sessionDir = $file.Directory.Parent
+                    $session = if ($null -eq $sessionDir) { '' } else { $sessionDir.Name }
+
                     [pscustomobject]@{
-                        Path      = $_.FullName
-                        LastWrite = $_.LastWriteTime
-                        Running   = $state.Running
-                        ExitCode  = $state.ExitCode
+                        Path        = $file.FullName
+                        LastWrite   = $file.LastWriteTime
+                        Running     = $held
+                        ExitCode    = $state.ExitCode
+                        Terminal    = $terminal
+                        Session     = $session
+                        Checkout    = $owner
+                        OwnCheckout = ($own -ne '' -and $owner.Equals($own, [System.StringComparison]::OrdinalIgnoreCase))
                     }
                 }
             }
     )
+}
+
+function Select-WatchTaskRecord {
+    <#
+      Which running task the watcher tails when the caller named no index.
+
+      Three preferences, applied in order, each skipped when it matches no running task, so the
+      chain always ends somewhere:
+
+        1. The caller's own session. Claude Code sets CLAUDE_CODE_SESSION_ID for a command it
+           runs, and its value is the <session id> folder holding that session's task files. A
+           human running the watcher in their own terminal has no such variable, so this is a
+           preference and never a filter.
+        2. The checkout this copy of the script sits in, read from each record's OwnCheckout
+           flag. A checkout holds several sessions, so this signal is weaker than the session
+           and comes second. It is skipped when no running task belongs to that checkout.
+        3. The newest by last write. $Record arrives newest first, so this is the first survivor.
+
+      Returns $null when nothing is running.
+    #>
+    param(
+        [Parameter(Mandatory)][AllowEmptyCollection()][object[]] $Record,
+        [AllowEmptyString()][string] $SessionId = ''
+    )
+
+    $candidates = @($Record | Where-Object { $_.Running })
+    if ($candidates.Count -eq 0) { return $null }
+
+    if (-not [string]::IsNullOrWhiteSpace($SessionId)) {
+        $inSession = @($candidates | Where-Object {
+                $_.Session.Equals($SessionId, [System.StringComparison]::OrdinalIgnoreCase)
+            })
+        if ($inSession.Count -gt 0) { $candidates = $inSession }
+    }
+
+    $inCheckout = @($candidates | Where-Object { $_.OwnCheckout })
+    if ($inCheckout.Count -gt 0) { $candidates = $inCheckout }
+
+    return $candidates[0]
 }
 
 function Format-Age {
@@ -426,7 +600,9 @@ function Read-FileHead {
 
     $want = [int][Math]::Min([long] $Count, $Stream.Length)
     if ($want -le 0) {
-        return [byte[]]::new(0)
+        # A bare return unrolls a zero-length array to nothing, and the caller is handed $null.
+        # The comma wraps it, and the wrapper is what unrolls instead.
+        return , [byte[]]::new(0)
     }
 
     $Stream.Position = 0
@@ -438,7 +614,7 @@ function Read-FileHead {
 
     $exact = [byte[]]::new([Math]::Max(0, $read))
     [System.Array]::Copy($buffer, $exact, $exact.Length)
-    return $exact
+    return , $exact
 }
 
 function Test-SameHead {
@@ -482,7 +658,7 @@ function Read-FileCheckpoint {
     )
 
     $end = [Math]::Min($EndOffset, $Stream.Length)
-    if ($end -le 0) { return [byte[]]::new(0) }
+    if ($end -le 0) { return , [byte[]]::new(0) }
 
     $want = [int][Math]::Min([long] $Count, $end)
     $Stream.Position = $end - $want
@@ -492,7 +668,7 @@ function Read-FileCheckpoint {
 
     $exact = [byte[]]::new([Math]::Max(0, $read))
     [System.Array]::Copy($buffer, $exact, $exact.Length)
-    return $exact
+    return , $exact
 }
 
 function Set-TailReaderCheckpoint {
@@ -782,7 +958,7 @@ function Read-InitialTailText {
         $Reader.InitialTruncated = $lineCapReached
         $Reader.AtEnd = $true
         $Reader.FileIdentity = [System.IO.File]::GetCreationTimeUtc($Reader.Path).Ticks
-        $consumed = if ($chunks.Count -gt 0) { $chunks[0] } else { [byte[]]::new(0) }
+        $consumed = if ($chunks.Count -gt 0) { $chunks[0] } else { , [byte[]]::new(0) }
         Set-TailReaderCheckpoint -Reader $Reader -Consumed $consumed
 
         if ($total -le 0) {
@@ -961,10 +1137,24 @@ function Watch-Record {
     param(
         [Parameter(Mandatory)][object] $Record,
         [Parameter(Mandatory)][int] $Tail,
+
+        # Where the task came from, when the caller knows. A caller that passes nothing gets the
+        # path alone, which is what a case driving one file directly wants.
+        [AllowEmptyString()][string] $Session = '',
+        [AllowEmptyString()][string] $Checkout = '',
+        [AllowEmptyString()][string] $OwnSessionId = '',
+
         [switch] $NoFollow
     )
 
     Write-Host "Tailing $($Record.Path)"
+    if ($Session -ne '') {
+        $mine = if ($Session.Equals($OwnSessionId, [System.StringComparison]::OrdinalIgnoreCase)) { ' (this session)' } else { '' }
+        Write-Host "Session: $Session$mine"
+    }
+    if ($Checkout -ne '') {
+        Write-Host "Checkout: $Checkout"
+    }
     Write-Host ''
 
     $following = $Record.Running -and -not $NoFollow
@@ -982,11 +1172,14 @@ function Watch-Record {
 
     if (-not $Record.Running) {
         Write-Host ''
-        if ($null -eq $Record.ExitCode) {
+        if ($Record.Terminal -eq 'exited') {
+            Write-Host "This task has already finished. Exit code: $($Record.ExitCode)"
+        }
+        elseif ($Record.Terminal -eq 'killed') {
             Write-Host 'This task has already stopped. State: killed'
         }
         else {
-            Write-Host "This task has already finished. Exit code: $($Record.ExitCode)"
+            Write-Host 'This task has already stopped. State: stopped without a terminal marker'
         }
         return 0
     }
@@ -1036,6 +1229,11 @@ function Watch-Record {
         }
 
         if ($reader.AtEnd) {
+            # The marker rule cannot see a writer that stopped without writing one, and the loop
+            # would then poll a dead file for ever. Liveness answers the other half. Probe it
+            # before the state read, so the state read is the newer observation and a marker
+            # written between the two is on the side that wins.
+            $held = Test-TaskFileHeldOpen -Path $reader.Path
             $state = Get-TaskState -Path $reader.Path
             if ($null -eq $state) {
                 $stateReadFailures++
@@ -1049,7 +1247,7 @@ function Watch-Record {
                 $stateReadFailures = 0
             }
 
-            if ($null -ne $state -and -not $state.Running) {
+            if ($null -ne $state -and (-not $state.Running -or -not $held)) {
                 # The state above was read after the tail read returned, so the run can have
                 # written its last lines in between. Read to the file's end, then ask the file
                 # for its state again.
@@ -1060,8 +1258,16 @@ function Watch-Record {
                 # the state reported below belong to the same file.
                 $caughtUp = 0
                 $settled = $null
+                $settledHeld = $false
                 $settleRounds = 0
                 $catchUpFailed = $false
+
+                # Consecutive rounds that read nothing and found no marker and no writer. The
+                # marker rule and liveness are read one after the other, so a marker written in
+                # the gap between them is missed by that round; a later round's read catches it.
+                # Only after three such rounds in a row is the file really stopped without a
+                # marker. Bounded above by MaxSettleRounds as well.
+                $confirmRounds = 0
                 do {
                     $settleRounds++
                     $roundBytes = 0
@@ -1081,14 +1287,26 @@ function Watch-Record {
                     $caughtUp += $roundBytes
 
                     if ($catchUpFailed) { break }
+                    # Probe liveness first, then read the state. The state read is then the newer
+                    # observation, so a marker written between the two is on the side that wins.
+                    $settledHeld = Test-TaskFileHeldOpen -Path $reader.Path
                     $settled = Get-TaskState -Path $reader.Path
+
+                    if (-not $settledHeld -and $null -ne $settled -and $settled.Running -and $roundBytes -eq 0) {
+                        $confirmRounds++
+                    }
+                    else {
+                        $confirmRounds = 0
+                    }
                     # A deferred read returns nothing, but the file still has everything the new
                     # run wrote. Settling on it would print the verdict over output that never
                     # reached the screen, so it counts as a round that read something.
-                } while (($roundBytes -gt 0 -or $reader.ReadDeferred) -and
+                } while ($settleRounds -lt $script:MaxSettleRounds -and
                          $null -ne $settled -and
-                         -not $settled.Running -and
-                         $settleRounds -lt $script:MaxSettleRounds)
+                         (-not $settled.Running -or -not $settledHeld) -and
+                         ($roundBytes -gt 0 -or
+                          $reader.ReadDeferred -or
+                          (-not $settledHeld -and $settled.Running -and $confirmRounds -lt 3)))
 
                 # A catch-up read that failed is not the same as a file with nothing left to
                 # read. Its lines are still on disk, unread. Taking the state now would print
@@ -1142,9 +1360,11 @@ function Watch-Record {
                 }
                 $settleDeferrals = 0
 
-                # A replacement that is still running keeps the watch going. The carry stays in
-                # the reader, because its last line is not finished yet.
-                if ($settled.Running) {
+                # A run that is still going keeps the watch going. This covers a replacement that
+                # opened during a probe: the round after it opens sees the new writer, so
+                # $settledHeld is true here. The carry stays in the reader, because its last line
+                # is not finished yet.
+                if ($settled.Running -and $settledHeld) {
                     continue
                 }
                 $state = $settled
@@ -1155,8 +1375,10 @@ function Watch-Record {
                 }
 
                 # No text at all from the reader, but a terminal file end, means its byte offset
-                # went stale. Show the real end so the caller is not left with a silent gap.
-                if ($text.Length -eq 0 -and $caughtUp -eq 0) {
+                # went stale. Show the real end so the caller is not left with a silent gap. A run
+                # that stopped without a marker is not that: nothing was missed, the run simply
+                # ended without saying how.
+                if ($text.Length -eq 0 -and $caughtUp -eq 0 -and -not $state.Running) {
                     Write-Host ''
                     Write-Host 'The file changed while it was being followed, so some of its output is not above.'
                     Write-Host 'Its last lines:'
@@ -1171,11 +1393,15 @@ function Watch-Record {
                 }
 
                 Write-Host ''
-                if ($null -eq $state.ExitCode) {
+                if ($null -ne $state.ExitCode) {
+                    Write-Host "Exit code: $($state.ExitCode)"
+                }
+                elseif (-not $state.Running) {
                     Write-Host 'State: killed'
                 }
                 else {
-                    Write-Host "Exit code: $($state.ExitCode)"
+                    # No marker and no writer. The run ended without saying how.
+                    Write-Host 'State: stopped without a terminal marker'
                 }
                 return 0
             }
@@ -1210,11 +1436,23 @@ function Invoke-WatchTask {
         $Root
     }
 
+    # The checkout this copy of the script sits in, which is not the main root when the script is
+    # run from a worktree. AGENTS.md tells an agent to hand over the watcher path in the checkout
+    # the run belongs to, and this is what makes that instruction mean something.
+    $ownCheckout = Split-Path -Parent $PSScriptRoot
+
     $mainRoot = Get-RepositoryMainRoot -ScriptRoot $PSScriptRoot
     $checkouts = @(Get-RepositoryCheckoutPath -MainRoot $mainRoot)
     $neighbours = @(Get-NeighbourPath -CheckoutPath $checkouts)
 
-    $records = @(Get-WatchTaskRecord -SearchRoot $searchRoot -CheckoutPath $checkouts -NeighbourPath $neighbours)
+    $records = @(Get-WatchTaskRecord `
+        -SearchRoot $searchRoot `
+        -CheckoutPath $checkouts `
+        -NeighbourPath $neighbours `
+        -OwnCheckoutPath $ownCheckout)
+
+    # Absent in a plain terminal, in which case it is simply skipped.
+    $sessionId = if ($null -eq $env:CLAUDE_CODE_SESSION_ID) { '' } else { $env:CLAUDE_CODE_SESSION_ID }
 
     if ($records.Count -eq 0) {
         Write-Host "No task output files found for this repository under $searchRoot"
@@ -1222,7 +1460,10 @@ function Invoke-WatchTask {
         return 1
     }
 
-    $recent = @($records | Select-Object -First 20)
+    $running = @($records | Where-Object { $_.Running })
+    $stopped = @($records | Where-Object { -not $_.Running })
+    $fill = [Math]::Max(0, $script:ListRowCount - $running.Count)
+    $recent = @($running) + @($stopped | Select-Object -First $fill)
 
     if ($List) {
         $rowIndex = 0
@@ -1233,11 +1474,14 @@ function Invoke-WatchTask {
                 State = if ($record.Running) {
                     'running'
                 }
-                elseif ($null -eq $record.ExitCode) {
+                elseif ($record.Terminal -eq 'exited') {
+                    "exited $($record.ExitCode)"
+                }
+                elseif ($record.Terminal -eq 'killed') {
                     'killed'
                 }
                 else {
-                    "exited $($record.ExitCode)"
+                    'stopped (no marker)'
                 }
                 Age   = Format-Age -When $record.LastWrite
                 Path  = $record.Path
@@ -1252,12 +1496,21 @@ function Invoke-WatchTask {
             Write-Host "No task at index $Index. There are $($recent.Count) recent tasks. Run -List to see them."
             return 1
         }
-        return (Watch-Record -Record $recent[$Index - 1] -Tail $Tail -NoFollow:$NoFollow)
+
+        $picked = $recent[$Index - 1]
+        return (Watch-Record `
+            -Record $picked `
+            -Tail $Tail `
+            -Session $picked.Session `
+            -Checkout $picked.Checkout `
+            -OwnSessionId $sessionId `
+            -NoFollow:$NoFollow)
     }
 
-    $running = @($records | Where-Object { $_.Running })
+    $chosen = Select-WatchTaskRecord -Record $records -SessionId $sessionId
 
-    if ($running.Count -eq 0) {
+    if ($null -eq $chosen) {
+        # The no-running-task path, moved off $running.Count and on to the selection result.
         $newest = $records[0]
         Write-Host 'No task is running now. Showing the newest stopped task.'
         Write-Host ''
@@ -1270,11 +1523,14 @@ function Invoke-WatchTask {
         }
         Write-Host ''
         Write-Host "Path: $($newest.Path)"
-        if ($null -eq $newest.ExitCode) {
+        if ($newest.Terminal -eq 'exited') {
+            Write-Host "Exit code: $($newest.ExitCode)"
+        }
+        elseif ($newest.Terminal -eq 'killed') {
             Write-Host 'State: killed'
         }
         else {
-            Write-Host "Exit code: $($newest.ExitCode)"
+            Write-Host 'State: stopped without a terminal marker'
         }
         return 0
     }
@@ -1286,7 +1542,13 @@ function Invoke-WatchTask {
         Write-Host ''
     }
 
-    return (Watch-Record -Record $running[0] -Tail $Tail -NoFollow:$NoFollow)
+    return (Watch-Record `
+        -Record $chosen `
+        -Tail $Tail `
+        -Session $chosen.Session `
+        -Checkout $chosen.Checkout `
+        -OwnSessionId $sessionId `
+        -NoFollow:$NoFollow)
 }
 
 # Dot-sourced by the test suite to reach the functions above without running anything.
