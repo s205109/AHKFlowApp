@@ -230,7 +230,7 @@ Invoke-TestCase 'Timing mode calls the Mode once per run' {
     $root = New-HarnessFixture
     try {
         # -WarmUpRuns 0 because this case counts calls. The default of 2 would add two more.
-        $result = Invoke-Harness -Root $root -Arguments @('-Mode', 'Fast', '-Runs', '3', '-WarmUpRuns', '0', '-NoBuild')
+        $result = Invoke-Harness -Root $root -Arguments @('-Mode', 'Fast', '-Runs', '3', '-WarmUpRuns', '0', '-SettleSeconds', '0', '-NoBuild')
         Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
 
         $calls = @(Get-Content -LiteralPath (Join-Path $root 'stub\testfast-calls.txt'))
@@ -291,7 +291,7 @@ Invoke-TestCase 'The reported median is the middle of the sorted runs, and the m
     $root = New-HarnessFixture
     try {
         # -WarmUpRuns 0 because this case counts calls. The default of 2 would add two more.
-        $result = Invoke-Harness -Root $root -Arguments @('-Mode', 'Fast', '-Runs', '3', '-WarmUpRuns', '0', '-NoBuild')
+        $result = Invoke-Harness -Root $root -Arguments @('-Mode', 'Fast', '-Runs', '3', '-WarmUpRuns', '0', '-SettleSeconds', '0', '-NoBuild')
         Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
 
         # Every number here comes from the harness's own output, so both sides of each assertion
@@ -354,6 +354,53 @@ Invoke-TestCase 'The discarded runs are printed, with how many there were' {
         $discarded = @($Matches[1] -split '/' | ForEach-Object { [double]($_.Trim() -replace ',', '.') })
         Assert-True ($discarded.Count -eq 2) "Expected two discarded runs printed, got $($discarded.Count)."
         Assert-True ([int]$Matches[2] -eq 2) "The printed count must be 2, got $($Matches[2])."
+    }
+    finally { Remove-HarnessFixture -Root $root }
+}
+
+Invoke-TestCase 'The settle clock keeps taking warm-up runs until the ceiling' {
+    $root = New-HarnessFixture
+    try {
+        Set-Content -LiteralPath (Join-Path $root 'stub\sleeps.txt') -Value '50' -Encoding utf8
+
+        # A build output file written just now, so the settle clock is nowhere near satisfied.
+        $binFolder = Join-Path $root 'tests\FakeProject\bin\Release\net10.0'
+        New-Item -ItemType Directory -Path $binFolder -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $binFolder 'Fake.dll') -Value 'not a real assembly' -Encoding utf8
+
+        $result = Invoke-Harness -Root $root -Arguments @(
+            '-Mode', 'Fast', '-Runs', '1', '-WarmUpRuns', '1',
+            '-SettleSeconds', '3600', '-MaxWarmUpRuns', '4', '-NoBuild')
+        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
+
+        # Warm-ups all the way to the ceiling, not the minimum of one, then one counted run.
+        $calls = @(Get-Content -LiteralPath (Join-Path $root 'stub\testfast-calls.txt'))
+        Assert-True ($calls.Count -eq 5) "Expected 4 warm-up plus 1 counted run, got $($calls.Count)."
+
+        $text = $result.Output -join "`n"
+        Assert-True ($text -match 'warm-up ceiling') `
+            "Stopping at the ceiling must say so, or a reader reads a cold median as a settled one. Output: $text"
+    }
+    finally { Remove-HarnessFixture -Root $root }
+}
+
+Invoke-TestCase 'With no build output the settle clock is off, and it says so' {
+    $root = New-HarnessFixture
+    try {
+        Set-Content -LiteralPath (Join-Path $root 'stub\sleeps.txt') -Value '50' -Encoding utf8
+
+        # The fixture has tests\FakeProject but no bin folder, so nothing dates the build.
+        $result = Invoke-Harness -Root $root -Arguments @(
+            '-Mode', 'Fast', '-Runs', '1', '-WarmUpRuns', '1', '-SettleSeconds', '3600', '-NoBuild')
+        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
+
+        $calls = @(Get-Content -LiteralPath (Join-Path $root 'stub\testfast-calls.txt'))
+        Assert-True ($calls.Count -eq 2) "Expected 1 warm-up plus 1 counted run, got $($calls.Count)."
+
+        # Silence would be the worst outcome: the clock off and nobody told.
+        $text = $result.Output -join "`n"
+        Assert-True ($text -match 'no build output') `
+            "A settle clock that cannot find a build date must say so. Output: $text"
     }
     finally { Remove-HarnessFixture -Root $root }
 }
@@ -509,7 +556,7 @@ Invoke-TestCase 'The build runs inside the lock, and timing mode releases it bef
     try {
         # Note the absent -NoBuild: this case is about the build.
         # -WarmUpRuns 0 because this case counts calls. The default of 2 would add two more.
-        $result = Invoke-Harness -Root $root -Arguments @('-Mode', 'Fast', '-Runs', '2', '-WarmUpRuns', '0')
+        $result = Invoke-Harness -Root $root -Arguments @('-Mode', 'Fast', '-Runs', '2', '-WarmUpRuns', '0', '-SettleSeconds', '0')
         Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
 
         $signals = @(Get-Content -LiteralPath (Join-Path $root 'stub\signals.txt'))

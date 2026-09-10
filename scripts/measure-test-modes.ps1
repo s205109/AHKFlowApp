@@ -46,6 +46,17 @@ param(
     [ValidateRange(0, 100)]
     [int]$WarmUpRuns = 2,
 
+    # The counted runs do not start until the tree has been built this many seconds ago. Warm-up
+    # runs fill the wait, so the time buys something. Backlog 150 measured a whole five-run window
+    # right after a build that was flat and 60 percent slow: no number of discarded runs fixes
+    # that window, because it never decays. 0 turns the clock off.
+    [ValidateRange(0, 7200)]
+    [int]$SettleSeconds = 600,
+
+    # The ceiling on warm-up runs, so the settle clock cannot run forever on a slow Mode.
+    [ValidateRange(1, 100)]
+    [int]$MaxWarmUpRuns = 12,
+
     [string]$Configuration = 'Release',
 
     # Skip the one build up front. Pass it when the tree is already built.
@@ -108,6 +119,33 @@ function Invoke-TimedRun {
     $elapsed = [Math]::Round($stopwatch.Elapsed.TotalSeconds, 2)
     Write-Host ("{0}: {1:N2} s" -f $Label, $elapsed) -ForegroundColor Green
     return $elapsed
+}
+
+function Get-BuildCompletedAtUtc {
+    <#
+      When the test output was last written, in UTC, or $null when there is none.
+
+      The newest write time across every test project's build output. That is the closest thing to
+      a build clock this script can read without being told, and it works for a -NoBuild run, which
+      is the run that most needs it.
+
+      The framework folder is a wildcard on purpose. Pinning net10.0 here would answer $null after
+      a framework bump, and a settle clock that switches itself off in silence is worse than no
+      settle clock at all.
+    #>
+    param(
+        [Parameter(Mandatory = $true)][string]$RepoRoot,
+        [Parameter(Mandatory = $true)][string]$Configuration
+    )
+
+    $pattern = Join-Path $RepoRoot "tests\*\bin\$Configuration\*\*.dll"
+    $newest = Get-ChildItem -Path $pattern -ErrorAction SilentlyContinue |
+        Sort-Object LastWriteTimeUtc -Descending |
+        Select-Object -First 1
+
+    if (-not $newest) { return $null }
+
+    return $newest.LastWriteTimeUtc
 }
 
 Push-Location $repoRoot
@@ -231,9 +269,31 @@ try {
     }
 
     # Timing mode, with the lock released above.
+    $buildCompletedAtUtc = Get-BuildCompletedAtUtc -RepoRoot $repoRoot -Configuration $Configuration
+    if ($null -eq $buildCompletedAtUtc) {
+        Write-Host 'Found no build output, so the settle clock is off for this run.' -ForegroundColor Yellow
+    }
+
+    $secondsSinceBuild = 0
     $warmUpSeconds = @()
-    for ($warmUp = 1; $warmUp -le $WarmUpRuns; $warmUp++) {
-        $warmUpSeconds += Invoke-TimedRun -Label "warm-up $warmUp of $WarmUpRuns" `
+    while ($true) {
+        if ($null -ne $buildCompletedAtUtc) {
+            $secondsSinceBuild = ([DateTime]::UtcNow - $buildCompletedAtUtc).TotalSeconds
+        }
+
+        $enoughRuns = $warmUpSeconds.Count -ge $WarmUpRuns
+        $settled = ($SettleSeconds -le 0) -or ($null -eq $buildCompletedAtUtc) -or
+            ($secondsSinceBuild -ge $SettleSeconds)
+        if ($enoughRuns -and $settled) { break }
+
+        if ($warmUpSeconds.Count -ge $MaxWarmUpRuns) {
+            # Loud, because the alternative is a cold median that reads exactly like a settled one.
+            Write-Host ("Stopped at the warm-up ceiling of {0} runs. The tree was built {1:N0} s ago, short of {2} s." -f `
+                $MaxWarmUpRuns, $secondsSinceBuild, $SettleSeconds) -ForegroundColor Yellow
+            break
+        }
+
+        $warmUpSeconds += Invoke-TimedRun -Label ("warm-up " + ($warmUpSeconds.Count + 1)) `
             -Mode $Mode -Configuration $Configuration -ScriptRoot $PSScriptRoot
     }
 
