@@ -6,7 +6,7 @@
 - **Type**: Tooling
 - **Interfaces**: none (measurement script)
 - **Difficulty**: moderate
-- **Stage**: 3-plan
+- **Stage**: 4-execute
 
 ## Summary
 
@@ -82,6 +82,27 @@ parallel. Settled measurement on 2026-09-10 put the same 239 tests at 11 to 13 s
 - [ ] Every open item that carries a numeric speed threshold measured with this script is listed
       here, with a note saying whether its threshold survives re-measurement. Backlog 133 is one;
       the list names the rest.
+
+## Open items with a threshold from this script
+
+Searched on 2026-09-10 across `backlog/` and `backlog/blocked/` for `measure-test-modes` and
+`median of`. Three items matched, and one of them is this one.
+
+- **133 — Reuse the SQL test container between runs.** Carries 49.59 s as the Integration baseline
+  and asks for a median of five warm runs. That 49.59 s came from backlog 128 and inherits the
+  warm-up error, so it is probably high. The item sits at `Stage: 2-design` with pull request #402
+  open, so it can adopt the new defaults before it measures anything. **Its threshold does not
+  survive. Backlog 133 re-measures the 49.59 s baseline with the new script before it states a
+  saving.**
+- **140 — Account for the unexplained E2E harness overhead.** Asks for medians of five runs. It has
+  taken no measurements of its own yet, and it already calls its numbers an estimated remainder
+  rather than observed time. **Nothing to re-measure. It inherits the new defaults when it starts.**
+- **146 — One machine-wide lock for local test runs.** Did not match the search, and it is listed
+  here because it carries numbers. They were timed by hand around `-Mode PowerShell` runs rather
+  than produced by this script, and they compare two lock shapes rather than setting a speed
+  threshold. **Not affected.**
+
+The three items in `backlog/blocked/` carry no speed threshold from this script.
 
 ## Out of scope
 
