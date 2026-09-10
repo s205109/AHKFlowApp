@@ -1,5 +1,9 @@
 # SQL-backed tests are run-independent, and prove it by dropping first
 
+<!-- citation-check:ignore-file -->
+<!-- This ADR is a point-in-time record. Its code citations were true when it was written, on
+     2026-09-10. Backlog 133 then moved those lines while carrying out the decision here. -->
+
 [ADR 0013](0013-sql-backed-tests-isolate-by-database.md) says isolation is a property a test class
 proves about itself. That claim covered one run. The SQL Server container was created for a run and
 removed when the run ended, so every database started empty whatever any test did.
