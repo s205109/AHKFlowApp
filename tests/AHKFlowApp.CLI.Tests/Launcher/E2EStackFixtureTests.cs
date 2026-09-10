@@ -39,31 +39,45 @@ public sealed class E2EStackFixtureTests
     }
 
     /// <summary>
-    /// Each collection owns a distinct stack type, because xUnit matches a fixture by exact type.
+    /// Each collection owns a distinct stack type, and each type names a distinct database.
     /// </summary>
     /// <remarks>
-    /// Two collections sharing one fixture type would share one stack, and their classes would
-    /// then write to one database while running at the same time.
+    /// xUnit builds one instance of a collection fixture per collection, so two collections naming
+    /// the same fixture type still get an instance each. What they would share is the discriminator
+    /// that type passes to StackFixture, and a discriminator names the database. Two collections
+    /// running at the same time on one database would write over each other's rows.
+    ///
+    /// This is the cheap source-level guard, and it runs in Fast mode. The database names the four
+    /// stacks really produce are checked in AHKFlowApp.E2E.Tests, in ApiFactoryTests.
     /// </remarks>
     [Fact]
-    public void EveryE2ECollection_TakesItsOwnStackFixtureType()
+    public void EveryE2ECollection_TakesItsOwnStackFixtureTypeAndDatabase()
     {
         // Arrange
         string e2eDirectory = FindE2ETestProjectDirectory();
         string collectionSource = File.ReadAllText(Path.Combine(e2eDirectory, "E2ETestCollection.cs"));
 
         // Act
-        string[] fixtureTypes = collectionSource
-            .Split(": ICollectionFixture<", StringSplitOptions.None)
-            .Skip(1)
-            .Select(part => part[..part.IndexOf('>', StringComparison.Ordinal)])
-            .ToArray();
+        string[] fixtureTypes = ReadValues(collectionSource, ": ICollectionFixture<", '>');
+        string[] discriminators = ReadValues(collectionSource, ": StackFixture(\"", '"');
 
         // Assert
         fixtureTypes.Should().NotBeEmpty();
         fixtureTypes.Should().OnlyHaveUniqueItems(
             "two collections sharing one fixture type would share one database while running together");
+
+        discriminators.Should().HaveSameCount(fixtureTypes,
+            "every stack fixture type passes StackFixture a discriminator of its own");
+        discriminators.Should().OnlyHaveUniqueItems(
+            "a discriminator names the database, so two stacks sharing one would share the rows");
     }
+
+    private static string[] ReadValues(string source, string opening, char closing) =>
+        source
+            .Split(opening, StringSplitOptions.None)
+            .Skip(1)
+            .Select(part => part[..part.IndexOf(closing, StringComparison.Ordinal)])
+            .ToArray();
 
     private static string FindE2ETestProjectDirectory()
     {

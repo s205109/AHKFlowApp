@@ -26,10 +26,20 @@ public sealed class ApiFactory(string discriminator) : WebApplicationFactory<Pro
     internal string ConnectionString => _connectionString
         ?? throw new InvalidOperationException("E2E API SQL connection has not been initialized.");
 
+    /// <summary>
+    /// Works out the database this stack uses, without starting a host.
+    /// </summary>
+    /// <remarks>
+    /// StartAsync calls this, and so does the isolation test. Keeping it in one place is what lets
+    /// a test prove that each stack really does name its own database.
+    /// </remarks>
+    internal async Task<string> ResolveConnectionStringAsync() =>
+        SqlTestDatabase.CreateConnectionString(
+            await E2ESqlServer.GetConnectionStringAsync(), discriminator);
+
     public async Task StartAsync()
     {
-        _connectionString = SqlTestDatabase.CreateConnectionString(
-            await E2ESqlServer.GetConnectionStringAsync(), discriminator);
+        _connectionString = await ResolveConnectionStringAsync();
 
         await HostStartGate.RunAsync(async () =>
         {
