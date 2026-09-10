@@ -193,6 +193,47 @@ $p = @(Get-FixtureProblem -Fixture $f -IsDraft $false)
 Assert-True ($p.Count -eq 0) "A closed branch that deleted PLAN-PROGRESS.md must not be reported, got:`n$($p -join "`n")"
 Remove-Item -LiteralPath $f.Root -Recurse -Force
 
+# --- The real case: pull request #400 and backlog 132 ---
+#
+# PINNED TO A COMMIT ON PURPOSE. Do not turn this into a fixture. The commit IS the evidence:
+# 7ca15577 is the merge of pull request #400, which merged all of backlog 132's work on
+# 2026-09-10 with all five Acceptance boxes ticked and 'Stage: 4-execute'. A historical commit
+# does not move, so this test does not rot. Pull request #400 must have been ready, because
+# GitHub cannot merge a draft, and that is the one fact supplied rather than read.
+#
+# The check judges the pull request HEAD against its merge base, so both come from the merge
+# commit: its second parent is the branch head, its first parent is main at the time.
+
+$realMerge = '7ca15577'
+$haveCommit = $false
+& git -C $suiteRoot rev-parse --verify --quiet "$realMerge^{commit}" *> $null
+if ($LASTEXITCODE -eq 0) { $haveCommit = $true }
+
+if (-not $haveCommit) {
+    # A shallow clone cannot answer this, and a silent skip would be a false green.
+    $failures += "Commit $realMerge is not in this clone, so the real backlog 132 replay could not run. Fetch full history."
+}
+else {
+    $prHead = (Invoke-FixtureGit $suiteRoot @('rev-parse', "$realMerge^2")).Trim()
+    $prBase = (Invoke-FixtureGit $suiteRoot @('merge-base', "$realMerge^1", $prHead)).Trim()
+
+    $realProblems = @(Get-ShippingPrProblem -RepoRoot $suiteRoot -MergeBase $prBase `
+        -TargetCommit $prHead -PullRequestIsDraft $false)
+    $joined = $realProblems -join "`n"
+
+    Assert-True ($realProblems.Count -ge 1) `
+        "Pull request #400 left backlog 132 open, so the check must report it. Got no problem."
+    Assert-True ($joined -match '132') `
+        "The report must name backlog 132, got:`n$joined"
+
+    # The same pull request, told it is a draft, must say nothing. This is the second half of the
+    # rule proved against the real case, not only against a fixture.
+    $asDraft = @(Get-ShippingPrProblem -RepoRoot $suiteRoot -MergeBase $prBase `
+        -TargetCommit $prHead -PullRequestIsDraft $true)
+    Assert-True ($asDraft.Count -eq 0) `
+        "The same pull request as a draft must report nothing, got:`n$($asDraft -join "`n")"
+}
+
 # --- Report ---
 
 if ($failures.Count -gt 0) {
