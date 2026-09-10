@@ -63,43 +63,43 @@ cannot work.
 
 ### The rule fires
 
-- [ ] The check reports an item still in `backlog/` when the pull request is not a draft and
+- [x] The check reports an item still in `backlog/` when the pull request is not a draft and
       every acceptance box in that item is ticked.
-- [ ] Replaying pull request #400's head against its merge base, with the draft state given as
+- [x] Replaying pull request #400's head against its merge base, with the draft state given as
       not a draft, makes the check report item 132.
-- [ ] The check reports a `PLAN-PROGRESS.md` that survives into a not-a-draft pull request, as
+- [x] The check reports a `PLAN-PROGRESS.md` that survives into a not-a-draft pull request, as
       its own problem line, separate from the folder and the `Stage` line.
 
 ### The rule stays quiet
 
-- [ ] A draft pull request whose item has every box ticked does not trigger the check. That is
+- [x] A draft pull request whose item has every box ticked does not trigger the check. That is
       the Document-to-Ship window `workflow.md` specifies.
-- [ ] An item with at least one unticked acceptance box does not trigger the check, whatever its
+- [x] An item with at least one unticked acceptance box does not trigger the check, whatever its
       stage and whatever the draft state. Most items ship over more than one pull request.
-- [ ] An item with no `## Acceptance criteria` section, or a section holding no boxes, does not
+- [x] An item with no `## Acceptance criteria` section, or a section holding no boxes, does not
       trigger the check.
-- [ ] A branch that only edits an item already in `backlog/done/` does not trigger the check.
-- [ ] `backlog/000-backlog-item-template.md` is never judged.
+- [x] A branch that only edits an item already in `backlog/done/` does not trigger the check.
+- [x] `backlog/000-backlog-item-template.md` is never judged.
 
 ### Parsing
 
-- [ ] A checkbox outside the `## Acceptance criteria` section is not counted. Item 072's unticked
+- [x] A checkbox outside the `## Acceptance criteria` section is not counted. Item 072's unticked
       box under `## Friction baselines` does not change its verdict.
-- [ ] A checkbox under a `###` subheading inside the acceptance section is counted. Items 121 and
+- [x] A checkbox under a `###` subheading inside the acceptance section is counted. Items 121 and
       122 group their criteria that way.
-- [ ] A checkbox inside a fenced code block is not counted.
-- [ ] Only a checkbox starting at column zero is counted.
+- [x] A checkbox inside a fenced code block is not counted.
+- [x] Only a checkbox starting at column zero is counted.
 
 ### Wiring
 
-- [ ] The script takes the draft state as a parameter, and the suite exercises both values.
-- [ ] `ci.yml` runs the check when a pull request is flipped to ready.
-- [ ] A third arm on `Get-BacklogStaleOpenProblem` reports an item whose records already merged
+- [x] The script takes the draft state as a parameter, and the suite exercises both values.
+- [x] `ci.yml` runs the check when a pull request is flipped to ready.
+- [x] A third arm on `Get-BacklogStaleOpenProblem` reports an item whose records already merged
       with every box ticked and a `Stage` below `9-ship`, with its own message, and without
       depending on the threshold of 12.
-- [ ] The script header states the invariant, both conditions, and why each single-condition rule
+- [x] The script header states the invariant, both conditions, and why each single-condition rule
       was rejected, naming item 106.
-- [ ] Every existing PowerShell suite still passes, and the new suite joins
+- [x] Every existing PowerShell suite still passes, and the new suite joins
       `tests/powershell-suites.json` with its `jobs` and `platform` arrays set.
 
 ## Out of scope
@@ -147,3 +147,13 @@ cannot work.
 - Terms pinned in `CONTEXT.md`: Acceptance box, Records closed, Shipping pull request.
 - Spec: `docs/superpowers/specs/2026-09-10-close-the-item-in-the-shipping-pr-design-151.md`
 - Plan: `docs/superpowers/plans/2026-09-10-close-the-item-in-the-shipping-pr-plan-151.md`
+- **What one `ready_for_review` run costs.** Measured on this branch's five most recent CI runs
+  on 2026-09-10: 9m33s, 10m49s, 8m23s, 10m20s, 10m45s. So about ten minutes of wall-clock time,
+  once per item at Ship. That is the number the grilling decision assumed was small, and it sits
+  right at the ten-minute line the plan named as the point to reconsider. Moving the check into
+  its own small workflow would cut it to well under a minute, and it stays worth filing as a
+  follow-up. It is not filed yet.
+- **A defect this item found and did not fix.** `PLAN-PROGRESS.md` is still tracked on `main`,
+  holding backlog 132's progress. Stage 9 requires deleting it, and the housekeeping round that
+  closed backlog 132 missed that part. This branch overwrote the content, which moves the defect
+  out of sight rather than fixing it on `main`. A housekeeping round should delete it there.

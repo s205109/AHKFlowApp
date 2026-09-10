@@ -81,7 +81,8 @@ function New-ShippingFixture {
         [int] $Ticked = 2,
         [switch] $Closed,
         [switch] $Progress,
-        [switch] $StartClosed
+        [switch] $StartClosed,
+        [switch] $AsTemplate
     )
 
     $root = Join-Path ([System.IO.Path]::GetTempPath()) ('shipping-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
@@ -99,15 +100,19 @@ function New-ShippingFixture {
     }
 
     $startFolder = if ($StartClosed) { 'backlog/done' } else { 'backlog' }
-    $itemPath = Join-Path $repo "$startFolder/140-fixture.md"
+    # The template carries placeholder boxes and is never a piece of work, so the check must skip
+    # it whatever its boxes say. -AsTemplate writes the item under the template's real name.
+    $fileName = if ($AsTemplate) { '000-backlog-item-template.md' } else { '140-fixture.md' }
+    $itemKey = if ($AsTemplate) { '000' } else { '140' }
+    $itemPath = Join-Path $repo "$startFolder/$fileName"
     $startStage = if ($StartClosed) { '9-ship' } else { '1-pickup' }
-    Write-FixtureItem -Path $itemPath -Key '140' -Stage $startStage -Total $Total -Ticked 0
+    Write-FixtureItem -Path $itemPath -Key $itemKey -Stage $startStage -Total $Total -Ticked 0
     Invoke-FixtureGit $repo @('add', '-A') | Out-Null
     Invoke-FixtureGit $repo @('commit', '--quiet', '-m', 'file the item') | Out-Null
     $mergeBase = (Invoke-FixtureGit $repo @('rev-parse', 'HEAD')).Trim()
 
     Invoke-FixtureGit $repo @('checkout', '--quiet', '-b', 'fix/wt-fixture') | Out-Null
-    Write-FixtureItem -Path $itemPath -Key '140' -Stage $Stage -Total $Total -Ticked $Ticked
+    Write-FixtureItem -Path $itemPath -Key $itemKey -Stage $Stage -Total $Total -Ticked $Ticked
     if ($Progress) {
         Set-Content -LiteralPath (Join-Path $repo 'PLAN-PROGRESS.md') -Value "# Progress`n" -Encoding utf8
     }
@@ -177,6 +182,13 @@ Remove-Item -LiteralPath $f.Root -Recurse -Force
 $f = New-ShippingFixture -StartClosed -Stage '9-ship'
 $p = @(Get-FixtureProblem -Fixture $f -IsDraft $false)
 Assert-True ($p.Count -eq 0) "Editing an item already in backlog/done/ must not be reported, got:`n$($p -join "`n")"
+Remove-Item -LiteralPath $f.Root -Recurse -Force
+
+# --- The backlog item template is never judged ---
+
+$f = New-ShippingFixture -AsTemplate
+$p = @(Get-FixtureProblem -Fixture $f -IsDraft $false)
+Assert-True ($p.Count -eq 0) "backlog/000-backlog-item-template.md must never be judged, got:`n$($p -join "`n")"
 Remove-Item -LiteralPath $f.Root -Recurse -Force
 
 # --- A surviving PLAN-PROGRESS.md is its own problem line ---
