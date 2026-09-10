@@ -66,8 +66,7 @@ public sealed class MigrationTests(SharedSqlServerFixture sqlFixture)
     {
         // Arrange
         await using AppDbContext context = CreateContext("MigrationTests_HotkeyContext");
-        IMigrator migrator = context.GetService<IMigrator>();
-        await migrator.MigrateAsync("20260729151833_AddKnownShortcuts");
+        await RunIndependentDatabase.DropThenMigrateToAsync(context, "20260729151833_AddKnownShortcuts");
 
         var owner = Guid.NewGuid();
         var firstId = Guid.NewGuid();
