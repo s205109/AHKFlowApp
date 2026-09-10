@@ -25,6 +25,10 @@ $expectedSuites = @(
     'BacklogPlanPointer.Tests.ps1'
     'BacklogStaleOpen.Tests.ps1'
     'CitationFreshness.Tests.ps1'
+    # Backlog 133. It joins the invariants job because it is the only check that catches a test
+    # reaching a target migration directly: that bypass still passes on a cold container, so the
+    # C# suites stay green while the rule is broken.
+    'RunIndependentSqlTests.Tests.ps1'
     'SkillParity.Tests.ps1'
     # Backlog 127. This one is in the job so that every pull request proves the runner starts,
     # reads a manifest, and selects suites on Linux. It is the only member that is here for the
