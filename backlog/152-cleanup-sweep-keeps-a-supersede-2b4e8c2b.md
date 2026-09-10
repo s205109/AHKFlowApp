@@ -52,11 +52,11 @@ the pickup's job; this item states the outcome only.
 
 The sweep then takes the silent skip
 (`scripts/cleanup-merged-worktrees.ps1:143`, "if (-not (Test-BranchOwnWorkWasMerged"). Three of the
-four other refusal paths write a `Kept:` line through `Write-SweepOutcome` — locked, which runs
-before the merged check (`scripts/cleanup-merged-worktrees.ps1:126`,
-"Write-SweepOutcome -RepoRoot $RepoRoot -WorktreePath $wtFull"), plus the plan guard and the dirty
-check, which run after it. The merged-check skip writes nothing, so `worktree-removal.log` held no
-record of the decision.
+four other refusal paths write a `Kept:` line through `Write-SweepOutcome`. The locked path runs
+before the merged check
+(`scripts/cleanup-merged-worktrees.ps1:126`, "Write-SweepOutcome -RepoRoot $RepoRoot").
+The plan guard and the dirty check run after it. The merged-check skip writes nothing, so
+`worktree-removal.log` held no record of the decision.
 
 A second refusal path is silent in the same way. When `git status` itself fails, the sweep keeps the
 worktree and writes only to stderr
