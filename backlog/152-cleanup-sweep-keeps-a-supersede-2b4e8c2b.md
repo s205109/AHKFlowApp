@@ -41,11 +41,27 @@ dropped (`scripts/worktree-git.common.ps1:396`, "rev-list $before --not $after")
 shows only the other commit on the branch, and that commit is on `main` too. The check compares by
 SHA reachability, so it cannot see that the change returned under a new SHA.
 
+Reachability is a deliberate choice, not an oversight. `git cherry` was used here before and was
+removed because it normalizes whitespace, skips merge commits, and ignores author, message,
+signature, and empty-commit intent
+(`scripts/worktree-git.common.ps1:340`, "normalizes whitespace, it skips merge commits entirely").
+A regression test holds that line
+(`tests/WorktreeMergedCleanup.Tests.ps1:445`, "Content that differs only in whitespace must still count as discarded work.").
+So whatever answers this item must not reintroduce patch-text comparison. Finding the safe rule is
+the pickup's job; this item states the outcome only.
+
 The sweep then takes the silent skip
-(`scripts/cleanup-merged-worktrees.ps1:143`, "if (-not (Test-BranchOwnWorkWasMerged"). The three
-later skip paths each write a `Kept:` line through `Write-SweepOutcome`
-(`scripts/cleanup-merged-worktrees.ps1:203`, "Write-SweepOutcome -RepoRoot $RepoRoot"). This one
-writes nothing, so `worktree-removal.log` held no record of the decision.
+(`scripts/cleanup-merged-worktrees.ps1:143`, "if (-not (Test-BranchOwnWorkWasMerged"). Three of the
+four other refusal paths write a `Kept:` line through `Write-SweepOutcome` — locked, which runs
+before the merged check (`scripts/cleanup-merged-worktrees.ps1:126`,
+"Write-SweepOutcome -RepoRoot $RepoRoot -WorktreePath $wtFull"), plus the plan guard and the dirty
+check, which run after it. The merged-check skip writes nothing, so `worktree-removal.log` held no
+record of the decision.
+
+A second refusal path is silent in the same way. When `git status` itself fails, the sweep keeps the
+worktree and writes only to stderr
+(`scripts/cleanup-merged-worktrees.ps1:177`, "git -C $wtFull status --porcelain"). No outcome line
+reaches the log there either.
 
 The third defect showed up while clearing this up by hand. `remove-worktree-local-dev.ps1` run on a
 folder that is already gone writes
@@ -55,35 +71,38 @@ of the log cannot tell a real refusal from "there was nothing here".
 
 ## Acceptance criteria
 
-- [ ] `Test-StrandedWorkWasSuperseded` accepts a dropped commit whose patch-id is already reachable
-      from the base ref, and still refuses a dropped commit whose change reached no ref
+- [ ] The sweep removes a merged worktree whose branch reflog holds a `reset:` that dropped a commit
+      the base later received, in the shape `chore/wt-backlog-housekeeping` had
       (`scripts/worktree-git.common.ps1:378`, "function Test-StrandedWorkWasSuperseded {")
-- [ ] A Pester test builds a branch with a `reset:` that drops a commit later replayed onto the base
-      under a new SHA, and asserts `Test-BranchOwnWorkWasMerged` returns `$true`
-- [ ] A Pester test builds a branch with a `reset:` that drops a commit no ref holds, and asserts
-      `Test-BranchOwnWorkWasMerged` returns `$false`
-- [ ] The merged-check skip in `Invoke-MergedWorktreeCleanup` writes a `Kept:` line to
-      `worktree-removal.log` naming the signal that refused
+- [ ] The sweep keeps a merged worktree whose branch reflog holds a `reset:` that dropped a commit
+      the base never received
+- [ ] The sweep keeps a merged worktree whose dropped commit differs from what the base holds only in
+      whitespace, in being a merge commit, or in author, message, signature, or empty-commit intent
+      (`tests/WorktreeMergedCleanup.Tests.ps1:445`, "Content that differs only in whitespace must still count as discarded work.")
+- [ ] Every worktree the sweep declines to remove has exactly one line in `worktree-removal.log`
+      saying why, including a merged-check refusal
       (`scripts/cleanup-merged-worktrees.ps1:143`, "if (-not (Test-BranchOwnWorkWasMerged")
-- [ ] `Test-BranchOwnWorkWasMerged` reports which signal refused, rather than a bare `$false`, so the
-      sweep can name it
+- [ ] A worktree the sweep keeps because `git status` failed has a line in `worktree-removal.log`
+      saying so (`scripts/cleanup-merged-worktrees.ps1:177`, "git -C $wtFull status --porcelain")
+- [ ] The log line for a merged-check refusal names which of the five signals refused
       (`scripts/worktree-git.common.ps1:944`, "return (Test-StrandedWorkWasSuperseded -RepoRoot")
-- [ ] A Pester test asserts the sweep writes exactly one outcome line for a worktree the merged check
-      refuses
 - [ ] `remove-worktree-local-dev.ps1` run on a folder that no longer exists writes an outcome line
       that does not start with `Kept:`, because it kept nothing
       (`scripts/remove-worktree-local-dev.ps1:815`, "Kept: the worktree folder does not exist.")
 
 ## Out of scope
 
-- The `git cherry` / patch-id comparison is for the dropped-commit path only. The other four signals
-  in `Test-BranchOwnWorkWasMerged` keep their current rules.
+- Reintroducing `git cherry` or any other patch-text comparison. It was removed on purpose and a
+  regression test guards its removal.
+- The other four signals in `Test-BranchOwnWorkWasMerged`. Only the dropped-commit signal changes.
 - Removing `wt-backlog-housekeeping` itself. That is a one-time manual step, not this item's work.
 
 ## Notes / dependencies
 
 - Found while asking why `wt-backlog-housekeeping` survived the sweep after pull request #405 merged.
-- The reporting gap made the diagnosis much slower than the fix. Fix the reporting even if the
-  patch-id change turns out to be harder than it looks.
-- Spec: none — the defect and both fixes are named above.
+- Verification artifact: `tests/WorktreeMergedCleanup.Tests.ps1`. Every criterion above is a scenario
+  that file can build and assert, so no new suite is needed.
+- The reporting gap made the diagnosis much slower than the fix. Ship the reporting criteria even if
+  a safe rule for the dropped-commit signal turns out to be hard to find.
+- Spec: none — the defects and the wanted behavior are named above.
 - Plan: none — not started.
