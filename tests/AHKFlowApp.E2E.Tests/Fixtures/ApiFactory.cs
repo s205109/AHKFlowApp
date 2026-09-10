@@ -8,45 +8,51 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Testcontainers.MsSql;
+using Microsoft.Extensions.Logging;
 
 namespace AHKFlowApp.E2E.Tests.Fixtures;
 
-public sealed class ApiFactory : WebApplicationFactory<Program>
+/// <summary>
+/// One API host for one stack, on its own database.
+/// </summary>
+/// <remarks>
+/// The discriminator names the database. Each stack passes its own, so several stacks share one
+/// SQL Server and never share rows. E2ESqlServer is what keeps the container count at one.
+/// </remarks>
+public sealed class ApiFactory(string discriminator) : WebApplicationFactory<Program>
 {
-    private const string E2ETestAssemblyName = "AHKFlowApp.E2E.Tests";
-
-    private readonly MsSqlContainer? _sql;
     private string? _connectionString;
-
-    public ApiFactory()
-    {
-        string? sharedSqlConnectionString = Environment.GetEnvironmentVariable(
-            SqlContainerFixture.SharedSqlConnectionStringEnvironmentVariable);
-        if (string.IsNullOrWhiteSpace(sharedSqlConnectionString))
-        {
-            _sql = new MsSqlBuilder(SqlContainerFixture.SqlServerImage).Build();
-            return;
-        }
-
-        _connectionString = CreateTestDatabaseConnectionString(sharedSqlConnectionString);
-    }
 
     internal string ConnectionString => _connectionString
         ?? throw new InvalidOperationException("E2E API SQL connection has not been initialized.");
 
+    /// <summary>
+    /// Works out the database this stack uses, without starting a host.
+    /// </summary>
+    /// <remarks>
+    /// StartAsync calls this, and so does the isolation test. Keeping it in one place is what lets
+    /// a test prove that each stack really does name its own database.
+    /// </remarks>
+    internal async Task<string> ResolveConnectionStringAsync() =>
+        SqlTestDatabase.CreateConnectionString(
+            await E2ESqlServer.GetConnectionStringAsync(), discriminator);
+
     public async Task StartAsync()
     {
-        if (_sql is not null)
-        {
-            await _sql.StartAsync();
-            _connectionString = CreateTestDatabaseConnectionString(_sql.GetConnectionString());
-        }
+        _connectionString = await ResolveConnectionStringAsync();
 
-        // Force the factory to build the host (triggers ConfigureWebHost).
-        _ = Services;
-        using AsyncServiceScope scope = Services.CreateAsyncScope();
-        await scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.MigrateAsync();
+        await HostStartGate.RunAsync(async () =>
+        {
+            // Force the factory to build the host (triggers ConfigureWebHost).
+            _ = Services;
+
+            // Resolving ILoggerFactory is what runs Serilog's registration, and that is where the
+            // bootstrap logger is frozen. Doing it here keeps the freeze inside the gate.
+            _ = Services.GetRequiredService<ILoggerFactory>();
+
+            using AsyncServiceScope scope = Services.CreateAsyncScope();
+            await scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.MigrateAsync();
+        });
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -73,17 +79,4 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
             });
         });
     }
-
-    public override async ValueTask DisposeAsync()
-    {
-        await base.DisposeAsync();
-        if (_sql is not null)
-        {
-            await _sql.DisposeAsync();
-        }
-    }
-
-    private static string CreateTestDatabaseConnectionString(string baseConnectionString) =>
-        SqlTestDatabase.CreateConnectionString(baseConnectionString, E2ETestAssemblyName);
-
 }

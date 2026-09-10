@@ -12,8 +12,8 @@ namespace AHKFlowApp.E2E.Tests;
 /// The preview here is served by the API, so a green run also proves HotkeyEmitter's snap block
 /// survives the round trip over HTTP and into the DOM unmangled.
 /// </summary>
-[Collection(E2ETestCollection.Name)]
-public sealed class WindowSnapFlowTests(StackFixture fixture) : IAsyncLifetime
+[Collection(E2ECollectionD.Name)]
+public sealed class WindowSnapFlowTests(StackFixtureD fixture) : IAsyncLifetime
 {
     public Task InitializeAsync() =>
         fixture.ResetDataAsync();

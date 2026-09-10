@@ -7,9 +7,9 @@ using Xunit;
 
 namespace AHKFlowApp.E2E.Tests.Fixtures;
 
-public sealed class StackFixture : IAsyncLifetime
+public class StackFixture(string discriminator) : IAsyncLifetime
 {
-    public ApiFactory Api { get; } = new();
+    public ApiFactory Api { get; } = new(discriminator);
     public SpaHost Spa { get; private set; } = default!;
     public IPlaywright Playwright { get; private set; } = default!;
     public IBrowser Browser { get; private set; } = default!;
@@ -72,9 +72,7 @@ public sealed class StackFixture : IAsyncLifetime
         HttpMessageInvoker apiClient = new(Api.Server.CreateHandler());
         Spa = await SpaHost.StartAsync(PublishedWwwroot, apiClient, Api.Server.BaseAddress.ToString());
 
-        int exitCode = Microsoft.Playwright.Program.Main(["install", "chromium"]);
-        if (exitCode != 0)
-            throw new InvalidOperationException($"Playwright browser installation failed (exit {exitCode}).");
+        await BrowserInstall.EnsureChromiumAsync();
         Playwright = await Microsoft.Playwright.Playwright.CreateAsync();
         Browser = await Playwright.Chromium.LaunchAsync(new() { Headless = true });
     }

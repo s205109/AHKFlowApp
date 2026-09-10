@@ -7,8 +7,8 @@ using Xunit;
 
 namespace AHKFlowApp.E2E.Tests;
 
-[Collection(E2ETestCollection.Name)]
-public sealed class KnownShortcutsMobileFlowTests(StackFixture fixture) : IAsyncLifetime
+[Collection(E2ECollectionD.Name)]
+public sealed class KnownShortcutsMobileFlowTests(StackFixtureD fixture) : IAsyncLifetime
 {
     private static readonly BrowserNewContextOptions PhoneViewport = new()
     {
@@ -120,7 +120,7 @@ public sealed class KnownShortcutsMobileFlowTests(StackFixture fixture) : IAsync
 
     private static readonly string LongDoes = new('d', 200);
 
-    private static async Task SeedLongOwnerRecordAsync(StackFixture fixture)
+    private static async Task SeedLongOwnerRecordAsync(StackFixtureD fixture)
     {
         await using AsyncServiceScope scope = fixture.Api.Services.CreateAsyncScope();
         AppDbContext db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
