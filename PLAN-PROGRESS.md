@@ -195,3 +195,35 @@ not fire on the real backlog when Task 5 lands.
       All 17 acceptance boxes are now ticked, and item 151 is still open in `backlog/`. That is
       exactly the state its own rule reports. On this draft pull request it stays quiet, which is
       correct. Step 7 flips it to ready and expects CI to refuse it.
+
+## Task 8 Step 7 — the rule refused this very pull request
+
+Pushed `fd7fb289`, then `gh pr ready 407`. The ready flip started run `34525500019`, ten seconds
+after the push's own run on the same head. It failed, and the failing step is the new one:
+
+```
+repo-invariants / A ready pull request closes the item it finishes
+
+  $isDraft = 'false' -eq 'true'
+  $head = 'fd7fb28941fbfc05a15ac511c8c5df2aa3ce97d8'
+
+Backlog 151 has every acceptance box ticked and is still open in backlog/.
+  File:  backlog/151-close-the-item-in-the-pr-that-s-c446acb5.md
+  Stage: 4-execute
+  Boxes: 17 of 17 ticked
+  Fix:   close it - set 'Stage: 9-ship' and 'git mv' it into backlog/done/, in one commit.
+         If the work is not finished, untick the box that is not true and say why in the item.
+
+PLAN-PROGRESS.md is still tracked in this pull request.
+  Fix:   delete it in the same commit that closes the records. Stage 9 requires it.
+
+Found 2 problem(s). See docs/adr/0016-a-shipping-pull-request-is-ready-and-fully-ticked.md for the rule.
+##[error]Process completed with exit code 1.
+```
+
+That is the rule working in CI, on a real pull request, against a real item. The
+`ready_for_review` trigger is what made the run happen: the push run and the ready run carry the
+same head, so without the trigger the last run would have been the push run alone, and it would
+have been the draft-time run.
+
+Step 8 now closes the records and expects the same check to pass.
