@@ -6,7 +6,7 @@
 - **Type**: Process / tooling
 - **Interfaces**: none (script, CI)
 - **Difficulty**: complex
-- **Stage**: 0-intake
+- **Stage**: 2-design
 
 ## Summary
 
@@ -100,12 +100,18 @@ or a CI check on the pull request is the design question. The spec decides it.
 - `scripts/check-shipped-plan-ticked.ps1` is the best model for the merge-base comparison. Its
   header explains why it judges only the items the branch ships, and why judging every touched
   item would get the gate switched off inside a week.
-- **Open question, possibly more important than the check.** The item 132 branch was not
-  careless. It kept a careful progress record in `PLAN-PROGRESS.md`, naming a deliverable commit
-  and a test result for every task. It just did not tick the plan checkboxes. Two places record
-  the same thing and only one is checked. If `PLAN-PROGRESS.md` grew because ticking a plan in
-  the private repository is awkward from inside a worktree, then the fix is to make ticking easy,
-  and a new gate treats a symptom. Settle this at Design.
+- **Open question, narrowed.** The item 132 branch was not careless. It kept a careful progress
+  record in `PLAN-PROGRESS.md`, naming a deliverable commit and a test result for every task. It
+  just did not tick the plan checkboxes. The handoff asked whether `PLAN-PROGRESS.md` grew as a
+  workaround for awkward ticking. It did not: `docs/development/workflow.md` stage 4 specifies it
+  ("two local commits per task boundary, the deliverable then the progress line"), and stage 9
+  deletes it. So both records are deliberate. What stays open is that two places record the same
+  thing and only one is checked. Settle at Design whether the plan ticks should be derived from
+  the progress file rather than written twice.
+- **The `code` filter is the wrong one to reuse.** `.github/code-paths-filter.yml` excludes
+  `!scripts/**/*.ps1` and `!tests/*.ps1`, so a process-tooling pull request counts as "not code",
+  including this item's own. It was drawn for the coverage gate, which asks a different question.
+  A design that reuses it would be blind to the item class this repository files most often.
 - Source: `.superpowers/handoff-close-the-item-in-the-shipping-pr.md`, written 2026-09-10 by the
   housekeeping round on `chore/wt-backlog-housekeeping`. That folder is gitignored.
 - Spec: <path, or "none — reason">
