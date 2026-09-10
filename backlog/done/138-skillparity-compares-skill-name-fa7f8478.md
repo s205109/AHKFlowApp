@@ -85,7 +85,7 @@ passed as a match.
 - The case-sensitive comparison passes against the real skill tree today: 26 canonical skills, 26
   mirrored, zero differences. So the change reports nothing new on a clean tree.
 - The suite runs in both CI jobs, on both platforms
-  (`tests/powershell-suites.json:38`, "SkillParity.Tests.ps1"), so a change here must pass on
+  (`tests/powershell-suites.json:39`, "SkillParity.Tests.ps1"), so a change here must pass on
   Windows and on Linux. `docs/development/testing-workflow.md` explains that record.
 - Separator handling is already settled and only letter case is open: the path-splitting helper
   trims either separator
