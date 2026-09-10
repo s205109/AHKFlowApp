@@ -466,8 +466,15 @@ function Get-WatchTaskRecord {
                 # two signals disagree, and let the newer observation win. This is the same
                 # reconciliation the follow loop does between its liveness probe and its
                 # state read.
+                #
+                # The re-probe is then the newest observation, which is the wrong way round for
+                # the rest of the record: Terminal and ExitCode below come from the text. Read
+                # the state again afterwards to put the order back. Without it, a task that
+                # writes its exit marker while the re-probe runs is recorded as stopped with no
+                # marker at all, and the file it points at says it exited.
                 if ($null -ne $state -and $state.Running -and -not $held) {
                     $held = Test-TaskFileHeldOpen -Path $file.FullName
+                    $state = Get-TaskState -Path $file.FullName
                 }
 
                 if ($null -ne $state) {

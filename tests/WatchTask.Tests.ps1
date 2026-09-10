@@ -505,10 +505,10 @@ try {
 
     # ReadSucceeded is what proves Set-TailReaderCheckpoint bound: a $null Consumed argument
     # throws a binding error inside Read-InitialTailText, which its catch turns into
-    # ReadSucceeded = $false. This case locks the three reachable comma sites: the zero-length
+    # ReadSucceeded = $false. This case locks three of the five comma sites: the zero-length
     # returns in Read-FileHead and Read-FileCheckpoint, and the else branch in Read-InitialTailText.
-    # The two "return , $exact" sites cannot be reached (the read there always fills the buffer),
-    # so no black-box case can cover them.
+    # The two "return , $exact" sites need a read that stops short of what was asked for, and the
+    # case below forces one.
     Assert-True ($reader.ReadSucceeded) `
         "Zero bytes: the read must succeed, but it failed with: $($reader.ReadError)"
     Assert-True ($text -eq '') 'Zero bytes: an empty file has no text to show.'
@@ -521,6 +521,70 @@ try {
 }
 finally {
     Remove-Item -LiteralPath $emptyPath -Force -ErrorAction SilentlyContinue
+}
+
+# --- A read that stops short keeps its comma, so the caller still gets an array ---
+#
+# Read-FileHead and Read-FileCheckpoint ask for a byte count worked out from the stream's length,
+# and FileStream.Read is allowed to return fewer bytes than that. The file can also shrink between
+# the length and the read. Both functions then trim the buffer to what arrived and return it with
+# a comma, because a one-byte result would otherwise unroll to a single byte and the caller's
+# byte[] parameter would not bind.
+#
+# A real file cannot be made to stop short on demand, so these cases pass a FileStream whose Read
+# serves one byte per call. It is a real FileStream, which is what the two functions accept.
+
+class ShortReadFileStream : System.IO.FileStream {
+    ShortReadFileStream([string] $path) : base(
+        $path,
+        [System.IO.FileMode]::Open,
+        [System.IO.FileAccess]::Read,
+        [System.IO.FileShare]::ReadWrite) { }
+
+    # Reads through the path rather than through the method this one replaces. A PowerShell
+    # override cannot call the base method it overrides: the cast that looks like it would still
+    # dispatches back here, and the call never ends.
+    [int] Read([byte[]] $buffer, [int] $offset, [int] $count) {
+        if ($count -le 0) { return 0 }
+        $all = [System.IO.File]::ReadAllBytes($this.Name)
+        $position = [int] $this.Position
+        if ($position -ge $all.Length) { return 0 }
+        $buffer[$offset] = $all[$position]
+        return 1
+    }
+}
+
+$shortPath = Join-Path ([System.IO.Path]::GetTempPath()) ("watch-task-short-$([guid]::NewGuid()).output")
+try {
+    # Byte at index n holds the value n + 1, so a returned byte names the offset it came from.
+    [System.IO.File]::WriteAllBytes($shortPath, [byte[]] (1..40))
+
+    $stream = [ShortReadFileStream]::new($shortPath)
+    try {
+        $head = Read-FileHead -Stream $stream -Count 16
+        Assert-True ($head -is [byte[]]) `
+            "Short read: Read-FileHead must return a byte array, got $(if ($null -eq $head) { 'nothing' } else { $head.GetType().Name })."
+        Assert-True ($head -is [byte[]] -and $head.Length -eq 1) `
+            "Short read: Read-FileHead must return only the bytes that arrived, got $(if ($head -is [byte[]]) { $head.Length } else { 'no array' })."
+        Assert-True ($head -is [byte[]] -and $head.Length -eq 1 -and $head[0] -eq 1) `
+            'Short read: Read-FileHead must return the first byte of the file.'
+    }
+    finally { $stream.Dispose() }
+
+    $stream = [ShortReadFileStream]::new($shortPath)
+    try {
+        $checkpoint = Read-FileCheckpoint -Stream $stream -EndOffset 40 -Count 16
+        Assert-True ($checkpoint -is [byte[]]) `
+            "Short read: Read-FileCheckpoint must return a byte array, got $(if ($null -eq $checkpoint) { 'nothing' } else { $checkpoint.GetType().Name })."
+        Assert-True ($checkpoint -is [byte[]] -and $checkpoint.Length -eq 1) `
+            "Short read: Read-FileCheckpoint must return only the bytes that arrived, got $(if ($checkpoint -is [byte[]]) { $checkpoint.Length } else { 'no array' })."
+        Assert-True ($checkpoint -is [byte[]] -and $checkpoint.Length -eq 1 -and $checkpoint[0] -eq 25) `
+            'Short read: Read-FileCheckpoint must read from EndOffset minus Count, which is offset 24.'
+    }
+    finally { $stream.Dispose() }
+}
+finally {
+    Remove-Item -LiteralPath $shortPath -Force -ErrorAction SilentlyContinue
 }
 
 # The fixture project folder must match the real prefix, because the script derives that prefix
@@ -664,6 +728,56 @@ try {
     $picked = Select-WatchTaskRecord -Record $records -SessionId ''
     Assert-True ($null -ne $picked -and $picked.Path -eq $probeFile) `
         'Discovery re-probe: the reconciled running task must survive selection, not be dropped.'
+}
+finally {
+    ${function:Test-TaskFileHeldOpen} = $realHeld
+    Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+# --- Discovery re-reads the state when the task finishes during the second probe ---
+#
+# The re-probe above makes the liveness probe the newer observation, which is the wrong way round
+# for the rest of the record: Terminal and ExitCode come from the file's text, and that text was
+# read before the re-probe. A task that writes its exit marker while the second probe runs leaves
+# the record saying "nobody holds it, and there is no terminal marker", which is the
+# stopped-without-saying-so state. The file says it exited with 7. Read the state again after the
+# re-probe, so the state read stays the newest observation the record is built from.
+
+$root = New-WatchTestRoot
+$realHeld = ${function:Test-TaskFileHeldOpen}
+try {
+    $lateFile = New-FakeTaskOutput -Root $root -ProjectFolder "$prefix-late" -LastWrite (Get-Date) -Lines @(
+        'work started', 'NO-MARKER-YET'
+    )
+
+    # Nobody ever holds the file. The task writes its exit marker during the second probe, which
+    # is the one moment after the first state read and before the record is built.
+    $script:lateProbeCalls = 0
+    function Test-TaskFileHeldOpen {
+        param([Parameter(Mandatory)][string] $Path)
+        $script:lateProbeCalls++
+        if ($script:lateProbeCalls -eq 2) {
+            Add-Content -LiteralPath $Path -Value '[exited with code 7]'
+        }
+        return $false
+    }
+
+    $records = @(Get-WatchTaskRecord -SearchRoot $root -CheckoutPath @($mainRoot) -NeighbourPath @() -OwnCheckoutPath $mainRoot)
+
+    Assert-True ($records.Count -eq 1) `
+        "Late exit: exactly one record must be found, got $($records.Count)."
+    Assert-True ($script:lateProbeCalls -ge 2) `
+        "Late exit: the second probe must have run, it ran $($script:lateProbeCalls) time(s)."
+
+    $late = if ($records.Count -eq 1) { $records[0] } else { $null }
+    Assert-True ($null -ne $late -and -not $late.Running) `
+        'Late exit: nobody holds the file, so the record must not say running.'
+    Assert-True ($null -ne $late -and $late.Terminal -eq 'exited') `
+        "Late exit: a task that exits during the second probe must be recorded as exited, got '$(if ($null -ne $late) { $late.Terminal })'."
+    Assert-True ($null -ne $late -and $late.ExitCode -eq 7) `
+        "Late exit: the exit code written during the second probe must be read, got '$(if ($null -ne $late) { $late.ExitCode })'."
+    Assert-True ($null -ne $late -and $late.Path -eq $lateFile) `
+        'Late exit: the record must name the file the marker was written to.'
 }
 finally {
     ${function:Test-TaskFileHeldOpen} = $realHeld
