@@ -100,5 +100,5 @@ parallel. Settled measurement on 2026-09-10 put the same 239 tests at 11 to 13 s
   the warm-up effect went unnoticed: it is not compilation.
 - Backlog 133's acceptance criteria are written as five-run medians and would inherit the same
   error. It is open with pull request #402.
-- Spec: none — not yet at Design.
-- Plan: none — not yet at Plan.
+- Spec: none — Difficulty is `moderate`, so the item goes straight to Plan.
+- Plan: `docs/superpowers/plans/2026-09-10-test-measurement-warm-up-plan-150.md`
