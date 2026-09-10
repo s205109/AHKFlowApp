@@ -54,3 +54,37 @@ not fire on the real backlog when Task 5 lands.
       Also added a case the plan did not have: `- [X]` with an upper-case mark counts as ticked.
       And an assertion that every open item reports at least one Acceptance box, which is the
       failure mode a fixture cannot show.
+
+- [x] Task 2 — extract the commit-based item finder into
+      `scripts/backlog-snapshot.common.ps1`. `Get-SingleBacklogStage`,
+      `Get-BacklogNumberFromPath` and `Get-BranchBacklogCandidate` moved unchanged.
+      `check-shipped-plan-ticked.ps1` now dot-sources them.
+
+      **Behavior unchanged, proved both ways.** `tests/ShippedPlanTicked.Tests.ps1` passed before
+      the move and passes after, with the same final line. The gate also still runs as a script:
+      `-MergeBase <base> -TargetCommit HEAD` reported "every shipped plan carries a ticked step.
+      Looked at 1 backlog item(s) this branch touches, of which it ships 0".
+
+      **Mutation proof.** Renaming `scripts/backlog-snapshot.common.ps1` to `.bak` turned
+      `ShippedPlanTicked` red, naming the missing file. So no duplicate definition was left behind
+      in the original. Restored and green.
+
+      **Three defects in the plan, all found by running it.**
+
+      1. The plan registered the new suite in Task 6. The runner refuses to run at all while a
+         suite file is missing from `tests/powershell-suites.json`, so registration has to happen
+         in the task that creates the suite. `AcceptanceBoxes.Tests.ps1` is registered now.
+      2. The plan used `"baselineSeconds": 0` as the placeholder. The runner rejects it: "has an
+         unusable baselineSeconds '0'. Use a number above zero, or null." `null` is the correct
+         placeholder. Measured 0.6 s on two consecutive runs and set that.
+      3. Inserting one line at the top of `tests/powershell-suites.json` shifted every line below
+         it and broke two live citations, in `backlog/done/129-*` (`:41` to `:42`) and
+         `backlog/done/138-*` (`:37` to `:38`). Both repaired. The manifest is alphabetical and
+         `AcceptanceBoxes` sorts first, so the shift was unavoidable, not a choice.
+
+      **And two of my own citations drifted.** Moving code out of
+      `check-shipped-plan-ticked.ps1` moved the lines the spec and plan cite in that same file.
+      `:112` became `:105` and `:82` became `:78`. Both repaired. This is the trap of citing a
+      file in the same change that edits it.
+
+      `pwsh ./scripts/run-powershell-suites.ps1 -Job invariants`: all 7 suites passed.
