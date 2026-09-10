@@ -114,5 +114,7 @@ or a CI check on the pull request is the design question. The spec decides it.
   A design that reuses it would be blind to the item class this repository files most often.
 - Source: `.superpowers/handoff-close-the-item-in-the-shipping-pr.md`, written 2026-09-10 by the
   housekeeping round on `chore/wt-backlog-housekeeping`. That folder is gitignored.
-- Spec: <path, or "none — reason">
+- ADR: `docs/adr/0016-a-shipping-pull-request-is-ready-and-fully-ticked.md`
+- Terms pinned in `CONTEXT.md`: Acceptance box, Records closed, Shipping pull request.
+- Spec: `docs/superpowers/specs/2026-09-10-close-the-item-in-the-shipping-pr-design-151.md`
 - Plan: <path, or "none — reason">
