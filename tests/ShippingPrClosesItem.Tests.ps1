@@ -23,7 +23,8 @@ $ErrorActionPreference = 'Stop'
 # $suiteRoot, never $repoRoot. The script dot-sourced below has a -RepoRoot parameter, and
 # dot-sourcing a script binds its parameter names into this scope. A variable called $repoRoot
 # here would be wiped to an empty string.
-# tests/ShippedPlanTicked.Tests.ps1:18 names it the same way for the same reason.
+# (`tests/ShippedPlanTicked.Tests.ps1:18`, "$suiteRoot = (Resolve-Path -LiteralPath") names it
+# the same way for the same reason.
 $suiteRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 
 # Dot-source, never '&'. '&' runs the script in a child scope and its functions vanish with it,
