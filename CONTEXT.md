@@ -253,8 +253,11 @@ started and removed for each run. One checkout has at most one, and two checkout
 _Avoid_: shared container, warm container, persistent database
 
 **Run-independent test**:
-Said of a test that passes whatever an earlier run left in the database. Every SQL-backed test
-needs this property, because the Reused test server outlives the run that filled it.
+Said of a test that keeps its assertions meaningful whatever an earlier run left in the database.
+Passing is not enough: a test that passes because a warm database let it skip its own subject is
+broken quietly, not run-independent. A test earns the property one of two ways: it drops what it
+reads before it builds, or it reads only rows it can prove it created. Every SQL-backed test needs
+this property, because the Reused test server outlives the run that filled it.
 _Avoid_: idempotent test, repeatable test, clean test
 
 **Merge proof**:
