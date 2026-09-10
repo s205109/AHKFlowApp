@@ -156,7 +156,7 @@ Give the class the group's collection attribute and the group's fixture type in 
 public sealed class HotstringsCrudFlowTests(StackFixtureC fixture) : IAsyncLifetime
 ```
 
-xUnit matches a fixture to a constructor parameter by exact type, so a parameter typed as the shared `StackFixture` base class does not resolve and the class will not build. A private helper method may still take the base type.
+xUnit matches a fixture to a constructor parameter by exact type, so a parameter typed as the shared `StackFixture` base class does not resolve. The class still compiles; it fails during test execution, with "The following constructor parameters did not have matching fixture data". A private helper method may still take the base type.
 
 A test that changes process-wide state, such as an environment variable, belongs in `ExclusiveTestCollection` instead. xUnit runs every parallel collection to completion before it starts that one, so it runs last and on its own.
 

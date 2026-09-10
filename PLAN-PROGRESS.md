@@ -2,8 +2,6 @@
 
 Plan: `docs/superpowers/plans/2026-09-09-parallel-e2e-stacks-plan-132.md`
 
-The human chose to stop after Task 4. Tasks 5 to 7 wait for their go-ahead.
-
 One line per finished task, written after its deliverable commit.
 
 - [x] Task 1 — one SQL server for the whole test process. Commit `9ef98383`. `ApiFactoryTests`
@@ -52,3 +50,22 @@ One line per finished task, written after its deliverable commit.
       went parallel; this suite did not.
 
 All seven tasks are done. The plan is finished.
+
+## The review round
+
+A review of the finished branch found two test gaps and four cleanups. All seven findings were
+accepted and fixed; none was pushed back or deferred.
+
+- The isolation tests never exercised `ApiFactory`. `ApiFactoryTests` now calls
+  `ApiFactory.ResolveConnectionStringAsync` and checks all four stack fixtures, and a new
+  `StackIsolationTests` proves at the database level that a reset in one stack leaves another
+  stack's rows alone. The CLI guard also checks that no two stacks share a discriminator, and its
+  remark about xUnit fixture instances was wrong and is corrected.
+- The three-round gate test was the only check on `HostStartGate`, and the Task 2 note says three
+  rounds passed with the gate removed. Two deterministic tests now drive the gate directly: one
+  proves a second caller waits, one proves a callback that throws still releases the gate.
+- `E2ESqlServer` wrapped a semaphore and a cache around `SharedSqlContainer`, which already does
+  both. `BrowserInstall` read its flag once outside the lock and again inside. Both are simpler now.
+- The disposal test only cleaned up after its assertion passed.
+
+Every new test was proved by breaking the code on purpose first. The E2E suite is 68 tests, not 64.

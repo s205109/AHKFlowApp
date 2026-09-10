@@ -33,11 +33,16 @@ that the slice finishes in the time its slowest flow takes rather than the sum o
       **One more thing is shared, and the item did not foresee it:** Serilog's process-wide
       logger, which `Program.cs` owns. The stacks therefore build their hosts one at a time.
       ADR 0014 records why.
-- [x] If it goes ahead: `pwsh ./scripts/test-fast.ps1 -Mode E2E` passes and still reports 64
+- [x] If it goes ahead: `pwsh ./scripts/test-fast.ps1 -Mode E2E` passes and still reports 68
       tests. A different total means a collection lost its fixture and stopped running.
       The number was 57 when this item was filed and 62 when the work started. This branch adds
-      two lifecycle tests for the Serilog gate, so the count this item holds to is 64. Every run
-      recorded below reported "Failed: 0, Passed: 64, Skipped: 0, Total: 64".
+      two lifecycle tests for the Serilog gate, which made it 64, and the review round added four
+      more, which makes it 68. Every measurement and soak run recorded below reported
+      "Failed: 0, Passed: 64, Skipped: 0, Total: 64", because they ran before those four tests
+      existed. The run after the review reported "Failed: 0, Passed: 68, Skipped: 0, Total: 68"
+      in 1 m 36 s. The four new tests are two deterministic checks on `HostStartGate`, one that
+      proves each stack fixture names its own database, and one that proves a reset in one stack
+      leaves another stack's rows alone.
 - [x] If it goes ahead: `pwsh ./scripts/measure-test-modes.ps1 -Soak tests/AHKFlowApp.E2E.Tests
       -Runs 30 -NoBuild` passes 30 of 30. Five runs fix a median but say little about a race
       that fires one run in fifty, and this is the slice where this repository's flakes have
