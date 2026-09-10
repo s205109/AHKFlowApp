@@ -6,7 +6,7 @@
 - **Type**: Process / tooling
 - **Interfaces**: none (script, CI)
 - **Difficulty**: complex
-- **Stage**: 4-execute
+- **Stage**: 9-ship
 
 ## Summary
 
