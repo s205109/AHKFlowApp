@@ -79,7 +79,8 @@ public sealed class HotstringCliIntegrationTests(SqlContainerFixture sql) : IAsy
 
         using IServiceScope scope = _factory.Services.CreateScope();
         AppDbContext db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        Hotstring? row = await db.Hotstrings.FirstOrDefaultAsync(h => h.Trigger == "btw");
+        Hotstring? row = await db.Hotstrings
+            .FirstOrDefaultAsync(h => h.OwnerOid == _testUserOid && h.Trigger == "btw");
         row.Should().NotBeNull();
         row!.AppliesToAllProfiles.Should().BeTrue();
     }
@@ -111,7 +112,7 @@ public sealed class HotstringCliIntegrationTests(SqlContainerFixture sql) : IAsy
         using IServiceScope scope = _factory.Services.CreateScope();
         AppDbContext db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         Hotstring? row = await db.Hotstrings.Include(h => h.Profiles)
-            .FirstOrDefaultAsync(h => h.Trigger == "wq");
+            .FirstOrDefaultAsync(h => h.OwnerOid == _testUserOid && h.Trigger == "wq");
         row.Should().NotBeNull();
         row!.AppliesToAllProfiles.Should().BeFalse();
         row.Profiles.Should().ContainSingle(j => j.ProfileId == p.Id);
@@ -127,7 +128,7 @@ public sealed class HotstringCliIntegrationTests(SqlContainerFixture sql) : IAsy
         using IServiceScope scope = _factory.Services.CreateScope();
         AppDbContext db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         Hotstring? row = await db.Hotstrings.Include(h => h.Profiles)
-            .FirstOrDefaultAsync(h => h.Trigger == "g1");
+            .FirstOrDefaultAsync(h => h.OwnerOid == _testUserOid && h.Trigger == "g1");
         row!.AppliesToAllProfiles.Should().BeTrue();
         row.Profiles.Should().BeEmpty();
     }
@@ -159,7 +160,7 @@ public sealed class HotstringCliIntegrationTests(SqlContainerFixture sql) : IAsy
         using IServiceScope scope = _factory.Services.CreateScope();
         AppDbContext db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         Hotstring? row = await db.Hotstrings.Include(h => h.Profiles)
-            .FirstOrDefaultAsync(h => h.Trigger == "ci");
+            .FirstOrDefaultAsync(h => h.OwnerOid == _testUserOid && h.Trigger == "ci");
         row!.Profiles.Should().ContainSingle(j => j.ProfileId == p.Id);
     }
 
