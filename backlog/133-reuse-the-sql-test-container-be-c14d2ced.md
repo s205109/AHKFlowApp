@@ -6,7 +6,7 @@
 - **Type**: Tooling
 - **Interfaces**: none (test infrastructure)
 - **Difficulty**: complex
-- **Stage**: 2-design
+- **Stage**: 3-plan
 
 ## Summary
 
@@ -63,6 +63,10 @@ whose isolation now depends on its own cleanup running. Weakening the migration 
   about holding one across processes, which is a different problem.
 - Backlog 128's design records this as blocked rather than merely deferred, and the block is the
   migration tests, not the container plumbing.
-- Spec: none — the design is in
-  `docs/superpowers/specs/2026-09-03-net-test-speed-and-reliability-design-128.md`, under D7.
-- Plan: none — not yet at Plan.
+- Spec: `docs/superpowers/specs/2026-09-10-reuse-the-sql-test-container-design-133.md`
+- Plan: `docs/superpowers/plans/2026-09-10-reuse-the-sql-test-container-plan-133.md`
+- Backlog 128's design named this item's blocker under D7, before anybody measured it. The
+  2026-09-10 design measured it instead: nine tests need an empty database, not "every test that
+  migrates a fixed database name", and four CLI queries read a row they never proved they created.
+  The design replaces this item's acceptance criteria. Task 9 of the plan copies the rewritten
+  criteria in when the work ships.
