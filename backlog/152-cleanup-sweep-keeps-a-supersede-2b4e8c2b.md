@@ -32,21 +32,20 @@ branch ref log holds this sequence:
 @{4} 53e298f8 commit: chore: close 134 declined, file 150 for warm-up runs
 ```
 
-`Test-StrandedWorkWasSuperseded` walks each `reset:` entry and asks
-`git rev-list <before> --not <after>` (`scripts/worktree-git.common.ps1:396`,
-"$dropped = & git -C $RepoRoot rev-list $before --not $after"). That returns `53e298f8`, which is in
-the stranded set, so the function returns false
+`Test-StrandedWorkWasSuperseded` walks each `reset:` entry and asks git which commits the reset
+dropped (`scripts/worktree-git.common.ps1:396`, "rev-list $before --not $after"). That returns
+`53e298f8`, which is in the stranded set, so the function returns false
 (`scripts/worktree-git.common.ps1:400`, "if ($strandedSet.ContainsKey").
 
 `53e298f8` was not lost. It came back as `dcee707a`, which is on `main`. `git diff 53e298f8 dcee707a`
 shows only the other commit on the branch, and that commit is on `main` too. The check compares by
 SHA reachability, so it cannot see that the change returned under a new SHA.
 
-The sweep then takes the silent skip at `scripts/cleanup-merged-worktrees.ps1:143`,
-"if (-not (Test-BranchOwnWorkWasMerged". The three later skip paths each write a `Kept:` line through
-`Write-SweepOutcome` (`scripts/cleanup-merged-worktrees.ps1:203`,
-"Write-SweepOutcome -RepoRoot $RepoRoot -WorktreePath $wtFull"). This one writes nothing, so
-`worktree-removal.log` held no record of the decision.
+The sweep then takes the silent skip
+(`scripts/cleanup-merged-worktrees.ps1:143`, "if (-not (Test-BranchOwnWorkWasMerged"). The three
+later skip paths each write a `Kept:` line through `Write-SweepOutcome`
+(`scripts/cleanup-merged-worktrees.ps1:203`, "Write-SweepOutcome -RepoRoot $RepoRoot"). This one
+writes nothing, so `worktree-removal.log` held no record of the decision.
 
 ## Acceptance criteria
 
