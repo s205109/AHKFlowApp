@@ -35,11 +35,11 @@ param(
     # of keeping its own copy of the five names. An unknown value fails the run.
     [string] $Job = 'suites',
 
-    # How many suites may run at once. With no value the run uses the processor count, capped at
-    # eight, and AHKFLOW_SUITE_MAX_PARALLEL overrides that default. An explicit value wins over the
-    # variable. These suites wait on git child processes more than on the processor, so more workers
-    # than processors may still be faster; nobody has measured that, and the variable makes the
-    # measurement cheap.
+    # How many suites may run at once. With no value a developer's machine uses about 75% of its
+    # physical cores, never more than eight, and a run inside GitHub Actions uses every processor it
+    # has. AHKFLOW_SUITE_MAX_PARALLEL overrides both, and an explicit value wins over the variable.
+    # Backlog 145 measured 56 suites on an eight-core laptop and found six workers as fast as eight,
+    # so the last two workers only added load to the machine.
     #
     # Whatever the value, the run never starts more workers than it has suites to share out.
     #
@@ -120,11 +120,18 @@ $byName = @{}
 foreach ($file in $discovered) { $byName[$file.Name] = $file }
 $suites = @($selected | ForEach-Object { $byName[$_.Name] })
 
-$workerCount = [Math]::Min([Environment]::ProcessorCount, 8)
+# Reading the variable's text here does not settle precedence - the branches below do, in order.
+# "An explicit value wins over the variable" has to mean this: validating the variable's text
+# before the -MaxParallel branch is checked would fail the run on a value the caller has already
+# overridden. A blank or whitespace variable is no value, so it falls through to the default.
+$inActions = $env:GITHUB_ACTIONS -eq 'true'
+$envMaxParallel = $env:AHKFLOW_SUITE_MAX_PARALLEL
 
-# The explicit parameter is settled first, and the variable is then never read. "An explicit value
-# wins over the variable" has to mean this: validating the variable first would fail the run on a
-# value the caller has already overridden.
+# Backlog 145. Get-DefaultSuiteWorkerCount in powershell-suites.common.ps1 carries the measurement
+# behind the 75%, the reason a hosted runner takes every processor instead, and the reason an
+# unreadable core count falls back to the old rule.
+#
+# One chain, highest precedence first, and only the last branch looks at the hardware.
 if ($PSBoundParameters.ContainsKey('MaxParallel')) {
     $parsedMaxParallel = 0
     if (-not [int]::TryParse($MaxParallel.Trim(), [ref] $parsedMaxParallel) -or $parsedMaxParallel -lt 1) {
@@ -132,22 +139,32 @@ if ($PSBoundParameters.ContainsKey('MaxParallel')) {
         exit 1
     }
     $workerCount = $parsedMaxParallel
-} else {
-    $envMaxParallel = $env:AHKFLOW_SUITE_MAX_PARALLEL
-    if (-not [string]::IsNullOrWhiteSpace($envMaxParallel)) {
-        $parsedMaxParallel = 0
-        if (-not [int]::TryParse($envMaxParallel.Trim(), [ref] $parsedMaxParallel) -or $parsedMaxParallel -lt 1) {
-            # Falling back to the default here would hide a misconfigured CI job for months.
-            Write-Failure "AHKFLOW_SUITE_MAX_PARALLEL must be a whole number of at least one. Got: '$envMaxParallel'"
-            exit 1
-        }
-        $workerCount = $parsedMaxParallel
+    $workerSource = '-MaxParallel'
+} elseif (-not [string]::IsNullOrWhiteSpace($envMaxParallel)) {
+    $parsedMaxParallel = 0
+    if (-not [int]::TryParse($envMaxParallel.Trim(), [ref] $parsedMaxParallel) -or $parsedMaxParallel -lt 1) {
+        # Falling back to the default here would hide a misconfigured CI job for months.
+        Write-Failure "AHKFLOW_SUITE_MAX_PARALLEL must be a whole number of at least one. Got: '$envMaxParallel'"
+        exit 1
     }
+    $workerCount = $parsedMaxParallel
+    $workerSource = 'AHKFLOW_SUITE_MAX_PARALLEL'
+} elseif ($inActions) {
+    $workerCount = Get-DefaultSuiteWorkerCount -PhysicalCoreCount 0 -AllProcessors
+    $workerSource = "GitHub Actions: all $([Environment]::ProcessorCount) logical processors"
+} else {
+    # The only branch that asks the machine anything. An override has already won above, and inside
+    # Actions the answer would be thrown away, so a CIM query in either case costs time and changes
+    # nothing. Backlog 145 review, finding 3.
+    $physicalCoreCount = Get-PhysicalCoreCount
+    $logicalProcessorCount = [Environment]::ProcessorCount
+
+    $workerCount = Get-DefaultSuiteWorkerCount -PhysicalCoreCount $physicalCoreCount -LogicalProcessorCount $logicalProcessorCount
+    $workerSource = 'default: ' + (Get-DefaultSuiteWorkerReason -PhysicalCoreCount $physicalCoreCount -LogicalProcessorCount $logicalProcessorCount)
 }
 
 # The suites are written for the host that runs this script, so run them under the same one.
 $hostExe = [System.Diagnostics.Process]::GetCurrentProcess().Path
-$inActions = $env:GITHUB_ACTIONS -eq 'true'
 
 Write-Host "Running $($suites.Count) PowerShell suite(s) from $SuiteRoot"
 Write-Host "Host: $hostExe"
@@ -166,10 +183,15 @@ $schedule = @(Get-SuiteSchedule -Entry $selected -History $progress.History)
 # one after another, so one is the count the run really uses. Zero would misreport the run, and it
 # is not a legal -ThrottleLimit if the pool ever ran.
 $sharedCount = @($schedule | Where-Object { $_.Execution -ne 'exclusive' }).Count
-$workerCount = [Math]::Min($workerCount, [Math]::Max(1, $sharedCount))
+$cappedCount = [Math]::Min($workerCount, [Math]::Max(1, $sharedCount))
+if ($cappedCount -lt $workerCount) {
+    $workerSource = "capped at the $sharedCount suite(s) that share the pool"
+}
+
+$workerCount = $cappedCount
 
 # After the cap, so the number printed is the number the run uses.
-Write-Host "Workers: $workerCount"
+Write-Host "Workers: $workerCount ($workerSource)"
 
 $parallelProgress = New-ParallelProgressTracker -Tracker $progress
 

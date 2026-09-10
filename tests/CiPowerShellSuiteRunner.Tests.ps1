@@ -1268,6 +1268,11 @@ Invoke-TestCase 'Two suites really do run at the same time' {
         # Exactly two: below two the runner is sequential, above two it ignored -MaxParallel.
         $peak = Get-PeakOverlap -Root $root -Name $names
         Assert-True ($peak -eq 2) "Peak overlap must be 2 under -MaxParallel 2, got $peak."
+
+        # The printed number is the number the pool used. Asserted here, against a count this case
+        # fixes at two, rather than in a second case sized from the host: a case that reads its own
+        # expectation from the code under test passes when both sides are wrong together.
+        Assert-True ($result.Output -match 'Workers: 2\b') "The run must print the count it used. Output: $($result.Output)"
     } finally {
         Remove-SuiteFixture -Root $root
     }
@@ -1612,7 +1617,7 @@ Invoke-TestCase 'A stored entry whose suite file no longer exists is dropped' {
 # -Suite names the suites, each of which gets a plain passing body. -Body overrides the body of any
 # of them, as an array of script lines.
 function New-StoringRepoFixture {
-    param([string[]] $Suite, [hashtable] $Body = @{}, [switch] $CountSaves)
+    param([string[]] $Suite, [hashtable] $Body = @{}, [switch] $CountSaves, [switch] $CountCoreProbes)
 
     $repo = Join-Path ([System.IO.Path]::GetTempPath()) ('ahkflow-suiterepo-' + [guid]::NewGuid().ToString('N'))
     try {
@@ -1634,6 +1639,21 @@ $global:AhkflowSaveTimingsInner = ${function:Save-ProgressTimings}
 function Save-ProgressTimings {
     Add-Content -LiteralPath (Join-Path $PSScriptRoot '..\markers\savecalls') -Value 'called'
     & $global:AhkflowSaveTimingsInner @args
+}
+'@
+        }
+
+        if ($CountCoreProbes) {
+            # The same trick as -CountSaves, on the reader this time. Reading the Workers line tells
+            # you which number a branch chose; it cannot tell you whether the run asked the machine
+            # to get there. Only a count can, and only a count fails when the probe drifts back
+            # above the precedence chain. The real module is untouched.
+            Add-Content -LiteralPath (Join-Path $repo 'scripts/powershell-suites.common.ps1') -Value @'
+
+$global:AhkflowCoreProbeInner = ${function:Get-PhysicalCoreCount}
+function Get-PhysicalCoreCount {
+    Add-Content -LiteralPath (Join-Path $PSScriptRoot '../markers/coreprobes') -Value 'called'
+    & $global:AhkflowCoreProbeInner @args
 }
 '@
         }
@@ -1667,7 +1687,7 @@ function Save-ProgressTimings {
 # and "-Suite a,b" binds the single string "a,b". Passing the array inside "-Suite @('a','b')"
 # is the only form that binds every pattern.
 function Invoke-DriverAt {
-    param([string] $Repo, [int] $MaxParallel = 0, [string[]] $Suite = @())
+    param([string] $Repo, [int] $MaxParallel = 0, [string[]] $Suite = @(), [hashtable] $EnvVar = @{})
 
     $command = "& $(ConvertTo-ScriptLiteral (Join-Path $Repo 'scripts/run-powershell-suites.ps1'))"
     if ($PSBoundParameters.ContainsKey('MaxParallel')) { $command += " -MaxParallel $MaxParallel" }
@@ -1676,7 +1696,64 @@ function Invoke-DriverAt {
     }
     $command += '; exit $LASTEXITCODE'
 
-    return Invoke-RunnerProcess -ArgumentList @('-NoProfile', '-Command', $command)
+    # Saved and restored so one case cannot leak a value into the next one, the same way
+    # Invoke-Driver does it. A case that asserts a default has to clear both AHKFLOW_SUITE_MAX_PARALLEL
+    # and GITHUB_ACTIONS, because this suite runs inside Actions with a developer's own shell values.
+    $previousEnv = @{}
+    foreach ($name in $EnvVar.Keys) {
+        $previousEnv[$name] = [System.Environment]::GetEnvironmentVariable($name)
+        [System.Environment]::SetEnvironmentVariable($name, $EnvVar[$name])
+    }
+
+    try {
+        return Invoke-RunnerProcess -ArgumentList @('-NoProfile', '-Command', $command)
+    } finally {
+        foreach ($name in $previousEnv.Keys) {
+            [System.Environment]::SetEnvironmentVariable($name, $previousEnv[$name])
+        }
+    }
+}
+
+Invoke-TestCase 'Only the adaptive default asks the machine about its hardware' {
+    # Backlog 145 review round 2, finding 1. The cases that read the Workers line prove which number
+    # each branch picks. None of them would notice the probe moving back above the precedence chain,
+    # because the number would not change - only the wasted CIM query would come back. So count the
+    # calls instead of reading the output.
+    $repo = New-StoringRepoFixture -Suite @('01-a.Tests.ps1', '02-b.Tests.ps1', '03-c.Tests.ps1') -CountCoreProbes
+    $probes = Join-Path $repo 'markers/coreprobes'
+    try {
+        $overrides = @(
+            @{ Name = 'An explicit -MaxParallel'; MaxParallel = 2; Env = @{ AHKFLOW_SUITE_MAX_PARALLEL = $null; GITHUB_ACTIONS = $null } }
+            @{ Name = 'AHKFLOW_SUITE_MAX_PARALLEL'; Env = @{ AHKFLOW_SUITE_MAX_PARALLEL = '2'; GITHUB_ACTIONS = $null } }
+            @{ Name = 'GitHub Actions'; Env = @{ AHKFLOW_SUITE_MAX_PARALLEL = $null; GITHUB_ACTIONS = 'true' } }
+        )
+
+        foreach ($case in $overrides) {
+            Remove-Item -LiteralPath $probes -Force -ErrorAction SilentlyContinue
+
+            $result = if ($case.ContainsKey('MaxParallel')) {
+                Invoke-DriverAt -Repo $repo -MaxParallel $case.MaxParallel -EnvVar $case.Env
+            } else {
+                Invoke-DriverAt -Repo $repo -EnvVar $case.Env
+            }
+
+            Assert-True ($result.ExitCode -eq 0) "$($case.Name): expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
+
+            $calls = @(if (Test-Path -LiteralPath $probes) { Get-Content -LiteralPath $probes }).Count
+            Assert-True ($calls -eq 0) "$($case.Name) settles the count on its own, so it must not read the hardware. Got $calls call(s)."
+        }
+
+        Remove-Item -LiteralPath $probes -Force -ErrorAction SilentlyContinue
+        $result = Invoke-DriverAt -Repo $repo -EnvVar @{ AHKFLOW_SUITE_MAX_PARALLEL = $null; GITHUB_ACTIONS = $null }
+        Assert-True ($result.ExitCode -eq 0) "The default run must pass. Output: $($result.Output)"
+
+        # Exactly one. Zero would mean the default stopped reading the machine; more than one would
+        # mean the run pays for the query again on a path nobody intended.
+        $calls = @(if (Test-Path -LiteralPath $probes) { Get-Content -LiteralPath $probes }).Count
+        Assert-True ($calls -eq 1) "The adaptive default must read the hardware exactly once, got $calls call(s)."
+    } finally {
+        Remove-Item -LiteralPath $repo -Recurse -Force -ErrorAction SilentlyContinue
+    }
 }
 
 Invoke-TestCase 'The timings file is written once, after the last suite ends' {
@@ -1836,6 +1913,221 @@ Invoke-TestCase 'CodexSkillsHashParity is the only suite outside the suites job'
 
     Assert-True ($outside.Count -eq 1) "Expected one suite outside the suites job, got: $($outside -join ', ')"
     Assert-True ($outside[0] -eq 'CodexSkillsHashParity.Tests.ps1') "Got: $($outside[0])"
+}
+
+# Every case here passes -LogicalProcessorCount. The parameter defaults to the real machine, which
+# is 16 on the laptop this rule was measured on and 4 on a GitHub runner, and the count is now
+# capped by it. A case that left it out would assert a different number in each place.
+Invoke-TestCase 'The default worker count is 75% of the physical cores, rounded down' {
+    Assert-True ((Get-DefaultSuiteWorkerCount -PhysicalCoreCount 8 -LogicalProcessorCount 16) -eq 6) 'Eight physical cores must give six workers.'
+    # Five is the case that tells 75% from 80%: three workers, where 80% would give four.
+    Assert-True ((Get-DefaultSuiteWorkerCount -PhysicalCoreCount 5 -LogicalProcessorCount 16) -eq 3) 'Five physical cores must give three workers, not four.'
+    Assert-True ((Get-DefaultSuiteWorkerCount -PhysicalCoreCount 4 -LogicalProcessorCount 16) -eq 3) 'Four physical cores must give three workers.'
+    Assert-True ((Get-DefaultSuiteWorkerCount -PhysicalCoreCount 3 -LogicalProcessorCount 16) -eq 2) 'Three physical cores must give two workers, not two and a quarter.'
+}
+
+Invoke-TestCase 'The default worker count never rises above eight or drops below one' {
+    # The ceiling is the number this repository has run with for months. Nobody has measured a
+    # machine bigger than eight cores, so the rule stops there rather than guessing.
+    Assert-True ((Get-DefaultSuiteWorkerCount -PhysicalCoreCount 16 -LogicalProcessorCount 32) -eq 8) 'Sixteen physical cores must cap at eight, not twelve.'
+    Assert-True ((Get-DefaultSuiteWorkerCount -PhysicalCoreCount 64 -LogicalProcessorCount 128) -eq 8) 'A large machine must cap at eight.'
+    Assert-True ((Get-DefaultSuiteWorkerCount -PhysicalCoreCount 2 -LogicalProcessorCount 16) -eq 1) 'Two physical cores round down to one, not to zero.'
+    Assert-True ((Get-DefaultSuiteWorkerCount -PhysicalCoreCount 1 -LogicalProcessorCount 16) -eq 1) 'One physical core must give one worker.'
+}
+
+Invoke-TestCase 'The default worker count never exceeds the processors the run may actually use' {
+    # Win32_Processor and /proc/cpuinfo both describe the machine. Neither knows about process
+    # affinity or a container CPU limit, and [Environment]::ProcessorCount does: .NET reports the
+    # processors available to this process. Eight cores behind a two-processor limit must start
+    # two workers, not six.
+    Assert-True ((Get-DefaultSuiteWorkerCount -PhysicalCoreCount 8 -LogicalProcessorCount 2) -eq 2) 'Eight cores behind two processors must give two workers.'
+    Assert-True ((Get-DefaultSuiteWorkerCount -PhysicalCoreCount 16 -LogicalProcessorCount 4) -eq 4) 'The processor limit wins over the ceiling of eight.'
+    Assert-True ((Get-DefaultSuiteWorkerCount -PhysicalCoreCount 8 -LogicalProcessorCount 1) -eq 1) 'A single available processor must give one worker.'
+    Assert-True ((Get-DefaultSuiteWorkerCount -PhysicalCoreCount 8 -LogicalProcessorCount 16) -eq 6) 'A machine with room to spare keeps the 75% number.'
+}
+
+Invoke-TestCase 'A refused hardware query reports nothing rather than failing the run' {
+    # The reader promises never to throw. These two cases are the only deterministic proof of that
+    # promise: the real machine always answers, so the catch blocks would otherwise never run.
+    Assert-True ((Get-WindowsPhysicalCoreCount -Query { throw 'Access denied' }) -eq 0) 'A refused CIM query must report zero.'
+    Assert-True ((Get-LinuxPhysicalCoreCount -ReadCpuInfo { throw 'No such file or directory' }) -eq 0) 'An unreadable /proc/cpuinfo must report zero.'
+    Assert-True ((Get-WindowsPhysicalCoreCount -Query { @() }) -eq 0) 'A CIM query that names no processor must report zero.'
+}
+
+Invoke-TestCase 'The Windows reader sums the cores of every processor package' {
+    # NumberOfCores is per package, so a two-socket machine needs the sum, not the first row.
+    $twoSockets = { @([pscustomobject]@{ NumberOfCores = 4 }, [pscustomobject]@{ NumberOfCores = 4 }) }
+    Assert-True ((Get-WindowsPhysicalCoreCount -Query $twoSockets) -eq 8) 'Two four-core packages must report eight.'
+
+    $onePackage = { @([pscustomobject]@{ NumberOfCores = 8 }) }
+    Assert-True ((Get-WindowsPhysicalCoreCount -Query $onePackage) -eq 8) 'One eight-core package must report eight.'
+}
+
+Invoke-TestCase 'The Linux reader counts the cores its cpuinfo text names' {
+    $text = @(
+        'processor : 0', 'physical id : 0', 'core id : 0', ''
+        'processor : 1', 'physical id : 0', 'core id : 1', ''
+    ) -join "`n"
+
+    Assert-True ((Get-LinuxPhysicalCoreCount -ReadCpuInfo { $text }) -eq 2) 'Two distinct core ids must report two.'
+}
+
+Invoke-TestCase 'The printed reason names the bound that actually decided the number' {
+    # Backlog 145 review finding 4. Printing 75% of 16 physical cores next to a worker count of 8
+    # invites the reader to check the arithmetic and conclude the run is broken.
+    $plain = Get-DefaultSuiteWorkerReason -PhysicalCoreCount 8 -LogicalProcessorCount 16
+    Assert-True ($plain -eq '75% of 8 physical cores') "Unbounded case must state the rule alone. Got: $plain"
+
+    $ceiling = Get-DefaultSuiteWorkerReason -PhysicalCoreCount 16 -LogicalProcessorCount 32
+    Assert-True ($ceiling -match 'is 12, capped at the ceiling of eight') "The ceiling must be named. Got: $ceiling"
+
+    $processors = Get-DefaultSuiteWorkerReason -PhysicalCoreCount 8 -LogicalProcessorCount 2
+    Assert-True ($processors -match 'is 6, capped at 2 available processors') "The processor limit must be named. Got: $processors"
+
+    $floor = Get-DefaultSuiteWorkerReason -PhysicalCoreCount 1 -LogicalProcessorCount 16
+    Assert-True ($floor -match 'is 0, raised to the floor of one') "The floor must be named. Got: $floor"
+
+    # The unreadable branch has two bounds of its own: the ceiling of eight and the logical
+    # processor count. The reason must name whichever one set the number, not always say "eight".
+    $unreadableCeiling = Get-DefaultSuiteWorkerReason -PhysicalCoreCount 0 -LogicalProcessorCount 16
+    Assert-True ($unreadableCeiling -match 'physical cores unreadable') "The fallback must say why. Got: $unreadableCeiling"
+    Assert-True ($unreadableCeiling -match 'capped at the ceiling of eight') "The fallback ceiling must be named when it decided the count. Got: $unreadableCeiling"
+
+    $unreadableProcessors = Get-DefaultSuiteWorkerReason -PhysicalCoreCount 0 -LogicalProcessorCount 4
+    Assert-True ($unreadableProcessors -match 'physical cores unreadable') "The fallback must say why. Got: $unreadableProcessors"
+    Assert-True ($unreadableProcessors -notmatch 'eight') "The fallback must not name a cap of eight when four processors decided the count. Got: $unreadableProcessors"
+    Assert-True ($unreadableProcessors -match '4 available processors') "The fallback must name the processor count that decided it. Got: $unreadableProcessors"
+}
+
+Invoke-TestCase 'An unreadable physical core count falls back to the logical count capped at eight' {
+    # The fallback is the rule this change replaces. A machine we cannot measure keeps the number
+    # it has been running with all along.
+    Assert-True ((Get-DefaultSuiteWorkerCount -PhysicalCoreCount 0 -LogicalProcessorCount 16) -eq 8) 'The fallback must cap at eight.'
+    Assert-True ((Get-DefaultSuiteWorkerCount -PhysicalCoreCount 0 -LogicalProcessorCount 4) -eq 4) 'The fallback must use the logical count below the cap.'
+    Assert-True ((Get-DefaultSuiteWorkerCount -PhysicalCoreCount -1 -LogicalProcessorCount 4) -eq 4) 'A negative count is unreadable too.'
+}
+
+Invoke-TestCase 'AllProcessors uses every logical processor and ignores the physical count' {
+    # A GitHub runner is nobody's desk. Nothing there needs the machine kept usable, so the run
+    # takes what the machine has. The physical count is passed and must make no difference.
+    Assert-True ((Get-DefaultSuiteWorkerCount -PhysicalCoreCount 2 -LogicalProcessorCount 4 -AllProcessors) -eq 4) 'A four-processor runner must use four workers.'
+    Assert-True ((Get-DefaultSuiteWorkerCount -PhysicalCoreCount 8 -LogicalProcessorCount 16 -AllProcessors) -eq 16) 'AllProcessors must not cap at eight.'
+    Assert-True ((Get-DefaultSuiteWorkerCount -PhysicalCoreCount 0 -LogicalProcessorCount 0 -AllProcessors) -eq 1) 'The floor of one still holds.'
+}
+
+Invoke-TestCase 'The cpuinfo parser counts physical cores, not hardware threads' {
+    # Two cores, two threads each. Four processor blocks, two distinct core ids.
+    $text = @(
+        'processor : 0', 'physical id : 0', 'core id : 0', ''
+        'processor : 1', 'physical id : 0', 'core id : 1', ''
+        'processor : 2', 'physical id : 0', 'core id : 0', ''
+        'processor : 3', 'physical id : 0', 'core id : 1', ''
+    ) -join "`n"
+
+    $count = ConvertFrom-ProcCpuInfoCoreCount -Text $text
+    Assert-True ($count -eq 2) "Expected two cores, got $count."
+}
+
+Invoke-TestCase 'The cpuinfo parser counts a second socket separately' {
+    # Core id 0 exists on both sockets and must not collapse into one core.
+    $text = @(
+        'processor : 0', 'physical id : 0', 'core id : 0', ''
+        'processor : 1', 'physical id : 1', 'core id : 0', ''
+    ) -join "`n"
+
+    $count = ConvertFrom-ProcCpuInfoCoreCount -Text $text
+    Assert-True ($count -eq 2) "Two sockets with one core each must give two, got $count."
+}
+
+Invoke-TestCase 'The cpuinfo parser reports nothing when the text names no cores' {
+    # An ARM board lists processors and no core id. Nothing there says how many physical cores sit
+    # behind them, so the answer is zero and the caller falls back.
+    $arm = @('processor : 0', 'model name : Cortex-A72', '', 'processor : 1', 'model name : Cortex-A72', '') -join "`n"
+
+    Assert-True ((ConvertFrom-ProcCpuInfoCoreCount -Text $arm) -eq 0) 'Text with no core id must report zero.'
+    Assert-True ((ConvertFrom-ProcCpuInfoCoreCount -Text '') -eq 0) 'Empty text must report zero.'
+    Assert-True ((ConvertFrom-ProcCpuInfoCoreCount -Text 'nonsense') -eq 0) 'Text that is not cpuinfo must report zero.'
+}
+
+# GITHUB_ACTIONS is cleared on purpose in the cases below that assert the developer default. This
+# suite runs inside Actions in the suites job, and a run there takes the all-processors branch,
+# which is not the branch those cases are about. AHKFLOW_SUITE_MAX_PARALLEL is cleared for the
+# same kind of reason: a developer may have set it in their own shell, and it would hide the
+# default.
+Invoke-TestCase 'A developer run with no worker argument uses 75% of the physical cores' {
+    $expected = Get-DefaultSuiteWorkerCount -PhysicalCoreCount (Get-PhysicalCoreCount)
+
+    $root = New-SuiteFixture
+    try {
+        # One more suite than the expected worker count, so the shared-suite cap cannot lower the
+        # number and make a broken default look right.
+        for ($i = 1; $i -le $expected + 1; $i++) {
+            Add-FakeSuite -Root $root -Name ('{0:d2}-pass.Tests.ps1' -f $i) -Ending 'pass'
+        }
+        Set-FixtureManifest -Root $root
+
+        $result = Invoke-Driver -SuiteRoot $root -EnvVar @{ AHKFLOW_SUITE_MAX_PARALLEL = $null; GITHUB_ACTIONS = $null }
+        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
+        Assert-True ($result.Output -match "Workers: $expected\b") "Expected the default worker count $expected. Output: $($result.Output)"
+        Assert-True ($result.Output -match 'Workers: \d+ \(default:') "The line must say the number came from the default. Output: $($result.Output)"
+    } finally {
+        Remove-SuiteFixture -Root $root
+    }
+}
+
+Invoke-TestCase 'A run inside GitHub Actions uses every logical processor' {
+    # The whole point of the branch: a hosted runner has fewer physical cores than processors, and
+    # 75% of them would cut the CI job to a quarter of the lanes it uses today.
+    $expected = [Math]::Max(1, [Environment]::ProcessorCount)
+
+    $root = New-SuiteFixture
+    try {
+        for ($i = 1; $i -le $expected + 1; $i++) {
+            Add-FakeSuite -Root $root -Name ('{0:d2}-pass.Tests.ps1' -f $i) -Ending 'pass'
+        }
+        Set-FixtureManifest -Root $root
+
+        $result = Invoke-Driver -SuiteRoot $root -EnvVar @{ AHKFLOW_SUITE_MAX_PARALLEL = $null; GITHUB_ACTIONS = 'true' }
+        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
+        Assert-True ($result.Output -match "Workers: $expected \(GitHub Actions:") "Actions must take every processor. Output: $($result.Output)"
+    } finally {
+        Remove-SuiteFixture -Root $root
+    }
+}
+
+Invoke-TestCase 'AHKFLOW_SUITE_MAX_PARALLEL still wins over both defaults and the line names it' {
+    $root = New-SuiteFixture
+    try {
+        foreach ($name in @('01-a.Tests.ps1', '02-b.Tests.ps1', '03-c.Tests.ps1')) {
+            Add-FakeSuite -Root $root -Name $name -Ending 'pass'
+        }
+        Set-FixtureManifest -Root $root
+
+        # Once on each side of the Actions branch, so the variable is proved to win over both.
+        foreach ($actions in @($null, 'true')) {
+            $result = Invoke-Driver -SuiteRoot $root -EnvVar @{ AHKFLOW_SUITE_MAX_PARALLEL = '2'; GITHUB_ACTIONS = $actions }
+            Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
+            Assert-True ($result.Output -match 'Workers: 2 \(AHKFLOW_SUITE_MAX_PARALLEL\)') "The variable must win and be named. Output: $($result.Output)"
+        }
+    } finally {
+        Remove-SuiteFixture -Root $root
+    }
+}
+
+Invoke-TestCase 'An explicit -MaxParallel is named on the Workers line' {
+    $root = New-SuiteFixture
+    try {
+        foreach ($name in @('01-a.Tests.ps1', '02-b.Tests.ps1', '03-c.Tests.ps1')) {
+            Add-FakeSuite -Root $root -Name $name -Ending 'pass'
+        }
+        Set-FixtureManifest -Root $root
+
+        $result = Invoke-Driver -SuiteRoot $root -MaxParallel 2 -EnvVar @{ AHKFLOW_SUITE_MAX_PARALLEL = '3' }
+        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
+        Assert-True ($result.Output -match 'Workers: 2 \(-MaxParallel\)') "The parameter must win and be named. Output: $($result.Output)"
+    } finally {
+        Remove-SuiteFixture -Root $root
+    }
 }
 
 Write-Host ''
