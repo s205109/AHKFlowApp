@@ -77,8 +77,11 @@ Those four never proved they were reading a row they created. The class already 
 its own owner id, and every other assertion in it uses that id, so the fix restores a rule the class
 already followed everywhere else.
 
-This is the second shape of the same obligation. A test is run-independent either because it drops
-what it reads, or because it only ever reads rows it can prove are its own.
+This is the second shape of the same obligation. Dropping what a test reads, and reading only rows a
+test can prove are its own, are the two shapes this design had to build. They are not a closed list
+of ways to be run-independent. The obligation is the property, and the techniques serve it: a test
+must still start from the state it needs, and must still exercise its own subject. The
+`CanConnect_WhenDatabaseExists_ReturnsTrue` case above meets both and uses neither technique.
 
 ## Considered options
 
@@ -101,8 +104,10 @@ machine.
 ## Consequences
 
 **A new SQL-backed test has one more question to answer.** Not only "which database is mine", which
-ADR 0013 asks, but "what happens when that database already holds an earlier run's rows". Two
-answers are acceptable: drop it first, or read only rows the test can prove it owns.
+ADR 0013 asks, but "what happens when that database already holds an earlier run's rows". An
+acceptable answer shows two things: the test still starts from the state it needs, and it still
+exercises its own subject. Dropping the database first answers it, and so does reading only rows the
+test can prove it owns. So does needing nothing an earlier run could have broken.
 
 **Reaching an intermediate migration goes through one helper.** A test cannot get there and forget
 the drop, because the helper does both. A PowerShell suite fails a test file that reaches an
@@ -124,6 +129,13 @@ the trade this decision accepts: the cold proof moves from every local run to ev
 **`-FreshSql` exists for the case where somebody wants the cold path locally.** It removes the
 container and starts a new one. It is not part of any gate, because putting it there would give back
 the whole saving at the moment a developer feels it most.
+
+**Trust in the container is established once, before the first test runs.** The script checks the
+container, repairs or replaces it at most once, and then hands a connection string to the run.
+Nothing recovers a container that dies while tests are running: that run fails, exactly as it fails
+today when Docker stops. Recovering would mean rebuilding databases the run had already migrated and
+restarting tests already in flight, which is a test-host job and nothing in this repository asks for
+it. The next run finds no container, or one it cannot verify, and builds a fresh one.
 
 **The test container is not a Compose project, so the cleanup paths need a second pass.** The
 existing worktree cleanup finds and removes Compose projects (`scripts/worktree-docker.common.ps1:60`, "$json = & docker compose ls --all --format json 2>$null"), and the test
