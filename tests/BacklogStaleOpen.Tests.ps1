@@ -30,7 +30,7 @@ function Invoke-FixtureGit {
 }
 
 function Write-FixtureItem {
-    param([string] $Path, [string] $Key, [string] $Stage)
+    param([string] $Path, [string] $Key, [string] $Stage, [switch] $AllTicked)
     $lines = @(
         "# $Key - Fixture item"
         ''
@@ -38,6 +38,11 @@ function Write-FixtureItem {
         ''
         '- **Epic**: Fixture'
         "- **Stage**: $Stage"
+        ''
+        '## Acceptance criteria'
+        ''
+        "- [$(if ($AllTicked) { 'x' } else { ' ' })] first criterion"
+        '- [x] second criterion'
         ''
         '## Notes / dependencies'
         ''
@@ -68,6 +73,7 @@ function New-StaleFixture {
         [switch] $Closed,
         [switch] $LeaveUnmerged,
         [switch] $TouchWithoutStage,
+        [switch] $AllTicked,
         [int] $BaseAhead = 0,
         [switch] $BranchMergesBase,
         [switch] $NoBase,
@@ -96,13 +102,13 @@ function New-StaleFixture {
     Invoke-FixtureGit $repo @('commit', '--quiet', '-m', 'file the item') | Out-Null
 
     Invoke-FixtureGit $repo @('checkout', '--quiet', '-b', 'fix/wt-fixture') | Out-Null
-    Write-FixtureItem -Path $openPath -Key '140' -Stage $Stage
+    Write-FixtureItem -Path $openPath -Key '140' -Stage $Stage -AllTicked:$AllTicked
     Invoke-FixtureGit $repo @('add', '-A') | Out-Null
     Invoke-FixtureGit $repo @('commit', '--quiet', '-m', 'stamp the stage') | Out-Null
 
     if ($Closed) {
         Invoke-FixtureGit $repo @('mv', 'backlog/140-fixture.md', 'backlog/done/140-fixture.md') | Out-Null
-        Write-FixtureItem -Path (Join-Path $repo 'backlog/done/140-fixture.md') -Key '140' -Stage '9-ship'
+        Write-FixtureItem -Path (Join-Path $repo 'backlog/done/140-fixture.md') -Key '140' -Stage '9-ship' -AllTicked:$AllTicked
         Invoke-FixtureGit $repo @('add', '-A') | Out-Null
         Invoke-FixtureGit $repo @('commit', '--quiet', '-m', 'close the records') | Out-Null
     }
@@ -277,6 +283,38 @@ try {
     }
 }
 finally { Remove-Fixture $fixture.Root }
+
+# --- Arm 3: records merged with every acceptance box ticked (backlog 151) ---
+#
+# Arm 1 waits for 12 commits, which is right for its own question and too slow for this one:
+# backlog 132 merged with all five boxes ticked and was found by hand nine hours later, with
+# origin/main only 2 commits past the merge. An item that says it is finished and is still open
+# needs no waiting period.
+
+$f = New-StaleFixture -Stage '4-execute' -Filler 0 -AllTicked
+$p = @(Get-BacklogStaleOpenProblem -RepoRoot $f.Repo)
+Assert-True ($p.Count -ge 1) "An item with every box ticked whose records merged must be reported at once, got none"
+Assert-True (($p -join "`n") -match 'every acceptance box') "Arm 3 must use its own message, got:`n$($p -join "`n")"
+Remove-Item -LiteralPath $f.Root -Recurse -Force
+
+# An unticked box means the work is not finished, so arm 3 says nothing and arm 1's own
+# threshold is left to decide.
+$f = New-StaleFixture -Stage '4-execute' -Filler 0
+$p = @(Get-BacklogStaleOpenProblem -RepoRoot $f.Repo)
+Assert-True ($p.Count -eq 0) "An item with an unticked box and 0 filler must not be reported, got:`n$($p -join "`n")"
+Remove-Item -LiteralPath $f.Root -Recurse -Force
+
+# Not merged yet: nothing about it is late, whatever the boxes say.
+$f = New-StaleFixture -Stage '4-execute' -LeaveUnmerged -AllTicked
+$p = @(Get-BacklogStaleOpenProblem -RepoRoot $f.Repo)
+Assert-True ($p.Count -eq 0) "An unmerged stamp must not be reported, got:`n$($p -join "`n")"
+Remove-Item -LiteralPath $f.Root -Recurse -Force
+
+# Closed correctly: the item is in backlog/done/ and is skipped before any arm runs.
+$f = New-StaleFixture -Stage '4-execute' -Closed -AllTicked
+$p = @(Get-BacklogStaleOpenProblem -RepoRoot $f.Repo)
+Assert-True ($p.Count -eq 0) "A closed item must not be reported, got:`n$($p -join "`n")"
+Remove-Item -LiteralPath $f.Root -Recurse -Force
 
 # --- The real backlog/ is clean ---
 

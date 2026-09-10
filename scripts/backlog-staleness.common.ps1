@@ -14,6 +14,7 @@
 Set-StrictMode -Version Latest
 
 . (Join-Path $PSScriptRoot 'backlog.common.ps1')
+. (Join-Path $PSScriptRoot 'backlog-acceptance.common.ps1')
 
 # Stage 3's exit condition is 'Plan committed', so 4-execute is the first stage whose records
 # can outlive their own work. The plan-pointer check uses the same index for the same reason
@@ -140,6 +141,19 @@ Backlog $($item.Key) reads 'Stage: 9-ship' and is still open.
 
         if ($index -lt $script:BacklogStaleTriggerIndex) { continue }
 
+        # Arm 3: the item says it is finished and is still open. Backlog 151. Arm 1's threshold of
+        # 12 is right for its own question and too slow for this one: backlog 132 merged with all
+        # five boxes ticked and was caught by hand nine hours later, with the base only 2 commits
+        # past the merge. An item claiming every criterion is met needs no waiting period.
+        #
+        # Every box ticked is what keeps a partial delivery out. Most items ship over more than
+        # one pull request, and every pull request but the last leaves a box unticked.
+        #
+        # An item with no boxes is vacuously finished, so Total must be over zero first.
+        $itemLines = @(Get-Content -LiteralPath $item.Path -ErrorAction SilentlyContinue)
+        $boxes = Get-AcceptanceBoxCount -Lines $itemLines
+        $allTicked = ($boxes.Total -gt 0 -and $boxes.Ticked -eq $boxes.Total)
+
         # The newest commit that changed this item's Stage line. -G matches the line text
         # without its '+' or '-' prefix, so one pattern covers both sides of the diff.
         $stampResult = Invoke-BacklogGit -RepoRoot $RepoRoot -GitArgs @(
@@ -186,6 +200,20 @@ Backlog $($item.Key) reads 'Stage: 9-ship' and is still open.
 
         # Nothing to place it against. Say nothing rather than guess a number.
         if ($distance -lt 0) { continue }
+
+        if ($allTicked) {
+            $problems += @"
+Backlog $($item.Key) has every acceptance box ticked, its records merged, and it is still open.
+  File:     $($item.RelativePath)
+  Stage:    $stage
+  Boxes:    $($boxes.Ticked) of $($boxes.Total) ticked
+  Stamp:    $stamp (the newest commit that changed its Stage line)
+  Distance: $distance first-parent commits behind $BaseRef
+  Fix:      close it - set 'Stage: 9-ship' and 'git mv' it into backlog/done/, in one commit.
+            If the work is not finished, untick the box that is not true and say why.
+"@
+            continue
+        }
 
         if ($distance -le $Threshold) { continue }
 
