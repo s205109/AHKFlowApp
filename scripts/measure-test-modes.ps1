@@ -10,6 +10,23 @@
   It builds once, then runs the Mode with -NoBuild each time, so the numbers measure test
   execution and not compilation.
 
+  Backlog 150. That is true about compilation and was never the whole story. A run taken soon
+  after a build is much slower for reasons that have nothing to do with the tests, and the same
+  tree measured 88.40 s and 55.05 s about an hour apart with no code change. Two mechanisms answer
+  that, because the record holds two separate effects.
+
+  -WarmUpRuns runs are taken first and thrown away. That removes the decay inside one measurement
+  window, where the first runs are slow and the later ones settle.
+
+  -SettleSeconds holds the counted runs back until the tree has been built that long. That removes
+  the other effect, a window that is slow from end to end and never decays at all. Warm-up runs
+  fill the wait, and -MaxWarmUpRuns stops it running forever. Every discarded run is printed, so
+  the reader can see the decay and judge it.
+
+  The spread line says how far to trust the median. It cannot say whether the tree was cold: in
+  that record the cold window spread 12.1 percent and the settled window spread 31.9 percent. The
+  build age is printed beside it for exactly that reason.
+
   -Soak runs one test project many times instead, and reports how many runs passed. Five runs fix
   a median but say little about a race that fires one run in fifty, so a reshaped project earns
   its "no new flake" claim here rather than from the timing runs.
