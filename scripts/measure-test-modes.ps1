@@ -39,6 +39,13 @@ param(
     [ValidateRange(1, 100)]
     [int]$Runs = 5,
 
+    # Runs taken before the counted ones and thrown away. Backlog 150: the runs right after a
+    # build are much slower for reasons that have nothing to do with the tests, and a median that
+    # counts them reads far too high. Two is what the evidence supports. In that item's record the
+    # first two runs of a decaying window sat above the settled band and the third was inside it.
+    [ValidateRange(0, 100)]
+    [int]$WarmUpRuns = 2,
+
     [string]$Configuration = 'Release',
 
     # Skip the one build up front. Pass it when the tree is already built.
@@ -72,6 +79,36 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $PSNativeCommandUseErrorActionPreference = $false
 
 $isSoak = -not [string]::IsNullOrWhiteSpace($Soak)
+
+function Invoke-TimedRun {
+    <#
+      One timed run of a Mode, printed and returned in seconds.
+
+      Warm-up runs and counted runs are the same work, so they go through one function. Two copies
+      of the timing block would drift, and backlog 150 turns on the two kinds of run being measured
+      identically and only counted differently.
+    #>
+    param(
+        [Parameter(Mandatory = $true)][string]$Label,
+        [Parameter(Mandatory = $true)][string]$Mode,
+        [Parameter(Mandatory = $true)][string]$Configuration,
+        [Parameter(Mandatory = $true)][string]$ScriptRoot
+    )
+
+    Write-Host ''
+    Write-Host "=== $Mode $Label ===" -ForegroundColor Cyan
+    $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+    # test-fast.ps1 throws on a failing slice, and $ErrorActionPreference is 'Stop' here, so a
+    # failure ends this script. Checking $LASTEXITCODE as well would read a stale value from the
+    # build above. $PSNativeCommandUseErrorActionPreference does not weaken this: it governs
+    # native commands, and test-fast.ps1 is a PowerShell script whose throw propagates either way.
+    & (Join-Path $ScriptRoot 'test-fast.ps1') -Mode $Mode -Configuration $Configuration -NoBuild | Out-Host
+    $stopwatch.Stop()
+
+    $elapsed = [Math]::Round($stopwatch.Elapsed.TotalSeconds, 2)
+    Write-Host ("{0}: {1:N2} s" -f $Label, $elapsed) -ForegroundColor Green
+    return $elapsed
+}
 
 Push-Location $repoRoot
 try {
@@ -194,22 +231,16 @@ try {
     }
 
     # Timing mode, with the lock released above.
+    $warmUpSeconds = @()
+    for ($warmUp = 1; $warmUp -le $WarmUpRuns; $warmUp++) {
+        $warmUpSeconds += Invoke-TimedRun -Label "warm-up $warmUp of $WarmUpRuns" `
+            -Mode $Mode -Configuration $Configuration -ScriptRoot $PSScriptRoot
+    }
+
     $seconds = @()
     for ($run = 1; $run -le $Runs; $run++) {
-        Write-Host ''
-        Write-Host "=== $Mode run $run of $Runs ===" -ForegroundColor Cyan
-        $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-        # test-fast.ps1 throws on a failing slice, and $ErrorActionPreference is 'Stop' here, so a
-        # failure ends this script. Checking $LASTEXITCODE as well would read a stale value from
-        # the build above. $PSNativeCommandUseErrorActionPreference does not weaken this: it
-        # governs native commands, and test-fast.ps1 is a PowerShell script whose throw
-        # propagates either way.
-        & (Join-Path $PSScriptRoot 'test-fast.ps1') -Mode $Mode -Configuration $Configuration -NoBuild | Out-Host
-        $stopwatch.Stop()
-
-        $elapsed = [Math]::Round($stopwatch.Elapsed.TotalSeconds, 2)
-        $seconds += $elapsed
-        Write-Host ("run {0}: {1:N2} s" -f $run, $elapsed) -ForegroundColor Green
+        $seconds += Invoke-TimedRun -Label "run $run of $Runs" `
+            -Mode $Mode -Configuration $Configuration -ScriptRoot $PSScriptRoot
     }
 
     $median = Get-AhkFlowMedian -Values $seconds
@@ -217,7 +248,13 @@ try {
     $max = ($seconds | Measure-Object -Maximum).Maximum
 
     Write-Host ''
-    Write-Host "$Mode over $Runs runs" -ForegroundColor Cyan
+    Write-Host "$Mode over $Runs counted runs" -ForegroundColor Cyan
+    if ($warmUpSeconds.Count -gt 0) {
+        # The runs themselves, not only how many there were. A reader who sees 91 / 62 falling to
+        # a flat tail can judge whether the measurement settled. A bare count cannot be judged.
+        Write-Host ("  warm-up: {0} (discarded, {1})" -f `
+            (($warmUpSeconds | ForEach-Object { '{0:N2}' -f $_ }) -join ' / '), $warmUpSeconds.Count)
+    }
     Write-Host ("  runs   : {0}" -f (($seconds | ForEach-Object { '{0:N2}' -f $_ }) -join ' / '))
     Write-Host ("  median : {0:N2} s" -f $median)
     Write-Host ("  mean   : {0:N2} s" -f $mean)
