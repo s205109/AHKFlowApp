@@ -260,6 +260,26 @@ Invoke-TestCase 'Get-AhkFlowMedian is the middle sorted value, and the mean of t
     Assert-True $threw 'An empty set has no median, and silently returning zero would read as a fast run.'
 }
 
+Invoke-TestCase 'Get-AhkFlowRelativeSpread is the range as a share of the median' {
+    # Fixed values, no wall clock. 20 minus 10 over a median of 15 is two thirds of the median.
+    $spread = Get-AhkFlowRelativeSpread -Values @(10, 15, 20)
+    Assert-True ([Math]::Abs($spread - 66.6667) -lt 0.01) "Expected 66.67 percent, got $spread."
+
+    Assert-True ((Get-AhkFlowRelativeSpread -Values @(7, 7, 7)) -eq 0) `
+        'Identical runs spread by nothing at all.'
+
+    # The record for backlog 150. Window 1 was the coldest of the three measurements and reads as
+    # the tightest, which is why the documentation says this figure does not detect a cold tree.
+    $coldWindow = Get-AhkFlowRelativeSpread -Values @(91.21, 85.46, 96.13, 87.87, 88.40)
+    $settledWindow = Get-AhkFlowRelativeSpread -Values @(55.64, 51.10, 53.68, 51.15, 51.53, 54.45, 56.79, 57.92, 68.64, 62.83)
+    Assert-True ($coldWindow -lt $settledWindow) `
+        "The record says the cold window is the tighter one: cold $coldWindow against settled $settledWindow."
+
+    $threw = $false
+    try { Get-AhkFlowRelativeSpread -Values @() } catch { $threw = $true }
+    Assert-True $threw 'An empty set has no spread, and returning zero would read as a perfect measurement.'
+}
+
 Invoke-TestCase 'Get-AhkFlowTestCount returns zero for every shape of TRX nobody can read' {
     # A killed run leaves one of three things behind, and only one of them is a parse error.
     # A zero-byte file is the likeliest: the logger creates the file, then the process dies
@@ -401,6 +421,34 @@ Invoke-TestCase 'With no build output the settle clock is off, and it says so' {
         $text = $result.Output -join "`n"
         Assert-True ($text -match 'no build output') `
             "A settle clock that cannot find a build date must say so. Output: $text"
+    }
+    finally { Remove-HarnessFixture -Root $root }
+}
+
+Invoke-TestCase 'The report names the spread and how old the build was' {
+    $root = New-HarnessFixture
+    try {
+        Set-Content -LiteralPath (Join-Path $root 'stub\sleeps.txt') -Value '100,300,900' -Encoding utf8
+
+        $result = Invoke-Harness -Root $root -Arguments @(
+            '-Mode', 'Fast', '-Runs', '3', '-WarmUpRuns', '0', '-SettleSeconds', '0', '-NoBuild')
+        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
+
+        # Both sides of the assertion come from the harness's own output, so machine load moves
+        # them together. The fixed-value case above owns the arithmetic.
+        $text = $result.Output -join "`n"
+        Assert-True ($text -match 'runs\s+:\s+([\d.,/ ]+)') "No runs line. Output: $text"
+        $runs = @($Matches[1] -split '/' | ForEach-Object { [double]($_.Trim() -replace ',', '.') })
+        Assert-True ($text -match 'spread\s+:\s+([\d.,]+)') "No spread line. Output: $text"
+        $spread = [double]($Matches[1] -replace ',', '.')
+
+        $expected = Get-AhkFlowRelativeSpread -Values $runs
+        Assert-True ([Math]::Abs($spread - $expected) -lt 0.5) `
+            "Spread $spread must match the printed runs, which give $expected. Runs: $($runs -join ', ')"
+
+        # The fixture has no build output, so this run must say the age is unknown rather than
+        # print a number it cannot have.
+        Assert-True ($text -match 'built\s+:\s+unknown') "No build-age line. Output: $text"
     }
     finally { Remove-HarnessFixture -Root $root }
 }

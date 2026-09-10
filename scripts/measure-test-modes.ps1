@@ -319,6 +319,13 @@ try {
     Write-Host ("  median : {0:N2} s" -f $median)
     Write-Host ("  mean   : {0:N2} s" -f $mean)
     Write-Host ("  max    : {0:N2} s" -f $max)
+    Write-Host ("  spread : {0:N1} % of the median" -f (Get-AhkFlowRelativeSpread -Values $seconds))
+    if ($null -eq $buildCompletedAtUtc) {
+        Write-Host '  built  : unknown, found no build output'
+    }
+    else {
+        Write-Host ("  built  : {0:N0} s before the first counted run" -f $secondsSinceBuild)
+    }
 }
 finally {
     Pop-Location
