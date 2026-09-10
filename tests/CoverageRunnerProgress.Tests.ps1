@@ -72,11 +72,20 @@ function New-CoverageFixture {
     New-Item -ItemType Directory -Path (Join-Path $scriptFolder 'ci') -Force | Out-Null
     New-Item -ItemType Directory -Path $stubFolder -Force | Out-Null
 
+    # The container script asks git whether this is a linked worktree or a main checkout, and stops
+    # when git cannot answer. A bare 'git init' answers: no linked worktree, so this is a main
+    # checkout, whose Compose project is the base name 'ahkflowapp'. The docker stub's
+    # com.ahkflowapp.compose-project label says 'ahkflowapp' for the same reason, and the two have
+    # to agree or the ownership check refuses the container.
+    & git -C $root init --quiet 2>&1 | Out-Null
+
     foreach ($name in @(
             'run-coverage.ps1'
             'test-fast.ps1'
             'Common.ps1'
             'test-sql-container.common.ps1'
+            'worktree-docker.common.ps1'
+            'worktree-git.common.ps1'
             'test-run-lock.common.ps1'
             'coverage-inputs.common.ps1'
             'code-change-filter.common.ps1'
@@ -149,14 +158,22 @@ exit 0
 $stubFolder = Split-Path -Parent $PSCommandPath
 Add-Content -LiteralPath (Join-Path $stubFolder 'docker-calls.txt') -Value ($args -join ' ')
 
-# The shapes Start-AhkFlowTestSqlContainer needs: an id from run, a published port from inspect,
-# and a zero exit from the first exec, which is what makes the readiness poll return at once.
+# The shapes Start-AhkFlowTestSqlContainer needs. 'inspect' answers one blob carrying every field
+# the verification reads: the id, the running state, the image, the ownership label, and the
+# published port. A non-zero exit from 'inspect' means the container does not exist, which is how
+# the script decides to build one.
 switch ($args[0]) {
     'run' { Write-Output 'stubcontainerid'; exit 0 }
     'inspect' {
-        Write-Output '[{"NetworkSettings":{"Ports":{"1433/tcp":[{"HostIp":"127.0.0.1","HostPort":"14399"}]}}}]'
+        Write-Output ('[{"Id":"stubcontainerid0000000000000000000000000000000000000000000000000000",' +
+            '"State":{"Running":true},' +
+            '"Config":{"Image":"mcr.microsoft.com/mssql/server:2022-CU14-ubuntu-22.04",' +
+            '"Labels":{"com.ahkflowapp.role":"test-sql","com.ahkflowapp.compose-project":"ahkflowapp"}},' +
+            '"NetworkSettings":{"Ports":{"1433/tcp":[{"HostIp":"127.0.0.1","HostPort":"14399"}]}}}]')
         exit 0
     }
+    'ps' { exit 0 }
+    'start' { exit 0 }
     'exec' { exit 0 }
     'logs' { Write-Output 'stub docker logs'; exit 0 }
     'rm' { exit 0 }
