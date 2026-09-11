@@ -35,24 +35,11 @@ $skipHint = "CI runs the full coverage + format gate on this PR when a changed p
 
 Push-Location $repoRoot
 try {
-    Write-Step "Building solution ($Configuration)"
-    & dotnet build --configuration $Configuration
-    if ($LASTEXITCODE -ne 0) {
-        throw "Build failed. $skipHint"
-    }
-    Write-Success 'Build succeeded.'
-
-    Write-Step 'Running fast test slice'
-    try {
-        & (Join-Path $PSScriptRoot 'test-fast.ps1') -Mode Fast -Configuration $Configuration -NoBuild
-        if ($LASTEXITCODE -ne 0) {
-            throw "Fast test slice failed."
-        }
-    }
-    catch {
-        throw "Fast test slice failed. $skipHint"
-    }
-    Write-Success 'Fast test slice passed.'
+    # The record checks run before the build and the tests, and that order is deliberate.
+    # They read files and git history only, so they cost seconds, while the build and the fast
+    # slice together cost about forty. A record fault - an unticked shipped plan, a stale
+    # citation - is also the fault a developer is least likely to expect, so it should be the
+    # first thing the push reports, not the last. Nothing below depends on build output.
 
     # The private plans repository holds most of this project's citations, and CI never sees it:
     # (`.gitignore:473`, "docs/superpowers") ignores it. Pre-push is the only gate that can reach it.
@@ -212,6 +199,25 @@ try {
         }
         Write-Success 'Every shipped plan carries a ticked step.'
     }
+
+    Write-Step "Building solution ($Configuration)"
+    & dotnet build --configuration $Configuration
+    if ($LASTEXITCODE -ne 0) {
+        throw "Build failed. $skipHint"
+    }
+    Write-Success 'Build succeeded.'
+
+    Write-Step 'Running fast test slice'
+    try {
+        & (Join-Path $PSScriptRoot 'test-fast.ps1') -Mode Fast -Configuration $Configuration -NoBuild
+        if ($LASTEXITCODE -ne 0) {
+            throw "Fast test slice failed."
+        }
+    }
+    catch {
+        throw "Fast test slice failed. $skipHint"
+    }
+    Write-Success 'Fast test slice passed.'
 }
 finally {
     Pop-Location

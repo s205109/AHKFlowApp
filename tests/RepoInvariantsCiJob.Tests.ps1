@@ -21,6 +21,10 @@ function Assert-True {
 }
 
 $expectedSuites = @(
+    # Backlog 151. Both of these are backlog-record invariants: the counter that decides whether
+    # an item claims to be finished, and the rule that refuses a ready pull request leaving such
+    # an item open. They belong beside the other backlog checks.
+    'AcceptanceBoxes.Tests.ps1'
     'BacklogNumbering.Tests.ps1'
     'BacklogPlanPointer.Tests.ps1'
     'BacklogStaleOpen.Tests.ps1'
@@ -29,6 +33,7 @@ $expectedSuites = @(
     # reaching a target migration directly: that bypass still passes on a cold container, so the
     # C# suites stay green while the rule is broken.
     'RunIndependentSqlTests.Tests.ps1'
+    'ShippingPrClosesItem.Tests.ps1'
     'SkillParity.Tests.ps1'
     # Backlog 133. A test fixture that spawns new-worktree.ps1 in a throwaway repository can wipe
     # out another real checkout's running SQL test container, so this check must run before the

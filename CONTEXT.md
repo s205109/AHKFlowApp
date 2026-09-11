@@ -294,3 +294,15 @@ _Avoid_: orphan log, dead task, zombie task
 **Watcher**:
 `scripts/watch-task.ps1`, which finds the Running task a human should be shown and tails it. There is one, so "the watcher" always means it.
 _Avoid_: tailer, follower, monitor
+
+**Acceptance box**:
+One `- [ ]` or `- [x]` line inside a Backlog item's `## Acceptance criteria` section. A checkbox anywhere else in the item is not one, so a check that counts them reads that section only.
+_Avoid_: checkbox, criterion box, tickbox
+
+**Records closed**:
+The state a Backlog item reaches at Ship: every Acceptance box ticked, the file moved into `backlog/done/`, `Stage` reading `9-ship`, the progress file deleted, and the plan and spec frozen. The Stage exit condition names it in two words, so the term keeps all five parts together.
+_Avoid_: item done, item finished, wrapped up
+
+**Shipping pull request**:
+The one pull request that finishes a Backlog item's work and closes its Records. An item may take several pull requests, and only the last one is this.
+_Avoid_: final PR, closing PR, the merge

@@ -52,7 +52,7 @@ The stated root cause is disproved. The delete does not re-run the IL linker, so
 changed nothing does not pay for a full relink" describes a cost that was never there.
 
 **CI never benefits.** CI builds, then runs one solution-wide test call
-(`.github/workflows/ci.yml:71`, "dotnet test --configuration Release --no-build"). A fresh runner
+(`.github/workflows/ci.yml:100`, "dotnet test --configuration Release --no-build"). A fresh runner
 has no publish folder and no stamp, so the target
 always runs. How long the publish takes on a CI runner is not measured here, and no number is
 claimed for it. The only 95.39 s observation was local, after the tree changed.
