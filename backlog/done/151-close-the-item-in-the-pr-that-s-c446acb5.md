@@ -147,6 +147,16 @@ cannot work.
 - Terms pinned in `CONTEXT.md`: Acceptance box, Records closed, Shipping pull request.
 - Spec: `docs/superpowers/specs/2026-09-10-close-the-item-in-the-shipping-pr-design-151.md`
 - Plan: `docs/superpowers/plans/2026-09-10-close-the-item-in-the-shipping-pr-plan-151.md`
+- **Two defects found in review, after the boxes were ticked.** Both are fixed on this branch,
+  and both had a green CI run standing over them, so they are worth naming.
+  1. Arm 3 read the acceptance boxes from the working tree and tested ancestry only on the
+     `Stage` line. A branch that ticks its last box at Document, over a partially delivered item
+     whose `Stage` stamp merged earlier, was reported as late. That refuses what `AGENTS.md`
+     asks for. Arm 3 now also requires the item to be fully ticked in the base.
+  2. The `PLAN-PROGRESS.md` line was checked only when the item was already a problem, so a
+     pull request that closed its records correctly and kept the file passed with no problems.
+     The criterion above calling it "its own problem line" was therefore a premature tick. It is
+     now checked whenever the pull request finishes an item, and the tick is true.
 - **What one `ready_for_review` run costs.** Measured on this branch's five most recent CI runs
   on 2026-09-10: 9m33s, 10m49s, 8m23s, 10m20s, 10m45s. So about ten minutes of wall-clock time,
   once per item at Ship. That is the number the grilling decision assumed was small, and it sits
