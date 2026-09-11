@@ -139,7 +139,16 @@ foreach ($container in Get-WorktreeTestSqlContainerOnHost) {
         } else {
             $skipped++
             $reason = if ($result.Error) { $result.Error } else { 'removal reported no change' }
-            Write-Warning "Could not remove '$($container.Name)': $reason. Skipped; stop it and rerun."
+            # The guard can refuse this removal because the container belongs to another checkout.
+            # Rerunning never fixes that: the container is not this repository's to remove, so the
+            # warning must not tell the reader to rerun. A real 'docker rm' failure is different; that
+            # one can be worth a retry, so it keeps the old advice.
+            $advice = if ($result.Skipped) {
+                'it is not this checkout''s container to remove'
+            } else {
+                'stop it and rerun'
+            }
+            Write-Warning "Could not remove '$($container.Name)': $reason. Skipped; $advice."
         }
     }
 }

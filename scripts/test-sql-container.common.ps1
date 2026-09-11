@@ -76,6 +76,11 @@ function Get-AhkFlowTestSqlComposeProject {
         }
     }
 
+    # Scoped here, the same as the four docker functions in this file. Without it, a git that cannot
+    # name the branch raises a terminating error under $ErrorActionPreference = 'Stop'. The throw
+    # below explains what to repair, and it would never run.
+    $PSNativeCommandUseErrorActionPreference = $false
+
     $branch = (& git -C $RepoRoot rev-parse --abbrev-ref HEAD 2>$null)
     if ($branch) { $branch = ([string]$branch).Trim() }
     if ($branch -and $branch -ne 'HEAD') {
@@ -198,9 +203,10 @@ function Test-AhkFlowTestSqlContainer {
         return 'it publishes no host port for 1433/tcp'
     }
 
-    # 60 seconds, not the 120 a fresh container gets. A warm server answers at once, and a server
-    # that just restarted still has to recover its databases. A container that needs longer than
-    # this is one the run is better off replacing.
+    # 60 seconds. Every path through this function uses this same timeout, whether the container is
+    # reused, restarted, or freshly built. A warm server answers at once, and a server that just
+    # restarted or was just built still has to come up; either way, 60 seconds is enough. A
+    # container that needs longer than this is one the run is better off replacing.
     try {
         Wait-AhkFlowTestSqlReady -ContainerName $ContainerName -Password $script:AhkFlowTestSqlPassword -TimeoutSeconds 60
     }
@@ -413,7 +419,7 @@ function Wait-AhkFlowTestSqlReady {
         [Parameter(Mandatory = $true)]
         [string]$Password,
 
-        [int]$TimeoutSeconds = 120
+        [int]$TimeoutSeconds = 60
     )
 
     # A failing query is what this loop is built to expect: SQL Server takes seconds to accept
@@ -452,16 +458,28 @@ function Wait-AhkFlowTestSqlReady {
     throw "Shared SQL test container '$ContainerName' did not become ready within $TimeoutSeconds seconds. Last sqlcmd output: $lastOutput$([Environment]::NewLine)Docker logs:$([Environment]::NewLine)$($logs -join [Environment]::NewLine)"
 }
 
-# Kept for the callers that own a throwaway container. Reuse never calls it: a run that ends,
-# passing or failing, leaves the shared container in place, because a failed run is the one whose
-# next attempt most wants a warm schema.
+# Removes one container by name. A throwaway container carries no ownership labels, so a caller
+# that owns one passes no -ExpectedProject, and the removal runs on the name alone.
+#
+# scripts/test-fast.ps1 and scripts/run-coverage.ps1 also call this today, and they hand it the
+# shared container's name, not a throwaway one. They pass no -ExpectedProject either, so today those
+# two calls remove the shared container by name alone, with no ownership check first. -ExpectedProject
+# is optional here so a caller can ask for that check without breaking a caller that does not.
 function Stop-AhkFlowTestSqlContainer {
     [CmdletBinding()]
-    param([string]$ContainerName)
+    param(
+        [string]$ContainerName,
+        [string]$ExpectedProject
+    )
 
     if ([string]::IsNullOrWhiteSpace($ContainerName)) { return }
 
-    $result = Remove-WorktreeTestSqlContainer -Name $ContainerName
+    $removeArgs = @{ Name = $ContainerName }
+    if ($PSBoundParameters.ContainsKey('ExpectedProject')) {
+        $removeArgs['ExpectedProject'] = $ExpectedProject
+    }
+
+    $result = Remove-WorktreeTestSqlContainer @removeArgs
     if (-not $result.Removed -and $result.Error) {
         Write-Warning "Failed to remove test SQL container '$ContainerName': $($result.Error)"
     }

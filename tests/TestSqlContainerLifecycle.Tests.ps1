@@ -345,8 +345,8 @@ Invoke-TestCase 'A replacement that fails verification too stops the run and say
 }
 
 Invoke-TestCase 'A build that fails verification is not reported as a second failure' {
-    # The container never existed, so it was built once and never replaced. A message claiming a
-    # replacement would send the reader looking for a container that was never there.
+    # The container never existed, so this run built it, and that build already fails verification.
+    # It still gets the one replacement every path gets, so two builds happen in total, not three.
     $root = New-SqlContainerFixture -InspectPlan @('missing', 'noport', 'noport', 'noport')
     try {
         $out = Invoke-InFixture -Root $root -Expression 'Start-AhkFlowTestSqlContainer -RepoRoot <ROOT>'
