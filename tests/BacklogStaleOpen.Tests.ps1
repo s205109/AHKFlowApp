@@ -74,6 +74,7 @@ function New-StaleFixture {
         [switch] $LeaveUnmerged,
         [switch] $TouchWithoutStage,
         [switch] $AllTicked,
+        [switch] $TickAfterMerge,
         [int] $BaseAhead = 0,
         [switch] $BranchMergesBase,
         [switch] $NoBase,
@@ -151,6 +152,17 @@ function New-StaleFixture {
         }
 
         Add-FixtureFiller -RepoDir $repo -Count $Filler
+
+        if ($TickAfterMerge) {
+            # Backlog 151, found in review. The merged item is partially ticked: one criterion
+            # done, one still open. This branch ticks the last box and leaves the Stage line
+            # alone, which is exactly what AGENTS.md asks for at Document. The tick has NOT
+            # reached main, so no arm may report the item.
+            Invoke-FixtureGit $repo @('checkout', '--quiet', '-b', 'fix/wt-second') | Out-Null
+            Write-FixtureItem -Path $openPath -Key '140' -Stage $Stage -AllTicked
+            Invoke-FixtureGit $repo @('add', '-A') | Out-Null
+            Invoke-FixtureGit $repo @('commit', '--quiet', '-m', 'tick the last box at Document') | Out-Null
+        }
     }
 
     if ($NoBase) {
@@ -314,6 +326,18 @@ Remove-Item -LiteralPath $f.Root -Recurse -Force
 $f = New-StaleFixture -Stage '4-execute' -Closed -AllTicked
 $p = @(Get-BacklogStaleOpenProblem -RepoRoot $f.Repo)
 Assert-True ($p.Count -eq 0) "A closed item must not be reported, got:`n$($p -join "`n")"
+Remove-Item -LiteralPath $f.Root -Recurse -Force
+
+# --- Arm 3 must read the boxes that MERGED, not the working tree (backlog 151 review) ---
+#
+# The harm is the opposite of a miss. A branch that ticks its last box at Document, on top of a
+# partially delivered item whose Stage stamp merged long ago, is doing what the process asks.
+# Arm 3 read the working tree for the box count and tested ancestry only on the Stage line, so it
+# called that branch late and refused it.
+
+$f = New-StaleFixture -Stage '4-execute' -Filler 0 -TickAfterMerge
+$p = @(Get-BacklogStaleOpenProblem -RepoRoot $f.Repo)
+Assert-True ($p.Count -eq 0) "A box ticked on an unmerged branch must not be reported, got:`n$($p -join "`n")"
 Remove-Item -LiteralPath $f.Root -Recurse -Force
 
 # --- The real backlog/ is clean ---

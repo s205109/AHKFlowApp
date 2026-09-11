@@ -201,7 +201,30 @@ Backlog $($item.Key) reads 'Stage: 9-ship' and is still open.
         # Nothing to place it against. Say nothing rather than guess a number.
         if ($distance -lt 0) { continue }
 
+        # Arm 3 asks whether the FINISHED state merged, not whether the Stage line did. The two
+        # are not the same question. A branch that ticks its last box at Document leaves the
+        # Stage line alone, so the stamp above is an old merged commit while the ticks sit on a
+        # branch that has reached nothing. Reading the working tree alone called that branch late
+        # and refused it, which blocks the exact thing AGENTS.md asks for. Backlog 151, in review.
+        #
+        # Fully ticked in the base proves the ticks reached it. Fully ticked in the working tree,
+        # already tested above, proves they still stand: an honest untick after the merge switches
+        # arm 3 back off, which is the escape hatch the item's own criteria promise.
+        #
+        # The item may be absent from the base, or sit there under another name after a renumber.
+        # Either way its finished state has not merged under this path, so say nothing. That is
+        # the same stance the distance walk takes four lines above.
+        $mergedAllTicked = $false
         if ($allTicked) {
+            $basePath = $item.RelativePath.Replace('\', '/')
+            $baseItem = Invoke-BacklogGit -RepoRoot $RepoRoot -GitArgs @('show', "${BaseRef}:$basePath")
+            if ($baseItem.ExitCode -eq 0) {
+                $mergedBoxes = Get-AcceptanceBoxCount -Lines @($baseItem.Text -split "`n")
+                $mergedAllTicked = ($mergedBoxes.Total -gt 0 -and $mergedBoxes.Ticked -eq $mergedBoxes.Total)
+            }
+        }
+
+        if ($allTicked -and $mergedAllTicked) {
             $problems += @"
 Backlog $($item.Key) has every acceptance box ticked, its records merged, and it is still open.
   File:     $($item.RelativePath)
