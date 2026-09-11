@@ -65,7 +65,7 @@ All three move together.
 - Spec: none — the gap and its fix are both one line each.
 - Plan: `docs/superpowers/plans/2026-09-07-coverage-tooling-filter-plan-141.md`
 - Reclassified from `trivial` to `moderate` at Pickup on 2026-09-07. A filed backlog item is
-  never `trivial` (`docs/development/workflow.md:825`, "**A filed backlog item is never `trivial`.**").
+  never `trivial` (`docs/development/workflow.md:832`, "**A filed backlog item is never `trivial`.**").
   The size of the change did not decide this; the rule did.
 - Out of scope check, done on 2026-09-07: the two entry points hold eleven dot-source statements
   naming seven distinct modules, and none of those seven dot-sources anything further. Those

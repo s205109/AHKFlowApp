@@ -1,11 +1,12 @@
 {
   "suites": [
+    { "name": "AcceptanceBoxes.Tests.ps1", "jobs": ["invariants", "suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 0.9 },
     { "name": "AgentPreCommitHook.Tests.ps1", "jobs": ["suites"], "platform": ["windows"], "execution": "parallel", "baselineSeconds": 17.3 },
     { "name": "AgentWorktreeGuard.Tests.ps1", "jobs": ["suites"], "platform": ["windows"], "execution": "parallel", "baselineSeconds": 65.3 },
     { "name": "ArchivedPlanFrozen.Tests.ps1", "jobs": ["suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 0.7 },
     { "name": "BacklogNumbering.Tests.ps1", "jobs": ["invariants", "suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 6.5 },
     { "name": "BacklogPlanPointer.Tests.ps1", "jobs": ["invariants", "suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 1.2 },
-    { "name": "BacklogStaleOpen.Tests.ps1", "jobs": ["invariants", "suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 24.7 },
+    { "name": "BacklogStaleOpen.Tests.ps1", "jobs": ["invariants", "suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 41.2 },
     { "name": "CiPowerShellSuiteRunner.Tests.ps1", "jobs": ["suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 69.5 },
     { "name": "CitationFreshness.Tests.ps1", "jobs": ["invariants", "suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 78.8 },
     { "name": "CleanupEventLabels.Tests.ps1", "jobs": ["suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 0.4 },
@@ -33,6 +34,7 @@
     { "name": "RepoInvariantsCiJob.Tests.ps1", "jobs": ["suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 0.4 },
     { "name": "RunFrontend.Tests.ps1", "jobs": ["suites"], "platform": ["windows"], "execution": "parallel", "baselineSeconds": 1.1 },
     { "name": "ShippedPlanTicked.Tests.ps1", "jobs": ["suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 10.6 },
+    { "name": "ShippingPrClosesItem.Tests.ps1", "jobs": ["invariants", "suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 8.5 },
     { "name": "SkillLayout.Tests.ps1", "jobs": ["suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 0.4 },
     { "name": "SkillParity.Tests.ps1", "jobs": ["invariants", "suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 2.0 },
     { "name": "SuiteRunnerLinux.Tests.ps1", "jobs": ["invariants", "suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 9.0 },
