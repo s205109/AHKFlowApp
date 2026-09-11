@@ -50,13 +50,15 @@ more about why.
 - [x] The migration tests still fail when a migration is broken. Break one on purpose, show the
       red run, and put it back.
 
-      Proved again in Task 9. `SchemaPolish`'s `Up` body was commented out, then
-      `pwsh .\scripts\test-fast.ps1 -Mode Integration` was run: `SchemaPolish_RemovesInconsistentProfileAssociations`
-      failed with `Expected inconsistentHotstrings to be 0, but found 2 (difference of 2)`, and
-      `dotnet test` exited 1 for `AHKFlowApp.Infrastructure.Tests` (`Failed: 3, Passed: 23, Total: 26`;
-      the other two failures are the same broken column read, expected collateral). The body was put
-      back (`git diff` showed no change from the committed file), and the slice was run again:
-      `AHKFlowApp.Infrastructure.Tests` passed 26 of 26, all four Integration projects green, exit 0.
+      Proved again in Task 9. `SchemaPolish`'s `Up` body was commented out. Then
+      `pwsh .\scripts\test-fast.ps1 -Mode Integration` was run.
+      `SchemaPolish_RemovesInconsistentProfileAssociations` failed:
+      `Expected inconsistentHotstrings to be 0, but found 2 (difference of 2)`. `dotnet test`
+      exited 1 for `AHKFlowApp.Infrastructure.Tests` (`Failed: 3, Passed: 23, Total: 26`). The
+      other two failures read the same missing column. They are expected collateral, not new
+      bugs. The body was put back. `git diff` showed no change from the committed file. The
+      slice was run again. `AHKFlowApp.Infrastructure.Tests` passed 26 of 26. All four
+      Integration projects were green, exit 0.
 - [x] `Migrate_IsIdempotent_RunsTwiceWithoutError` still makes two migration calls after the drop,
       because the drop must not turn its subject into a single call.
 - [x] A test that reaches an intermediate migration without the helper fails a PowerShell suite.
@@ -94,9 +96,10 @@ more about why.
       beside the 49.59 s backlog 128 left, with all five runs and the maximum. The number includes
       the three group-three drops, which are a real cost this change adds.
 
-      Five warm runs, one container reused throughout (id `18743b2d6d9b`, confirmed unchanged after
-      every run): 44.64 s, 40.63 s, 38.81 s, 39.05 s, 40.23 s. Median **40.23 s**, mean 40.67 s, max
-      44.64 s. Against the 49.59 s backlog 128 left, that is a 9.36 s saving, about 19%.
+      Five warm runs used one container throughout: id `18743b2d6d9b`, unchanged after every run.
+      Run times: 44.64 s, 40.63 s, 38.81 s, 39.05 s, 40.23 s.
+      Median **40.23 s**. Mean 40.67 s. Max 44.64 s.
+      Backlog 128 left the median at 49.59 s. This saves 9.36 s, about 19%.
 
 ## Out of scope
 
@@ -122,8 +125,8 @@ more about why.
   migrates a fixed database name", and four CLI queries read a row they never proved they created.
   The design replaces this item's acceptance criteria. Task 9 of the plan copies the rewritten
   criteria in when the work ships.
-- This item's own original acceptance criteria, above, were also written from a prediction: they
-  named "every test that migrates a fixed database name" before anybody had counted which tests
-  actually needed an empty one. The 2026-09-10 design measured the real blocker and replaced them
-  with the rewritten criteria under `## Acceptance criteria`, which this task ticked against real
-  runs.
+- This item's own original acceptance criteria, above, were also written from a prediction. They
+  named "every test that migrates a fixed database name." Nobody had yet counted which tests
+  actually needed an empty one. The 2026-09-10 design measured the real blocker instead. It
+  replaced them with the rewritten criteria under `## Acceptance criteria`. This task ticked
+  those against real runs.
