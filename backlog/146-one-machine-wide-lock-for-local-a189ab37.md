@@ -23,12 +23,12 @@ with the first, so that I do not have to remember to halve the worker count by h
 
 - [ ] Two local test runs started from different checkouts of this repository share one limit.
       The lock file today sits in each checkout's own root
-      (`scripts/test-fast.ps1:44`, "$repoRoot = Split-Path -Parent $PSScriptRoot"), so two
+      (`scripts/test-fast.ps1:49`, "$repoRoot = Split-Path -Parent $PSScriptRoot"), so two
       worktrees hold two different locks and neither waits.
 - [ ] `-Mode PowerShell` takes part. It returns today before the lock is taken: the mode block
-      starts at (`scripts/test-fast.ps1:354`, "    if ($Mode -eq 'PowerShell') {") and the lock
+      starts at (`scripts/test-fast.ps1:359`, "    if ($Mode -eq 'PowerShell') {") and the lock
       is taken after it at
-      (`scripts/test-fast.ps1:389`, "    $testRunLock = Enter-AhkFlowTestRunLock -RepoRoot $repoRoot -Mode $Mode").
+      (`scripts/test-fast.ps1:394`, "    $testRunLock = Enter-AhkFlowTestRunLock -RepoRoot $repoRoot -Mode $Mode").
 - [ ] The design records which of two shapes it chose, and why: refuse the second run, or let
       both run and divide one worker budget between them. The measurement below supports
       dividing, because two runs at 4 workers each both passed and neither waited.
