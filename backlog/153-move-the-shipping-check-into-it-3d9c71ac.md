@@ -86,4 +86,4 @@ The measurement is what changed. The decision was taken before any number existe
 - ADR: `docs/adr/0016-a-shipping-pull-request-is-ready-and-fully-ticked.md`
 - Terms pinned in `CONTEXT.md`: Shipping pull request, Records closed, Acceptance box.
 - Spec: none — the rule is already designed and this item only changes where it runs.
-- Plan: none — filed at Intake. Pickup classifies it and writes one.
+- Plan: `docs/superpowers/plans/2026-09-11-shipping-check-own-workflow-plan-153.md`
