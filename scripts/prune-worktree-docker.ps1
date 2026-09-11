@@ -17,6 +17,15 @@ param([switch] $Quiet, [string] $LogPath)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+# A test fixture that builds a throwaway repository holds none of this project's real
+# worktrees, so every real checkout's container would look orphaned and get removed. This
+# variable lets such a fixture refuse the sweep outright. Two routes reach this script -- a
+# spawned new-worktree.ps1 and a direct call -- so both carry this same guard.
+if ($env:AHKFLOW_SKIP_ORPHAN_PRUNE) {
+    if (-not $Quiet) { Write-Host 'Docker prune skipped: AHKFLOW_SKIP_ORPHAN_PRUNE is set.' }
+    return
+}
+
 . (Join-Path $PSScriptRoot 'worktree-docker.common.ps1')
 . (Join-Path $PSScriptRoot 'worktree-log.common.ps1')
 

@@ -58,6 +58,7 @@
     { "name": "WorktreePowerShellHost.Tests.ps1", "jobs": ["suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 0.6 },
     { "name": "WorktreeRemovalLog.Tests.ps1", "jobs": ["suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 1.7 },
     { "name": "WorktreeRemoveHook.Tests.ps1", "jobs": ["suites"], "platform": ["windows"], "execution": "parallel", "baselineSeconds": 39.5 },
+    { "name": "WorktreeSpawnPruneOptOut.Tests.ps1", "jobs": ["invariants", "suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": null },
     { "name": "WorktreeSweepRemoteBase.Tests.ps1", "jobs": ["suites"], "platform": ["windows"], "execution": "parallel", "baselineSeconds": 45.2 },
     { "name": "WorktreeWatcherWindow.Tests.ps1", "jobs": ["suites"], "platform": ["windows"], "execution": "parallel", "baselineSeconds": 2.3 }
   ]

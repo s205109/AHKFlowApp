@@ -30,6 +30,10 @@ $expectedSuites = @(
     # C# suites stay green while the rule is broken.
     'RunIndependentSqlTests.Tests.ps1'
     'SkillParity.Tests.ps1'
+    # Backlog 133. A test fixture that spawns new-worktree.ps1 in a throwaway repository can wipe
+    # out another real checkout's running SQL test container, so this check must run before the
+    # other jobs, not only alongside them.
+    'WorktreeSpawnPruneOptOut.Tests.ps1'
     # Backlog 127. This one is in the job so that every pull request proves the runner starts,
     # reads a manifest, and selects suites on Linux. It is the only member that is here for the
     # platform rather than for a repository invariant.
