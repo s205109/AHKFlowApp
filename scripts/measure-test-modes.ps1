@@ -19,17 +19,19 @@
   wrong answer: it looks like proof. scripts/test-fast.ps1 refuses a zero-test run for the same
   reason.
 
-  The soak starts and removes a SQL container per repetition. Reusing one across repetitions
-  would be cheaper and wrong: the migration tests migrate fixed database names from scratch and
-  nothing drops them afterwards, so run two would meet an already-migrated schema and fail for a
-  reason the code under test did not cause. A container start costs about 11 s, so a thirty-run
-  soak spends roughly five and a half minutes on container starts.
+  The soak starts one SQL container and every repetition uses it. Backlog 133 made every
+  SQL-backed test drop the database it needs empty before it builds, so run two meets a warm
+  server the way a real second Integration run does. That is the state worth soaking. A container
+  start cost about 11 s, so a thirty-run soak used to spend roughly five and a half minutes on
+  starts alone.
+
+  The container is left running when the soak ends, the same way scripts/test-fast.ps1 leaves it.
 
   tests/MeasureTestModes.Tests.ps1 covers the orchestration: argument routing, the median, the
-  run lock, environment restoration, one container per repetition, the zero-test guard, and what
-  happens when a run fails. It stubs dotnet and replaces the SQL helper, so it costs seconds and
-  needs no Docker. It deliberately covers no timing: the numbers this script reports are evidence
-  gathered by running it for real, and no stub can stand in for that.
+  run lock, environment restoration, one container for the whole soak, the zero-test guard, and
+  what happens when a run fails. It stubs dotnet and replaces the SQL helper, so it costs seconds
+  and needs no Docker. It deliberately covers no timing: the numbers this script reports are
+  evidence gathered by running it for real, and no stub can stand in for that.
 #>
 [CmdletBinding()]
 param(
@@ -106,64 +108,53 @@ try {
             $passed = 0
             $failed = @()
             $empty = @()
+
+            # One container for the whole soak. It also makes each repetition identical to a real
+            # second Integration run, which is the thing the soak is meant to be repeating.
+            $container = Start-AhkFlowTestSqlContainer -RepoRoot $repoRoot
+            $env:AHKFLOW_TEST_SQL_CONNECTION_STRING = $container.ConnectionString
+            Write-Host ("Soak container: {0} ({1})" -f $container.ContainerName, $container.ContainerId)
+
             for ($run = 1; $run -le $Runs; $run++) {
                 Write-Host ''
                 Write-Host "=== soak run $run of $Runs : $Soak ===" -ForegroundColor Cyan
 
-                # One container per repetition, not one for the whole soak. The migration tests
-                # migrate fixed database names from scratch, and no test in the repository drops
-                # its database afterwards, so a reused server would leave run two facing an
-                # already-migrated schema. That is exactly the blocker D7 records against reusing
-                # the container between runs, and a soak that hits it reports a failure the
-                # reshape did not cause.
-                #
-                # It also makes each repetition identical to a real Integration run, which is the
-                # thing the soak is meant to be repeating.
                 $resultsDirectory = Join-Path $repoRoot "TestResults\soak\run-$run"
                 Remove-Item -LiteralPath $resultsDirectory -Recurse -Force -ErrorAction SilentlyContinue
                 New-Item -ItemType Directory -Path $resultsDirectory -Force | Out-Null
 
-                $container = $null
-                try {
-                    $container = Start-AhkFlowTestSqlContainer
-                    $env:AHKFLOW_TEST_SQL_CONNECTION_STRING = $container.ConnectionString
+                & dotnet test $Soak --configuration $Configuration --no-build `
+                    --logger 'trx;LogFileName=soak.trx' --results-directory $resultsDirectory | Out-Host
+                $exitCode = $LASTEXITCODE
 
-                    & dotnet test $Soak --configuration $Configuration --no-build `
-                        --logger 'trx;LogFileName=soak.trx' --results-directory $resultsDirectory | Out-Host
-                    $exitCode = $LASTEXITCODE
-
-                    # Two ways to fail, and the second one is silent without this. A run that
-                    # exits zero having discovered nothing is not a pass.
-                    # A soak that counts only the exit code passes a run that discovered
-                    # nothing, and a filter typo or a lost class fixture is exactly how
-                    # that happens: dotnet test exits zero with an empty suite. Thirty of
-                    # those report "30 of 30". scripts/test-fast.ps1 refuses a zero-test
-                    # run for the same reason, through the same helper.
-                    #
-                    # The exit code is read first, and the TRX only when the run claims success.
-                    # A run that died part-way is already a failure, and its half-written TRX
-                    # carries no answer worth asking for.
-                    if ($exitCode -ne 0) {
-                        $failed += $run
+                # Two ways to fail, and the second one is silent without this. A run that exits
+                # zero having discovered nothing is not a pass. A soak that counts only the exit
+                # code passes a run that discovered nothing, and a filter typo or a lost class
+                # fixture is exactly how that happens: dotnet test exits zero with an empty suite.
+                # Thirty of those report "30 of 30". scripts/test-fast.ps1 refuses a zero-test run
+                # for the same reason, through the same helper.
+                #
+                # The exit code is read first, and the TRX only when the run claims success. A run
+                # that died part-way is already a failure, and its half-written TRX carries no
+                # answer worth asking for.
+                if ($exitCode -ne 0) {
+                    $failed += $run
+                }
+                else {
+                    $count = Get-AhkFlowTestCountFromResults -ResultsDirectory $resultsDirectory
+                    if ($count -lt 1) {
+                        Write-Host "run $run exited 0 but ran zero tests" -ForegroundColor Red
+                        $empty += $run
                     }
                     else {
-                        $count = Get-AhkFlowTestCountFromResults -ResultsDirectory $resultsDirectory
-                        if ($count -lt 1) {
-                            Write-Host "run $run exited 0 but ran zero tests" -ForegroundColor Red
-                            $empty += $run
-                        }
-                        else {
-                            $passed++
-                        }
+                        $passed++
                     }
-                }
-                finally {
-                    $env:AHKFLOW_TEST_SQL_CONNECTION_STRING = $previousConnectionString
-                    if ($container) { Stop-AhkFlowTestSqlContainer -ContainerName $container.ContainerName }
                 }
             }
 
             Write-Host ''
+            Write-Host ("Soak container at the end: {0} ({1})" -f $container.ContainerName, $container.ContainerId)
+
             Write-Host "Soak of $Soak" -ForegroundColor Cyan
             Write-Host ("  passed : {0} of {1}" -f $passed, $Runs)
             # Both lists print before either throw. Throwing inside the first block hid the
@@ -190,6 +181,9 @@ try {
         }
     }
     finally {
+        # Soak mode sets this once, before its loop. Timing mode never sets it, so restoring it is
+        # a no-op there. The container itself is left running, as backlog 133 requires.
+        $env:AHKFLOW_TEST_SQL_CONNECTION_STRING = $previousConnectionString
         Exit-AhkFlowTestRunLock -Handle $lock
     }
 

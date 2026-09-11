@@ -461,9 +461,14 @@ function Wait-AhkFlowTestSqlReady {
 # Removes one container by name. A throwaway container carries no ownership labels, so a caller
 # that owns one passes no -ExpectedProject, and the removal runs on the name alone.
 #
-# scripts/measure-tests.ps1 calls this today, to remove the throwaway container it built with
-# -Ephemeral. scripts/test-fast.ps1 and scripts/run-coverage.ps1 no longer call this function: they
-# share one container between runs and leave it running, so nothing they do removes it by name.
+# scripts/measure-tests.ps1 calls this. It removes the throwaway container it built with
+# -Ephemeral. This file calls it too, inside Start-AhkFlowTestSqlContainer, to remove an ephemeral
+# container that failed its own verification.
+#
+# scripts/test-fast.ps1, scripts/run-coverage.ps1, and scripts/measure-test-modes.ps1 no longer
+# call this function. Each of them shares one container between runs. Each leaves that container
+# running when it finishes. Nothing they do removes it by name.
+#
 # -ExpectedProject stays optional, so a future caller can ask for that check without breaking one
 # that does not.
 function Stop-AhkFlowTestSqlContainer {
