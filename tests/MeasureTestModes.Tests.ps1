@@ -4,7 +4,7 @@
 # median, or soaks one test project and reports how many runs passed.
 #
 # This suite covers the orchestration: argument routing, the median, the run lock, the
-# connection-string restore, one SQL container per soak repetition, the zero-test guard, what
+# connection-string restore, one SQL container for the whole soak, the zero-test guard, what
 # happens when a run fails, and what happens when a run leaves a TRX nobody can parse. It stubs
 # 'dotnet', stubs scripts/test-fast.ps1, and replaces the SQL container helper with a
 # two-function fake that logs instead of calling Docker, so it costs seconds and needs no Docker.

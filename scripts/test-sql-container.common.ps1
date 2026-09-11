@@ -204,8 +204,8 @@ function Test-AhkFlowTestSqlContainer {
     }
 
     # 60 seconds. Every path through this function uses this same timeout, whether the container is
-    # reused, restarted, or freshly built. A warm server answers at once, and a server that just
-    # restarted or was just built still has to come up; either way, 60 seconds is enough. A
+    # reused, restarted, or freshly built. A warm server answers at once. A server that just
+    # restarted or was just built still has to come up. Either way, 60 seconds is enough. A
     # container that needs longer than this is one the run is better off replacing.
     try {
         Wait-AhkFlowTestSqlReady -ContainerName $ContainerName -Password $script:AhkFlowTestSqlPassword -TimeoutSeconds 60
