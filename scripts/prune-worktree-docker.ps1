@@ -9,7 +9,9 @@
     The script also reclaims the reused SQL test containers. A test container is not a
     Compose project, so the compose pass cannot see it. The second pass finds it by its
     ownership labels and removes it when no live worktree owns it. The third pass removes
-    stopped containers left by the naming scheme this repository used before backlog 133.
+    stopped containers named by the scheme this repository used before backlog 133. A
+    throwaway '-Ephemeral' container still uses that same scheme today, so this pass also
+    reclaims one of those once it stops.
 #>
 [CmdletBinding(SupportsShouldProcess)]
 param([switch] $Quiet, [string] $LogPath)
@@ -162,20 +164,24 @@ foreach ($container in Get-WorktreeTestSqlContainerOnHost) {
     }
 }
 
-# Third pass: containers left by the naming scheme this repository used before backlog 133. They
-# carry no labels, so nothing above can see them, and nothing else ever reclaims them.
+# Third pass: containers named by the scheme this repository used before backlog 133, and
+# containers named by that same scheme today. scripts/test-sql-container.common.ps1 builds a
+# throwaway '-Ephemeral' container with this exact shape, and scripts/measure-tests.ps1 asks for one
+# on every run. Neither kind carries a label, so nothing above can see either one. This pass is not
+# only historical cleanup: it is also the live reclaim path for today's throwaway containers, once
+# they stop.
 #
-# Only containers in a terminal state are listed, and the removal is not forced. Those are two
-# separate guards for two separate moments. The listing decides from a snapshot: it drops anything
-# created, restarting, running, removing or paused, because each of those belongs to a checkout that
-# has not picked up this change yet, or to a run that is still starting. Plain 'docker rm' then
-# covers the gap between the snapshot and the removal, because Docker refuses a container that
-# started in between rather than killing a live test run.
+# Only containers in a terminal state are listed, and the removal is not forced. Those two guards
+# are what make this safe, even though a live throwaway container can share this exact name. A
+# running or starting container never appears in the listing, so a 'measure-tests.ps1' run in
+# progress is never touched. Plain 'docker rm' with no '--force' then refuses a container that
+# started in the gap between the listing and the removal, instead of killing it. Dropping either
+# guard would let this pass remove a running throwaway container, not only a stopped one.
 #
-# No -ExpectedProject here, and this is the one exception to that rule: a legacy container carries
-# no labels at all, so there is nothing to check it against. Its whole name is the evidence instead,
-# which is why Get-WorktreeLegacyTestSqlContainerOnHost matches the complete historical format and
-# not a prefix.
+# No -ExpectedProject here, and this is the one exception to that rule: neither a legacy container
+# nor a throwaway one carries any label, so there is nothing to check either against. The whole name
+# is the evidence instead, which is why Get-WorktreeLegacyTestSqlContainerOnHost matches the complete
+# format and not a prefix.
 foreach ($legacy in Get-WorktreeLegacyTestSqlContainerOnHost) {
     if ($PSCmdlet.ShouldProcess($legacy, 'docker rm')) {
         $result = Remove-WorktreeTestSqlContainer -Name $legacy -OnlyIfStopped

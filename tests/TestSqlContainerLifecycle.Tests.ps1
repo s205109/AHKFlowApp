@@ -334,6 +334,19 @@ Invoke-TestCase 'A container that fails verification is replaced exactly once' {
     } finally { Remove-SqlContainerFixture -Root $root }
 }
 
+Invoke-TestCase 'A container built from the wrong image is replaced, not restarted' {
+    # The image check runs before the running/port/query checks in Test-AhkFlowTestSqlContainer, so
+    # a container built from an old SQL Server tag must never be patched up in place. Restarting it
+    # would leave a run testing the wrong server, silently.
+    $root = New-SqlContainerFixture -InspectPlan @('wrongimage', 'healthy', 'healthy')
+    try {
+        $out = Invoke-InFixture -Root $root -Expression '$r = Start-AhkFlowTestSqlContainer -RepoRoot <ROOT>; "reused=$($r.Reused)"'
+        Assert-True ($out -match 'reused=False') "A replaced container must not report reused. Got: $out"
+        Assert-True ((Get-DockerCallCount -Root $root -Verb 'rm') -eq 1) 'Expected exactly one docker rm.'
+        Assert-True ((Get-DockerCallCount -Root $root -Verb 'run') -eq 1) 'Expected exactly one docker run.'
+    } finally { Remove-SqlContainerFixture -Root $root }
+}
+
 Invoke-TestCase 'A replacement that fails verification too stops the run and says so' {
     $root = New-SqlContainerFixture -InspectPlan @('noport')
     try {
@@ -786,4 +799,4 @@ if ($failures.Count -gt 0) {
     throw "Test SQL container lifecycle rules failed with $($failures.Count) problem(s). See the detail above."
 }
 
-Write-Host 'Test SQL container lifecycle rules passed. 30 cases.'
+Write-Host 'Test SQL container lifecycle rules passed. 31 cases.'

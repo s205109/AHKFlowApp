@@ -175,7 +175,7 @@ Only mixed projects use `Category=Integration` in v1. Whole-project SQL/API suit
 pwsh .\scripts\test-fast.ps1 -Mode E2E
 ```
 
-E2E mode runs `AHKFlowApp.E2E.Tests`. Use it for browser flows, Playwright-covered UI behavior, mobile viewport behavior, service-worker/PWA behavior, and changes to the E2E fixture or published Blazor output. The script starts the same disposable shared SQL Server container used by Integration mode. The suite runs in four groups at once, and each group names its own database on that one server.
+E2E mode runs `AHKFlowApp.E2E.Tests`. Use it for browser flows, Playwright-covered UI behavior, mobile viewport behavior, service-worker/PWA behavior, and changes to the E2E fixture or published Blazor output. The script prepares the same shared SQL Server container Integration mode uses, and leaves it running when the run ends. `-FreshSql` replaces it here too. The suite runs in four groups at once, and each group names its own database on that one server.
 
 A normal E2E run builds the project and its references. Every E2E run clears the Blazor publish folder, then publishes the app again before Playwright starts. That publish compiles and links the current source, so the browser always loads the code in your working tree. `-NoBuild` skips the solution build, but the Blazor publish still runs, so the app under test stays current. The flow classes in one group share that group's API, SPA host and browser, and each test resets mutable database rows before it starts.
 
@@ -352,7 +352,7 @@ request.
 pwsh .\scripts\test-fast.ps1 -Mode Coverage
 ```
 
-Coverage mode delegates to `scripts/run-coverage.ps1`. Run it before you mark a PR ready; CI enforces the same coverage + threshold gate on every pull request with at least one changed path that `.github/code-paths-filter.yml` does not exclude. The pre-push hook itself only runs quick checks (incremental build + fast slice, see `scripts/pre-push-quick-checks.ps1`), not this full coverage path. The local coverage script uses the same disposable shared SQL container behavior as Integration mode for the SQL-backed suites. Coverage mode skips itself when the branch changed no compiled file — see the Gate section above for the condition and the `-Force` switch. `run-coverage.ps1` makes no such check: calling it directly always runs the full slice.
+Coverage mode delegates to `scripts/run-coverage.ps1`. Run it before you mark a PR ready; CI enforces the same coverage + threshold gate on every pull request with at least one changed path that `.github/code-paths-filter.yml` does not exclude. The pre-push hook itself only runs quick checks (incremental build + fast slice, see `scripts/pre-push-quick-checks.ps1`), not this full coverage path. The local coverage script prepares the same shared SQL container Integration mode uses, and leaves it running when the run ends, for the SQL-backed suites. `-FreshSql` is not available in Coverage mode. Coverage mode skips itself when the branch changed no compiled file — see the Gate section above for the condition and the `-Force` switch. `run-coverage.ps1` makes no such check: calling it directly always runs the full slice.
 
 ### One test run at a time
 

@@ -138,8 +138,10 @@ function Get-WorktreeTestSqlContainerName {
 # 'restarting' and 'paused' are live, and 'removing' is already going.
 $script:WorktreeTestSqlTerminalState = @('exited', 'dead')
 
-# The whole historical name this repository gave a test container before backlog 133:
-# 'ahkflow-testsql-<process id>-<eight hexadecimal characters>'. Anchored at both ends, because
+# The name this repository gave a test container before backlog 133, and the name it still gives a
+# throwaway '-Ephemeral' container today: 'ahkflow-testsql-<process id>-<eight hexadecimal
+# characters>'. scripts/test-sql-container.common.ps1 builds that exact shape for every ephemeral
+# container, and scripts/measure-tests.ps1 asks for one on every run. Anchored at both ends, because
 # Docker's name filter is a regular expression and adds no end anchor of its own.
 $script:WorktreeLegacyTestSqlNamePattern = '^ahkflow-testsql-[0-9]+-[0-9a-f]{8}$'
 
@@ -184,9 +186,11 @@ function Get-WorktreeTestSqlContainerOnHost {
     return @($result)
 }
 
-# Containers left by the naming scheme this repository used before backlog 133:
-# 'ahkflow-testsql-<pid>-<hash>'. They carry no labels, so the role filter above cannot see them,
-# and nothing else ever reclaims them.
+# Containers named by the scheme this repository used before backlog 133, and containers named by
+# that same scheme today. scripts/test-sql-container.common.ps1 builds a '-Ephemeral' container with
+# this exact shape, and scripts/measure-tests.ps1 asks for one on every run. Neither the pre-133
+# containers nor today's throwaway ones carry a label, so the role filter above cannot see either
+# kind, and nothing else ever reclaims them.
 #
 # The name pattern is anchored at both ends and spells out that whole shape: the process id that
 # built it, then exactly eight hexadecimal characters. Docker's name filter is a regular expression
@@ -195,10 +199,11 @@ function Get-WorktreeTestSqlContainerOnHost {
 # is the only evidence of ownership there is. A terminal state says a container is finished; it says
 # nothing about whose it is.
 #
-# Only containers in a terminal state are returned. Anything else belongs to a checkout that has not
-# picked up this change yet, or to a run that is still starting, and removing it would kill a live
-# test run. Skipping 'running' alone is not enough: it would still take a paused container and one
-# that is restarting.
+# Only containers in a terminal state are returned here, and the removal below never passes
+# '--force'. Those two guards are what makes reclaiming by name alone safe today, because a live
+# '-Ephemeral' container shares this same name shape: a running or starting container never appears
+# in this listing, so a 'measure-tests.ps1' run in progress is never touched. Dropping either guard
+# would let this pass kill one.
 function Get-WorktreeLegacyTestSqlContainerOnHost {
     $PSNativeCommandUseErrorActionPreference = $false
 
