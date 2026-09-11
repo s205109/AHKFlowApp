@@ -6,7 +6,7 @@
 - **Type**: Process / tooling
 - **Interfaces**: none (CI)
 - **Difficulty**: moderate
-- **Stage**: 3-plan
+- **Stage**: 4-execute
 
 ## Summary
 
@@ -78,6 +78,11 @@ The measurement is what changed. The decision was taken before any number existe
   split, two workflows can fail a pull request. The required-checks list must name the new
   workflow, or the check can fail and a merge can still be permitted. This is the real risk in
   the item, and it is not visible in the diff.
+- **Grilling on 2026-09-11 widened the branch protection edit.** The same edit also makes
+  `repo-invariants` a required check. It is not required today, and every other `ci.yml` job needs
+  it. GitHub says a job skipped because a job it needs failed "may not block merging". So a red
+  `repo-invariants` can let a merge through today. No box tracks this, because no diff shows it.
+  The plan holds the command and the proof step.
 - **A person reading a red mark must then look in two places.** That is the cost the grilling
   decision was protecting against, and it does not go away. The measurement is what makes it
   worth paying.
