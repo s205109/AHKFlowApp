@@ -47,15 +47,11 @@ function Get-AhkFlowTestSqlComposeProject {
         $RepoRoot = Split-Path -Parent $PSScriptRoot
     }
 
-    # The main checkout has no hash suffix and no manifest: its Compose project is the bare base.
-    # prune-worktree-docker.ps1 refuses that name, so the main checkout's test container is never
-    # swept, which is right, because the main checkout is always live.
-    #
     # Test-LinkedWorktree throws when git cannot answer. Reading that as "this is the main checkout"
-    # is not safe. It hands every checkout git cannot read the same bare base name, so two of them
-    # would share one container. Their database names are identical, and each takes its own
-    # test-run lock, so nothing would stop them writing to one server at the same time. The failure
-    # would look like a broken test, not like a broken checkout. Say what is wrong instead.
+    # is not safe. It hands every checkout git cannot read the same name, so two of them would share
+    # one container. Their database names are identical, and each takes its own test-run lock, so
+    # nothing would stop them writing to one server at the same time. The failure would look like a
+    # broken test, not like a broken checkout. Say what is wrong instead.
     try {
         $isLinked = Test-LinkedWorktree $RepoRoot
     }
@@ -63,8 +59,21 @@ function Get-AhkFlowTestSqlComposeProject {
         throw "Could not tell whether '$RepoRoot' is a linked worktree or the main checkout, so the test SQL container cannot be named: $($_.Exception.Message). Naming it anyway would let two checkouts share one container, and their database names are identical. Repair the git state, then run again."
     }
 
+    # The main checkout has no manifest and no branch-derived name, so its identity is the clone
+    # itself: the base, then eight characters standing for where that clone lives.
+    #
+    # It used to be the bare base, shared by every clone on the machine. That is the failure this
+    # branch was reviewed for. Two clones both answered 'ahkflowapp', both used
+    # 'ahkflowapp-testsql', and both passed the ownership check on it, while each held its own
+    # test-run lock. Concurrent migration tests dropped each other's databases, and -FreshSql
+    # removed the other run's server.
+    #
+    # The bare base also used to be what kept the main checkout's container away from the sweep:
+    # prune-worktree-docker.ps1 refused any name without a hash suffix. This name has one, so that
+    # refusal no longer covers it, and the sweep adds the main checkout to its live set instead.
     if (-not $isLinked) {
-        return $script:WorktreeComposeBaseName
+        $token = Get-WorktreeRepositoryToken -RepositoryId (Get-WorktreeRepositoryId -RepoRoot $RepoRoot)
+        return "$script:WorktreeComposeBaseName`_$token"
     }
 
     $manifest = Join-Path $RepoRoot 'scripts\.env.worktree'
@@ -130,10 +139,13 @@ function Get-AhkFlowTestSqlContainerState {
         Running  = [bool](Get-AhkFlowJsonMember -Object $state -Name 'Running')
         Image    = [string](Get-AhkFlowJsonMember -Object $config -Name 'Image')
         Role     = [string](Get-AhkFlowJsonMember -Object $labels -Name $script:WorktreeTestSqlRoleLabel)
-        # Which checkout the container says it belongs to. Both labels are checked before the
+        # Which checkout the container says it belongs to. All three labels are checked before the
         # script restarts or removes anything, so a name collision cannot cost somebody else their
         # container.
         Project  = [string](Get-AhkFlowJsonMember -Object $labels -Name $script:WorktreeTestSqlProjectLabel)
+        # And which clone. Two clones can hold a branch by the same name, so the project label
+        # agrees between them and cannot tell them apart on its own.
+        Repository = [string](Get-AhkFlowJsonMember -Object $labels -Name $script:WorktreeTestSqlRepositoryLabel)
         HostPort = $hostPort
     }
 }
@@ -147,7 +159,8 @@ function Assert-AhkFlowTestSqlOwnership {
     param(
         [Parameter(Mandatory = $true)][string]$ContainerName,
         [Parameter(Mandatory = $true)][object]$State,
-        [Parameter(Mandatory = $true)][string]$ComposeProject
+        [Parameter(Mandatory = $true)][string]$ComposeProject,
+        [Parameter(Mandatory = $true)][string]$RepositoryId
     )
 
     if ($State.Role -ne $script:WorktreeTestSqlRoleValue) {
@@ -156,6 +169,23 @@ function Assert-AhkFlowTestSqlOwnership {
 
     if ($State.Project -ne $ComposeProject) {
         throw "The container named '$ContainerName' says it belongs to the checkout '$($State.Project)', and this checkout is '$ComposeProject'. Removing it would take another checkout's test server. Rename or remove it by hand, then run again."
+    }
+
+    # Last, and it is not covered by the check above. Two clones of this repository can each hold a
+    # branch by the same name, so both derive the same Compose project and the same container name,
+    # and the project label then agrees while the container belongs to somebody else. Refusing is
+    # right: reusing it would hand this run the other clone's live server, and both runs write to
+    # databases with identical names.
+    #
+    # An empty label is a different thing and must not be read as another clone. It means the
+    # container was built before this checkout recorded which clone owns a container, so it is this
+    # repository's own, from an earlier run. Test-AhkFlowTestSqlContainer reports it as a reason to
+    # replace, and the one replacement below rebuilds it with all three labels. Throwing here
+    # instead would stop the first run after an upgrade and tell the reader to go and delete a
+    # container by hand.
+    if ($State.Repository -and $State.Repository -ne $RepositoryId) {
+        $whose = if ($State.Repository) { "the clone at '$($State.Repository)'" } else { 'a clone that did not label it' }
+        throw "The container named '$ContainerName' belongs to another clone -- $whose -- and this clone is '$RepositoryId'. Using it would give both clones one SQL server, and their database names are identical. Remove it by hand, or run the two clones one at a time."
     }
 }
 
@@ -178,7 +208,15 @@ function Test-AhkFlowTestSqlContainer {
         [Parameter(Mandatory = $true)][object]$State
     )
 
-    # The image comes first. Restarting a container built from the wrong image fixes nothing.
+    # A container built before this checkout recorded which clone owns a container. It is this
+    # repository's own -- Assert-AhkFlowTestSqlOwnership has already refused one that names a
+    # different clone -- so it is replaced rather than refused, and the new one carries all three
+    # labels. This costs one rebuild on the first run after an upgrade, once, and then never again.
+    if ([string]::IsNullOrWhiteSpace($State.Repository)) {
+        return 'it carries no repository label, so it was built before this checkout recorded which clone owns a container'
+    }
+
+    # The image comes next. Restarting a container built from the wrong image fixes nothing.
     if ($State.Image -ne $script:AhkFlowTestSqlImage) {
         return "it was built from image '$($State.Image)' and this run expects '$script:AhkFlowTestSqlImage'"
     }
@@ -227,7 +265,8 @@ function New-AhkFlowTestSqlContainer {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)][string]$ContainerName,
-        [string]$ComposeProject
+        [string]$ComposeProject,
+        [string]$RepositoryId
     )
 
     # Scoped to this function. Without it, PowerShell 7.4 raises its own error for a failed
@@ -242,7 +281,9 @@ function New-AhkFlowTestSqlContainer {
             '--label',
             "$script:WorktreeTestSqlRoleLabel=$script:WorktreeTestSqlRoleValue",
             '--label',
-            "$script:WorktreeTestSqlProjectLabel=$ComposeProject"
+            "$script:WorktreeTestSqlProjectLabel=$ComposeProject",
+            '--label',
+            "$script:WorktreeTestSqlRepositoryLabel=$RepositoryId"
         )
     }
 
@@ -341,6 +382,12 @@ function Start-AhkFlowTestSqlContainer {
     $composeProject = Get-AhkFlowTestSqlComposeProject -RepoRoot $RepoRoot
     $containerName = Get-WorktreeTestSqlContainerName -ComposeProject $composeProject
 
+    # Resolved once, and used by every ownership check and every removal below. An empty RepoRoot
+    # means the checkout this script lives in, which is the same default Get-AhkFlowTestSqlComposeProject
+    # applies above.
+    $repositoryRoot = if ([string]::IsNullOrWhiteSpace($RepoRoot)) { Split-Path -Parent $PSScriptRoot } else { $RepoRoot }
+    $repositoryId = Get-WorktreeRepositoryId -RepoRoot $repositoryRoot
+
     # -Fresh must leave a new container behind or stop the run. Two things would break that if the
     # removal happened first and unchecked. A container carrying this name that this script did not
     # build would be force-removed on the strength of its name alone. And a removal that failed
@@ -354,8 +401,8 @@ function Start-AhkFlowTestSqlContainer {
     if ($Fresh) {
         $state = Get-AhkFlowTestSqlContainerState -ContainerName $containerName
         if ($state) {
-            Assert-AhkFlowTestSqlOwnership -ContainerName $containerName -State $state -ComposeProject $composeProject
-            $removal = Remove-WorktreeTestSqlContainer -Name $containerName -ExpectedProject $composeProject
+            Assert-AhkFlowTestSqlOwnership -ContainerName $containerName -State $state -ComposeProject $composeProject -RepositoryId $repositoryId
+            $removal = Remove-WorktreeTestSqlContainer -Name $containerName -ExpectedProject $composeProject -ExpectedRepository $repositoryId
             if (-not $removal.Removed) {
                 throw "A fresh test SQL container was asked for, and the existing container '$containerName' could not be removed: $($removal.Error). Remove it by hand, then run again."
             }
@@ -368,11 +415,11 @@ function Start-AhkFlowTestSqlContainer {
     # container it had created once and never replaced.
     $state = Get-AhkFlowTestSqlContainerState -ContainerName $containerName
     if ($state) {
-        Assert-AhkFlowTestSqlOwnership -ContainerName $containerName -State $state -ComposeProject $composeProject
+        Assert-AhkFlowTestSqlOwnership -ContainerName $containerName -State $state -ComposeProject $composeProject -RepositoryId $repositoryId
         $reused = $true
     }
     else {
-        $state = New-AhkFlowTestSqlContainer -ContainerName $containerName -ComposeProject $composeProject
+        $state = New-AhkFlowTestSqlContainer -ContainerName $containerName -ComposeProject $composeProject -RepositoryId $repositoryId
         $reused = $false
     }
 
@@ -384,13 +431,13 @@ function Start-AhkFlowTestSqlContainer {
 
         # Guarded for the same reason as the -Fresh removal above. The container was inspected
         # before it was verified, and the removal is a later moment than either.
-        $removal = Remove-WorktreeTestSqlContainer -Name $containerName -ExpectedProject $composeProject
+        $removal = Remove-WorktreeTestSqlContainer -Name $containerName -ExpectedProject $composeProject -ExpectedRepository $repositoryId
         if (-not $removal.Removed) {
             throw "The test SQL container '$containerName' failed verification ($problem) and could not be removed: $($removal.Error). Remove it by hand, then run again."
         }
 
         $reused = $false
-        $state = New-AhkFlowTestSqlContainer -ContainerName $containerName -ComposeProject $composeProject
+        $state = New-AhkFlowTestSqlContainer -ContainerName $containerName -ComposeProject $composeProject -RepositoryId $repositoryId
 
         $problem = Test-AhkFlowTestSqlContainer -ContainerName $containerName -State $state
         if ($problem) {

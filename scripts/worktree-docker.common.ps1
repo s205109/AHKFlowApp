@@ -125,6 +125,68 @@ $script:WorktreeTestSqlRoleLabel = 'com.ahkflowapp.role'
 $script:WorktreeTestSqlRoleValue = 'test-sql'
 $script:WorktreeTestSqlProjectLabel = 'com.ahkflowapp.compose-project'
 
+# Which clone the container belongs to. The project label names a branch, and every clone of this
+# repository on the machine can hold a branch by that name, so the project alone cannot tell two
+# clones apart. Two failures came from that, and this label is what closes both: a sweep run in one
+# clone force-removed another clone's running container, and two clones shared one SQL server.
+$script:WorktreeTestSqlRepositoryLabel = 'com.ahkflowapp.repository'
+
+# One clone's identity: the path of its main checkout, lowercased, with no trailing separator.
+#
+# The git directory every worktree of a clone shares is what decides it. 'rev-parse
+# --git-common-dir' answers with the main checkout's '.git' from any worktree of that clone, and
+# with two different clones it answers with two different paths. So every worktree of one clone
+# agrees on this value, and no two clones ever do.
+#
+# The path itself, not a hash of it. A reader running 'docker inspect' can then see whose container
+# it is, which is the question this label exists to answer. Get-WorktreeRepositoryToken hashes it
+# where a short token is needed instead.
+#
+# Throws when git cannot answer. Reading that as "some default clone" is what both failures above
+# look like, so there is no safe value to fall back to.
+function Get-WorktreeRepositoryId {
+    param([Parameter(Mandatory)][string] $RepoRoot)
+
+    # Scoped here, the same as every other function in this file that runs a native command: a git
+    # that cannot answer must reach the throw below, not raise PowerShell's own error first.
+    $PSNativeCommandUseErrorActionPreference = $false
+
+    $output = & git -C $RepoRoot rev-parse --git-common-dir 2>&1
+    if ($LASTEXITCODE -ne 0 -or -not $output) {
+        throw "Could not resolve the git directory shared by every worktree of '$RepoRoot', so the clone its test SQL container belongs to cannot be named: $($output -join [Environment]::NewLine). Nothing was changed. Repair the git state, then run again."
+    }
+
+    # git answers with a relative path when it can, and it is relative to the checkout it was asked
+    # about.
+    $commonDir = ([string] $output).Trim()
+    if (-not [System.IO.Path]::IsPathRooted($commonDir)) {
+        $commonDir = Join-Path $RepoRoot $commonDir
+    }
+
+    $resolved = (Resolve-Path -LiteralPath $commonDir).Path
+    $mainCheckout = Split-Path -Parent $resolved.TrimEnd('\', '/')
+    if (-not $mainCheckout) {
+        throw "The git directory '$resolved' has no parent directory, so the clone that owns '$RepoRoot' cannot be named."
+    }
+
+    return $mainCheckout.TrimEnd('\', '/').ToLowerInvariant()
+}
+
+# Eight hexadecimal characters standing for one clone, for the places that need a short token rather
+# than a path: the main checkout's Compose project, and so the name of its container. Same hashing
+# as Get-WorktreeComposeProjectForBranch, so both halves of a name are built the same way.
+function Get-WorktreeRepositoryToken {
+    param([Parameter(Mandatory)][string] $RepositoryId)
+
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $bytes = [System.Text.Encoding]::UTF8.GetBytes($RepositoryId)
+        return ([System.BitConverter]::ToString($sha.ComputeHash($bytes)) -replace '-', '').ToLowerInvariant().Substring(0, 8)
+    } finally {
+        $sha.Dispose()
+    }
+}
+
 # The deterministic name for one checkout's test container. One per checkout, and distinct enough
 # that nothing reads it as a Compose service.
 function Get-WorktreeTestSqlContainerName {
@@ -162,7 +224,11 @@ function Get-WorktreeTestSqlContainerOnHost {
 
     if (-not (Get-Command docker -ErrorAction SilentlyContinue)) { return @() }
 
-    $format = '{{.Names}}|{{.Label "' + $script:WorktreeTestSqlProjectLabel + '"}}|{{.State}}'
+    # The repository label comes last, so the three fields that were here before keep their
+    # positions. A container built before that label existed reports an empty fourth field, and the
+    # sweep reads that as "not this clone's" and leaves it alone, which is the safe reading.
+    $format = '{{.Names}}|{{.Label "' + $script:WorktreeTestSqlProjectLabel + '"}}|{{.State}}' +
+        '|{{.Label "' + $script:WorktreeTestSqlRepositoryLabel + '"}}'
     $filter = "label=$script:WorktreeTestSqlRoleLabel=$script:WorktreeTestSqlRoleValue"
     try {
         $lines = & docker ps --all --filter $filter --format $format 2>$null
@@ -177,10 +243,12 @@ function Get-WorktreeTestSqlContainerOnHost {
         if (-not $text) { continue }
         $parts = $text.Split('|')
         if ($parts.Count -lt 3) { continue }
+        $repository = if ($parts.Count -ge 4) { $parts[3].Trim() } else { '' }
         $result += [pscustomobject]@{
             Name = $parts[0].Trim()
             ComposeProject = $parts[1].Trim()
             State = $parts[2].Trim()
+            Repository = $repository
         }
     }
     return @($result)
@@ -247,6 +315,7 @@ function Remove-WorktreeTestSqlContainer {
     param(
         [string] $Name,
         [string] $ExpectedProject,
+        [string] $ExpectedRepository,
         [switch] $OnlyIfStopped
     )
 
@@ -275,6 +344,39 @@ function Remove-WorktreeTestSqlContainer {
                 Removed = $false
                 Skipped = $true
                 Error = "the container '$Name' belongs to the checkout '$($owned[0].ComposeProject)', not '$ExpectedProject'"
+            }
+        }
+    }
+
+    # Checked separately from the project, because it answers a different question. The project says
+    # which branch; this says which clone. Two clones can hold a branch by the same name, and then
+    # the project check above agrees while the container still belongs to somebody else.
+    if ($PSBoundParameters.ContainsKey('ExpectedRepository')) {
+        $owned = @(Get-WorktreeTestSqlContainerOnHost | Where-Object { $_.Name -eq $Name })
+
+        if ($owned.Count -eq 0) {
+            return [pscustomobject]@{
+                Removed = $false
+                Skipped = $true
+                Error = "no container named '$Name' carries the label $script:WorktreeTestSqlRoleLabel=$script:WorktreeTestSqlRoleValue, so it is not this repository's to remove"
+            }
+        }
+
+        # An empty label is not another clone. It means the container was built before this
+        # repository recorded which clone owns a container, and the project check above has already
+        # agreed it is this checkout's. Refusing it here would deadlock the one caller that reaches
+        # this line with such a container: Start-AhkFlowTestSqlContainer cannot reuse an unlabelled
+        # container and would then be unable to replace it either.
+        #
+        # What this gives up is narrow and it closes by itself. Two clones both older than this
+        # label, both holding a branch by the same name, running at the same time, could still take
+        # each other's container -- which is what they did before this label existed. One run in
+        # each clone labels both, and then they never can again.
+        if ($owned[0].Repository -and $owned[0].Repository -ne $ExpectedRepository) {
+            return [pscustomobject]@{
+                Removed = $false
+                Skipped = $true
+                Error = "the container '$Name' belongs to another clone -- the clone at '$($owned[0].Repository)' -- and this clone is '$ExpectedRepository'"
             }
         }
     }

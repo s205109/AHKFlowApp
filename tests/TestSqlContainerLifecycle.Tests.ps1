@@ -61,6 +61,13 @@ function New-SqlContainerFixture {
     Set-Content -LiteralPath (Join-Path $stubFolder 'inspect-plan.txt') -Encoding utf8 -Value $InspectPlan
     Set-Content -LiteralPath (Join-Path $stubFolder 'project-label.txt') -Encoding utf8 -Value $ComposeProject
 
+    # What the repository label says when a case does not override it: this fixture's own clone.
+    # Get-WorktreeRepositoryId reports the main checkout's path, normalised, and the git stub below
+    # answers --git-common-dir with '<stub>/gitcommon', so that path is the stub folder itself. The
+    # fixture can therefore write the exact value the sweep will compute, with no hash to duplicate.
+    Set-Content -LiteralPath (Join-Path $stubFolder 'repository-id.txt') -Encoding utf8 `
+        -Value $stubFolder.TrimEnd('\', '/').ToLowerInvariant()
+
     # What 'docker ps' answers when a case does not say. Both removals in the container script pass
     # -ExpectedProject, and that guard re-reads the host through this listing, so without a default
     # the guard would refuse every removal and half the cases below would fail for the wrong reason.
@@ -114,8 +121,20 @@ if ($args -contains '--abbrev-ref') {
 
 # Two different directories, so Test-LinkedWorktree reports a linked worktree. Both exist, because
 # Resolve-GitPath resolves whatever it is given.
+#
+# A case drops 'git-main-checkout.txt' to make both answers the same path, which is what
+# Test-LinkedWorktree compares, so the stub then reports the main checkout. That is the branch
+# Get-AhkFlowTestSqlComposeProject used to answer with the bare base name for every clone on the
+# machine, and it is where two clones collided on one container.
+#
+# --git-common-dir answers the same either way. It names the git directory every worktree of one
+# clone shares, and Get-WorktreeRepositoryId reads its parent as the clone's identity.
 if ($args -contains '--git-common-dir') { Write-Output (Join-Path $stubFolder 'gitcommon'); exit 0 }
-if ($args -contains '--git-dir') { Write-Output (Join-Path $stubFolder 'gitdir'); exit 0 }
+if ($args -contains '--git-dir') {
+    $ownDir = if (Test-Path -LiteralPath (Join-Path $stubFolder 'git-main-checkout.txt')) { 'gitcommon' } else { 'gitdir' }
+    Write-Output (Join-Path $stubFolder $ownDir)
+    exit 0
+}
 Write-Output 'stub-branch'
 exit 0
 '@
@@ -161,15 +180,26 @@ function Get-NextInspectShape {
 }
 
 $project = (Get-Content -LiteralPath (Join-Path $stubFolder 'project-label.txt') -Raw).Trim()
+$repository = (Get-Content -LiteralPath (Join-Path $stubFolder 'repository-id.txt') -Raw).Trim()
 $image = 'mcr.microsoft.com/mssql/server:2022-CU14-ubuntu-22.04'
 
+# JSON needs the path in the repository label escaped, because it is a Windows path and every
+# separator in it is a backslash. Left unescaped, ConvertFrom-Json in the script under test either
+# reads '\D' as an invalid escape or silently eats the separator, and the ownership check would then
+# compare two strings that differ for a reason no case is about.
+function ConvertTo-JsonText {
+    param([string] $Value)
+    return $Value.Replace('\', '\\').Replace('"', '\"')
+}
+
 function Write-InspectJson {
-    param([bool] $Running, [string] $Image, [string] $Role, [string] $Project, [string] $HostPort)
+    param([bool] $Running, [string] $Image, [string] $Role, [string] $Project, [string] $HostPort, [string] $Repository)
     $ports = if ($HostPort) { '{"1433/tcp":[{"HostIp":"127.0.0.1","HostPort":"' + $HostPort + '"}]}' } else { '{}' }
     Write-Output ('[{"Id":"' + ('a' * 64) + '",' +
         '"State":{"Running":' + $Running.ToString().ToLowerInvariant() + '},' +
         '"Config":{"Image":"' + $Image + '",' +
-        '"Labels":{"com.ahkflowapp.role":"' + $Role + '","com.ahkflowapp.compose-project":"' + $Project + '"}},' +
+        '"Labels":{"com.ahkflowapp.role":"' + $Role + '","com.ahkflowapp.compose-project":"' + $Project + '"' +
+        ',"com.ahkflowapp.repository":"' + (ConvertTo-JsonText $Repository) + '"}},' +
         '"NetworkSettings":{"Ports":' + $ports + '}}]')
 }
 
@@ -183,12 +213,19 @@ switch ($args[0]) {
     'inspect' {
         switch (Get-NextInspectShape) {
             'missing'      { Write-Output 'Error: No such object'; exit 1 }
-            'healthy'      { Write-InspectJson -Running $true  -Image $image -Role 'test-sql' -Project $project -HostPort '14399'; exit 0 }
-            'stopped'      { Write-InspectJson -Running $false -Image $image -Role 'test-sql' -Project $project -HostPort '14399'; exit 0 }
-            'noport'       { Write-InspectJson -Running $true  -Image $image -Role 'test-sql' -Project $project -HostPort ''; exit 0 }
-            'wrongimage'   { Write-InspectJson -Running $true  -Image 'mcr.microsoft.com/mssql/server:2022-latest' -Role 'test-sql' -Project $project -HostPort '14399'; exit 0 }
-            'wrongrole'    { Write-InspectJson -Running $true  -Image $image -Role 'something-else' -Project $project -HostPort '14399'; exit 0 }
-            'wrongproject' { Write-InspectJson -Running $true  -Image $image -Role 'test-sql' -Project 'ahkflowapp_someone_else_c0ffee01' -HostPort '14399'; exit 0 }
+            'healthy'      { Write-InspectJson -Running $true  -Image $image -Role 'test-sql' -Project $project -HostPort '14399' -Repository $repository; exit 0 }
+            'stopped'      { Write-InspectJson -Running $false -Image $image -Role 'test-sql' -Project $project -HostPort '14399' -Repository $repository; exit 0 }
+            'noport'       { Write-InspectJson -Running $true  -Image $image -Role 'test-sql' -Project $project -HostPort '' -Repository $repository; exit 0 }
+            'wrongimage'   { Write-InspectJson -Running $true  -Image 'mcr.microsoft.com/mssql/server:2022-latest' -Role 'test-sql' -Project $project -HostPort '14399' -Repository $repository; exit 0 }
+            'wrongrole'    { Write-InspectJson -Running $true  -Image $image -Role 'something-else' -Project $project -HostPort '14399' -Repository $repository; exit 0 }
+            'wrongproject' { Write-InspectJson -Running $true  -Image $image -Role 'test-sql' -Project 'ahkflowapp_someone_else_c0ffee01' -HostPort '14399' -Repository $repository; exit 0 }
+            # Same name, same Compose project, another clone. Two clones can hold a branch by the
+            # same name, so the project label alone cannot tell them apart and the ownership check
+            # has to read the repository label to refuse this one.
+            'wrongrepository' { Write-InspectJson -Running $true -Image $image -Role 'test-sql' -Project $project -HostPort '14399' -Repository 'D:\another\clone'; exit 0 }
+            # A container built before the repository label existed. This repository's own, from an
+            # earlier run, and not another clone's.
+            'nolabel'      { Write-InspectJson -Running $true  -Image $image -Role 'test-sql' -Project $project -HostPort '14399' -Repository ''; exit 0 }
             default        { Write-Output 'Error: No such object'; exit 1 }
         }
     }
@@ -219,6 +256,13 @@ switch ($args[0]) {
         foreach ($line in Get-Content -LiteralPath $path) {
             if (-not $line.Trim()) { continue }
             if ($namePattern -and $line.Split('|')[0] -notmatch $namePattern) { continue }
+
+            # A ps-lines row is written as 'Name|Project|State', and the repository label is filled
+            # in from this fixture's own clone. A case that needs a container belonging to a
+            # different clone writes a fourth field and overrides it. Filling it in this way keeps
+            # every case written before the repository label saying what it always said: this
+            # container is ours.
+            if ($line.Split('|').Count -lt 4) { $line = "$line|$repository" }
             Write-Output $line
         }
         exit 0
@@ -790,6 +834,163 @@ Invoke-TestCase 'The sweep stops when a live worktree cannot be named' {
     } finally { Remove-SqlContainerFixture -Root $root }
 }
 
+# --- one clone must not touch another -----------------------------------------------------------
+#
+# Every case above has one clone of this repository on the host. These four have two. The Compose
+# project names a branch, and the sweep listed every container on the machine, so a second clone's
+# live container looked exactly like an orphan of the first. The repository label is what tells them
+# apart, and it is read at both moments that matter: the sweep, and the ownership check.
+
+Invoke-TestCase 'The sweep spares a live container belonging to another clone' {
+    # The failure this case exists for. Discovery is host-wide and the live set came from one
+    # repository's worktree list, so another clone's running container was absent from the live set,
+    # passed the name-shape guard, and was removed with 'docker rm --force' while its tests ran. The
+    # -ExpectedProject guard could not catch it: it re-read the same label the listing had just
+    # reported, so it always agreed.
+    $root = New-SqlContainerFixture -InspectPlan @('healthy')
+    try {
+        $stub = Join-Path $root 'stub'
+        # A fourth field overrides the repository label. This container belongs to a clone that is
+        # not the one running the sweep, and no worktree list this sweep can read will ever mention
+        # it.
+        Set-Content -LiteralPath (Join-Path $stub 'ps-lines.txt') -Encoding utf8 -Value @(
+            'ahkflowapp_foreign_deadbeef-testsql|ahkflowapp_foreign_deadbeef|running|D:\another\clone'
+        )
+        Set-Content -LiteralPath (Join-Path $stub 'worktree-list.txt') -Encoding utf8 -Value @("worktree $root", '')
+
+        $out = Invoke-Prune -Root $root
+        Assert-True ($out -notmatch 'THREW') "The sweep must run. Got: $out"
+        Assert-True ($out -notmatch 'Removed orphan test SQL container') `
+            "Another clone's container must never be reported as removed. Got: $out"
+        Assert-True ((Get-DockerCallCount -Root $root -Verb 'rm') -eq 0) `
+            "No docker rm may run against another clone's container. Got $((Get-DockerCallCount -Root $root -Verb 'rm'))."
+    } finally { Remove-SqlContainerFixture -Root $root }
+}
+
+Invoke-TestCase 'The sweep still reclaims an orphan of its own clone' {
+    # The control for the case above. A filter that spared everything would pass that one and break
+    # the sweep, so this proves the repository check refuses a foreign container without refusing
+    # this clone's own dead worktrees.
+    $root = New-SqlContainerFixture -InspectPlan @('healthy')
+    try {
+        $stub = Join-Path $root 'stub'
+        # Three fields, so the fixture fills in this clone's own repository label.
+        Set-Content -LiteralPath (Join-Path $stub 'ps-lines.txt') -Encoding utf8 -Value @(
+            'ahkflowapp_gone_c0ffee01-testsql|ahkflowapp_gone_c0ffee01|running'
+        )
+        Set-Content -LiteralPath (Join-Path $stub 'worktree-list.txt') -Encoding utf8 -Value @("worktree $root", '')
+
+        $out = Invoke-Prune -Root $root
+        Assert-True ($out -notmatch 'THREW') "The sweep must run. Got: $out"
+        Assert-True ($out -match 'Removed orphan test SQL container: ahkflowapp_gone_c0ffee01-testsql') `
+            "This clone's own orphan must still be reclaimed. Got: $out"
+    } finally { Remove-SqlContainerFixture -Root $root }
+}
+
+Invoke-TestCase 'Two independent main checkouts get different container names' {
+    # The second failure. Get-AhkFlowTestSqlComposeProject answered with the bare base name for
+    # every checkout that is not a linked worktree, so two clones of this repository both used
+    # 'ahkflowapp-testsql'. Their database names are identical and their test-run locks are
+    # separate, so concurrent runs dropped each other's databases, and -FreshSql removed the other
+    # run's server.
+    $first = New-SqlContainerFixture -InspectPlan @('healthy')
+    $second = New-SqlContainerFixture -InspectPlan @('healthy')
+    try {
+        foreach ($root in @($first, $second)) {
+            Set-Content -LiteralPath (Join-Path (Join-Path $root 'stub') 'git-main-checkout.txt') -Value 'main'
+        }
+
+        $expression = 'Write-Output (Get-WorktreeTestSqlContainerName -ComposeProject (Get-AhkFlowTestSqlComposeProject -RepoRoot <ROOT>))'
+        $firstName = (Invoke-InFixture -Root $first -Expression $expression).Trim()
+        $secondName = (Invoke-InFixture -Root $second -Expression $expression).Trim()
+
+        Assert-True ($firstName -notmatch 'THREW') "Naming the first checkout's container must work. Got: $firstName"
+        Assert-True ($secondName -notmatch 'THREW') "Naming the second checkout's container must work. Got: $secondName"
+        Assert-True ($firstName -ne 'ahkflowapp-testsql') `
+            "A main checkout must not use the bare shared name. Got: $firstName"
+        Assert-True ($firstName -ne $secondName) `
+            "Two independent checkouts must not share one container. Both got: $firstName"
+        Assert-True ($firstName -match '^ahkflowapp_[0-9a-f]{8}-testsql$') `
+            "The name must be the base, this clone's id, and the suffix. Got: $firstName"
+    } finally {
+        Remove-SqlContainerFixture -Root $first
+        Remove-SqlContainerFixture -Root $second
+    }
+}
+
+Invoke-TestCase 'The sweep spares the main checkout own container' {
+    # The main checkout used to be spared by the shape of its name: it had no hash suffix, so
+    # Test-WorktreeComposeProject refused it and the sweep never reached it. Its name carries a hash
+    # now, so that refusal no longer applies and the sweep has to know the main checkout is live.
+    $root = New-SqlContainerFixture -InspectPlan @('healthy')
+    try {
+        $stub = Join-Path $root 'stub'
+        Set-Content -LiteralPath (Join-Path $stub 'git-main-checkout.txt') -Value 'main'
+
+        # Asked of the code rather than written out, so this case proves the sweep spares whatever
+        # the naming rule produces instead of agreeing with a hash copied into the test.
+        $project = (Invoke-InFixture -Root $root -Expression 'Write-Output (Get-AhkFlowTestSqlComposeProject -RepoRoot <ROOT>)').Trim()
+        Assert-True ($project -match '^ahkflowapp_[0-9a-f]{8}$') "The main checkout's project must carry its clone id. Got: $project"
+
+        Set-Content -LiteralPath (Join-Path $stub 'ps-lines.txt') -Encoding utf8 -Value @(
+            "$project-testsql|$project|running"
+        )
+        Set-Content -LiteralPath (Join-Path $stub 'worktree-list.txt') -Encoding utf8 -Value @("worktree $root", '')
+
+        $out = Invoke-Prune -Root $root
+        Assert-True ($out -notmatch 'THREW') "The sweep must run. Got: $out"
+        Assert-True ($out -notmatch 'Removed orphan test SQL container') `
+            "The main checkout's own container must never be swept. Got: $out"
+        Assert-True ((Get-DockerCallCount -Root $root -Verb 'rm') -eq 0) `
+            "No docker rm may run. Got $((Get-DockerCallCount -Root $root -Verb 'rm'))."
+    } finally { Remove-SqlContainerFixture -Root $root }
+}
+
+Invoke-TestCase 'A container from another clone is refused, not reused' {
+    # Two clones can hold a branch by the same name, so both derive the same Compose project and the
+    # same container name. The project label agrees in that case and says nothing useful. Only the
+    # repository label can refuse it, and refusing is right: taking it would hand one clone the
+    # other's running server.
+    $root = New-SqlContainerFixture -InspectPlan @('wrongrepository')
+    try {
+        $out = Invoke-InFixture -Root $root -Expression 'Start-AhkFlowTestSqlContainer -RepoRoot <ROOT>'
+        Assert-True ($out -match 'THREW') "The run must stop. Got: $out"
+        Assert-True ($out -match 'another clone') "The message must say the container belongs to another clone. Got: $out"
+        Assert-True ((Get-DockerCallCount -Root $root -Verb 'rm') -eq 0) `
+            "Another clone's container must not be removed. Got $((Get-DockerCallCount -Root $root -Verb 'rm'))."
+    } finally { Remove-SqlContainerFixture -Root $root }
+}
+
+Invoke-TestCase 'A container built before the repository label is replaced, not refused' {
+    # Found by running the real script, not by a stub. Every container already on a machine when
+    # this change lands carries no repository label, and reading that as "another clone" stopped the
+    # first run outright and told the reader to delete a container by hand. It is this repository's
+    # own container from an earlier run, so it is replaced once and rebuilt with all three labels.
+    # The unlabelled container the run finds, then the labelled one it builds to replace it.
+    $root = New-SqlContainerFixture -InspectPlan @('nolabel', 'healthy')
+    try {
+        $stub = Join-Path $root 'stub'
+        # A fourth field left empty, so the removal guard sees the same missing label the inspect
+        # reports. Without it the guard would refuse the removal and the run would deadlock: unable
+        # to reuse the container, and unable to replace it either.
+        Set-Content -LiteralPath (Join-Path $stub 'ps-lines.txt') -Encoding utf8 `
+            -Value 'ahkflowapp_probe_deadbeef-testsql|ahkflowapp_probe_deadbeef|running|'
+
+        $out = Invoke-InFixture -Root $root -Expression 'Start-AhkFlowTestSqlContainer -RepoRoot <ROOT>'
+        Assert-True ($out -notmatch 'THREW') "The run must not stop. Got: $out"
+        Assert-True ((Get-DockerCallCount -Root $root -Verb 'rm') -eq 1) `
+            "The old container must be removed exactly once. Got $((Get-DockerCallCount -Root $root -Verb 'rm'))."
+        Assert-True ((Get-DockerCallCount -Root $root -Verb 'run') -eq 1) `
+            "A replacement must be built. Got $((Get-DockerCallCount -Root $root -Verb 'run'))."
+
+        # The replacement must carry the label whose absence caused the rebuild, or every run after
+        # this one would rebuild the container again.
+        $runCall = @(Get-DockerCall -Root $root -Verb 'run')[0]
+        Assert-True ($runCall -match 'com\.ahkflowapp\.repository=') `
+            "The new container must carry the repository label. Got: $runCall"
+    } finally { Remove-SqlContainerFixture -Root $root }
+}
+
 if ($failures.Count -gt 0) {
     foreach ($failure in $failures) {
         Write-Host ''
@@ -799,4 +1000,4 @@ if ($failures.Count -gt 0) {
     throw "Test SQL container lifecycle rules failed with $($failures.Count) problem(s). See the detail above."
 }
 
-Write-Host 'Test SQL container lifecycle rules passed. 31 cases.'
+Write-Host 'Test SQL container lifecycle rules passed. 37 cases.'

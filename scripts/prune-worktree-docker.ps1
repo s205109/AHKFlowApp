@@ -44,12 +44,17 @@ function Get-RepoRoot {
     return $root
 }
 
-# Every live worktree's recorded (or branch-derived) compose project. The main checkout
-# is skipped entirely: it uses the bare 'ahkflowapp' base (no hash suffix), which
-# Test-WorktreeComposeProject already refuses at the removal site, so it never needs a live
-# entry. Deriving a branch-based name for it would instead mint 'ahkflowapp_main_<hash>'
-# and wrongly shield a same-named orphan. git lists the main working tree first, so the first
-# 'worktree' block is the main checkout. Returned via the comma operator so the HashSet
+# Every live checkout's recorded (or branch-derived) compose project, the main checkout included.
+#
+# The main checkout used to be left out, because its test container carried the bare 'ahkflowapp'
+# base with no hash suffix and Test-WorktreeComposeProject refused that name at the removal site. Its
+# container name carries a clone token now -- 'ahkflowapp_<token>' -- so that refusal no longer
+# covers it, and leaving it out would sweep a live main checkout's server. It is added by the same
+# rule that names it, so the two cannot drift apart.
+#
+# Its Compose project proper is still the bare base, and that name is still refused at the removal
+# site, so the main Compose project is as safe as it ever was. git lists the main working tree
+# first, so the first 'worktree' block is it. Returned via the comma operator so the HashSet
 # survives the pipeline (a bare return unrolls it and breaks .Contains).
 function Get-LiveComposeProjects {
     param([string] $Root)
@@ -72,6 +77,9 @@ function Get-LiveComposeProjects {
         if ($line -like 'worktree *') {
             if ($isMainCheckout) {
                 $isMainCheckout = $false
+                # The same name Get-AhkFlowTestSqlComposeProject gives the main checkout, built from
+                # the same two functions, so a live main checkout is never read as an orphan.
+                [void] $names.Add("$script:WorktreeComposeBaseName`_$(Get-WorktreeRepositoryToken -RepositoryId (Get-WorktreeRepositoryId -RepoRoot $Root))")
                 continue
             }
             $path = $line.Substring('worktree '.Length)
@@ -106,6 +114,11 @@ function Get-LiveComposeProjects {
 
 $root = Get-RepoRoot
 $composeFile = Join-Path $root 'docker-compose.yml'
+
+# Which clone is running this sweep. Resolved before anything is listed, because it decides what
+# this sweep is allowed to touch, and it throws rather than guessing when git cannot answer.
+$thisRepository = Get-WorktreeRepositoryId -RepoRoot $root
+
 $live = Get-LiveComposeProjects -Root $root
 
 $removed = 0
@@ -130,20 +143,33 @@ foreach ($project in Get-WorktreeComposeProjectsOnHost) {
 # cannot see them and 'docker compose down' could not remove them. The role label finds them and
 # the project label says which checkout owns each one, which is what makes an orphan decidable.
 #
-# A container whose project label is the bare 'ahkflowapp' base belongs to the main checkout, which
-# is always live, so Test-WorktreeComposeProject refuses it here for the same reason it refuses the
-# main Compose project.
+# The main checkout's container is spared by the live set, which Get-LiveComposeProjects adds it to
+# by name. It used to be spared by the shape of that name instead: the name was the bare
+# 'ahkflowapp' base, and Test-WorktreeComposeProject refuses a name with no hash suffix. The name
+# carries a clone token now, so that refusal no longer reaches it.
 #
-# -ExpectedProject is passed even though the project came from this very listing. The listing and
-# the removal are two moments, and prune can run while another session is starting a container, so
-# the guard re-reads the labels at the moment it matters. It also keeps one rule with no exceptions:
-# nothing is removed by name alone.
+# -ExpectedProject and -ExpectedRepository are passed even though both came from this very listing.
+# The listing and the removal are two moments, and prune can run while another session is starting a
+# container, so the guard re-reads the labels at the moment it matters. It also keeps one rule with
+# no exceptions: nothing is removed by name alone.
 foreach ($container in Get-WorktreeTestSqlContainerOnHost) {
+    # This clone's containers only. Discovery asks the whole host, and the live set can only be
+    # built from one repository's worktree list, so another clone's live container was absent from
+    # the live set and looked exactly like an orphan. It passed the name-shape guard, because a
+    # branch name produces the same shape in any clone, and it passed -ExpectedProject, because that
+    # guard re-read the same label the listing had just reported. It was then force-removed while
+    # its own tests were running.
+    #
+    # An unlabelled container is not this clone's either, as far as anything here can tell, so the
+    # comparison leaves it alone. The third pass below reclaims the unlabelled containers this
+    # repository does own, by name and only once they have stopped.
+    if ($container.Repository -ne $thisRepository) { continue }
+
     $project = $container.ComposeProject
     if (-not (Test-WorktreeComposeProject -Name $project)) { continue }
     if ($live.Contains($project)) { continue }
     if ($PSCmdlet.ShouldProcess($container.Name, 'docker rm --force')) {
-        $result = Remove-WorktreeTestSqlContainer -Name $container.Name -ExpectedProject $project
+        $result = Remove-WorktreeTestSqlContainer -Name $container.Name -ExpectedProject $project -ExpectedRepository $thisRepository
         if ($result.Removed) {
             $removed++
             Write-PruneEvent "Removed orphan test SQL container: $($container.Name)"

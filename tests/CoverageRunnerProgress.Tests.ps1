@@ -74,9 +74,9 @@ function New-CoverageFixture {
 
     # The container script asks git whether this is a linked worktree or a main checkout, and stops
     # when git cannot answer. A bare 'git init' answers: no linked worktree, so this is a main
-    # checkout, whose Compose project is the base name 'ahkflowapp'. The docker stub's
-    # com.ahkflowapp.compose-project label says 'ahkflowapp' for the same reason, and the two have
-    # to agree or the ownership check refuses the container.
+    # checkout. Its Compose project is the base name followed by a token standing for this clone,
+    # and its repository label is this fixture's own path, so neither can be written out here. The
+    # fixture asks the real helpers for both once the scripts are copied, below.
     & git -C $root init --quiet 2>&1 | Out-Null
 
     foreach ($name in @(
@@ -159,16 +159,28 @@ $stubFolder = Split-Path -Parent $PSCommandPath
 Add-Content -LiteralPath (Join-Path $stubFolder 'docker-calls.txt') -Value ($args -join ' ')
 
 # The shapes Start-AhkFlowTestSqlContainer needs. 'inspect' answers one blob carrying every field
-# the verification reads: the id, the running state, the image, the ownership label, and the
+# the verification reads: the id, the running state, the image, the three ownership labels, and the
 # published port. A non-zero exit from 'inspect' means the container does not exist, which is how
 # the script decides to build one.
+#
+# Both ownership labels are read from files the fixture writes, and the fixture asks the real
+# helpers for them rather than spelling them out. They have to match what the script derives from
+# this fixture's own git repository, or the ownership check refuses the container, and the
+# repository one is a path that is different every run.
+$project = (Get-Content -LiteralPath (Join-Path $stubFolder 'compose-project.txt') -Raw).Trim()
+$repository = (Get-Content -LiteralPath (Join-Path $stubFolder 'repository-id.txt') -Raw).Trim()
+
 switch ($args[0]) {
     'run' { Write-Output 'stubcontainerid'; exit 0 }
     'inspect' {
+        # The repository label is a Windows path, so every separator in it has to be escaped before
+        # it goes into JSON.
+        $repositoryJson = $repository.Replace('\', '\\').Replace('"', '\"')
         Write-Output ('[{"Id":"stubcontainerid0000000000000000000000000000000000000000000000000000",' +
             '"State":{"Running":true},' +
             '"Config":{"Image":"mcr.microsoft.com/mssql/server:2022-CU14-ubuntu-22.04",' +
-            '"Labels":{"com.ahkflowapp.role":"test-sql","com.ahkflowapp.compose-project":"ahkflowapp"}},' +
+            '"Labels":{"com.ahkflowapp.role":"test-sql","com.ahkflowapp.compose-project":"' + $project + '"' +
+            ',"com.ahkflowapp.repository":"' + $repositoryJson + '"}},' +
             '"NetworkSettings":{"Ports":{"1433/tcp":[{"HostIp":"127.0.0.1","HostPort":"14399"}]}}}]')
         exit 0
     }
@@ -180,6 +192,24 @@ switch ($args[0]) {
     default { exit 0 }
 }
 '@
+
+    # Asked of the real helpers, against this fixture's own git repository, rather than written out
+    # here. The Compose project carries a hash of the fixture's path and the repository label is
+    # that path, so both are different on every run and neither can be a literal. Asking also keeps
+    # the stub honest: if the naming rule changes, the stub follows it instead of disagreeing.
+    $ownership = & pwsh -NoProfile -Command (
+        ". '$(Join-Path $scriptFolder 'worktree-docker.common.ps1')'; " +
+        ". '$(Join-Path $scriptFolder 'worktree-git.common.ps1')'; " +
+        ". '$(Join-Path $scriptFolder 'test-sql-container.common.ps1')'; " +
+        "Write-Output (Get-AhkFlowTestSqlComposeProject -RepoRoot '$root'); " +
+        "Write-Output (Get-WorktreeRepositoryId -RepoRoot '$root')")
+
+    if (@($ownership).Count -lt 2) {
+        throw "Could not resolve the fixture's container ownership from the real helpers. Got: $($ownership -join '; ')"
+    }
+
+    Set-Content -LiteralPath (Join-Path $stubFolder 'compose-project.txt') -Encoding utf8 -Value ([string] $ownership[0]).Trim()
+    Set-Content -LiteralPath (Join-Path $stubFolder 'repository-id.txt') -Encoding utf8 -Value ([string] $ownership[1]).Trim()
 
     Set-Content -LiteralPath (Join-Path $stubFolder 'reportgenerator.ps1') -Encoding utf8 -Value @'
 $stubFolder = Split-Path -Parent $PSCommandPath

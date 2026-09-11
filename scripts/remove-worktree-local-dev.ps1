@@ -1381,12 +1381,17 @@ function Invoke-WatcherMode {
             # teardown's catch would turn a Compose teardown that worked into a log line saying it
             # did not.
             try {
-                # -ExpectedProject, not a bare name. The name is derived from this worktree's
-                # Compose project, and any container on the host may already hold it. Both
-                # ownership labels are checked before anything is destroyed, exactly as the -Fresh
-                # path checks them.
+                # -ExpectedProject and -ExpectedRepository, not a bare name. The name is derived
+                # from this worktree's Compose project, and any container on the host may already
+                # hold it. All three ownership labels are checked before anything is destroyed,
+                # exactly as the -Fresh path checks them.
+                #
+                # The repository check matters here for the same reason it matters in the sweep: two
+                # clones of this repository can each hold a branch by this name, so the project
+                # label agrees between them while the container belongs to the other clone.
                 $testSqlName = Get-WorktreeTestSqlContainerName -ComposeProject $composeProject
-                $testSqlResult = Remove-WorktreeTestSqlContainer -Name $testSqlName -ExpectedProject $composeProject
+                $testSqlRepository = Get-WorktreeRepositoryId -RepoRoot $mainCheckout
+                $testSqlResult = Remove-WorktreeTestSqlContainer -Name $testSqlName -ExpectedProject $composeProject -ExpectedRepository $testSqlRepository
                 if ($testSqlResult.Removed) {
                     Write-DiagnosticLog "Removed test SQL container [$testSqlName]."
                 } else {
