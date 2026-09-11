@@ -82,7 +82,8 @@ function New-ShippingFixture {
         [switch] $Closed,
         [switch] $Progress,
         [switch] $StartClosed,
-        [switch] $AsTemplate
+        [switch] $AsTemplate,
+        [switch] $KeepProgress
     )
 
     $root = Join-Path ([System.IO.Path]::GetTempPath()) ('shipping-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
@@ -122,7 +123,9 @@ function New-ShippingFixture {
     if ($Closed) {
         Invoke-FixtureGit $repo @('mv', 'backlog/140-fixture.md', 'backlog/done/140-fixture.md') | Out-Null
         Write-FixtureItem -Path (Join-Path $repo 'backlog/done/140-fixture.md') -Key '140' -Stage '9-ship' -Total $Total -Ticked $Ticked
-        if ($Progress) { Remove-Item -LiteralPath (Join-Path $repo 'PLAN-PROGRESS.md') -Force }
+        # -KeepProgress closes the records and leaves PLAN-PROGRESS.md behind, which is the half
+        # of Stage 9 the housekeeping round that closed backlog 132 missed. Backlog 151 review.
+        if ($Progress -and -not $KeepProgress) { Remove-Item -LiteralPath (Join-Path $repo 'PLAN-PROGRESS.md') -Force }
         Invoke-FixtureGit $repo @('add', '-A') | Out-Null
         Invoke-FixtureGit $repo @('commit', '--quiet', '-m', 'close the records') | Out-Null
     }
@@ -204,6 +207,34 @@ Remove-Item -LiteralPath $f.Root -Recurse -Force
 $f = New-ShippingFixture -Progress -Closed
 $p = @(Get-FixtureProblem -Fixture $f -IsDraft $false)
 Assert-True ($p.Count -eq 0) "A closed branch that deleted PLAN-PROGRESS.md must not be reported, got:`n$($p -join "`n")"
+Remove-Item -LiteralPath $f.Root -Recurse -Force
+
+# --- Records closed, PLAN-PROGRESS.md left behind (backlog 151 review) ---
+#
+# The progress file used to be checked only when the item itself was already a problem, so the
+# one pull request that closed its item correctly and forgot the file passed with no problems at
+# all. Stage 9 asks for both in one commit, so the file is checked on its own.
+
+$f = New-ShippingFixture -Closed -Progress -KeepProgress
+$p = @(Get-FixtureProblem -Fixture $f -IsDraft $false)
+Assert-True ($p.Count -ge 1) "A closed item with a surviving PLAN-PROGRESS.md must be reported, got none"
+Assert-True (($p -join "`n") -match 'PLAN-PROGRESS') "The report must name PLAN-PROGRESS.md, got:`n$($p -join "`n")"
+Remove-Item -LiteralPath $f.Root -Recurse -Force
+
+# Still a draft: the whole rule waits, the progress file included.
+
+$f = New-ShippingFixture -Closed -Progress -KeepProgress
+$p = @(Get-FixtureProblem -Fixture $f -IsDraft $true)
+Assert-True ($p.Count -eq 0) "A draft must report nothing, the progress file included, got:`n$($p -join "`n")"
+Remove-Item -LiteralPath $f.Root -Recurse -Force
+
+# A branch that only edits an item ALREADY closed before it started finishes nothing, so its own
+# progress file is work in flight and must not be reported. This is what keeps the independent
+# progress check from firing on every branch that touches backlog/done/.
+
+$f = New-ShippingFixture -StartClosed -Stage '9-ship' -Progress
+$p = @(Get-FixtureProblem -Fixture $f -IsDraft $false)
+Assert-True ($p.Count -eq 0) "Editing an already-closed item must not report its progress file, got:`n$($p -join "`n")"
 Remove-Item -LiteralPath $f.Root -Recurse -Force
 
 # --- The real case: pull request #400 and backlog 132 ---

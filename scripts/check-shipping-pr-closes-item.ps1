@@ -114,6 +114,15 @@ function Get-ShippingPrProblem {
         return @("The pull request head '$TargetCommit' $($target.Detail), so which items it closes is unknown.")
     }
 
+    $base = Get-BacklogInventoryFromRef -MainCheckout $RepoRoot -BaseRef $MergeBase
+
+    # Whether this pull request FINISHES an item, which is what makes Stage 9 due. True for an
+    # item with every box ticked that either still sits in backlog/, or left it for backlog/done/
+    # during this branch. A branch that only edits an item closed before it started finishes
+    # nothing, and a branch that parks one in backlog/blocked/ is waiting, not shipping, so
+    # neither owes Stage 9 anything.
+    $finishesAnItem = $false
+
     foreach ($record in $candidate) {
         $number = $record.Number
 
@@ -128,10 +137,6 @@ function Get-ShippingPrProblem {
         # The template carries placeholder boxes and is never a piece of work.
         if ((Split-Path -Leaf $path) -eq '000-backlog-item-template.md') { continue }
 
-        # A finished item and a parked item are both meant to sit still. This is what keeps a
-        # branch that only fixes a typo in a closed item out of the report.
-        if ($path -notmatch '^backlog/[^/]+\.md$') { continue }
-
         $lines = Get-BacklogItemLinesFromRef -MainCheckout $RepoRoot -Inventory $target -ItemNumber $number
         if ($lines.Status -ne 'found') { continue }
 
@@ -140,6 +145,34 @@ function Get-ShippingPrProblem {
         $count = Get-AcceptanceBoxCount -Lines $lines.Lines
         if ($count.Total -eq 0) { continue }
         if ($count.Ticked -ne $count.Total) { continue }
+
+        # Where the item sits now, and where it sat before this branch. The base lookup uses
+        # BaseNumber, so a renumber is still the same item rather than a new one.
+        $openPattern = '^backlog/[^/]+\.md$'
+        $isOpenAtTarget = $path -match $openPattern
+        $isDoneAtTarget = $path -match '^backlog/done/[^/]+\.md$'
+
+        $wasOpenInBase = $false
+        if ($base.Status -eq 'ok') {
+            $basePattern = '^backlog/(done/|blocked/)?' + [regex]::Escape($record.BaseNumber) + '-[^/]*\.md$'
+            $basePaths = @(@($base.Paths) | Where-Object { $_ -match $basePattern })
+            if ($basePaths.Count -eq 1) {
+                $wasOpenInBase = (($basePaths[0] -replace '\\', '/') -match $openPattern)
+            }
+        }
+
+        # Closed by THIS branch, rather than closed before it started. Without the base half, a
+        # branch that only fixes a typo in a finished item would be told to delete a progress
+        # file that belongs to the item it is actually working on.
+        $closedInThisBranch = ($isDoneAtTarget -and $wasOpenInBase)
+        if (-not $isOpenAtTarget -and -not $closedInThisBranch) { continue }
+        $finishesAnItem = $true
+
+        # A finished item and a parked item are both meant to sit still. This is what keeps a
+        # branch that only fixes a typo in a closed item out of the report. It runs after the
+        # flag above, because an item this branch closed correctly still owes Stage 9 its
+        # progress file even though it owes nothing here.
+        if (-not $isOpenAtTarget) { continue }
 
         # The Stage is REPORTED, never decided on. An item sitting in backlog/ has its records
         # open whatever its Stage says, and an item reading '9-ship' while still in backlog/ is
@@ -157,9 +190,13 @@ Backlog $number has every acceptance box ticked and is still open in backlog/.
 "@
     }
 
-    # The progress file is its own problem line. Stage 9 deletes it, and the housekeeping round
-    # that closed backlog 132 missed exactly this part, so it is worth naming on its own.
-    if ($problems.Count -gt 0) {
+    # The progress file is its own problem line, and it is checked whenever this pull request
+    # finishes an item - never only when the item is also still open. Backlog 151, found in
+    # review. Stage 9 closes the records and deletes the file in ONE commit, and the housekeeping
+    # round that closed backlog 132 did the records and missed the file. That is exactly the
+    # shape a check conditional on another problem cannot see: it passed a pull request whose
+    # item was closed correctly and whose progress file was still tracked.
+    if ($finishesAnItem) {
         $listed = & git -C $RepoRoot ls-tree -r --name-only $TargetCommit -- PLAN-PROGRESS.md 2>$null
         if ($LASTEXITCODE -eq 0 -and -not [string]::IsNullOrWhiteSpace(($listed -join ''))) {
             $problems += @"
