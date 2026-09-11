@@ -46,15 +46,15 @@ shared module could prove itself against two shapes before it took on a third.
       that `scripts/test-fast.ps1` writes.
       (`scripts/run-coverage.ps1:66`, "New-ProgressTracker -RunnerKey 'run-coverage'");
       (`scripts/run-coverage.ps1:149`, "Save-ProgressTimings -Tracker $progress -KnownUnit $progressUnit");
-      (`tests/CoverageRunnerProgress.Tests.ps1:372`, "Invoke-TestCase 'The coverage store never mixes with a test-fast store' {")
+      (`tests/CoverageRunnerProgress.Tests.ps1:402`, "Invoke-TestCase 'The coverage store never mixes with a test-fast store' {")
 - [x] A coverage run started through `scripts/test-fast.ps1 -Mode Coverage` prints one progress
       sequence, not two nested ones.
-      (`tests/CoverageRunnerProgress.Tests.ps1:446`, "Invoke-TestCase 'Coverage through test-fast prints one sequence, not two' {")
+      (`tests/CoverageRunnerProgress.Tests.ps1:476`, "Invoke-TestCase 'Coverage through test-fast prints one sequence, not two' {")
 - [x] `tests/Progress.Tests.ps1`, or a suite beside it, covers a unit list that mixes fixed
       phase names with a project list read at run time.
       `tests/CoverageRunnerProgress.Tests.ps1` is that suite beside it.
       (`tests/CoverageRunnerProgress.Tests.ps1:55`, "$script:LeadingUnit = @('restore', 'build', 'sql container')");
-      (`tests/CoverageRunnerProgress.Tests.ps1:329`, "Invoke-TestCase 'The project part of the unit list is read at run time' {")
+      (`tests/CoverageRunnerProgress.Tests.ps1:359`, "Invoke-TestCase 'The project part of the unit list is read at run time' {")
 
 ## Out of scope
 
@@ -68,7 +68,7 @@ shared module could prove itself against two shapes before it took on a third.
 - The unit list also carries the SQL container start, which the acceptance criteria do not name.
   The user asked for it on 2026-09-07. `Start-AhkFlowTestSqlContainer` pulls an image on a cold
   machine and then polls until SQL Server answers, with a 60 second timeout
-  (`scripts/test-sql-container.common.ps1:422`, "[int]$TimeoutSeconds = 60"). Leaving that outside
+  (`scripts/test-sql-container.common.ps1:469`, "[int]$TimeoutSeconds = 60"). Leaving that outside
   every unit makes the estimate read low by exactly the part a reader mistakes for a hang.
 - `scripts/test-fast.ps1` still starts the same container before it creates its tracker, so the
   two runners now disagree about whether that time is measured. Left alone on purpose. No item
