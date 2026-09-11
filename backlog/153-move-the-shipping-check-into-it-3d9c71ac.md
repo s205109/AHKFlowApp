@@ -6,7 +6,7 @@
 - **Type**: Process / tooling
 - **Interfaces**: none (CI)
 - **Difficulty**: moderate
-- **Stage**: 0-intake
+- **Stage**: 3-plan
 
 ## Summary
 
