@@ -281,3 +281,102 @@ function Get-AhkFlowIntervalUnionMilliseconds {
     $total += ($mergeEnd - $mergeStart).TotalMilliseconds
     return [math]::Round($total, 3)
 }
+
+function Convert-TrxTimestamp {
+    <#
+      One TRX timestamp as a UTC [datetime].
+
+      TRX writes local time with an offset, and two machines in two zones write the same instant
+      differently. Everything downstream compares timestamps from the TRX with timestamps from the
+      fixture timing files, which are UTC, so the conversion happens once, here.
+    #>
+    param([string] $Timestamp)
+
+    if ([string]::IsNullOrWhiteSpace($Timestamp)) {
+        return $null
+    }
+
+    return [datetimeoffset]::Parse($Timestamp, [System.Globalization.CultureInfo]::InvariantCulture).UtcDateTime
+}
+
+function Get-AhkFlowTrxRunInterval {
+    <#
+      The run interval a TRX reports, as UTC start and end.
+
+      Backlog 140. This is not the test host's process lifetime. The values come from the logger:
+      the interval opens when the logger starts the run and closes when the run completes, so
+      process start, assembly loading before that point, and process exit after it all sit outside
+      it. The report names it the TRX run interval for exactly that reason.
+    #>
+    param([Parameter(Mandatory = $true)][string] $TrxPath)
+
+    [xml]$trx = Get-Content -LiteralPath $TrxPath -Raw
+    $times = $trx.GetElementsByTagName('Times') | Select-Object -First 1
+
+    if (-not $times) {
+        throw "No Times element in $TrxPath, so the run interval cannot be read."
+    }
+
+    $start = Convert-TrxTimestamp -Timestamp $times.start
+    $end = Convert-TrxTimestamp -Timestamp $times.finish
+
+    if ($null -eq $start -or $null -eq $end) {
+        throw "The Times element in $TrxPath has no start or no finish."
+    }
+
+    return [pscustomobject]@{ Start = $start; End = $end }
+}
+
+function Convert-TrxDuration {
+    param(
+        [string]$Duration
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Duration)) {
+        return 0.0
+    }
+
+    return [System.TimeSpan]::Parse($Duration, [System.Globalization.CultureInfo]::InvariantCulture).TotalMilliseconds
+}
+
+function Read-TrxResults {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$TrxPath,
+        [Parameter(Mandatory = $true)]
+        [string]$ProjectName
+    )
+
+    [xml]$trx = Get-Content -LiteralPath $TrxPath -Raw
+    $unitTests = $trx.GetElementsByTagName('UnitTest')
+    $unitTestResults = $trx.GetElementsByTagName('UnitTestResult')
+    $testClassesById = @{}
+
+    foreach ($unitTest in $unitTests) {
+        $testId = $unitTest.id
+        $testMethod = $unitTest.GetElementsByTagName('TestMethod') | Select-Object -First 1
+        if ($testId -and $testMethod) {
+            $testClassesById[$testId] = $testMethod.className
+        }
+    }
+
+    $results = @()
+    foreach ($result in $unitTestResults) {
+        $className = $testClassesById[$result.testId]
+        if ([string]::IsNullOrWhiteSpace($className)) {
+            $className = '(unknown)'
+        }
+
+        $results += [pscustomobject]@{
+            Project = $ProjectName
+            Class = $className
+            Test = $result.testName
+            Outcome = $result.outcome
+            DurationMilliseconds = [math]::Round((Convert-TrxDuration -Duration $result.duration), 3)
+            StartUtc = (Convert-TrxTimestamp -Timestamp $result.startTime)
+            EndUtc = (Convert-TrxTimestamp -Timestamp $result.endTime)
+        }
+    }
+
+    return $results
+}

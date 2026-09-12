@@ -45,6 +45,9 @@ $expectedSuites = @(
     # Backlog 127. This one is in the job so that every pull request proves the runner starts,
     # reads a manifest, and selects suites on Linux. It is the only member that is here for the
     # platform rather than for a repository invariant.
+    # Backlog 140. Same reason as IntervalUnion.Tests.ps1: it parses a fixed TRX this suite writes
+    # itself, so it needs no run, no container and no path of its own.
+    'TrxIntervals.Tests.ps1'
     'SuiteRunnerLinux.Tests.ps1'
 )
 
