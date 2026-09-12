@@ -49,6 +49,14 @@ this honest.
 The check asserts that fact rather than assuming it, so a file that grows a second class fails
 loudly instead of being exempted silently.
 
+**The helper owns the window before navigation, so it has to sell it back.** A test that must watch
+network traffic caused by the first page load cannot register the watch itself: the page does not
+exist until inside the helper, and by the time the helper returns the response may already have
+arrived. `OpenAsync` therefore takes the API paths to wait for and registers them between creating
+the page and navigating. That ordering is a contract, not an implementation detail, and a
+regression test asserts it. Any future need for a pre-navigation subscription — a console listener,
+a route, a dialog handler — hits the same wall and needs the same treatment.
+
 **Two waits, two budgets.** `OpenAsync` caps the App shell wait at its own budget, and the test's
 own wait afterwards keeps Playwright's default. This is not new: a test that navigates and then
 waits for a selector already has two budgets. It does mean the helper's budget is not a cap on the
