@@ -61,18 +61,18 @@ public sealed class HotkeysMobileFlowTests(StackFixtureB fixture) : IAsyncLifeti
     public async Task AddFab_OnPhoneViewport_OpensHotkeyDialog()
     {
         await using IBrowserContext ctx = await fixture.Browser.NewContextAsync(PhoneViewport);
-        IPage page = await ctx.NewPageAsync();
 
-        Task<IResponse> profilesLoaded = page.WaitForResponseAsync(response =>
-            response.Url.Contains("/api/v1/profiles", StringComparison.OrdinalIgnoreCase) &&
-            response.Status == 200);
-        Task<IResponse> categoriesLoaded = page.WaitForResponseAsync(response =>
-            response.Url.Contains("/api/v1/categories", StringComparison.OrdinalIgnoreCase) &&
-            response.Status == 200);
+        // Both lists must have arrived before the click below. The page hands the dialog the lists
+        // it holds at the moment the dialog opens, so a click that lands first produces a dialog
+        // that can never warn. The helper registers these waits before it navigates, which is the
+        // only place early enough.
+        IPage page = await FirstPageLoad.OpenAsync(
+            ctx,
+            $"{fixture.Spa.BaseUrl}/hotkeys",
+            "/api/v1/profiles",
+            "/api/v1/categories");
 
-        await page.GotoAsync($"{fixture.Spa.BaseUrl}/hotkeys");
         await page.WaitForSelectorAsync("button.add-hotkey-fab");
-        await Task.WhenAll(profilesLoaded, categoriesLoaded);
 
         await page.ClickAsync("button.add-hotkey-fab");
         await page.WaitForSelectorAsync(".hotkey-edit-dialog");
