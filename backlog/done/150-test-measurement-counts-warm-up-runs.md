@@ -6,7 +6,7 @@
 - **Type**: Tooling
 - **Interfaces**: none (measurement script)
 - **Difficulty**: moderate
-- **Stage**: 4-execute
+- **Stage**: 9-ship
 
 ## Summary
 
