@@ -179,8 +179,8 @@ public sealed class MyFeatureFlowTests(StackFixture fixture) : IAsyncLifetime
     {
         await using IBrowserContext ctx = await fixture.Browser.NewContextAsync();
 
-        IPage page = await FirstPageLoad.OpenAsync(
-            ctx, $"{fixture.Spa.BaseUrl}/hotkeys", "button.add-hotkey");
+        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/hotkeys");
+        await page.WaitForSelectorAsync("button.add-hotkey");
 
         await page.ClickAsync("[data-test=\"some-control\"]");
 
@@ -192,11 +192,20 @@ public sealed class MyFeatureFlowTests(StackFixture fixture) : IAsyncLifetime
 
 Five rules that are easy to get wrong:
 
-- **Open the first page with `FirstPageLoad.OpenAsync`.** It carries the repository's one wait
-  budget for a first page load, 30 seconds, and it is measured: a healthy boot reaches the app in
-  under two seconds. Do not raise it to cure a flaky run. When a first page load spends the whole
-  budget, the app failed to boot, and `OpenAsync` says so, with the document count and the
-  browser's own errors.
+- **Open the first page with `FirstPageLoad.OpenAsync`, never with `NewPageAsync`.** It carries
+  the repository's one wait budget for a first page load, 30 seconds, and it is measured: a
+  healthy boot reaches the app in under two seconds. Do not raise it to cure a flaky run.
+  - It waits for the app shell only. It returns once the app has started, not once your page's
+    data has arrived. So wait for your own element on the next line, as the template does.
+  - When the app does not start, `OpenAsync` names the screen showing, the document count, the
+    browser's own errors, and the last requests the page made.
+  - Its extra arguments are API paths, not selectors. Pass one when the test must not act before
+    that response arrives, for example `"/api/v1/profiles"`. The helper starts waiting before it
+    navigates, which is the only point early enough.
+  - `FirstPageLoadAdoptionTests` fails a test class that calls `NewPageAsync`. A class that must
+    open a page itself, such as one that breaks the boot on purpose, carries
+    `[OpensPagesWithoutDiagnosis("...")]` with the reason. See
+    [ADR 0017](../adr/0017-an-e2e-page-is-opened-only-through-the-diagnosed-helper.md).
 - **Select on `data-test`**, not MudBlazor's generated classes — they change between MudBlazor versions.
 - **Scope grid assertions to `.desktop-branch` or the mobile branch.** Both render into the DOM; the mobile one is hidden by CSS only, so an unscoped selector can match twice.
 - **`MudAutocomplete` with `CoerceValue` needs a blur to commit.** `FillAsync` sets the text but not the bound value — follow it with `PressAsync("Tab")`.
