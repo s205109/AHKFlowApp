@@ -363,6 +363,11 @@ nothing to do with the tests, so counting them makes a tree look slow.
 that wait, so the time buys something. `-SettleSeconds 0` turns the wait off and `-WarmUpRuns 0`
 turns the discard off. Use either one only when you are timing the script itself.
 
+**`-MaxWarmUpRuns` caps the runs, never the wait.** A Mode whose runs are short cannot fill ten
+minutes with runs alone. The Fast Mode measured 13.5 to 16.1 s a run on 2026-09-12, so filling the
+target would take more than forty runs. When the cap is reached and the tree is still too new, the
+script waits out the rest and says so.
+
 **Why the wait exists as well as the discard.** Backlog 150 measured one tree three times in an hour
 with no code change. Five runs started right after a Release build read 91.21 / 85.46 / 96.13 /
 87.87 / 88.40 s. Ten runs an hour later read a median of 55.05 s. The first window never decayed. It

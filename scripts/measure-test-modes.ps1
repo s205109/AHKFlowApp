@@ -20,8 +20,9 @@
 
   -SettleSeconds holds the counted runs back until the tree has been built that long. That removes
   the other effect, a window that is slow from end to end and never decays at all. Warm-up runs
-  fill the wait, and -MaxWarmUpRuns stops it running forever. Every discarded run is printed, so
-  the reader can see the decay and judge it.
+  fill the wait, and -MaxWarmUpRuns caps how many of them there may be. The cap never shortens the
+  wait: a Mode whose runs are short cannot fill the target with runs, so the script waits out the
+  rest instead. Every discarded run is printed, so the reader can see the decay and judge it.
 
   The spread line says how far to trust the median. It cannot say whether the tree was cold: in
   that record the cold window spread 12.1 percent and the settled window spread 31.9 percent. The
@@ -304,14 +305,37 @@ try {
         if ($enoughRuns -and $settled) { break }
 
         if ($warmUpSeconds.Count -ge $MaxWarmUpRuns) {
-            # Loud, because the alternative is a cold median that reads exactly like a settled one.
-            Write-Host ("Stopped at the warm-up ceiling of {0} runs. The tree was built {1:N0} s ago, short of {2} s." -f `
-                $MaxWarmUpRuns, $secondsSinceBuild, $SettleSeconds) -ForegroundColor Yellow
+            # The ceiling caps the runs. It never caps the wait.
+            #
+            # A Mode whose runs are short cannot fill the settle target with runs alone. The Fast
+            # Mode measured 13.5 to 16.1 s a run on 2026-09-12, so a 600 s target would need more
+            # than forty runs. An earlier version stopped here instead of waiting, which started
+            # the counted runs on a tree that was still cold and printed a median that read exactly
+            # like a settled one. Waiting out the rest costs the same wall clock and no CPU.
+            if (-not $settled) {
+                $remaining = [Math]::Ceiling($SettleSeconds - $secondsSinceBuild)
+                Write-Host ("Reached the warm-up ceiling of {0} runs. Waiting {1:N0} s more for the tree to settle." -f `
+                    $MaxWarmUpRuns, $remaining) -ForegroundColor Yellow
+                Start-Sleep -Seconds $remaining
+            }
+            elseif (-not $enoughRuns) {
+                # Only reachable when -MaxWarmUpRuns is below -WarmUpRuns, which is a contradiction
+                # the caller has to see rather than have silently resolved.
+                Write-Host ("Reached the warm-up ceiling of {0} runs before the {1} warm-up runs asked for." -f `
+                    $MaxWarmUpRuns, $WarmUpRuns) -ForegroundColor Yellow
+            }
             break
         }
 
         $warmUpSeconds += Invoke-TimedRun -Label ("warm-up " + ($warmUpSeconds.Count + 1)) `
             -Mode $Mode -Configuration $Configuration -ScriptRoot $PSScriptRoot
+    }
+
+    # Read the clock once more, after the warm-up loop and any wait. The report calls this figure
+    # the age at the first counted run, and the value the loop left behind was read before the last
+    # warm-up run, not after it.
+    if ($null -ne $buildCompletedAtUtc) {
+        $secondsSinceBuild = ([DateTime]::UtcNow - $buildCompletedAtUtc).TotalSeconds
     }
 
     $seconds = @()
