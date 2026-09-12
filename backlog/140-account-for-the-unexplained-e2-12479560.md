@@ -5,8 +5,8 @@
 - **Epic**: Testing infrastructure
 - **Type**: Tooling
 - **Interfaces**: none (measurement first)
-- **Difficulty**: to-be-determined
-- **Stage**: 3-plan
+- **Difficulty**: complex
+- **Stage**: 4-execute
 
 ## Summary
 
