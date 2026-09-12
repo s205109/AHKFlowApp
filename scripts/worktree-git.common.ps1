@@ -369,32 +369,67 @@ function Get-StrandedCommits {
 # real merge commit -- a fast-forward writes 'merge <ref>: Fast-forward' and creates nothing, so
 # accepting the whole 'merge' prefix would sweep unstarted worktrees.
 #
-# Two readers share it: Get-BranchRefLogFacts, which collects the work proof, and
-# Test-StrandedWorkWasSuperseded, which looks for the commit a branch made in a dropped commit's
-# place. One list, so the two can never drift apart.
+# Get-BranchRefLogFacts reads it, for signal 1's work proof. Test-StrandedWorkWasSuperseded asks a
+# stricter question and uses Get-RefLogCommitMessage instead: it needs the entry's message so it
+# can be checked against the object, which this pattern does not capture.
 $WorktreeCommitSubjectPattern = "^(commit(:| \((amend|merge|initial)\):)|cherry-pick:|revert:|merge [^:]+: Merge made by )"
 
-# The subject and the author identity of one commit, read from the object store.
+# The first message line and the author identity of one commit, read from the object store.
 #
 # Never from the ref log. A ref-log subject is caller-controlled text, and this file already
 # refuses to trust it on its own, so a forged ref-log line must not be able to manufacture a match.
+#
+# FirstLine is the commit's first RAW message line, not '%s'. The two differ when a message has no
+# blank line after its first: '%s' joins those lines into one string, while a ref log records only
+# the first. Test-StrandedWorkWasSuperseded compares a ref-log message against this field, so the
+# raw first line is the only form that can match.
+#
+# $Cache, when given, is a per-verdict SHA-to-identity table. One call can ask about the same SHA
+# many times -- the redo list is re-read for every dropped commit -- and each miss is a process
+# launch. A failed read is never cached, so a transient failure cannot be remembered as an answer.
 #
 # Returns $null when the read fails, which every caller must read as a failed check.
 function Get-CommitIdentity {
     param(
         [Parameter(Mandatory)][string] $RepoRoot,
-        [Parameter(Mandatory)][string] $Sha
+        [Parameter(Mandatory)][string] $Sha,
+        [hashtable] $Cache
     )
 
-    $lines = @(& git -C $RepoRoot show --no-patch --format='%s%n%an%n%ae' $Sha 2>$null)
-    if ($LASTEXITCODE -ne 0) { return $null }
-    if ($lines.Count -lt 3) { return $null }
+    if ($Cache -and $Cache.ContainsKey($Sha)) { return $Cache[$Sha] }
 
-    return [pscustomobject]@{
-        Subject     = ([string] $lines[0]).Trim()
-        AuthorName  = ([string] $lines[1]).Trim()
-        AuthorEmail = ([string] $lines[2]).Trim()
+    $lines = @(& git -C $RepoRoot show --no-patch --format='%an%n%ae%n%B' $Sha 2>$null)
+    if ($LASTEXITCODE -ne 0) { return $null }
+    if ($lines.Count -lt 2) { return $null }
+
+    $identity = [pscustomobject]@{
+        AuthorName  = ([string] $lines[0]).Trim()
+        AuthorEmail = ([string] $lines[1]).Trim()
+        FirstLine   = if ($lines.Count -ge 3) { [string] $lines[2] } else { '' }
     }
+
+    if ($Cache) { $Cache[$Sha] = $identity }
+    return $identity
+}
+
+# The commit message a ref-log entry claims, or $null when the entry is not one git writes for an
+# operation that creates a commit and records that commit's message.
+#
+# Git writes the new commit's first raw message line after the action prefix. Measured on
+# 2026-09-12 for 'commit:', 'commit (initial):', 'commit (amend):', 'commit (merge):',
+# 'cherry-pick:' and 'revert:', including a subject long enough to show that nothing is truncated.
+#
+# 'merge <ref>: Merge made by ...' is left out on purpose. It does create a commit, but it records
+# a fixed sentence instead of the message, so it can never be checked against the object store.
+# Leaving it out only ever costs a removal.
+function Get-RefLogCommitMessage {
+    param([Parameter(Mandatory)][AllowEmptyString()][string] $Subject)
+
+    if ($Subject -match '^(?:commit:|commit \((?:amend|merge|initial)\):|cherry-pick:|revert:) ?(?<message>.*)$') {
+        return $matches['message']
+    }
+
+    return $null
 }
 
 # $true when $Ancestor is an ancestor of $Descendant, $false for a plain "no", and $null when the
@@ -432,7 +467,8 @@ function Test-CommitIsAncestor {
 #   1. The reset moved backwards along the branch's own history: the position it moved to is an
 #      ancestor of the position it moved from.
 #   2. After that reset, the branch created a commit whose subject line, author name, and author
-#      email all equal the dropped commit's.
+#      email all equal the dropped commit's, character for character. The comparison is ordinal and
+#      case-sensitive, because two commits whose subjects differ only in capitals are two commits.
 #   3. That commit has the reset target as an ancestor, so the branch built it in the dropped
 #      commit's place rather than somewhere else.
 #
@@ -441,9 +477,19 @@ function Test-CommitIsAncestor {
 # branch that reset away a unique merge resolution and then committed anything at all would be
 # removed.
 #
-# Only the branch's own ref log is read, so a commit another branch made can never supply the
-# match. Subject and author are commit metadata, not patch text, so nothing patch-comparison ever
-# got wrong is reintroduced here.
+# Only commits THIS branch created count, and a ref-log subject alone does not establish that. A
+# fast-forward run with GIT_REFLOG_ACTION=commit writes 'commit: Fast-forward' while the branch
+# adopted another branch's tip, and that donor can carry the dropped commit's subject and author.
+# So each candidate entry is checked against the object it points at: git records the new commit's
+# own first message line after the action prefix, which a fast-forward cannot produce.
+#
+# That check closes the shape a caller can reach with GIT_REFLOG_ACTION. It does not make ref-log
+# text trustworthy in general: `git update-ref -m` writes arbitrary text, and a caller who spells
+# the donor's message exactly still passes. Ref-log text carries no authentication, which is the
+# limit the comment block on Test-BranchOwnWorkWasMerged already records for signals 1 and 2.
+#
+# Subject and author are commit metadata, not patch text, so nothing patch-comparison ever got
+# wrong is reintroduced here.
 #
 # The cost, stated plainly. Reset a commit away, then write a DIFFERENT commit that reuses its
 # subject line under the same author, and this reads the second as the redo of the first. Removal
@@ -467,6 +513,10 @@ function Test-StrandedWorkWasSuperseded {
     $strandedSet = @{}
     foreach ($sha in $Stranded) { $strandedSet[$sha] = $true }
 
+    # One table for the whole call. The redo list is re-read for every dropped commit, so without
+    # it the same SHA costs a process launch again and again.
+    $identityCache = @{}
+
     for ($i = 0; $i -lt $Entries.Count; $i++) {
         if ($Entries[$i].Subject -notmatch '^reset:') { continue }
         if ($i + 1 -ge $Entries.Count) { continue }
@@ -485,25 +535,40 @@ function Test-StrandedWorkWasSuperseded {
         if ((Test-CommitIsAncestor -RepoRoot $RepoRoot -Ancestor $after -Descendant $before) -ne $true) { return $false }
 
         # The commits the branch itself created after this reset, newest first.
+        #
+        # A ref-log subject alone proves nothing. GIT_REFLOG_ACTION=commit on a fast-forward writes
+        # 'commit: Fast-forward' while the branch created nothing and only adopted another branch's
+        # tip -- and that donor commit can carry the dropped commit's subject and author. So the
+        # entry has to agree with the object it points at: git records the new commit's own first
+        # message line there, and a fast-forward records the word 'Fast-forward' instead.
         $redoShas = @()
         for ($j = $i - 1; $j -ge 0; $j--) {
-            if ($Entries[$j].Subject -match $WorktreeCommitSubjectPattern) { $redoShas += $Entries[$j].Sha }
+            $claimedMessage = Get-RefLogCommitMessage -Subject $Entries[$j].Subject
+            if ($null -eq $claimedMessage) { continue }
+
+            $entryIdentity = Get-CommitIdentity -RepoRoot $RepoRoot -Sha $Entries[$j].Sha -Cache $identityCache
+            if ($null -eq $entryIdentity) { return $false }
+            if (-not [string]::Equals($claimedMessage, $entryIdentity.FirstLine, [System.StringComparison]::Ordinal)) { continue }
+
+            $redoShas += $Entries[$j].Sha
         }
         if ($redoShas.Count -eq 0) { return $false }
 
         foreach ($sha in $strandedDropped) {
-            $droppedIdentity = Get-CommitIdentity -RepoRoot $RepoRoot -Sha $sha
+            $droppedIdentity = Get-CommitIdentity -RepoRoot $RepoRoot -Sha $sha -Cache $identityCache
             if ($null -eq $droppedIdentity) { return $false }
 
             $matched = $false
             foreach ($redo in $redoShas) {
-                $redoIdentity = Get-CommitIdentity -RepoRoot $RepoRoot -Sha $redo
+                $redoIdentity = Get-CommitIdentity -RepoRoot $RepoRoot -Sha $redo -Cache $identityCache
                 if ($null -eq $redoIdentity) { return $false }
 
-                # Predicate 2.
-                if ($redoIdentity.Subject -ne $droppedIdentity.Subject) { continue }
-                if ($redoIdentity.AuthorName -ne $droppedIdentity.AuthorName) { continue }
-                if ($redoIdentity.AuthorEmail -ne $droppedIdentity.AuthorEmail) { continue }
+                # Predicate 2. Ordinal and case-SENSITIVE. PowerShell's own '-eq' and '-ne' fold
+                # case, which read 'fix: preserve US settings' and 'fix: preserve us settings' as
+                # one commit, and deleted the last copy of the other.
+                if (-not [string]::Equals($redoIdentity.FirstLine, $droppedIdentity.FirstLine, [System.StringComparison]::Ordinal)) { continue }
+                if (-not [string]::Equals($redoIdentity.AuthorName, $droppedIdentity.AuthorName, [System.StringComparison]::Ordinal)) { continue }
+                if (-not [string]::Equals($redoIdentity.AuthorEmail, $droppedIdentity.AuthorEmail, [System.StringComparison]::Ordinal)) { continue }
 
                 # Predicate 3.
                 $descends = Test-CommitIsAncestor -RepoRoot $RepoRoot -Ancestor $after -Descendant $redo
@@ -988,6 +1053,10 @@ function Get-WorkAfterMergeProof {
 #
 # No reason promises an answer that was never fetched. Signal 2's reason says only that no merge
 # reached the base, because the GitHub half is optional and may not have been asked at all.
+#
+# A check that could not run says so, and never borrows the wording of a finding. Every signal here
+# refuses on an unreadable answer as well as on a negative one, and the two refusals send a reader
+# to different places: one to the branch, the other to the tool.
 function Get-BranchMergedVerdict {
     param(
         [Parameter(Mandatory)][string] $RepoRoot,
@@ -999,15 +1068,18 @@ function Get-BranchMergedVerdict {
 
     $refuse = { param([string] $Reason) [pscustomobject]@{ Merged = $false; Reason = $Reason } }
 
-    # Signal 1. A branch nobody has committed on is unstarted, not finished. An unreadable ref log
-    # reads the same way, because nothing then records a commit.
+    # Signal 1. A branch nobody has committed on is unstarted, not finished.
+    #
+    # A ref log that could not be read refuses too, but for a different reason, and it says so. One
+    # is a finding about the branch, the other a finding about the check, and a reader sent to the
+    # wrong one looks in the wrong place.
     $facts = Get-BranchRefLogFacts -RepoRoot $RepoRoot -Branch $Branch
-    if ($null -eq $facts) { return (& $refuse 'nobody has committed on the branch') }
+    if ($null -eq $facts) { return (& $refuse 'the branch ref log could not be read') }
     if ($facts.CommitShas.Count -eq 0) { return (& $refuse 'nobody has committed on the branch') }
 
     # Signal 2.
     $proofs = Get-LocalMergeProofShas -RepoRoot $RepoRoot -MainRef $MainRef -MergeProofShas $facts.MergeProofShas
-    if ($null -eq $proofs) { return (& $refuse 'no merge of this branch reached the base') }
+    if ($null -eq $proofs) { return (& $refuse 'the base history could not be read') }
 
     # Signal 2, the GitHub half. Asked LAST, and only when local git proved nothing: a merge-commit
     # merge therefore costs no network call at all. This signal may only ACCEPT a removal, so an
@@ -1060,12 +1132,13 @@ function Get-BranchMergedVerdict {
 
     # Signal 4. The merge proves the work that existed when it happened, and nothing after it.
     $after = Get-WorkAfterMergeProof -RepoRoot $RepoRoot -Branch $Branch -ProofShas $proofs
-    if ($null -eq $after -or $after.Count -gt 0) { return (& $refuse 'the branch gained work after it merged') }
+    if ($null -eq $after) { return (& $refuse 'the check for work made after the merge could not be run') }
+    if ($after.Count -gt 0) { return (& $refuse 'the branch gained work after it merged') }
 
     # Signal 3. Signals 1 and 2 can be satisfied by different work, so the last question is the one
     # that makes removal safe: would removing this branch discard a commit nothing else holds?
     $stranded = Get-StrandedCommits -RepoRoot $RepoRoot -Branch $Branch -Shas @($facts.AllShas.Keys)
-    if ($null -eq $stranded) { return (& $refuse 'removing it would discard work a reset dropped') }
+    if ($null -eq $stranded) { return (& $refuse 'the check for discarded work could not be run') }
 
     if (-not (Test-StrandedWorkWasSuperseded -RepoRoot $RepoRoot -Entries $facts.Entries -Stranded $stranded)) {
         return (& $refuse 'removing it would discard work a reset dropped')

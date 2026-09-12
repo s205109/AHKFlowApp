@@ -892,6 +892,164 @@ try {
     Remove-TempTree $repo
 }
 
+# --- Test: a subject differing only in letter case is a different subject ---------------
+# PowerShell's '-ne' is case-insensitive, so the first version of this rule read
+# 'fix: preserve US settings' and 'fix: preserve us settings' as the same commit and removed the
+# worktree. Two commits whose subjects differ in case are two different commits.
+$repo = New-TempGitRepo
+try {
+    $casePath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-case-subject' -NoCommits
+    Set-Content -LiteralPath (Join-Path $casePath 'a.txt') -Value 'first attempt' -Encoding utf8
+    Invoke-TestGit $casePath @('add', '-A') | Out-Null
+    Invoke-TestGit $casePath @('commit', '-m', 'fix: preserve US settings') | Out-Null
+    $droppedSha = ((Invoke-TestGit $casePath @('rev-parse', 'HEAD')) -join '').Trim()
+
+    Invoke-TestGit $casePath @('reset', '--hard', 'HEAD~1') | Out-Null
+    Set-Content -LiteralPath (Join-Path $casePath 'b.txt') -Value 'other work' -Encoding utf8
+    Invoke-TestGit $casePath @('add', '-A') | Out-Null
+    Invoke-TestGit $casePath @('commit', '-m', 'fix: preserve us settings') | Out-Null
+    Invoke-TestGit $repo @('merge', '--no-ff', '-m', 'Merge feat-case-subject', 'feat-case-subject') | Out-Null
+
+    $containing = ((Invoke-TestGit $repo @('branch', '--contains', $droppedSha)) -join '').Trim()
+    Assert-True (-not $containing) 'Sanity check: no branch may contain the dropped commit.'
+
+    Assert-True (-not (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-case-subject')) 'A subject differing only in letter case must not clear a reset.'
+
+    $eligible = Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'main'
+    $keys = @($eligible | ForEach-Object { ConvertTo-Key $_.Path })
+    Assert-True (-not ($keys -contains (ConvertTo-Key $casePath))) 'A worktree matched only by case-folded subjects must never be eligible.'
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- Test: an author name differing only in letter case is a different author -----------
+$repo = New-TempGitRepo
+try {
+    $namePath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-case-name' -NoCommits
+    Set-Content -LiteralPath (Join-Path $namePath 'a.txt') -Value 'first attempt' -Encoding utf8
+    Invoke-TestGit $namePath @('add', '-A') | Out-Null
+    Invoke-TestGit $namePath @('commit', '-m', 'shared subject line') | Out-Null
+    $droppedSha = ((Invoke-TestGit $namePath @('rev-parse', 'HEAD')) -join '').Trim()
+
+    Invoke-TestGit $namePath @('reset', '--hard', 'HEAD~1') | Out-Null
+    Set-Content -LiteralPath (Join-Path $namePath 'b.txt') -Value 'other work' -Encoding utf8
+    Invoke-TestGit $namePath @('add', '-A') | Out-Null
+    # The repository sets the author name to 'Cleanup Test'. Only the capitals change here.
+    $env:GIT_AUTHOR_NAME = 'cleanup test'
+    try {
+        Invoke-TestGit $namePath @('commit', '-m', 'shared subject line') | Out-Null
+    } finally {
+        Remove-Item -LiteralPath 'Env:\GIT_AUTHOR_NAME' -ErrorAction SilentlyContinue
+    }
+    Invoke-TestGit $repo @('merge', '--no-ff', '-m', 'Merge feat-case-name', 'feat-case-name') | Out-Null
+
+    $redoName = ((Invoke-TestGit $repo @('show', '--no-patch', '--format=%an', 'refs/heads/feat-case-name')) -join '').Trim()
+    Assert-True ($redoName -ceq 'cleanup test') 'Sanity check: the later commit must carry the lower-case author name.'
+
+    Assert-True (-not (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-case-name')) 'An author name differing only in letter case must not clear a reset.'
+
+    $eligible = Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'main'
+    $keys = @($eligible | ForEach-Object { ConvertTo-Key $_.Path })
+    Assert-True (-not ($keys -contains (ConvertTo-Key $namePath))) 'A worktree matched only by a case-folded author name must never be eligible.'
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- Test: an author email differing only in letter case is a different author ----------
+$repo = New-TempGitRepo
+try {
+    $mailPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-case-mail' -NoCommits
+    Set-Content -LiteralPath (Join-Path $mailPath 'a.txt') -Value 'first attempt' -Encoding utf8
+    Invoke-TestGit $mailPath @('add', '-A') | Out-Null
+    Invoke-TestGit $mailPath @('commit', '-m', 'shared subject line') | Out-Null
+    $droppedSha = ((Invoke-TestGit $mailPath @('rev-parse', 'HEAD')) -join '').Trim()
+
+    Invoke-TestGit $mailPath @('reset', '--hard', 'HEAD~1') | Out-Null
+    Set-Content -LiteralPath (Join-Path $mailPath 'b.txt') -Value 'other work' -Encoding utf8
+    Invoke-TestGit $mailPath @('add', '-A') | Out-Null
+    # The repository sets the author email to 'test@example.com'. Only the capitals change here.
+    $env:GIT_AUTHOR_EMAIL = 'TEST@EXAMPLE.COM'
+    try {
+        Invoke-TestGit $mailPath @('commit', '-m', 'shared subject line') | Out-Null
+    } finally {
+        Remove-Item -LiteralPath 'Env:\GIT_AUTHOR_EMAIL' -ErrorAction SilentlyContinue
+    }
+    Invoke-TestGit $repo @('merge', '--no-ff', '-m', 'Merge feat-case-mail', 'feat-case-mail') | Out-Null
+
+    $redoMail = ((Invoke-TestGit $repo @('show', '--no-patch', '--format=%ae', 'refs/heads/feat-case-mail')) -join '').Trim()
+    Assert-True ($redoMail -ceq 'TEST@EXAMPLE.COM') 'Sanity check: the later commit must carry the upper-case author email.'
+
+    Assert-True (-not (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-case-mail')) 'An author email differing only in letter case must not clear a reset.'
+
+    $eligible = Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'main'
+    $keys = @($eligible | ForEach-Object { ConvertTo-Key $_.Path })
+    Assert-True (-not ($keys -contains (ConvertTo-Key $mailPath))) 'A worktree matched only by a case-folded author email must never be eligible.'
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- Test: a forged fast-forward cannot donate another branch's commit as the redo ------
+# GIT_REFLOG_ACTION=commit on a fast-forward writes 'commit: Fast-forward'. The branch created
+# nothing; it adopted another branch's tip. If the rule trusts that subject, the donor commit
+# supplies the subject and author match, and the branch's own dropped work is deleted.
+#
+# The defence is that git records the new commit's own first message line after the action prefix.
+# A fast-forward records the word 'Fast-forward', which no commit here carries.
+$repo = New-TempGitRepo
+try {
+    $forgedPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-forged-redo' -NoCommits
+    $resetTarget = ((Invoke-TestGit $forgedPath @('rev-parse', 'HEAD')) -join '').Trim()
+    Set-Content -LiteralPath (Join-Path $forgedPath 'a.txt') -Value 'the real work' -Encoding utf8
+    Invoke-TestGit $forgedPath @('add', '-A') | Out-Null
+    Invoke-TestGit $forgedPath @('commit', '-m', 'shared subject line') | Out-Null
+    $droppedSha = ((Invoke-TestGit $forgedPath @('rev-parse', 'HEAD')) -join '').Trim()
+
+    Invoke-TestGit $forgedPath @('reset', '--hard', $resetTarget) | Out-Null
+
+    # The donor: another branch, built on the reset target, same subject and same author.
+    $donorPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-donor' -NoCommits
+    Set-Content -LiteralPath (Join-Path $donorPath 'donor.txt') -Value 'unrelated work' -Encoding utf8
+    Invoke-TestGit $donorPath @('add', '-A') | Out-Null
+    Invoke-TestGit $donorPath @('commit', '-m', 'shared subject line') | Out-Null
+
+    Invoke-TestGitWithReflogAction -RepoDir $forgedPath -Action 'commit' -GitArgs @('merge', '--ff-only', 'feat-donor') | Out-Null
+    Invoke-TestGit $repo @('merge', '--no-ff', '-m', 'Merge feat-forged-redo', 'feat-forged-redo') | Out-Null
+
+    $forgedEntries = (Invoke-TestGit $repo @('reflog', 'show', '--format=%H %gs', 'refs/heads/feat-forged-redo')) -join "`n"
+    Assert-True ($forgedEntries -match '(?m)commit: Fast-forward') 'Sanity check: the fast-forward must really have written a forged "commit:" subject.'
+    $containing = ((Invoke-TestGit $repo @('branch', '--contains', $droppedSha)) -join '').Trim()
+    Assert-True (-not $containing) 'Sanity check: no branch may contain the dropped commit.'
+
+    Assert-True (-not (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-forged-redo')) 'A forged fast-forward must not donate another branch commit as the redo.'
+
+    $eligible = Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'main'
+    $keys = @($eligible | ForEach-Object { ConvertTo-Key $_.Path })
+    Assert-True (-not ($keys -contains (ConvertTo-Key $forgedPath))) 'A worktree whose redo is a forged fast-forward must never be eligible.'
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- Test: a ref log that cannot be read is reported as a read failure ------------------
+# "nobody has committed on the branch" is a finding about the branch. A ref log that could not be
+# read is a finding about the check. Reporting the first for the second sends a reader to look at
+# the wrong thing.
+$repo = New-TempGitRepo
+try {
+    $verdict = Get-BranchMergedVerdict -RepoRoot $repo -Branch 'no-such-branch' -MainRef 'main'
+    Assert-True (-not $verdict.Merged) 'An unreadable ref log must refuse removal.'
+    Assert-True ($verdict.Reason -match 'ref log could not be read') `
+        "An unreadable ref log must report the read failure, got '$($verdict.Reason)'"
+
+    $started = Add-TestWorktree -RepoDir $repo -BranchName 'feat-unstarted' -NoCommits
+    $unstarted = Get-BranchMergedVerdict -RepoRoot $repo -Branch 'feat-unstarted' -MainRef 'main'
+    Assert-True (-not $unstarted.Merged) 'A branch with no commits must refuse removal.'
+    Assert-True ($unstarted.Reason -match 'nobody has committed') `
+        "A readable ref log with no commit must still report that nobody committed, got '$($unstarted.Reason)'"
+    Assert-True ($null -ne $started) 'Sanity check: the fixture worktree must exist.'
+} finally {
+    Remove-TempTree $repo
+}
+
 # --- Test: a merged-check refusal writes one outcome line, and names the signal ---------
 # This refusal used to be completely silent. The sweep kept a worktree and wrote nothing anywhere,
 # so wt-backlog-housekeeping survived pull request 405 with no record of why. One line per attempt

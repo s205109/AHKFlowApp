@@ -33,7 +33,7 @@ branch ref log holds this sequence:
 ```
 
 `Test-StrandedWorkWasSuperseded` walks each `reset:` entry and asks git which commits the reset
-dropped (`scripts/worktree-git.common.ps1:476`, "rev-list $before --not $after"). That returns
+dropped (`scripts/worktree-git.common.ps1:526`, "rev-list $before --not $after"). That returns
 `53e298f8`, which is in the stranded set, so the function returns false
 (`scripts/worktree-git.common.ps1:400`, "if ($strandedSet.ContainsKey"). <!-- citation-check:ignore the fix replaced this line -->
 
@@ -73,7 +73,7 @@ of the log cannot tell a real refusal from "there was nothing here".
 
 - [ ] The sweep removes a merged worktree whose branch reflog holds a `reset:` that dropped a commit
       the base later received, in the shape `chore/wt-backlog-housekeeping` had
-      (`scripts/worktree-git.common.ps1:458`, "function Test-StrandedWorkWasSuperseded {")
+      (`scripts/worktree-git.common.ps1:504`, "function Test-StrandedWorkWasSuperseded {")
 - [ ] The sweep keeps a merged worktree whose branch reflog holds a `reset:` that dropped a commit
       the base never received
 - [ ] The sweep keeps a merged worktree whose dropped commit differs from what the base holds only in
@@ -85,7 +85,7 @@ of the log cannot tell a real refusal from "there was nothing here".
 - [ ] A worktree the sweep keeps because `git status` failed has a line in `worktree-removal.log`
       saying so (`scripts/cleanup-merged-worktrees.ps1:185`, "git -C $wtFull status --porcelain")
 - [ ] The log line for a merged-check refusal names which of the five signals refused
-      (`scripts/worktree-git.common.ps1:991`, "function Get-BranchMergedVerdict {")
+      (`scripts/worktree-git.common.ps1:1060`, "function Get-BranchMergedVerdict {")
 - [ ] `remove-worktree-local-dev.ps1` run on a folder that no longer exists writes an outcome line
       that does not start with `Kept:`, because it kept nothing
       (`scripts/remove-worktree-local-dev.ps1:817`, "Nothing to remove: the worktree folder does not exist.")

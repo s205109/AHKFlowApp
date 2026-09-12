@@ -38,8 +38,23 @@ So a dropped commit stops keeping the worktree only when all three of these hold
 3. That commit has the reset target as an ancestor.
 
 The question is asked of each dropped commit on its own. A branch that drops two commits and redoes
-one of them keeps its worktree. Only the branch's own ref log is read, so a commit another branch
-made can never supply the match.
+one of them keeps its worktree.
+
+Predicate 2 compares character for character. The comparison is ordinal and case-sensitive, because
+PowerShell's own `-eq` and `-ne` fold case, and a rule that folds case reads
+`fix: preserve US settings` and `fix: preserve us settings` as one commit.
+
+Only commits the branch itself created count, and a ref-log subject does not establish that on its
+own. A fast-forward run with `GIT_REFLOG_ACTION=commit` writes `commit: Fast-forward` while the
+branch only adopted another branch's tip, and that donor commit can carry the dropped commit's
+subject and author. So each candidate entry is checked against the object it points at: git records
+the new commit's own first message line after the action prefix, which a fast-forward cannot
+produce.
+
+That closes the shape a caller can reach through `GIT_REFLOG_ACTION`. It does not make ref-log text
+trustworthy. `git update-ref -m` writes arbitrary text, so a caller who spells the donor's message
+exactly still passes. Ref-log text carries no authentication, which is the limit this repository
+already accepts for signals 1 and 2, and backlog 096 records it.
 
 Subject and author are commit metadata, not patch text, so this reintroduces nothing backlog 095
 removed. The rule also never compares the dropped commit against the base. It asks only what the

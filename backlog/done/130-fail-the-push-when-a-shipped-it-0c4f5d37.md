@@ -29,7 +29,7 @@ the work merges, so that cleanup never keeps a worktree whose plan was in fact c
       descoped, so a partly ticked plan is not an error.
 - [x] An item that names no plan, or names `none`, passes.
 - [x] The check takes its verdict from `Test-WorktreePlanWasImplemented`
-      (`scripts/worktree-git.common.ps1:1462`, "function Test-WorktreePlanWasImplemented"), so the
+      (`scripts/worktree-git.common.ps1:1535`, "function Test-WorktreePlanWasImplemented"), so the
       push and the cleanup sweep can never disagree about what counts as implemented.
 - [x] A test suite covers the refusal and each pass case against fixtures, in the style of
       (`tests/PrePushHook.Tests.ps1:1`, "#Requires -Version 5.1").
