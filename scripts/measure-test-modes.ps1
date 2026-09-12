@@ -82,6 +82,11 @@ param(
     # Skip the one build up front. Pass it when the tree is already built.
     [switch]$NoBuild,
 
+    # Backlog 140. Keep the build inside every counted run, because the spec's headline figure is
+    # the command a developer types and that command builds. -NoBuild still governs the one build
+    # up front; this governs what each run is asked to do.
+    [switch]$KeepBuildInRun,
+
     # Soak mode. The path to one test project, for example
     # 'tests/AHKFlowApp.Infrastructure.Tests'. -Mode is ignored when this is given.
     [string]$Soak
@@ -123,20 +128,61 @@ function Invoke-TimedRun {
         [Parameter(Mandatory = $true)][string]$Label,
         [Parameter(Mandatory = $true)][string]$Mode,
         [Parameter(Mandatory = $true)][string]$Configuration,
-        [Parameter(Mandatory = $true)][string]$ScriptRoot
+        [Parameter(Mandatory = $true)][string]$ScriptRoot,
+        [Parameter(Mandatory = $true)][string]$RepoRoot,
+        [Parameter(Mandatory = $true)][string]$RunDirectory,
+        [switch]$KeepBuildInRun
     )
 
     Write-Host ''
     Write-Host "=== $Mode $Label ===" -ForegroundColor Cyan
-    $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-    # test-fast.ps1 throws on a failing slice, and $ErrorActionPreference is 'Stop' here, so a
-    # failure ends this script. Checking $LASTEXITCODE as well would read a stale value from the
-    # build above. $PSNativeCommandUseErrorActionPreference does not weaken this: it governs
-    # native commands, and test-fast.ps1 is a PowerShell script whose throw propagates either way.
-    & (Join-Path $ScriptRoot 'test-fast.ps1') -Mode $Mode -Configuration $Configuration -NoBuild | Out-Host
-    $stopwatch.Stop()
+
+    # A hashtable, not an array. Splatting an array binds its elements by position, so '-Mode'
+    # would arrive as the value of the first positional parameter rather than as a name.
+    $testFastArguments = @{ Mode = $Mode; Configuration = $Configuration }
+    if (-not $KeepBuildInRun) {
+        $testFastArguments['NoBuild'] = $true
+    }
+
+    # Backlog 140. The recorder reads these two at the moment a step runs, so they are set around
+    # the call and restored after it. Each run writes its own timing files, beside its own TRX.
+    New-Item -ItemType Directory -Path $RunDirectory -Force | Out-Null
+    $timingDirectory = Join-Path $RunDirectory 'fixture-timing'
+    New-Item -ItemType Directory -Path $timingDirectory -Force | Out-Null
+    $previousTiming = $env:AHKFLOW_TEST_TIMING
+    $previousTimingDirectory = $env:AHKFLOW_TEST_TIMING_DIR
+    $env:AHKFLOW_TEST_TIMING = '1'
+    $env:AHKFLOW_TEST_TIMING_DIR = $timingDirectory
+
+    try {
+        $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+        # test-fast.ps1 throws on a failing slice, and $ErrorActionPreference is 'Stop' here, so a
+        # failure ends this script. Checking $LASTEXITCODE as well would read a stale value from the
+        # build above. $PSNativeCommandUseErrorActionPreference does not weaken this: it governs
+        # native commands, and test-fast.ps1 is a PowerShell script whose throw propagates either way.
+        & (Join-Path $ScriptRoot 'test-fast.ps1') @testFastArguments | Out-Host
+        $stopwatch.Stop()
+    }
+    finally {
+        $env:AHKFLOW_TEST_TIMING = $previousTiming
+        $env:AHKFLOW_TEST_TIMING_DIR = $previousTimingDirectory
+    }
 
     $elapsed = [Math]::Round($stopwatch.Elapsed.TotalSeconds, 2)
+
+    # test-fast.ps1 writes into one fixed folder and clears it at the start of every run, so the
+    # TRX has to be copied out here or run five overwrites run four.
+    $sharedResults = Join-Path $RepoRoot "TestResults\test-fast\$Mode"
+    foreach ($trx in @(Get-ChildItem -LiteralPath $sharedResults -Recurse -Filter '*.trx' -ErrorAction SilentlyContinue)) {
+        Copy-Item -LiteralPath $trx.FullName -Destination (Join-Path $RunDirectory $trx.Name) -Force
+    }
+
+    # The command boundary, written beside the run's own artifacts. Only this function knows it,
+    # and the report must not need a human to retype a number the driver already measured.
+    [pscustomobject]@{ Label = $Label; ElapsedSeconds = $elapsed } |
+        ConvertTo-Json |
+        Set-Content -LiteralPath (Join-Path $RunDirectory 'run.json') -Encoding utf8
+
     Write-Host ("{0}: {1:N2} s" -f $Label, $elapsed) -ForegroundColor Green
     return $elapsed
 }
@@ -281,6 +327,16 @@ try {
     }
 
     # Timing mode, with the lock released above.
+    #
+    # Backlog 140. One folder per run, so the report can describe the run that produced the
+    # headline. Warm-up folders are named apart from counted ones, so a reader can tell the
+    # discarded runs from the counted set.
+    $runRoot = Join-Path $repoRoot "TestResults\measure-test-modes\$Mode"
+    if (Test-Path -LiteralPath $runRoot) {
+        Remove-Item -LiteralPath $runRoot -Recurse -Force
+    }
+    New-Item -ItemType Directory -Path $runRoot -Force | Out-Null
+
     $buildCompletedAtUtc = Get-BuildCompletedAtUtc -RepoRoot $repoRoot -Configuration $Configuration
     if ($null -eq $buildCompletedAtUtc) {
         Write-Host 'Found no build output, so the settle clock is off for this run.' -ForegroundColor Yellow
@@ -322,7 +378,9 @@ try {
         }
 
         $warmUpSeconds += Invoke-TimedRun -Label ("warm-up " + ($warmUpSeconds.Count + 1)) `
-            -Mode $Mode -Configuration $Configuration -ScriptRoot $PSScriptRoot
+            -Mode $Mode -Configuration $Configuration -ScriptRoot $PSScriptRoot `
+            -RepoRoot $repoRoot -RunDirectory (Join-Path $runRoot ("warmup-" + ($warmUpSeconds.Count + 1))) `
+            -KeepBuildInRun:$KeepBuildInRun
     }
 
     # Read the clock once more, after the warm-up loop and any wait. The report calls this figure
@@ -335,7 +393,9 @@ try {
     $seconds = @()
     for ($run = 1; $run -le $Runs; $run++) {
         $seconds += Invoke-TimedRun -Label "run $run of $Runs" `
-            -Mode $Mode -Configuration $Configuration -ScriptRoot $PSScriptRoot
+            -Mode $Mode -Configuration $Configuration -ScriptRoot $PSScriptRoot `
+            -RepoRoot $repoRoot -RunDirectory (Join-Path $runRoot "run-$run") `
+            -KeepBuildInRun:$KeepBuildInRun
     }
 
     $median = Get-AhkFlowMedian -Values $seconds

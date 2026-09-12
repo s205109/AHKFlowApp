@@ -245,6 +245,38 @@ Invoke-TestCase 'Timing mode calls the Mode once per run' {
     finally { Remove-HarnessFixture -Root $root }
 }
 
+Invoke-TestCase 'KeepBuildInRun leaves -NoBuild off the test-fast call' {
+    $root = New-HarnessFixture
+    try {
+        # -NoBuild here is the harness's own one-build-up-front switch. -KeepBuildInRun governs
+        # what each run is asked to do, and the two are deliberately independent.
+        $result = Invoke-Harness -Root $root -Arguments @('-Mode', 'Fast', '-Runs', '1', '-WarmUpRuns', '0', '-SettleSeconds', '0', '-NoBuild', '-KeepBuildInRun')
+        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
+
+        $calls = @(Get-Content -LiteralPath (Join-Path $root 'stub\testfast-calls.txt'))
+        Assert-True ($calls.Count -eq 1) "Expected 1 test-fast.ps1 call, got $($calls.Count)."
+        Assert-True (@($calls | Where-Object { $_ -match 'NoBuild=False' }).Count -eq 1) `
+            "-KeepBuildInRun must leave -NoBuild off the call. Calls: $($calls -join ' | ')"
+    }
+    finally { Remove-HarnessFixture -Root $root }
+}
+
+Invoke-TestCase 'Each counted run keeps its own artifact folder' {
+    $root = New-HarnessFixture
+    try {
+        $result = Invoke-Harness -Root $root -Arguments @('-Mode', 'Fast', '-Runs', '2', '-WarmUpRuns', '0', '-SettleSeconds', '0', '-NoBuild')
+        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
+
+        $runRoot = Join-Path $root 'TestResults\measure-test-modes\Fast'
+        $runFolders = @(Get-ChildItem -LiteralPath $runRoot -Directory -Filter 'run-*' -ErrorAction SilentlyContinue)
+        Assert-True ($runFolders.Count -eq 2) "Expected 2 counted run folders, got $($runFolders.Count)."
+
+        $recorded = Join-Path $runFolders[0].FullName 'run.json'
+        Assert-True (Test-Path -LiteralPath $recorded) "Expected $recorded to hold the run's elapsed seconds."
+    }
+    finally { Remove-HarnessFixture -Root $root }
+}
+
 Invoke-TestCase 'Get-AhkFlowMedian is the middle sorted value, and the mean of the middle two when even' {
     # Fixed values and no wall clock at all. The case below proves the harness prints the median it
     # computed; this case proves the computation, and no amount of machine load can move it.
