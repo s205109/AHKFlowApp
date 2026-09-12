@@ -51,17 +51,17 @@ The measurement is what changed. The decision was taken before any number existe
 
 ## Acceptance criteria
 
-- [ ] A workflow other than `ci.yml` runs `scripts/check-shipping-pr-closes-item.ps1` when a pull
+- [x] A workflow other than `ci.yml` runs `scripts/check-shipping-pr-closes-item.ps1` when a pull
       request is flipped to ready.
-- [ ] That workflow checks out with `fetch-depth: 0`, because the check reads the merge base.
-- [ ] That workflow passes the pull request head from the event, and the base from
+- [x] That workflow checks out with `fetch-depth: 0`, because the check reads the merge base.
+- [x] That workflow passes the pull request head from the event, and the base from
       `git merge-base`, never from the event's `base.sha`.
-- [ ] `ci.yml` no longer lists `ready_for_review` in the `types` of its pull request event.
-- [ ] A ready pull request that leaves a fully ticked item open fails the new workflow.
-- [ ] A draft pull request reports success rather than skipping, so the check can stay a required
+- [x] `ci.yml` no longer lists `ready_for_review` in the `types` of its pull request event.
+- [x] A ready pull request that leaves a fully ticked item open fails the new workflow.
+- [x] A draft pull request reports success rather than skipping, so the check can stay a required
       check without blocking every draft.
-- [ ] `tests/ShippingPrClosesItem.Tests.ps1` still passes, and still replays pull request #400.
-- [ ] The new workflow's wall-clock time on one real ready flip is recorded in this item.
+- [x] `tests/ShippingPrClosesItem.Tests.ps1` still passes, and still replays pull request #400.
+- [x] The new workflow's wall-clock time on one real ready flip is recorded in this item.
 
 ## Out of scope
 
@@ -115,3 +115,22 @@ which is the push, not the flip.
 
 Before this change the same flip cost 9 min 59 s. The measured saving is about 9 minutes 48
 seconds per ready flip.
+
+## Branch protection
+
+Edited on 2026-09-12, with the human's yes in chat. `main` now requires six checks, all from
+app 15368: `build-test`, `powershell-suites`, `bicep-lint`, `codex-skills-hash-parity`,
+`repo-invariants`, and `shipping-pr-closes-item`. The last two are new. No diff shows this edit,
+which is why it is written here.
+
+`repo-invariants` is the wider edit decision D6b describes. Every other `ci.yml` job needs it, and
+GitHub says a job skipped because a job it needs failed "may not block merging".
+
+**Ready flip 1b, the baseline.** Run at 08:04:47Z on head `b9eab7e3`, with the acceptance boxes
+still open on the remote. Shipping run `34682347964` finished `success` at 08:05:02Z. All six
+required checks read `SUCCESS`, and `mergeStateStatus` read `CLEAN` while the pull request was
+ready. So under these protection settings nothing else blocks the merge. The ruleset's
+`require_extra_approval_for_unattributed_changes` did not fire on commits authored by Claude.
+
+This baseline is what makes flip 2's result readable. `mergeStateStatus` says the merge is
+blocked; it never says which rule blocked it.
