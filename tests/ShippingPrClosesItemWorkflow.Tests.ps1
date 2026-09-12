@@ -119,15 +119,33 @@ function Get-ShippingWorkflowProblem {
             }
         }
 
+        # The parameter name is not enough. Each one must carry the value the steps above worked
+        # out, never a literal. '-PullRequestIsDraft $true' is the case that matters: the name is
+        # still there, the workflow still looks right, and the script is told every pull request
+        # is a draft. It then returns no problems for any pull request, so the rule is switched
+        # off while the check still reports success.
+        $parameterValue = [ordered] @{
+            '-MergeBase'          = '$base'
+            '-TargetCommit'       = '$head'
+            '-PullRequestIsDraft' = '$isDraft'
+        }
+        foreach ($parameter in $parameterValue.Keys) {
+            $variable = $parameterValue[$parameter]
+            $pattern = [regex]::Escape($parameter) + '[^\r\n]*?' + [regex]::Escape($variable)
+            if ($workflow -notmatch $pattern) {
+                $problems += "The shipping workflow must pass $parameter the value it read, $variable. A literal there disables the check."
+            }
+        }
+
         # A draft must report success from the script, never a skip. An if: on the job or on a
         # step can turn the check into a skip, so the file holds none.
         if ($workflow -match '(?m)^\s*(-\s+)?if:') {
             $problems += 'The shipping workflow must hold no if: condition. A draft passes inside the script.'
         }
 
-        # One run at a time per pull request. Stage 9 pushes, then flips to ready seconds later, so
-        # two runs of this job can report on one commit. The queue saves duplicate work and keeps
-        # the common case in order. Correctness rests on the run-time draft read above, not here.
+        # One run of this job at a time per pull request. Stage 9 pushes, then flips to ready
+        # seconds later, so two runs can report on one commit. The group serialises them; both
+        # still run, so it skips no work. Correctness rests on the run-time draft read above.
         if ($workflow -notmatch '(?m)^concurrency:\s*$') {
             $problems += 'The shipping workflow must declare a top-level concurrency group.'
         }
@@ -185,8 +203,16 @@ function Test-MutationCase {
     Assert-True ($hit.Count -gt 0) "Mutation '$Name' must report a problem containing '$Expected'. Got: $($found -join ' | ')"
 }
 
-# The cases need the real workflow to mutate. Before it exists, the real-file section above is
-# already red, so nothing is lost by skipping them.
+# The cases need the real workflow to mutate, and they mutate it by exact text. So they only make
+# sense once the real files are right. When the section above already found a problem, a mutation
+# target is likely to be missing too, and Get-Mutation would then throw "Fix this suite, not the
+# workflow" over the top of the real answer. Report the real problems instead.
+if ($failures.Count -gt 0) {
+    foreach ($failure in $failures) { Write-Host ''; Write-Host $failure -ForegroundColor Red }
+    Write-Host ''
+    throw "ShippingPrClosesItemWorkflow tests failed with $($failures.Count) problem(s)."
+}
+
 if ($workflowText) {
     $readyOnly = Get-Mutation $workflowText 'types: [opened, synchronize, reopened, ready_for_review]' 'types: [ready_for_review]'
     Test-MutationCase 'ready_for_review alone' $readyOnly $ciText "type 'synchronize'"
@@ -207,6 +233,19 @@ if ($workflowText) {
     # its own. This one keeps the call and changes only the field it asks for.
     $wrongField = Get-Mutation $workflowText "--jq '.draft'" "--jq '.state'"
     Test-MutationCase 'gh api asks for the wrong field' $wrongField $ciText "with --jq '.draft'"
+
+    # A parameter name alone proves nothing about what the parameter is given. Each of these three
+    # keeps the name and replaces the value with a literal. The draft one is the dangerous case: it
+    # tells the script every pull request is a draft, so the script returns no problems and the
+    # rule is switched off, while the workflow still looks correct.
+    $draftLiteral = Get-Mutation $workflowText '-PullRequestIsDraft $isDraft' '-PullRequestIsDraft $true'
+    Test-MutationCase 'draft state hard-wired to a literal' $draftLiteral $ciText 'must pass -PullRequestIsDraft the value it read'
+
+    $headLiteral = Get-Mutation $workflowText '-TargetCommit $head' "-TargetCommit 'HEAD'"
+    Test-MutationCase 'target commit hard-wired to a literal' $headLiteral $ciText 'must pass -TargetCommit the value it read'
+
+    $baseLiteral = Get-Mutation $workflowText '-MergeBase ([string] $base).Trim()' "-MergeBase 'origin/main'"
+    Test-MutationCase 'merge base hard-wired to a literal' $baseLiteral $ciText 'must pass -MergeBase the value it read'
 
     $noPermission = Get-Mutation $workflowText "`n  pull-requests: read" ''
     Test-MutationCase 'no pull-requests permission' $noPermission $ciText 'pull-requests: read permission'

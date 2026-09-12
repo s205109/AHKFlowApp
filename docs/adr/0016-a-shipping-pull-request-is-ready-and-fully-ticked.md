@@ -56,6 +56,29 @@ runs nothing else.
 that branch protection does not list. So `main` lists `shipping-pr-closes-item` as a required
 check. The cost is that a person who reads a red mark must look in two workflows, not one.
 
+**Two runs can report on one commit, so the job reads the draft state when it runs.** Stage 9
+pushes the closure commit and then flips the pull request to ready seconds later. Both events
+start this job on the same commit. Pull request #407 did exactly that on commit `fd7fb289`, with
+the two runs ten seconds apart.
+
+The event payload carries the state at the moment the event fired, so the push run's payload says
+`draft: true`. If that run finished last, it would report a stale pass for a pull request that is
+now ready. GitHub does not rule this out: it orders a concurrency group by "the time each one
+started waiting on the concurrency group", then says plainly that "ordering is not guaranteed".
+
+So the job does not trust the payload. It reads `.draft` from the REST API when it runs. Both runs
+then read the same current state and reach the same verdict in any order, and a re-run of an old
+run reports today's state instead of the state its event carried.
+
+The concurrency group is a separate, smaller thing. It makes the second run wait for the first
+rather than run beside it. Both still run, so it skips no work, and correctness does not rest on
+it. `cancel-in-progress: false` keeps a running job alive when the next one queues, because a
+cancelled run is not a successful run and a cancelled required check blocks the merge.
+
+Backlog 153 tested the remaining assumption live on pull request #409: two runs on one commit, the
+older a pass and the newer a failure. The merge showed as blocked, so GitHub counts the newer
+result.
+
 **The draft state cannot be read locally.** Stage 9 pushes before it flips to ready, so at pre-push
 time the pull request is always still a draft. This check is therefore CI-only, and the local Gate
 cannot pre-verify it. The script takes the draft state as a parameter so a fixture can still

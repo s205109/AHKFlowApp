@@ -26,17 +26,16 @@ permissions:
   # The step below reads the pull request's draft state from the REST API, which needs this.
   pull-requests: read
 
-# One run at a time per pull request. Stage 9 pushes and then flips to ready seconds later, so two
-# runs of this job can report on the same commit. Pull request #407 did that on commit fd7fb289,
-# with the two runs ten seconds apart.
+# One run of this job at a time per pull request. Stage 9 pushes and then flips to ready seconds
+# later, so two runs can report on the same commit.
 #
-# The queue saves duplicate work and keeps the common case in order. It is NOT what makes the
-# reported result correct. GitHub orders a group by "the time each one started waiting on the
-# concurrency group", and then says plainly that "ordering is not guaranteed". The step below is
-# what makes the result correct: it reads the draft state at run time, so a run that arrives late
-# still reports on the state the pull request is in now.
+# This group makes the second run wait for the first instead of running beside it. Both still run:
+# serialising them skips no work. It is also NOT what makes the reported result correct. That is
+# the run-time draft read in the step below, which lets a late run still report the state the pull
+# request is in now. ADR 0016 has the reasoning.
 #
-# Queue, do not cancel. A cancelled draft-time run would leave a result that means nothing.
+# cancel-in-progress: false keeps a running job alive when the next one queues. A cancelled run is
+# not a successful run, so a cancelled required check blocks the merge rather than passing it.
 concurrency:
   group: shipping-pr-closes-item-${{ github.event.pull_request.number }}
   cancel-in-progress: false
