@@ -63,8 +63,10 @@ of the wall clock, so that the next speed item attacks the real cost instead of 
 - `scripts/measure-test-modes.ps1` builds once and then runs with `-NoBuild`, so its numbers
   exclude the build on every run. Timing the build needs a different shape, and designing that
   shape is part of this item.
-- Difficulty is `to-be-determined` on purpose: nobody knows yet whether the answer is the browser
-  install, the host start, container teardown, or something else.
+- Difficulty was `to-be-determined` on purpose at intake, and Design settled it as `complex` on
+  2026-09-12. Seven surfaces change across C# and PowerShell, and one is a new algorithm with its
+  own suite. The first suspect is the four API host starts, which a semaphore runs one at a time.
+  That is a place to look, not an answer; the item still measures rather than assumes.
 - Filed out of backlog 131. The arithmetic and its sources are in
   `docs/superpowers/plans/2026-09-06-e2e-incremental-publish-plan-131.md`.
 - Spec: `docs/superpowers/specs/2026-09-12-e2e-harness-overhead-design-140.md`
