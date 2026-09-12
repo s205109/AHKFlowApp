@@ -165,4 +165,59 @@ public sealed class FirstPageLoadDiagnosticsTests(StackFixtureD fixture) : IAsyn
         // "and then it stopped", and an absolute time cannot show that at a glance.
         thrown.Message.Should().MatchRegex(@"\d+ ms  http");
     }
+
+    // A first attempt at this test fulfilled the response as fast as possible and asserted the
+    // helper still saw it. That proves nothing: the helper navigates with WaitUntilState.Commit,
+    // which returns when the document arrives, and the app cannot call the API until the runtime
+    // has started seconds later. A registration placed anywhere before the app shell wait would
+    // still have caught it, so the test passed with the bug in place.
+    //
+    // So the ordering is forced, not raced. The app shell is held invisible until the response has
+    // completed, which makes "the response finished first" a fact rather than a hope.
+    [Fact]
+    public async Task AResponseThatFinishesBeforeTheAppShell_IsStillObserved()
+    {
+        await using IBrowserContext ctx = await fixture.Browser.NewContextAsync();
+
+        // Playwright's "visible" state means a non-empty bounding box and no visibility:hidden, so
+        // this rule alone stops the helper's wait from finishing. Injected at document start, so it
+        // is in place before MainLayout ever renders.
+        await ctx.AddInitScriptAsync(
+            "document.addEventListener('DOMContentLoaded', function () {"
+            + "  var s = document.createElement('style');"
+            + "  s.id = 'e2e-hold-shell';"
+            + "  s.textContent = '[data-test=\"app-shell\"]{visibility:hidden}';"
+            + "  document.head.appendChild(s);"
+            + "});");
+
+        TaskCompletionSource fulfilled = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        await ctx.RouteAsync("**/api/v1/profiles*", async route =>
+        {
+            await route.FulfillAsync(new RouteFulfillOptions
+            {
+                Status = 200,
+                ContentType = "application/json",
+                Body = "[]",
+            });
+
+            fulfilled.TrySetResult();
+        });
+
+        // Started, not awaited. The test has to act while the helper is still inside its wait.
+        Task<IPage> opening = FirstPageLoad.OpenAsync(
+            ctx, $"{fixture.Spa.BaseUrl}/hotkeys", "/api/v1/profiles");
+
+        // The response has now completed. The helper cannot have returned: the shell is hidden.
+        await fulfilled.Task;
+
+        IPage page = ctx.Pages.Single();
+        await page.EvaluateAsync("() => document.getElementById('e2e-hold-shell')?.remove()");
+
+        // Times out if the helper registered its wait after the app shell appeared, because by then
+        // the response was already gone.
+        IPage opened = await opening;
+
+        (await opened.Locator("[data-test=\"app-shell\"]").CountAsync()).Should().Be(1);
+    }
 }

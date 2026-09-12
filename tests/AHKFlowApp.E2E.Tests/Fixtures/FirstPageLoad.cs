@@ -59,11 +59,28 @@ public static class FirstPageLoad
     /// The app never started. The message names which screen is showing, how many documents the
     /// page loaded, and every error the browser reported.
     /// </exception>
-    public static async Task<IPage> OpenAsync(IBrowserContext context, string url)
+    public static async Task<IPage> OpenAsync(
+        IBrowserContext context,
+        string url,
+        params string[] awaitedApiPaths)
     {
         var watch = BootWatch.Attach(context);
         IPage page = await context.NewPageAsync();
         watch.Follow(page);
+
+        // Registered before the navigation, which is the whole reason this parameter exists. A
+        // caller cannot do this for itself: the page does not exist until this method makes it, and
+        // WaitForResponseAsync only resolves on the next matching response after it is called. So a
+        // caller waiting after this method returns would miss a response that already arrived.
+        //
+        // Before the navigation is earlier than strictly needed — the app cannot call the API until
+        // the runtime has started — and it is the simplest place that is provably early enough.
+        List<Task<IResponse>> awaited = [.. awaitedApiPaths.Select(path =>
+            page.WaitForResponseAsync(
+                response =>
+                    response.Url.Contains(path, StringComparison.OrdinalIgnoreCase)
+                    && response.Status == 200,
+                new PageWaitForResponseOptions { Timeout = TimeoutMs }))];
 
         // One budget for the whole first page load, spent across both steps below. Playwright gives
         // navigation its own 30 second default, so leaving that alone would let a first page load
@@ -105,7 +122,58 @@ public static class FirstPageLoad
             throw new TimeoutException(await DescribeAsync(page, watch, spent));
         }
 
+        // After the app shell, so a boot failure is reported as a boot failure rather than as a
+        // missing response. The app shell already proved the app started, so a failure here is a
+        // different problem and gets a different message.
+        try
+        {
+            await Task.WhenAll(awaited);
+        }
+        catch (TimeoutException timeout)
+        {
+            throw new TimeoutException(
+                DescribeMissingResponse(awaitedApiPaths, awaited, watch, spent), timeout);
+        }
+
         return page;
+    }
+
+    /// <summary>
+    /// The message for a first page load that reached the app shell and then never saw a response
+    /// it was told to wait for.
+    /// </summary>
+    /// <remarks>
+    /// None of the boot sentences appear here. The app shell proved the app started, so repeating
+    /// boot evidence would send the reader down the trail this class exists to close. The request
+    /// trail does appear, because it is the useful evidence for a call that never came back.
+    /// </remarks>
+    private static string DescribeMissingResponse(
+        IReadOnlyList<string> paths,
+        IReadOnlyList<Task<IResponse>> awaited,
+        BootWatch watch,
+        Stopwatch spent)
+    {
+        StringBuilder report = new();
+
+        IEnumerable<string> missing = paths
+            .Where((_, index) => !awaited[index].IsCompletedSuccessfully);
+
+        report.AppendLine(
+            $"The app started, but {string.Join(", ", missing)} never answered with status 200 "
+            + $"inside the first page load budget. "
+            + $"Gave up after {spent.ElapsedMilliseconds} ms of a {TimeoutMs} ms budget.");
+
+        IReadOnlyList<string> trail = watch.RequestTrail;
+        if (trail.Count > 0)
+        {
+            report.AppendLine("The last requests the page made:");
+            foreach (string request in trail)
+            {
+                report.AppendLine($"  {request}");
+            }
+        }
+
+        return report.ToString();
     }
 
     /// <summary>
