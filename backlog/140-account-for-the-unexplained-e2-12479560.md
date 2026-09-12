@@ -32,13 +32,9 @@ of the wall clock, so that the next speed item attacks the real cost instead of 
 ## Acceptance criteria
 
 - [x] This item records where the unexplained time goes, measured, with each step named and timed.
-- [ ] The measurement separates the SQL container start, the Blazor publish, Playwright browser
+- [x] The measurement separates the SQL container start, the Blazor publish, Playwright browser
       install and launch, the API and SPA host start, and any time the test host reports outside
       the tests themselves.
-      **Not yet true for the API host start.** The ten recorded warm runs predate the `caller`
-      field, so their host-start-gate rows mix the four stack starts with hosts that tests start
-      for themselves. The instrumentation now records the caller, and one fresh five-run session
-      would isolate the four stack starts. Every other part of this box is measured.
 - [x] The solution build is timed separately, and this item states whether it belongs in the E2E
       figure at all. A `-NoBuild` run excludes it; a plain `dotnet test` does not.
 - [x] Every figure is the median of five runs, with all five runs and the maximum written down.
@@ -111,7 +107,7 @@ which is what one stack costs. The two differ because four stacks run at the sam
 its 2002.44 ms per stack is the whole cost of bringing one stack up. All four stacks are up
 inside about 2.0 s.
 
-Two notes a later reader needs:
+Notes a later reader needs:
 
 - The gate counts are 24 and 23, not 4 and 4. `HostStartGateTests` and `StackIsolationTests`
   start hosts of their own through the same gate, and those records carry the same operation
@@ -121,9 +117,43 @@ Two notes a later reader needs:
 - Review fixed the instrumentation after these runs. Every record now carries a `caller`, a stack
   fixture names itself, and `scripts/report-harness-overhead.ps1` keeps each caller in its own row.
   A record from these ten runs has no caller and reports with an empty one, so it never joins a
-  stack start. A fresh session is what turns the gate rows into a figure for the four stacks.
+  stack start. The section "The four API host starts, isolated" below comes from a fresh session
+  that does.
 - `GatedWork` is written after the work finishes, so a host start that throws writes no record.
   That is why there are 24 waits and 23 works.
+
+### The four API host starts, isolated
+
+Review found that the gate rows above mixed the four stack starts with hosts that tests start for
+themselves. After the fix, every record names its caller, so this section comes from one more
+session taken on 2026-09-12: `pwsh .\scripts\measure-test-modes.ps1 -Mode E2E -Runs 5`, with the
+same `-NoBuild` shape as the step table above. Its artifacts are in
+`TestResults/measure-test-modes/E2E/session-20260912-201024/`.
+
+**This session ran on a busier machine, so its wall clock does not compare with the two above.**
+It measured 85.72 / 91.36 / 91.35 / 88.13 / 78.06 s, a median of 88.13 s and a max of 91.36 s,
+with a spread of 15.1 percent against 2.7 percent before. The warm-up runs also settled more
+slowly. The figures below compare only with each other, inside this session.
+
+Every counted run held exactly 4 `StackFixture` records for each gate operation. The other 39 gate
+records in each run came from tests and carried `Unattributed`.
+
+| Figure, four stack starts only | Five runs, ms | Median | Max |
+|---|---|---|---|
+| Gated work, summed across four stacks | 1633 / 1508 / 2196 / 1585 / 1578 | **1585** | 2196 |
+| Queue wait, summed across four stacks | 4145 / 3787 / 5618 / 3998 / 4108 | 4108 | 5618 |
+| Queue wait of the last stack to start | 1539 / 1430 / 2100 / 1472 / 1506 | **1506** | 2100 |
+| `InitializeAsync`, per stack | 2376 / 2395 / 2976 / 2379 / 2357 | 2379 | 2976 |
+| Harness overhead | 1379 / 2039 / 1534 / 1388 / 1267 | 1388 | 2039 |
+
+The shape repeats in every run. The first stack's host start does the real work, 1.09 to 1.60 s,
+because it is the first host the process builds. The other three take 0.10 to 0.25 s each. The
+waits read 0, then about 1.2, 1.35 and 1.5 s: stacks two to four mostly wait out that first
+start, not each other.
+
+**So serialising the four API host starts costs the wall clock about 1.5 s, and most of that is
+one cold start that running the hosts in parallel would not remove.** One host still has to be
+built first. The spec named this gate as the first place to look; it is not where the time goes.
 
 ### The SQL container and the Blazor publish
 
@@ -219,8 +249,8 @@ Two smaller findings, recorded but not worth an item on their own:
 
 - Stack setup costs about 2.0 s per stack warm and about 5.9 s cold. Serialising the four API
   host starts behind one semaphore is not the cost the spec suspected it might be.
-- The gate's records cannot be told apart from `HostStartGateTests`' own host starts. Anybody
-  extending this instrumentation should add a field that names the caller.
+- The first stack's API host start is the only expensive one, 1.09 to 1.60 s, and the other three
+  wait it out. That is a property of the first host a process builds, not of the gate.
 
 ## Out of scope
 
