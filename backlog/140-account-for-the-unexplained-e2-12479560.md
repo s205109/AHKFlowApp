@@ -68,4 +68,4 @@ of the wall clock, so that the next speed item attacks the real cost instead of 
 - Filed out of backlog 131. The arithmetic and its sources are in
   `docs/superpowers/plans/2026-09-06-e2e-incremental-publish-plan-131.md`.
 - Spec: `docs/superpowers/specs/2026-09-12-e2e-harness-overhead-design-140.md`
-- Plan: none — not yet at Plan.
+- Plan: `docs/superpowers/plans/2026-09-12-e2e-harness-overhead-plan-140.md`
