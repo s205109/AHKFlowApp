@@ -209,7 +209,7 @@ public sealed class FirstPageLoadDiagnosticsTests(StackFixtureD fixture) : IAsyn
             ctx, $"{fixture.Spa.BaseUrl}/hotkeys", "/api/v1/profiles");
 
         // The response has now completed. The helper cannot have returned: the shell is hidden.
-        await fulfilled.Task;
+        await WaitForResponseOrOpenFailureAsync(fulfilled.Task, opening);
 
         IPage page = ctx.Pages.Single();
         await page.EvaluateAsync("() => document.getElementById('e2e-hold-shell')?.remove()");
@@ -219,5 +219,66 @@ public sealed class FirstPageLoadDiagnosticsTests(StackFixtureD fixture) : IAsyn
         IPage opened = await opening;
 
         (await opened.Locator("[data-test=\"app-shell\"]").CountAsync()).Should().Be(1);
+    }
+
+    /// <summary>
+    /// Waits for <paramref name="responded"/> while watching <paramref name="opening"/>, and never
+    /// waits without a limit.
+    /// </summary>
+    /// <remarks>
+    /// Whichever ends first decides. If the helper ends first, its own exception is rethrown, so a
+    /// failed boot reports as the boot diagnosis rather than as a hang. If it returns without
+    /// failing, the app shell was not held back and the caller's test would prove nothing.
+    ///
+    /// The limit is twice the budget, so the helper's own 30 second diagnosis always arrives first.
+    /// The limit exists only for the case where neither side ever ends.
+    /// </remarks>
+    private static async Task WaitForResponseOrOpenFailureAsync(Task responded, Task<IPage> opening)
+    {
+        Task first;
+        try
+        {
+            first = await Task.WhenAny(responded, opening)
+                .WaitAsync(TimeSpan.FromMilliseconds(FirstPageLoad.TimeoutMs * 2));
+        }
+        catch (TimeoutException timeout)
+        {
+            throw new TimeoutException(
+                "The response never completed, and FirstPageLoad.OpenAsync neither returned nor failed.",
+                timeout);
+        }
+
+        if (first == opening)
+        {
+            await opening;
+            throw new InvalidOperationException(
+                "FirstPageLoad.OpenAsync returned before the response completed, so the app shell was "
+                + "not held back and this test proves nothing.");
+        }
+    }
+
+    // The review finding against the test above. Its wait for the response once had no limit and
+    // never looked at the helper, so a boot that failed before asking for profiles left the test
+    // waiting forever instead of failing. The boot is broken here on purpose, so the response never
+    // comes, and the wait must end on the helper's own boot diagnosis, well inside the budget.
+    [Fact]
+    public async Task FailedBoot_WhileWaitingForTheResponse_SurfacesTheBootFailureInsteadOfHanging()
+    {
+        await using IBrowserContext ctx = await fixture.Browser.NewContextAsync();
+        await BootFault.Fail404OnAppAssemblyAsync(ctx);
+
+        TaskCompletionSource neverResponds = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        var spent = Stopwatch.StartNew();
+
+        Task<IPage> opening = FirstPageLoad.OpenAsync(
+            ctx, $"{fixture.Spa.BaseUrl}/hotkeys", "/api/v1/profiles");
+
+        Func<Task> wait = () => WaitForResponseOrOpenFailureAsync(neverResponds.Task, opening);
+
+        TimeoutException thrown = (await wait.Should().ThrowAsync<TimeoutException>()).Which;
+        spent.Stop();
+
+        thrown.Message.Should().Contain("The app failed to boot");
+        spent.Elapsed.Should().BeLessThan(TimeSpan.FromMilliseconds(FirstPageLoad.TimeoutMs / 2));
     }
 }
