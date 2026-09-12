@@ -194,6 +194,15 @@ The number that decides it: summed test time is 219.45 s, so four perfectly bala
 finish their test bodies in about 54.9 s. The run interval is 68.11 s. Rebalancing is worth about
 13 s of a 72 s slice, roughly 18 percent, and it changes no product code.
 
+The follow-up is not filed from this item's own branch. `scripts/new-worktree.ps1` refuses to
+create a worktree from inside a linked worktree, and this item's work ran inside one. The item
+that ships this record hands the two commands to a human to run from the main checkout:
+
+```powershell
+pwsh ./scripts/new-worktree.ps1 -Title "Rebalance the four E2E groups"
+pwsh ./scripts/new-backlog-item.ps1 -Title "Rebalance the four E2E groups"
+```
+
 Two smaller findings, recorded but not worth an item on their own:
 
 - Stack setup costs about 2.0 s per stack warm and about 5.9 s cold. Serialising the four API
