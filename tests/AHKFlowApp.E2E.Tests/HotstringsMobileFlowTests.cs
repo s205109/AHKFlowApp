@@ -65,9 +65,8 @@ public sealed class HotstringsMobileFlowTests(StackFixtureC fixture) : IAsyncLif
     public async Task TabletViewport_DoesNotCreatePageHorizontalOverflow()
     {
         await using IBrowserContext ctx = await fixture.Browser.NewContextAsync(TabletViewport);
-        IPage page = await ctx.NewPageAsync();
 
-        await page.GotoAsync($"{fixture.Spa.BaseUrl}/hotstrings");
+        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/hotstrings");
         await page.WaitForSelectorAsync("button.add-hotstring-fab");
 
         OverflowMetrics metrics = await page.EvaluateAsync<OverflowMetrics>(
@@ -106,9 +105,8 @@ public sealed class HotstringsMobileFlowTests(StackFixtureC fixture) : IAsyncLif
         // No viewport option means the default 1280x720, which is wider than the 959.95px
         // breakpoint in Pages/Hotstrings.razor.css. So the page opens on the desktop branch.
         await using IBrowserContext ctx = await fixture.Browser.NewContextAsync();
-        IPage page = await ctx.NewPageAsync();
 
-        await page.GotoAsync($"{fixture.Spa.BaseUrl}/hotstrings");
+        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/hotstrings");
         await page.WaitForSelectorAsync("button.add-hotstring");
 
         await page.ClickAsync("button.add-hotstring");
@@ -133,9 +131,8 @@ public sealed class HotstringsMobileFlowTests(StackFixtureC fixture) : IAsyncLif
         await SeedHotstringAsync(fixture, "colw", "column width row");
 
         await using IBrowserContext ctx = await fixture.Browser.NewContextAsync(NarrowPhoneViewport);
-        IPage page = await ctx.NewPageAsync();
 
-        await page.GotoAsync($"{fixture.Spa.BaseUrl}/hotstrings");
+        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/hotstrings");
 
         ILocator row = page.Locator(
             ".mobile-branch tr.mobile-row",
@@ -180,9 +177,8 @@ public sealed class HotstringsMobileFlowTests(StackFixtureC fixture) : IAsyncLif
             "truncation row aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
 
         await using IBrowserContext ctx = await fixture.Browser.NewContextAsync(NarrowPhoneViewport);
-        IPage page = await ctx.NewPageAsync();
 
-        await page.GotoAsync($"{fixture.Spa.BaseUrl}/hotstrings");
+        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/hotstrings");
 
         ILocator cell = page
             .Locator(".mobile-branch tr.mobile-row", new() { HasTextString = "truncation row" })

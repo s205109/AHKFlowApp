@@ -37,11 +37,10 @@ public sealed class RawHotstringFlowTests(StackFixtureC fixture) : IAsyncLifetim
     public async Task CreateRawViaDialog_WarningAlertMonospaceParsedSummaryMobileBadgeAndByteMatch()
     {
         await using IBrowserContext ctx = await fixture.Browser.NewContextAsync(PhoneViewport);
-        IPage page = await ctx.NewPageAsync();
 
         // A profile is required so the generated profile script has something to byte-match
         // against at the end of the test.
-        await page.GotoAsync($"{fixture.Spa.BaseUrl}/profiles");
+        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/profiles");
         await page.WaitForSelectorAsync("button.add-profile");
         await page.ClickAsync("button.add-profile");
         await page.WaitForSelectorAsync("input[data-test=\"profile-name-input\"]");
@@ -126,10 +125,9 @@ public sealed class RawHotstringFlowTests(StackFixtureC fixture) : IAsyncLifetim
     public async Task CreateRawContinuationSection_SavesAndDownloadsSectionByteIdentical()
     {
         await using IBrowserContext ctx = await fixture.Browser.NewContextAsync(PhoneViewport);
-        IPage page = await ctx.NewPageAsync();
 
         // A profile is required so the generated profile script has something to byte-match against.
-        await page.GotoAsync($"{fixture.Spa.BaseUrl}/profiles");
+        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/profiles");
         await page.WaitForSelectorAsync("button.add-profile");
         await page.ClickAsync("button.add-profile");
         await page.WaitForSelectorAsync("input[data-test=\"profile-name-input\"]");
@@ -184,9 +182,8 @@ public sealed class RawHotstringFlowTests(StackFixtureC fixture) : IAsyncLifetim
         // Tune action, switch the promoted draft to Raw, and save. Covers the promote path the mobile
         // create test can't reach.
         await using IBrowserContext ctx = await fixture.Browser.NewContextAsync(DesktopViewport);
-        IPage page = await ctx.NewPageAsync();
 
-        await page.GotoAsync($"{fixture.Spa.BaseUrl}/hotstrings");
+        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/hotstrings");
         await page.WaitForSelectorAsync("button.add-hotstring");
 
         // Inline Text draft — carry a typed trigger into the promotion.
