@@ -4,7 +4,7 @@
 
 - **Epic**: Test reliability
 - **Type**: Bug
-- **Interfaces**: none (test code only)
+- **Interfaces**: Blazor UI (two `data-test` markers), E2E tests
 - **Difficulty**: complex
 - **Stage**: 2-design
 
@@ -108,5 +108,5 @@ some tests navigate again inside a page that already booted. Design must say whi
   holds the repository's reasoning on a failure seen only once. This one has now been seen twice.
 - Found while fixing the CI build for pull request 402. That pull request's failed job was run
   again rather than changed, because this failure is not its defect.
-- Spec: none yet — Difficulty is `complex`, so Design writes one.
+- Spec: `docs/superpowers/specs/2026-09-12-e2e-first-page-load-diagnosis-design-154.md`
 - Plan: none yet — Plan follows Design.

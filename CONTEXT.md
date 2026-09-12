@@ -290,3 +290,19 @@ _Avoid_: item done, item finished, wrapped up
 **Shipping pull request**:
 The one pull request that finishes a Backlog item's work and closes its Records. An item may take several pull requests, and only the last one is this.
 _Avoid_: final PR, closing PR, the merge
+
+**First page load**:
+A fresh browser context opening a page for the first time. The whole WebAssembly app downloads and starts inside it, so it is the slowest wait an E2E test makes. Navigating again inside that same page is not one: the app is already running by then.
+_Avoid_: initial load, cold load, page open
+
+**App shell**:
+The layout frame the app renders once it is running and a route has matched. Its presence is the proof that the app started. It says nothing about whether the page's own data arrived.
+_Avoid_: app ready, app loaded, layout, chrome
+
+**Boot error screen**:
+What `wwwroot/js/bootBlazor.js` renders when the .NET runtime could not download its files. It is terminal: nothing follows it, so waiting longer after it appears can never help.
+_Avoid_: boot failure page, load error, error screen
+
+**Startup error screen**:
+What the app renders when it started but cannot run — bad configuration, an unreachable API, or an unexpected error. Terminal for a test, because it recovers only on a click or on a configuration change that a test never makes. Different from the Boot error screen, which means the app never started at all.
+_Avoid_: startup failure page, config error page, error screen
