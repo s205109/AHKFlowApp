@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: Blazor UI (two `data-test` markers), E2E tests
 - **Difficulty**: complex
-- **Stage**: 3-plan
+- **Stage**: 7-document
 
 ## Summary
 
@@ -61,9 +61,10 @@ Three facts rule out the pull request and the test data:
   are unique, so one stack cannot delete another stack's rows.
 - The same test passed in every other recent CI run that was checked.
 
-This test opens its page with `GotoAsync` directly
-(`tests/AHKFlowApp.E2E.Tests/HotkeysMobileFlowTests.cs:145`, "await row.WaitForAsync();"), so
-the timeout carried none of the evidence `FirstPageLoad.OpenAsync` would have collected.
+At the time of that run this test opened its page with `GotoAsync` directly
+(`tests/AHKFlowApp.E2E.Tests/HotkeysMobileFlowTests.cs:141`, "await row.WaitForAsync();"), so
+the timeout carried none of the evidence `FirstPageLoad.OpenAsync` would have collected. This
+item's own work converted it, so that same test now opens through the helper.
 
 ## The design question
 
@@ -83,14 +84,14 @@ some tests navigate again inside a page that already booted. Design must say whi
 
 ## Acceptance criteria
 
-- [ ] When a first page load in any E2E test does not show the app, the test failure names how
+- [x] When a first page load in any E2E test does not show the app, the test failure names how
       many documents the page loaded, whether the boot error screen is showing, and every browser
       console error and uncaught page error.
-- [ ] A new E2E test gets that report without extra code, or a check fails a new test that opens
+- [x] A new E2E test gets that report without extra code, or a check fails a new test that opens
       a first page load without it.
-- [ ] A deliberately broken boot proves the report in a durable test, and that test passes.
-- [ ] `FirstPageLoad.TimeoutMs` still reads 30000, and no E2E test retries automatically.
-- [ ] `pwsh ./scripts/test-fast.ps1 -Mode E2E` passes.
+- [x] A deliberately broken boot proves the report in a durable test, and that test passes.
+- [x] `FirstPageLoad.TimeoutMs` still reads 30000, and no E2E test retries automatically.
+- [x] `pwsh ./scripts/test-fast.ps1 -Mode E2E` passes.
 
 ## Out of scope
 
