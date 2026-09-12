@@ -4,7 +4,7 @@
 # median, or soaks one test project and reports how many runs passed.
 #
 # This suite covers the orchestration: argument routing, the median, the run lock, the
-# connection-string restore, one SQL container per soak repetition, the zero-test guard, what
+# connection-string restore, one SQL container for the whole soak, the zero-test guard, what
 # happens when a run fails, and what happens when a run leaves a TRX nobody can parse. It stubs
 # 'dotnet', stubs scripts/test-fast.ps1, and replaces the SQL container helper with a
 # two-function fake that logs instead of calling Docker, so it costs seconds and needs no Docker.
@@ -81,10 +81,14 @@ function New-HarnessFixture {
 $script:FakeSqlLog = Join-Path (Split-Path -Parent $PSScriptRoot) 'sql-calls.txt'
 
 function Start-AhkFlowTestSqlContainer {
+    param([switch]$Fresh, [switch]$Ephemeral, [string]$RepoRoot)
+
     $name = "fake-sql-$([Guid]::NewGuid().ToString('N').Substring(0, 8))"
     Add-Content -LiteralPath $script:FakeSqlLog -Value "start $name"
     [pscustomobject]@{
         ContainerName = $name
+        ContainerId = "fakeid-$name"
+        Reused = $false
         ConnectionString = "Server=127.0.0.1,14333;Database=master;User Id=sa;Password=fake;TrustServerCertificate=True"
         ElapsedMilliseconds = 0
         StartedAtUtc = [DateTimeOffset]::UtcNow
@@ -466,19 +470,23 @@ Invoke-TestCase 'The report names the spread and how old the build was' {
     finally { Remove-HarnessFixture -Root $root }
 }
 
-Invoke-TestCase 'Soak mode starts and removes one container per repetition' {
+Invoke-TestCase 'Soak mode prepares one container for the whole soak and leaves it running' {
     $root = New-HarnessFixture
     try {
         $result = Invoke-Harness -Root $root -Arguments @('-Soak', 'tests/FakeProject', '-Runs', '3', '-NoBuild')
         Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
 
         $sql = @(Get-Content -LiteralPath (Join-Path $root 'sql-calls.txt'))
-        $started = @($sql | Where-Object { $_ -like 'start *' } | ForEach-Object { $_.Substring(6) })
-        $stopped = @($sql | Where-Object { $_ -like 'stop *' } | ForEach-Object { $_.Substring(5) })
-        Assert-True ($started.Count -eq 3) "Expected 3 container starts, got $($started.Count). Log: $($sql -join ' | ')"
-        Assert-True ($stopped.Count -eq 3) "Expected 3 container stops, got $($stopped.Count). Log: $($sql -join ' | ')"
-        Assert-True ((@($started | Sort-Object) -join ',') -eq (@($stopped | Sort-Object) -join ',')) `
-            "Every started container must be the one stopped. Log: $($sql -join ' | ')"
+        $started = @($sql | Where-Object { $_ -like 'start *' })
+        $stopped = @($sql | Where-Object { $_ -like 'stop *' })
+
+        # One start for three repetitions. Backlog 133: every SQL-backed test drops the database it
+        # needs empty, so run two meets a warm server the way a real second run does.
+        Assert-True ($started.Count -eq 1) "Expected 1 container start, got $($started.Count). Log: $($sql -join ' | ')"
+
+        # And no stop at all. A soak that removed its container would hide the very state the
+        # reuse exists to soak.
+        Assert-True ($stopped.Count -eq 0) "Expected no container stop, got $($stopped.Count). Log: $($sql -join ' | ')"
     }
     finally { Remove-HarnessFixture -Root $root }
 }
@@ -491,10 +499,12 @@ Invoke-TestCase 'A failing soak run is counted and named, and the soak still fin
         $result = Invoke-Harness -Root $root -Arguments @('-Soak', 'tests/FakeProject', '-Runs', '3', '-NoBuild')
         $text = $result.Output -join "`n"
 
-        # All three repetitions must have run. Stopping at the first failure is the defect.
-        $sql = @(Get-Content -LiteralPath (Join-Path $root 'sql-calls.txt'))
-        Assert-True (@($sql | Where-Object { $_ -like 'start *' }).Count -eq 3) `
-            "The soak must finish all 3 runs after run 2 fails. Log: $($sql -join ' | ')"
+        # All three repetitions must have run. Stopping at the first failure is the defect. The
+        # container starts once now, so a run count comes from the test invocations instead.
+        $signals = @(Get-Content -LiteralPath (Join-Path $root 'stub\signals.txt'))
+        $testCalls = @($signals | Where-Object { $_ -like 'test *' })
+        Assert-True ($testCalls.Count -eq 3) `
+            "The soak must finish all 3 runs after run 2 fails. Signals: $($signals -join ' | ')"
         Assert-True ($text -match 'passed\s+:\s+2 of 3') "Expected 'passed : 2 of 3'. Output: $text"
         Assert-True ($text -match 'failed runs\s+:\s+2') "Expected run 2 named. Output: $text"
         Assert-True ($result.ExitCode -ne 0) 'A soak with a failed run must fail overall.'
@@ -531,9 +541,11 @@ Invoke-TestCase 'A soak run that fails with a half-written TRX is counted, not t
         $result = Invoke-Harness -Root $root -Arguments @('-Soak', 'tests/FakeProject', '-Runs', '3', '-NoBuild')
         $text = $result.Output -join "`n"
 
-        $sql = @(Get-Content -LiteralPath (Join-Path $root 'sql-calls.txt'))
-        Assert-True (@($sql | Where-Object { $_ -like 'start *' }).Count -eq 3) `
-            "The soak must finish all 3 runs after run 2 dies mid-write. Log: $($sql -join ' | ')"
+        # The container starts once now, so a run count comes from the test invocations instead.
+        $signals = @(Get-Content -LiteralPath (Join-Path $root 'stub\signals.txt'))
+        $testCalls = @($signals | Where-Object { $_ -like 'test *' })
+        Assert-True ($testCalls.Count -eq 3) `
+            "The soak must finish all 3 runs after run 2 dies mid-write. Signals: $($signals -join ' | ')"
         Assert-True ($text -match 'passed\s+:\s+2 of 3') "Expected 'passed : 2 of 3'. Output: $text"
         Assert-True ($text -match 'failed runs\s+:\s+2') "Expected run 2 named as failed. Output: $text"
         Assert-True ($result.ExitCode -ne 0) 'A soak with a failed run must fail overall.'
@@ -551,9 +563,11 @@ Invoke-TestCase 'A soak run that exits zero with an unreadable TRX is not a pass
         $result = Invoke-Harness -Root $root -Arguments @('-Soak', 'tests/FakeProject', '-Runs', '3', '-NoBuild')
         $text = $result.Output -join "`n"
 
-        $sql = @(Get-Content -LiteralPath (Join-Path $root 'sql-calls.txt'))
-        Assert-True (@($sql | Where-Object { $_ -like 'start *' }).Count -eq 3) `
-            "The soak must finish all 3 runs. Log: $($sql -join ' | ')"
+        # The container starts once now, so a run count comes from the test invocations instead.
+        $signals = @(Get-Content -LiteralPath (Join-Path $root 'stub\signals.txt'))
+        $testCalls = @($signals | Where-Object { $_ -like 'test *' })
+        Assert-True ($testCalls.Count -eq 3) `
+            "The soak must finish all 3 runs. Signals: $($signals -join ' | ')"
         Assert-True ($text -match 'ran zero tests\s+:\s+2') `
             "Run 2 wrote an unreadable TRX and must be named. Output: $text"
         Assert-True (-not ($text -match 'passed\s+:\s+3 of 3')) `

@@ -70,6 +70,8 @@ function New-WrapperFixture {
             'test-fast.ps1'
             'Common.ps1'
             'test-sql-container.common.ps1'
+            'worktree-docker.common.ps1'
+            'worktree-git.common.ps1'
             'test-run-lock.common.ps1'
             'code-change-filter.common.ps1'
             'progress.common.ps1'

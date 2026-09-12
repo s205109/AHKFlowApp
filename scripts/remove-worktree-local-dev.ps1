@@ -1370,6 +1370,41 @@ function Invoke-WatcherMode {
             } catch {
                 Write-DiagnosticLog "Could not remove Docker compose project [$composeProject]: $($_.Exception.Message). Reclaim it with 'scripts\prune-worktree-docker.ps1'."
             }
+
+            # The SQL test container is a plain 'docker run' container, so the Compose teardown
+            # above cannot touch it. It is removed here by name, beside the teardown rather than
+            # through it.
+            #
+            # Its own try/catch, and not the teardown's, for one reason worth stating. The helper
+            # file is dot-sourced from the main checkout, not from the worktree being removed, so
+            # until this branch merges these two functions do not exist there. Sharing the
+            # teardown's catch would turn a Compose teardown that worked into a log line saying it
+            # did not.
+            try {
+                # -ExpectedProject and -ExpectedRepository, not a bare name. The name is derived
+                # from this worktree's Compose project, and any container on the host may already
+                # hold it. All three ownership labels are checked before anything is destroyed,
+                # exactly as the -Fresh path checks them.
+                #
+                # The repository check matters here for the same reason it matters in the sweep: two
+                # clones of this repository can each hold a branch by this name, so the project
+                # label agrees between them while the container belongs to the other clone.
+                $testSqlName = Get-WorktreeTestSqlContainerName -ComposeProject $composeProject
+                $testSqlRepository = Get-WorktreeRepositoryId -RepoRoot $mainCheckout
+                $testSqlResult = Remove-WorktreeTestSqlContainer -Name $testSqlName -ExpectedProject $composeProject -ExpectedRepository $testSqlRepository
+                if ($testSqlResult.Removed) {
+                    Write-DiagnosticLog "Removed test SQL container [$testSqlName]."
+                } elseif ($testSqlResult.Skipped) {
+                    # A guard refused it, and the guard's own message already says what to do. The
+                    # sweep does not reclaim a container it refuses either -- it skips one whose
+                    # clone it cannot read -- so pointing at the sweep here would be wrong.
+                    Write-DiagnosticLog "Left test SQL container [$testSqlName] alone: $($testSqlResult.Error)"
+                } else {
+                    Write-DiagnosticLog "Could not remove test SQL container [$testSqlName]: $($testSqlResult.Error). It was left intact; reclaim it with 'scripts\prune-worktree-docker.ps1'."
+                }
+            } catch {
+                Write-DiagnosticLog "Could not remove the test SQL container for [$composeProject]: $($_.Exception.Message). Reclaim it with 'scripts\prune-worktree-docker.ps1'."
+            }
         } else {
             Write-DiagnosticLog 'No compose project recorded; skipping Docker teardown (prune reclaims any orphan later).'
         }

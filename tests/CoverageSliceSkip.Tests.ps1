@@ -256,9 +256,9 @@ function Get-JoinPathAssignedName {
     return $found
 }
 
-Invoke-TestCase 'The coverage tooling list is exactly the nine files the slice runs' {
+Invoke-TestCase 'The coverage tooling list is exactly the eleven files the slice runs' {
     # The exact set, not a couple of spot checks. Asserting only that two entries are present,
-    # and that whatever entries remain exist on disk, lets any of the other seven be deleted
+    # and that whatever entries remain exist on disk, lets any of the other nine be deleted
     # from the YAML with the suite still green - and a deleted entry silently stops protecting
     # that file.
     $path = Get-AhkFlowCodePathFilterPath -RepoRoot $repoRoot
@@ -274,9 +274,11 @@ Invoke-TestCase 'The coverage tooling list is exactly the nine files the slice r
         'scripts/test-results.common.ps1'
         'scripts/test-run-lock.common.ps1'
         'scripts/test-sql-container.common.ps1'
+        'scripts/worktree-docker.common.ps1'
+        'scripts/worktree-git.common.ps1'
     ) | Sort-Object
 
-    Assert-True ($tooling.Count -eq 9) "Expected 9 coverage-tooling entries, got $($tooling.Count): $($tooling -join ', ')"
+    Assert-True ($tooling.Count -eq 11) "Expected 11 coverage-tooling entries, got $($tooling.Count): $($tooling -join ', ')"
     Assert-True (($tooling -join '|') -ceq ($expected -join '|')) `
         "Coverage tooling list does not match. Got: $($tooling -join ', ')"
 
@@ -290,11 +292,23 @@ Invoke-TestCase 'The coverage tooling list is exactly the nine files the slice r
     # entry in the YAML, fails here. That is the failure backlog 123 and backlog 128 both slipped
     # past, because the check this replaces read run-coverage.ps1 only and matched a hand-kept
     # list of names against it.
+    # The whole dot-source graph, not one level. A file a common script dot-sources is loaded by
+    # the run just as surely as one an entry point dot-sources, so a change to it must select the
+    # coverage slice. One level missed scripts/worktree-docker.common.ps1 when backlog 133 added
+    # it under scripts/test-sql-container.common.ps1.
     $derived = New-Object System.Collections.Generic.List[string]
+    $pending = New-Object System.Collections.Generic.Queue[string]
     foreach ($entryPoint in @('scripts/run-coverage.ps1', 'scripts/test-fast.ps1')) {
-        $derived.Add($entryPoint)
-        foreach ($name in Get-DotSourcedScriptName -Path (Join-Path $repoRoot $entryPoint)) {
-            $derived.Add("scripts/$name")
+        $pending.Enqueue($entryPoint)
+    }
+
+    while ($pending.Count -gt 0) {
+        $current = $pending.Dequeue()
+        if ($derived.Contains($current)) { continue }
+        $derived.Add($current)
+
+        foreach ($name in Get-DotSourcedScriptName -Path (Join-Path $repoRoot $current)) {
+            $pending.Enqueue("scripts/$name")
         }
     }
 
@@ -793,6 +807,8 @@ function New-WrapperFixture {
                     'test-fast.ps1'
                     'Common.ps1'
                     'test-sql-container.common.ps1'
+                    'worktree-docker.common.ps1'
+                    'worktree-git.common.ps1'
                     'test-run-lock.common.ps1'
                     'coverage-inputs.common.ps1'
                     'code-change-filter.common.ps1'

@@ -78,10 +78,12 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "dotnet build failed" }
     Stop-ProgressUnit -Tracker $progress
 
-    # The unit covers the start only. The container stays up for the whole project loop and comes
-    # down in the finally below, and neither of those is time a reader is waiting on.
+    # The unit covers the start only, and on a reused container that is a fraction of a second.
+    # The container stays up for the whole project loop and past the end of this run: coverage
+    # shares one container per checkout with scripts/test-fast.ps1, and both hold the test-run
+    # lock, so they never prepare it at the same time.
     Start-ProgressUnit -Tracker $progress -Name 'sql container'
-    $sharedSqlContainer = Start-AhkFlowTestSqlContainer
+    $sharedSqlContainer = Start-AhkFlowTestSqlContainer -RepoRoot $repoRoot
     Stop-ProgressUnit -Tracker $progress
 
     $previousSharedSqlConnectionString = $env:AHKFLOW_TEST_SQL_CONNECTION_STRING
@@ -109,8 +111,8 @@ try {
         }
     }
     finally {
+        # Left running on purpose, the same way scripts/test-fast.ps1 leaves it.
         $env:AHKFLOW_TEST_SQL_CONNECTION_STRING = $previousSharedSqlConnectionString
-        Stop-AhkFlowTestSqlContainer -ContainerName $sharedSqlContainer.ContainerName
     }
 
     if ($testExitCode -ne 0) { throw "dotnet test failed" }

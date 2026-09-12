@@ -129,7 +129,43 @@ Integration mode runs:
 
 Use this for EF Core, migrations, use case handlers that touch `AppDbContext`, API behavior, CLI integration flows, SQL query behavior, and anything that changes persistence wiring.
 
-The script starts one disposable Docker SQL Server container for the selected SQL-backed projects, passes the server connection to the test processes, and removes the container when the run finishes. Direct `dotnet test` still falls back to the per-project Testcontainers fixture path.
+The script prepares one SQL Server container for the selected SQL-backed projects and passes the
+server connection to the test processes. The container stays alive when the run ends, so the next
+run reuses it instead of paying about sixteen seconds to start a new one. One checkout has at most
+one, named after its Compose project, and two checkouts never share one. Direct `dotnet test` still
+falls back to the per-project Testcontainers fixture path.
+
+Three things remove the container. `-FreshSql` on `test-fast.ps1` replaces it. A verification the
+script cannot repair replaces it: before a run trusts a container it checks the image, that it is
+running, that it publishes a port, and that it answers a trivial query, and it starts a stopped one
+rather than rebuilding it. Removing the worktree removes it, and
+`scripts/prune-worktree-docker.ps1` reclaims one whose checkout is gone.
+
+### Every SQL-backed test must be run-independent
+
+A reused server outlives the run that filled it, so a test cannot assume the database it names is
+empty. `CONTEXT.md` defines **Run-independent test**: the test still starts from the state it needs,
+and it still exercises its own subject, whatever an earlier run left behind.
+
+Passing is not enough on its own. A test that passes because a warm database let it skip its own
+subject is broken quietly, not run-independent.
+
+Two rules cover almost every case.
+
+- A test that needs an empty database drops it **first**, through
+  `RunIndependentDatabase.DropAsync`. Dropping when the test finishes would make correctness depend
+  on the previous run's cleanup having run, and a killed run would leave the next one failing for a
+  reason nobody caused.
+- A test that reads a row asks for a row it can prove it created. Filter by the test's own owner id,
+  never by a trigger or a name alone.
+
+A test that reaches a migration before the newest one goes through
+`RunIndependentDatabase.DropThenMigrateToAsync`. `tests/RunIndependentSqlTests.Tests.ps1` fails a
+test file that reaches one by any other route. Migrating to the newest migration stays allowed: it
+is a no-op on a database that is already there.
+
+CI still runs every pull request against a container that never existed, which is the cold-start
+proof local runs give up.
 
 Only mixed projects use `Category=Integration` in v1. Whole-project SQL/API suites are selected by project instead of traits.
 
@@ -139,7 +175,7 @@ Only mixed projects use `Category=Integration` in v1. Whole-project SQL/API suit
 pwsh .\scripts\test-fast.ps1 -Mode E2E
 ```
 
-E2E mode runs `AHKFlowApp.E2E.Tests`. Use it for browser flows, Playwright-covered UI behavior, mobile viewport behavior, service-worker/PWA behavior, and changes to the E2E fixture or published Blazor output. The script starts the same disposable shared SQL Server container used by Integration mode. The suite runs in four groups at once, and each group names its own database on that one server.
+E2E mode runs `AHKFlowApp.E2E.Tests`. Use it for browser flows, Playwright-covered UI behavior, mobile viewport behavior, service-worker/PWA behavior, and changes to the E2E fixture or published Blazor output. The script prepares the same shared SQL Server container Integration mode uses, and leaves it running when the run ends. `-FreshSql` replaces it here too. The suite runs in four groups at once, and each group names its own database on that one server.
 
 A normal E2E run builds the project and its references. Every E2E run clears the Blazor publish folder, then publishes the app again before Playwright starts. That publish compiles and links the current source, so the browser always loads the code in your working tree. `-NoBuild` skips the solution build, but the Blazor publish still runs, so the app under test stays current. The flow classes in one group share that group's API, SPA host and browser, and each test resets mutable database rows before it starts.
 
@@ -316,7 +352,7 @@ request.
 pwsh .\scripts\test-fast.ps1 -Mode Coverage
 ```
 
-Coverage mode delegates to `scripts/run-coverage.ps1`. Run it before you mark a PR ready; CI enforces the same coverage + threshold gate on every pull request with at least one changed path that `.github/code-paths-filter.yml` does not exclude. The pre-push hook itself only runs quick checks (incremental build + fast slice, see `scripts/pre-push-quick-checks.ps1`), not this full coverage path. The local coverage script uses the same disposable shared SQL container behavior as Integration mode for the SQL-backed suites. Coverage mode skips itself when the branch changed no compiled file — see the Gate section above for the condition and the `-Force` switch. `run-coverage.ps1` makes no such check: calling it directly always runs the full slice.
+Coverage mode delegates to `scripts/run-coverage.ps1`. Run it before you mark a PR ready; CI enforces the same coverage + threshold gate on every pull request with at least one changed path that `.github/code-paths-filter.yml` does not exclude. The pre-push hook itself only runs quick checks (incremental build + fast slice, see `scripts/pre-push-quick-checks.ps1`), not this full coverage path. The local coverage script prepares the same shared SQL container Integration mode uses, and leaves it running when the run ends, for the SQL-backed suites. `-FreshSql` is not available in Coverage mode. Coverage mode skips itself when the branch changed no compiled file — see the Gate section above for the condition and the `-Force` switch. `run-coverage.ps1` makes no such check: calling it directly always runs the full slice.
 
 ### One test run at a time
 

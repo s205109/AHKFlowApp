@@ -23,6 +23,11 @@ param()
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+# This suite spawns new-worktree.ps1 inside a throwaway repository that holds none of this
+# project's real worktrees. Without this variable, new-worktree.ps1's orphan Docker sweep would
+# read every real checkout's running container as an orphan and remove it.
+$env:AHKFLOW_SKIP_ORPHAN_PRUNE = '1'
+
 $suiteRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 $scriptsDir = Join-Path $suiteRoot 'scripts'
 

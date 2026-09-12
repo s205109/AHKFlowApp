@@ -43,9 +43,11 @@ code:
 # files cannot affect it. scripts/ci/check-coverage-thresholds.py, which CI does run, is a .py
 # file that no pattern above excludes, so it already counts as code for both readers.
 #
-# The list is both entry points, plus everything either of them dot-sources. Not just what
-# run-coverage.ps1 loads: test-fast.ps1 is the process the Gate starts, and it loads two modules
-# run-coverage.ps1 never sees.
+# The list is both entry points, plus the whole dot-source graph under them. Not just what an
+# entry point loads directly: a file that a common script dot-sources is loaded by the run just as
+# surely, so a change to it must select the coverage slice too. And not just what run-coverage.ps1
+# loads: test-fast.ps1 is the process the Gate starts, and it loads two modules run-coverage.ps1
+# never sees.
 #
 # run-powershell-suites.ps1 is deliberately absent. test-fast.ps1 starts it as a child process in
 # PowerShell mode, which is a different slice, so a change to it cannot affect the coverage run.
@@ -62,3 +64,5 @@ coverage-tooling:
   - 'scripts/code-change-filter.common.ps1'
   - 'scripts/progress.common.ps1'
   - 'scripts/test-results.common.ps1'
+  - 'scripts/worktree-docker.common.ps1'
+  - 'scripts/worktree-git.common.ps1'

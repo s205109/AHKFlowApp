@@ -3,9 +3,6 @@ using AHKFlowApp.TestUtilities.Fixtures;
 using FluentAssertions;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Infrastructure;
-using Microsoft.EntityFrameworkCore.Migrations;
-using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace AHKFlowApp.Infrastructure.Tests.Migrations;
@@ -40,10 +37,9 @@ public sealed class RawHotstringKindMigrationTests(SharedSqlServerFixture sqlFix
 
         await using (AppDbContext setup = CreateContext())
         {
-            // Apply every migration up to but not including RawHotstringKind, so the Hotstrings
-            // table still has the body-only nvarchar(4000) Replacement column.
-            IMigrator migrator = ((IInfrastructure<IServiceProvider>)setup).Instance.GetRequiredService<IMigrator>();
-            await migrator.MigrateAsync("AddHotstringWindowContext");
+            // Drop first, then apply every migration up to but not including RawHotstringKind, so
+            // the Hotstrings table still has the body-only nvarchar(4000) Replacement column.
+            await RunIndependentDatabase.DropThenMigrateToAsync(setup, "AddHotstringWindowContext");
 
             foreach (ScriptToRawFixture f in ScriptToRawFixtures.All)
             {
