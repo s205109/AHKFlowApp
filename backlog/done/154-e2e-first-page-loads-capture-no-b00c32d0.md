@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: Blazor UI (two `data-test` markers), E2E tests
 - **Difficulty**: complex
-- **Stage**: 7-document
+- **Stage**: 9-ship
 
 ## Summary
 
