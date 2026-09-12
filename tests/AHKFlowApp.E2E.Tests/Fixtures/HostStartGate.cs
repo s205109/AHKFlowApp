@@ -1,3 +1,5 @@
+using AHKFlowApp.TestUtilities.Fixtures;
+
 namespace AHKFlowApp.E2E.Tests.Fixtures;
 
 /// <summary>
@@ -20,12 +22,28 @@ internal static class HostStartGate
 {
     private static readonly SemaphoreSlim Gate = new(1, 1);
 
+    internal const string QueueWaitOperation = "QueueWait";
+    internal const string GatedWorkOperation = "GatedWork";
+
+    private static string Fixture => typeof(HostStartGate).FullName ?? nameof(HostStartGate);
+
     public static async Task RunAsync(Func<Task> start)
     {
-        await Gate.WaitAsync();
+        // Two records, not one. The wait belongs to the queue and the work belongs to the host,
+        // and a single figure would grow with the number of callers while no host did more work.
+        await TestTimingRecorder.RecordAsync(
+            nameof(HostStartGate),
+            Fixture,
+            QueueWaitOperation,
+            () => Gate.WaitAsync());
+
         try
         {
-            await start();
+            await TestTimingRecorder.RecordAsync(
+                nameof(HostStartGate),
+                Fixture,
+                GatedWorkOperation,
+                start);
         }
         finally
         {

@@ -1,3 +1,4 @@
+using System.Text.Json;
 using FluentAssertions;
 using Xunit;
 
@@ -137,6 +138,73 @@ public sealed class HostStartGateTests
             if (!firstDisposed)
             {
                 await first.DisposeAsync();
+            }
+        }
+    }
+
+    [Fact]
+    public async Task RunAsync_WithFourCallersAtOnce_RecordsWaitingApartFromWork()
+    {
+        // Arrange
+        const int callers = 4;
+        var hold = TimeSpan.FromMilliseconds(300);
+        string timingDirectory = Path.Combine(Path.GetTempPath(), $"ahkflow-gate-timing-{Guid.NewGuid():N}");
+        string? previousTiming = Environment.GetEnvironmentVariable("AHKFLOW_TEST_TIMING");
+        string? previousDirectory = Environment.GetEnvironmentVariable("AHKFLOW_TEST_TIMING_DIR");
+        Environment.SetEnvironmentVariable("AHKFLOW_TEST_TIMING", "1");
+        Environment.SetEnvironmentVariable("AHKFLOW_TEST_TIMING_DIR", timingDirectory);
+
+        try
+        {
+            // Act: release all four at the same moment, so every caller but one has to queue.
+            TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            Task[] callersRunning = Enumerable.Range(0, callers)
+                .Select(_ => Task.Run(async () =>
+                {
+                    await release.Task;
+                    await HostStartGate.RunAsync(() => Task.Delay(hold));
+                }))
+                .ToArray();
+
+            release.SetResult();
+            await Task.WhenAll(callersRunning).WaitAsync(WaitLimit);
+
+            // Assert
+            var entries = Directory
+                .GetFiles(timingDirectory, "fixture-timings-*.jsonl")
+                .SelectMany(File.ReadAllLines)
+                .Where(line => !string.IsNullOrWhiteSpace(line))
+                .Select(line => JsonSerializer.Deserialize<JsonElement>(line))
+                .Where(entry => entry.GetProperty("component").GetString() == nameof(HostStartGate))
+                .ToList();
+
+            double[] waits = entries
+                .Where(entry => entry.GetProperty("operation").GetString() == HostStartGate.QueueWaitOperation)
+                .Select(entry => entry.GetProperty("elapsedMilliseconds").GetDouble())
+                .ToArray();
+            double[] work = entries
+                .Where(entry => entry.GetProperty("operation").GetString() == HostStartGate.GatedWorkOperation)
+                .Select(entry => entry.GetProperty("elapsedMilliseconds").GetDouble())
+                .ToArray();
+
+            waits.Should().HaveCount(callers, "every caller records its own wait");
+            work.Should().HaveCount(callers, "every caller records its own gated work");
+
+            work.Should().AllSatisfy(one => one.Should().BeLessThan(
+                hold.TotalMilliseconds * 2,
+                "gated work is one hold, so no caller may report the queued total"));
+
+            waits.Max().Should().BeGreaterThan(
+                hold.TotalMilliseconds * 2,
+                "the last caller waited for three holds, and that time is waiting rather than work");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("AHKFLOW_TEST_TIMING", previousTiming);
+            Environment.SetEnvironmentVariable("AHKFLOW_TEST_TIMING_DIR", previousDirectory);
+            if (Directory.Exists(timingDirectory))
+            {
+                Directory.Delete(timingDirectory, recursive: true);
             }
         }
     }
