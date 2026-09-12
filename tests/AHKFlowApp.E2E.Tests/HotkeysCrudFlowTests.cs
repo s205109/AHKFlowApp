@@ -18,9 +18,8 @@ public sealed class HotkeysCrudFlowTests(StackFixtureB fixture) : IAsyncLifetime
     public async Task CreateRunHotkey_ShowsPreviewThenAppearsInGridWithActionChip()
     {
         await using IBrowserContext ctx = await fixture.Browser.NewContextAsync();
-        IPage page = await ctx.NewPageAsync();
 
-        await page.GotoAsync($"{fixture.Spa.BaseUrl}/hotkeys");
+        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/hotkeys");
         await page.WaitForSelectorAsync("button.add-hotkey");
 
         await page.ClickAsync("button.add-hotkey");
@@ -68,9 +67,8 @@ public sealed class HotkeysCrudFlowTests(StackFixtureB fixture) : IAsyncLifetime
     public async Task CreateHotkeyLimitedToOneProgram_PreviewWrapsSnippetInHotIf()
     {
         await using IBrowserContext ctx = await fixture.Browser.NewContextAsync();
-        IPage page = await ctx.NewPageAsync();
 
-        await page.GotoAsync($"{fixture.Spa.BaseUrl}/hotkeys");
+        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/hotkeys");
         await page.WaitForSelectorAsync("button.add-hotkey");
 
         await page.ClickAsync("button.add-hotkey");
@@ -120,9 +118,8 @@ public sealed class HotkeysCrudFlowTests(StackFixtureB fixture) : IAsyncLifetime
     public async Task RawBodyInjectingAnotherHotkey_BlocksPreviewGeneration()
     {
         await using IBrowserContext ctx = await fixture.Browser.NewContextAsync();
-        IPage page = await ctx.NewPageAsync();
 
-        await page.GotoAsync($"{fixture.Spa.BaseUrl}/hotkeys");
+        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/hotkeys");
         await page.WaitForSelectorAsync("button.add-hotkey");
 
         await page.ClickAsync("button.add-hotkey");
@@ -159,9 +156,8 @@ public sealed class HotkeysCrudFlowTests(StackFixtureB fixture) : IAsyncLifetime
     public async Task RawBodyPreviewError_ShowsInlineOnTheBodyField()
     {
         await using IBrowserContext ctx = await fixture.Browser.NewContextAsync();
-        IPage page = await ctx.NewPageAsync();
 
-        await page.GotoAsync($"{fixture.Spa.BaseUrl}/hotkeys");
+        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/hotkeys");
         await page.WaitForSelectorAsync("button.add-hotkey");
 
         await page.ClickAsync("button.add-hotkey");
@@ -196,9 +192,8 @@ public sealed class HotkeysCrudFlowTests(StackFixtureB fixture) : IAsyncLifetime
     public async Task RawBodySaveError_ShowsInlineOnTheBodyField()
     {
         await using IBrowserContext ctx = await fixture.Browser.NewContextAsync();
-        IPage page = await ctx.NewPageAsync();
 
-        await page.GotoAsync($"{fixture.Spa.BaseUrl}/hotkeys");
+        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/hotkeys");
         await page.WaitForSelectorAsync("button.add-hotkey");
 
         await page.ClickAsync("button.add-hotkey");

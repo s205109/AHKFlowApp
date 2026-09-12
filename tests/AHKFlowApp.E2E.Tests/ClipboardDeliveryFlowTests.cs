@@ -17,9 +17,8 @@ public sealed class ClipboardDeliveryFlowTests(StackFixtureB fixture) : IAsyncLi
     public async Task AutoLongText_DownloadedScriptContainsOneHelperAndPasteCall()
     {
         await using IBrowserContext context = await fixture.Browser.NewContextAsync();
-        IPage page = await context.NewPageAsync();
 
-        await page.GotoAsync($"{fixture.Spa.BaseUrl}/profiles");
+        IPage page = await FirstPageLoad.OpenAsync(context, $"{fixture.Spa.BaseUrl}/profiles");
         await page.WaitForSelectorAsync("button.add-profile");
         await page.ClickAsync("button.add-profile");
         await page.FillAsync("input[data-test=\"profile-name-input\"]", "ClipboardFlow");

@@ -15,9 +15,8 @@ public sealed class ProfileHeaderPresetFlowTests(StackFixtureA fixture) : IAsync
     public async Task InsertPreset_AppendsMarkedBlockAndThenReportsItAsPresent()
     {
         await using IBrowserContext ctx = await fixture.Browser.NewContextAsync();
-        IPage page = await ctx.NewPageAsync();
 
-        await page.GotoAsync($"{fixture.Spa.BaseUrl}/profiles");
+        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/profiles");
         await page.WaitForSelectorAsync("button.start-edit");
 
         // Insert a preset into the default profile's header.
