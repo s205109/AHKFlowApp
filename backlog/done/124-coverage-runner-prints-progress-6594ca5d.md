@@ -68,7 +68,7 @@ shared module could prove itself against two shapes before it took on a third.
 - The unit list also carries the SQL container start, which the acceptance criteria do not name.
   The user asked for it on 2026-09-07. `Start-AhkFlowTestSqlContainer` pulls an image on a cold
   machine and then polls until SQL Server answers, with a 60 second timeout
-  (`scripts/test-sql-container.common.ps1:469`, "[int]$TimeoutSeconds = 60"). Leaving that outside
+  (`scripts/test-sql-container.common.ps1:473`, "[int]$TimeoutSeconds = 60"). Leaving that outside
   every unit makes the estimate read low by exactly the part a reader mistakes for a hang.
 - `scripts/test-fast.ps1` still starts the same container before it creates its tracker, so the
   two runners now disagree about whether that time is measured. Left alone on purpose. No item
