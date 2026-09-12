@@ -261,18 +261,33 @@ Invoke-TestCase 'KeepBuildInRun leaves -NoBuild off the test-fast call' {
     finally { Remove-HarnessFixture -Root $root }
 }
 
-Invoke-TestCase 'Each counted run keeps its own artifact folder' {
+Invoke-TestCase 'Two measurements in one Mode keep both sessions' {
     $root = New-HarnessFixture
     try {
-        $result = Invoke-Harness -Root $root -Arguments @('-Mode', 'Fast', '-Runs', '2', '-WarmUpRuns', '0', '-SettleSeconds', '0', '-NoBuild')
-        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
+        # Backlog 140 took two sessions back to back in one Mode, and the second invocation deleted
+        # the first one's artifacts. Each invocation writes its own session folder now, and never
+        # removes an earlier one. The stub runs finish within a second, so the two sessions also
+        # prove that two invocations in the same second do not collide.
+        $first = Invoke-Harness -Root $root -Arguments @('-Mode', 'Fast', '-Runs', '2', '-WarmUpRuns', '0', '-SettleSeconds', '0', '-NoBuild')
+        Assert-True ($first.ExitCode -eq 0) "Expected exit code 0 from the first session, got $($first.ExitCode). Output: $($first.Output)"
+        $second = Invoke-Harness -Root $root -Arguments @('-Mode', 'Fast', '-Runs', '1', '-WarmUpRuns', '0', '-SettleSeconds', '0', '-NoBuild')
+        Assert-True ($second.ExitCode -eq 0) "Expected exit code 0 from the second session, got $($second.ExitCode). Output: $($second.Output)"
 
-        $runRoot = Join-Path $root 'TestResults\measure-test-modes\Fast'
-        $runFolders = @(Get-ChildItem -LiteralPath $runRoot -Directory -Filter 'run-*' -ErrorAction SilentlyContinue)
-        Assert-True ($runFolders.Count -eq 2) "Expected 2 counted run folders, got $($runFolders.Count)."
+        $modeRoot = Join-Path $root 'TestResults\measure-test-modes\Fast'
+        $sessions = @(Get-ChildItem -LiteralPath $modeRoot -Directory -Filter 'session-*' -ErrorAction SilentlyContinue)
+        Assert-True ($sessions.Count -eq 2) "Expected 2 session folders after two invocations, got $($sessions.Count)."
 
-        $recorded = Join-Path $runFolders[0].FullName 'run.json'
-        Assert-True (Test-Path -LiteralPath $recorded) "Expected $recorded to hold the run's elapsed seconds."
+        if ($sessions.Count -eq 2) {
+            $runCounts = @($sessions | ForEach-Object { @(Get-ChildItem -LiteralPath $_.FullName -Directory -Filter 'run-*').Count } | Sort-Object)
+            Assert-True (($runCounts -join ',') -eq '1,2') "Expected one session with 2 counted runs and one with 1, got $($runCounts -join ',')."
+
+            foreach ($session in $sessions) {
+                foreach ($run in @(Get-ChildItem -LiteralPath $session.FullName -Directory -Filter 'run-*')) {
+                    $recorded = Join-Path $run.FullName 'run.json'
+                    Assert-True (Test-Path -LiteralPath $recorded) "Expected $recorded to hold the run's elapsed seconds."
+                }
+            }
+        }
     }
     finally { Remove-HarnessFixture -Root $root }
 }

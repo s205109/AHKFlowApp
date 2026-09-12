@@ -331,11 +331,22 @@ try {
     # Backlog 140. One folder per run, so the report can describe the run that produced the
     # headline. Warm-up folders are named apart from counted ones, so a reader can tell the
     # discarded runs from the counted set.
-    $runRoot = Join-Path $repoRoot "TestResults\measure-test-modes\$Mode"
-    if (Test-Path -LiteralPath $runRoot) {
-        Remove-Item -LiteralPath $runRoot -Recurse -Force
+    #
+    # One session folder per invocation, and never a delete. Backlog 140's measurement took two
+    # sessions back to back in one Mode, and an earlier version cleared the Mode's folder at the
+    # start of each, so the second session erased the first before anybody reported on it. The
+    # UTC timestamp keeps sessions in order; the suffix loop keeps two invocations in the same
+    # second apart.
+    $modeRoot = Join-Path $repoRoot "TestResults\measure-test-modes\$Mode"
+    $sessionName = 'session-' + [DateTime]::UtcNow.ToString('yyyyMMdd-HHmmss', [System.Globalization.CultureInfo]::InvariantCulture)
+    $runRoot = Join-Path $modeRoot $sessionName
+    $suffix = 1
+    while (Test-Path -LiteralPath $runRoot) {
+        $suffix++
+        $runRoot = Join-Path $modeRoot "$sessionName-$suffix"
     }
     New-Item -ItemType Directory -Path $runRoot -Force | Out-Null
+    Write-Host "Session artifacts: $runRoot" -ForegroundColor Cyan
 
     $buildCompletedAtUtc = Get-BuildCompletedAtUtc -RepoRoot $repoRoot -Configuration $Configuration
     if ($null -eq $buildCompletedAtUtc) {
