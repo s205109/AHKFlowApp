@@ -53,9 +53,18 @@ loudly instead of being exempted silently.
 network traffic caused by the first page load cannot register the watch itself: the page does not
 exist until inside the helper, and by the time the helper returns the response may already have
 arrived. `OpenAsync` therefore takes the API paths to wait for and registers them between creating
-the page and navigating. That ordering is a contract, not an implementation detail, and a
-regression test asserts it. Any future need for a pre-navigation subscription — a console listener,
-a route, a dialog handler — hits the same wall and needs the same treatment.
+the page and navigating.
+
+The promise to a caller is the guarantee, not the placement: every response caused by the first
+page load is observable, including one that finishes before `OpenAsync` returns. A regression test
+proves that, by holding the App shell invisible until the response has completed. The placement
+itself is not test-enforced and cannot be from outside — registering just after the navigation
+would be early enough too, because the app cannot call the API until the runtime has started. It
+sits before the navigation because that is the simplest place that is provably early enough,
+needing no argument about when the app does what.
+
+Any future need for a pre-navigation subscription — a console listener, a route, a dialog handler —
+hits the same wall and needs the same treatment.
 
 **Two waits, two budgets.** `OpenAsync` caps the App shell wait at its own budget, and the test's
 own wait afterwards keeps Playwright's default. This is not new: a test that navigates and then
