@@ -189,19 +189,23 @@ For **19.66 s of a 68.11 s run, 29 percent, fewer than four groups are executing
 3.31 s at zero groups is stack setup at the start and teardown at the end, and the named steps
 above already account for it.
 
-**Verdict: a fix is worth filing, and it is about group balance, not about harness overhead.**
-The number that decides it: summed test time is 219.45 s, so four perfectly balanced groups would
-finish their test bodies in about 54.9 s. The run interval is 68.11 s. Rebalancing is worth about
-13 s of a 72 s slice, roughly 18 percent, and it changes no product code.
+**Verdict: no fix is worth doing now. The finding is filed as backlog 155, in
+`backlog/icebox/`.** The number that decides it is 3.4 s.
 
-The follow-up is not filed from this item's own branch. `scripts/new-worktree.ps1` refuses to
-create a worktree from inside a linked worktree, and this item's work ran inside one. The item
-that ships this record hands the two commands to a human to run from the main checkout:
+An earlier draft of this record estimated the saving at 13 s. That figure compared balanced test
+time with the whole run interval and left out the 5.9 s of stack setup and teardown that no group
+covers. It was wrong.
 
-```powershell
-pwsh ./scripts/new-worktree.ps1 -Title "Rebalance the four E2E groups"
-pwsh ./scripts/new-backlog-item.ps1 -Title "Rebalance the four E2E groups"
-```
+The real ceiling comes from one class. `ShortcutWarningFlowTests` holds 12 tests that take 58.78 s,
+26 percent of all E2E test time, and xUnit runs the tests inside one collection one after another.
+Moving whole classes between groups can therefore bring the run from 68.1 s to about 64.7 s, and
+no further. That saves 3.4 s of a 72.25 s slice.
+
+The saving would also decay. The group figures in `tests/AHKFlowApp.E2E.Tests/E2ETestCollection.cs`
+were recorded on 2026-09-09. Three days later group B measured 48.4 s against a recorded 61.36 s.
+Nothing enforces the balance, so a one-off rebalance starts drifting the day it merges.
+
+Backlog 155 holds the per-group table and the conditions that would make the work worth doing.
 
 Two smaller findings, recorded but not worth an item on their own:
 
