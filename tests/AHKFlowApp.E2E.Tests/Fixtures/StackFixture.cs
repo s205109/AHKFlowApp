@@ -70,11 +70,27 @@ public class StackFixture(string discriminator) : IAsyncLifetime
         }
 
         HttpMessageInvoker apiClient = new(Api.Server.CreateHandler());
-        Spa = await SpaHost.StartAsync(PublishedWwwroot, apiClient, Api.Server.BaseAddress.ToString());
+        await TestTimingRecorder.RecordAsync(
+            nameof(StackFixture),
+            typeof(StackFixture).FullName ?? nameof(StackFixture),
+            "SpaHostStart",
+            async () => Spa = await SpaHost.StartAsync(PublishedWwwroot, apiClient, Api.Server.BaseAddress.ToString()));
 
-        await BrowserInstall.EnsureChromiumAsync();
-        Playwright = await Microsoft.Playwright.Playwright.CreateAsync();
-        Browser = await Playwright.Chromium.LaunchAsync(new() { Headless = true });
+        await TestTimingRecorder.RecordAsync(
+            nameof(StackFixture),
+            typeof(StackFixture).FullName ?? nameof(StackFixture),
+            "BrowserInstall",
+            BrowserInstall.EnsureChromiumAsync);
+
+        await TestTimingRecorder.RecordAsync(
+            nameof(StackFixture),
+            typeof(StackFixture).FullName ?? nameof(StackFixture),
+            "BrowserLaunch",
+            async () =>
+            {
+                Playwright = await Microsoft.Playwright.Playwright.CreateAsync();
+                Browser = await Playwright.Chromium.LaunchAsync(new() { Headless = true });
+            });
     }
 
     public async Task DisposeAsync()
