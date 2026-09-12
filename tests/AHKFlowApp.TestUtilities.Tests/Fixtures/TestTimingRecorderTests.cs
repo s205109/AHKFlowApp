@@ -99,4 +99,27 @@ public sealed class TestTimingRecorderTests : IDisposable
             elapsedMilliseconds, 0.001,
             "the interval length is the elapsed figure, so a reader can use either one");
     }
+
+    [Fact]
+    public async Task RecordAsync_WithACaller_WritesTheCaller()
+    {
+        // Arrange
+        Environment.SetEnvironmentVariable(TimingEnabledEnvironmentVariable, "1");
+        Environment.SetEnvironmentVariable(TimingDirectoryEnvironmentVariable, _timingDirectory);
+
+        // Act
+        await TestTimingRecorder.RecordAsync(
+            "TestTimingRecorder",
+            "AHKFlowApp.TestUtilities.Fixtures.TestTimingRecorder",
+            "RecordAsync",
+            () => Task.CompletedTask,
+            caller: "StackFixture");
+
+        // Assert
+        string timingFile = Directory.GetFiles(_timingDirectory, "fixture-timings-*.jsonl").Should().ContainSingle().Subject;
+        JsonElement timingEntry = JsonSerializer.Deserialize<JsonElement>(await File.ReadAllTextAsync(timingFile));
+
+        timingEntry.GetProperty("caller").GetString().Should().Be(
+            "StackFixture", "the caller is what lets a report separate a stack's own step from a test's");
+    }
 }

@@ -10,11 +10,17 @@ public static class TestTimingRecorder
     private static readonly SemaphoreSlim WriteLock = new(1, 1);
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
+    /// <param name="caller">
+    /// Who asked for the step, when the component is shared. A component such as the host start
+    /// gate serves stack fixtures and tests alike, and without this field a report cannot tell a
+    /// stack's own start from a test's. Leave it null for a step only one kind of caller runs.
+    /// </param>
     public static async Task RecordAsync(
         string component,
         string fixture,
         string operation,
-        Func<Task> action)
+        Func<Task> action,
+        string? caller = null)
     {
         if (!IsEnabled())
         {
@@ -39,7 +45,8 @@ public static class TestTimingRecorder
             Component: component,
             Fixture: fixture,
             Operation: operation,
-            ElapsedMilliseconds: stopwatch.Elapsed.TotalMilliseconds);
+            ElapsedMilliseconds: stopwatch.Elapsed.TotalMilliseconds,
+            Caller: caller);
 
         await WriteAsync(entry);
     }
@@ -99,5 +106,6 @@ public static class TestTimingRecorder
         string Component,
         string Fixture,
         string Operation,
-        double ElapsedMilliseconds);
+        double ElapsedMilliseconds,
+        string? Caller);
 }

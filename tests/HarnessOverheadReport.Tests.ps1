@@ -44,13 +44,45 @@ try {
     $timingDirectory = Join-Path $runDirectory 'fixture-timing'
     New-Item -ItemType Directory -Path $timingDirectory -Force | Out-Null
 
-    # Two records that overlap the tests, so only interval accounting gets the answer right.
+    # Records that overlap the tests, so only interval accounting gets the answer right. Every
+    # record sits inside 10:00:00 to 10:00:01, so the coverage figures below do not move.
+    #
+    # The gate records are mixed on purpose. Two come from stack fixtures, one from a test that
+    # called the gate itself, and one predates the caller field. A report that groups only by
+    # component and operation folds all four into one median, and that median measures nobody.
     @(
         '{"timestampUtc":"2026-09-12T10:00:01.0000000+00:00","startedUtc":"2026-09-12T10:00:00.0000000+00:00","finishedUtc":"2026-09-12T10:00:01.0000000+00:00","testAssembly":"Sample","processId":1,"component":"StackFixture","fixture":"Sample.StackFixture","operation":"SpaHostStart","elapsedMilliseconds":1000}'
+        '{"timestampUtc":"2026-09-12T10:00:01.0000000+00:00","startedUtc":"2026-09-12T10:00:00.5000000+00:00","finishedUtc":"2026-09-12T10:00:00.9000000+00:00","testAssembly":"Sample","processId":1,"component":"HostStartGate","fixture":"Sample.HostStartGate","operation":"GatedWork","elapsedMilliseconds":400,"caller":"StackFixture"}'
+        '{"timestampUtc":"2026-09-12T10:00:01.0000000+00:00","startedUtc":"2026-09-12T10:00:00.2000000+00:00","finishedUtc":"2026-09-12T10:00:00.8000000+00:00","testAssembly":"Sample","processId":1,"component":"HostStartGate","fixture":"Sample.HostStartGate","operation":"GatedWork","elapsedMilliseconds":600,"caller":"StackFixture"}'
+        '{"timestampUtc":"2026-09-12T10:00:01.0000000+00:00","startedUtc":"2026-09-12T10:00:00.1000000+00:00","finishedUtc":"2026-09-12T10:00:00.3000000+00:00","testAssembly":"Sample","processId":1,"component":"HostStartGate","fixture":"Sample.HostStartGate","operation":"GatedWork","elapsedMilliseconds":200,"caller":"Unattributed"}'
         '{"timestampUtc":"2026-09-12T10:00:01.0000000+00:00","startedUtc":"2026-09-12T10:00:00.5000000+00:00","finishedUtc":"2026-09-12T10:00:01.0000000+00:00","testAssembly":"Sample","processId":1,"component":"HostStartGate","fixture":"Sample.HostStartGate","operation":"GatedWork","elapsedMilliseconds":500}'
     ) | Set-Content -LiteralPath (Join-Path $timingDirectory 'fixture-timings-1.jsonl') -Encoding UTF8
 
     $report = & $reportScript -RunDirectory $runDirectory
+
+    $gateRows = @($report.Step | Where-Object { $_.Component -eq 'HostStartGate' -and $_.Operation -eq 'GatedWork' })
+    $stackStart = @($gateRows | Where-Object { $_.PSObject.Properties['Caller'] -and $_.Caller -eq 'StackFixture' })
+    if ($stackStart.Count -ne 1) {
+        $failures += "caller : expected one GatedWork row for caller StackFixture, got $($stackStart.Count)"
+    }
+    else {
+        if ($stackStart[0].Count -ne 2) {
+            $failures += "caller : the StackFixture row must count only the 2 stack starts, got $($stackStart[0].Count)"
+        }
+        if ([math]::Abs($stackStart[0].MedianMilliseconds - 500) -gt 0.001) {
+            $failures += "caller : the StackFixture median must use 400 and 600 only, expected 500, got $($stackStart[0].MedianMilliseconds)"
+        }
+    }
+
+    $unattributed = @($gateRows | Where-Object { $_.PSObject.Properties['Caller'] -and $_.Caller -eq 'Unattributed' })
+    if ($unattributed.Count -ne 1 -or ($unattributed.Count -eq 1 -and $unattributed[0].Count -ne 1)) {
+        $failures += 'caller : expected one Unattributed GatedWork row holding one record'
+    }
+
+    $legacy = @($gateRows | Where-Object { $_.PSObject.Properties['Caller'] -and $_.Caller -eq '' })
+    if ($legacy.Count -ne 1 -or ($legacy.Count -eq 1 -and $legacy[0].Count -ne 1)) {
+        $failures += 'caller : a record with no caller field must get its own row, never join a stack start'
+    }
 
     if ([math]::Abs($report.RunIntervalMilliseconds - 12000) -gt 0.001) {
         $failures += "run interval : expected 12000 ms, got $($report.RunIntervalMilliseconds) ms"

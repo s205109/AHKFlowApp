@@ -60,9 +60,18 @@ if (Test-Path -LiteralPath $timingDirectory -PathType Container) {
         foreach ($line in Get-Content -LiteralPath $timingFile.FullName) {
             if ([string]::IsNullOrWhiteSpace($line)) { continue }
             $entry = $line | ConvertFrom-Json
+
+            # Backlog 140 review. A shared component such as the host start gate serves stack
+            # fixtures and tests alike, so a figure that ignores the caller measures nobody. An
+            # empty caller means the record carried none: either a step only one kind of caller
+            # runs, or a record older than the field. It never joins a named caller's row.
+            $callerProperty = $entry.PSObject.Properties['caller']
+            $caller = if ($null -ne $callerProperty -and $null -ne $callerProperty.Value) { [string]$callerProperty.Value } else { '' }
+
             $fixtureEntries += [pscustomobject]@{
                 Component = $entry.component
                 Operation = $entry.operation
+                Caller = $caller
                 StartUtc = ([datetimeoffset]$entry.startedUtc).UtcDateTime
                 EndUtc = ([datetimeoffset]$entry.finishedUtc).UtcDateTime
                 ElapsedMilliseconds = [double]$entry.elapsedMilliseconds
@@ -84,11 +93,16 @@ $runLength = ($runInterval.End - $runInterval.Start).TotalMilliseconds
 
 # Three readings per step, because four stacks overlap. The sum says what the machine paid, the
 # median says what one stack costs, and the span says what the wall clock felt.
-$steps = @($fixtureEntries | Group-Object -Property Component, Operation | ForEach-Object {
+#
+# The caller is part of the key. The host start gate's four stack starts and every host a test
+# starts for itself share one component and one operation, so without it the medians below mix
+# them, and the row for the gate describes no single kind of start.
+$steps = @($fixtureEntries | Group-Object -Property Component, Operation, Caller | ForEach-Object {
     $group = $_.Group
     [pscustomobject]@{
         Component = $group[0].Component
         Operation = $group[0].Operation
+        Caller = $group[0].Caller
         Count = $group.Count
         SumMilliseconds = [math]::Round((($group | Measure-Object -Property ElapsedMilliseconds -Sum).Sum), 3)
         MedianMilliseconds = Get-AhkFlowMedian -Values @($group | ForEach-Object { $_.ElapsedMilliseconds })
@@ -121,7 +135,7 @@ if ($null -ne $report.OutsideRunIntervalMilliseconds) {
 if ($steps.Count -gt 0) {
     Write-Host ''
     $steps | Sort-Object -Property SumMilliseconds -Descending |
-        Format-Table -AutoSize -Property Component, Operation, Count, SumMilliseconds, MedianMilliseconds, SpanMilliseconds |
+        Format-Table -AutoSize -Property Component, Operation, Caller, Count, SumMilliseconds, MedianMilliseconds, SpanMilliseconds |
         Out-Host
 }
 

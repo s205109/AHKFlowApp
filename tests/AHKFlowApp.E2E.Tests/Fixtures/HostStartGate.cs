@@ -25,29 +25,53 @@ internal static class HostStartGate
     internal const string QueueWaitOperation = "QueueWait";
     internal const string GatedWorkOperation = "GatedWork";
 
+    /// <summary>The caller a record carries when nobody named one.</summary>
+    /// <remarks>
+    /// A stack fixture, a test's own host, and a test's bare callback all start through this gate.
+    /// A labelled default keeps an unnamed caller apart from a stack start, so a report never folds
+    /// a test's host into the figure for the four stacks.
+    /// </remarks>
+    internal const string UnattributedCaller = "Unattributed";
+
     private static string Fixture => typeof(HostStartGate).FullName ?? nameof(HostStartGate);
 
-    public static async Task RunAsync(Func<Task> start)
+    public static async Task RunAsync(Func<Task> start, string caller = UnattributedCaller)
     {
-        // Two records, not one. The wait belongs to the queue and the work belongs to the host,
-        // and a single figure would grow with the number of callers while no host did more work.
-        await TestTimingRecorder.RecordAsync(
-            nameof(HostStartGate),
-            Fixture,
-            QueueWaitOperation,
-            () => Gate.WaitAsync());
-
+        // The permit is released whenever it was taken, and only then. The recorder writes a
+        // step's record after the step completes, so recording the wait can throw after the wait
+        // has already taken the permit. With the release outside that record, one failed write
+        // closed the gate for every later host in the process. The flag is set inside the wait's
+        // own action, which is the one place that knows the permit is held: a wait that throws
+        // leaves it false, and nothing is released that was never taken.
+        bool acquired = false;
         try
         {
+            // Two records, not one. The wait belongs to the queue and the work belongs to the host,
+            // and a single figure would grow with the number of callers while no host did more work.
+            await TestTimingRecorder.RecordAsync(
+                nameof(HostStartGate),
+                Fixture,
+                QueueWaitOperation,
+                async () =>
+                {
+                    await Gate.WaitAsync();
+                    acquired = true;
+                },
+                caller);
+
             await TestTimingRecorder.RecordAsync(
                 nameof(HostStartGate),
                 Fixture,
                 GatedWorkOperation,
-                start);
+                start,
+                caller);
         }
         finally
         {
-            Gate.Release();
+            if (acquired)
+            {
+                Gate.Release();
+            }
         }
     }
 }

@@ -208,4 +208,86 @@ public sealed class HostStartGateTests
             }
         }
     }
+
+    [Fact]
+    public async Task RunAsync_WhenRecordingTheWaitFails_StillReleasesTheGate()
+    {
+        // Arrange: a file sits where the recorder expects a folder, so the recorder throws while
+        // it writes the wait, which is after the wait has already taken the permit.
+        string blocker = Path.Combine(Path.GetTempPath(), $"ahkflow-gate-blocker-{Guid.NewGuid():N}");
+        await File.WriteAllTextAsync(blocker, "a file where the recorder expects a folder");
+        string? previousTiming = Environment.GetEnvironmentVariable("AHKFLOW_TEST_TIMING");
+        string? previousDirectory = Environment.GetEnvironmentVariable("AHKFLOW_TEST_TIMING_DIR");
+        Environment.SetEnvironmentVariable("AHKFLOW_TEST_TIMING", "1");
+        Environment.SetEnvironmentVariable("AHKFLOW_TEST_TIMING_DIR", Path.Combine(blocker, "timing"));
+
+        try
+        {
+            // Act
+            Func<Task> recordingFails = () => HostStartGate.RunAsync(() => Task.CompletedTask);
+            await recordingFails.Should().ThrowAsync<IOException>();
+
+            // Assert: timing off, so the next caller cannot fail on the same write for its own reason.
+            Environment.SetEnvironmentVariable("AHKFLOW_TEST_TIMING", null);
+            bool ranAfterTheFailure = false;
+            await HostStartGate.RunAsync(() =>
+            {
+                ranAfterTheFailure = true;
+                return Task.CompletedTask;
+            }).WaitAsync(WaitLimit);
+
+            ranAfterTheFailure.Should().BeTrue(
+                "a timing record that fails to write must not leave the gate closed for every later host");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("AHKFLOW_TEST_TIMING", previousTiming);
+            Environment.SetEnvironmentVariable("AHKFLOW_TEST_TIMING_DIR", previousDirectory);
+            File.Delete(blocker);
+        }
+    }
+
+    [Fact]
+    public async Task RunAsync_WithACaller_WritesTheCallerOnBothRecords()
+    {
+        // Arrange
+        string caller = $"caller-{Guid.NewGuid():N}";
+        string timingDirectory = Path.Combine(Path.GetTempPath(), $"ahkflow-gate-caller-{Guid.NewGuid():N}");
+        string? previousTiming = Environment.GetEnvironmentVariable("AHKFLOW_TEST_TIMING");
+        string? previousDirectory = Environment.GetEnvironmentVariable("AHKFLOW_TEST_TIMING_DIR");
+        Environment.SetEnvironmentVariable("AHKFLOW_TEST_TIMING", "1");
+        Environment.SetEnvironmentVariable("AHKFLOW_TEST_TIMING_DIR", timingDirectory);
+
+        try
+        {
+            // Act
+            await HostStartGate.RunAsync(() => Task.CompletedTask, caller).WaitAsync(WaitLimit);
+            await HostStartGate.RunAsync(() => Task.CompletedTask).WaitAsync(WaitLimit);
+
+            // Assert
+            var entries = Directory
+                .GetFiles(timingDirectory, "fixture-timings-*.jsonl")
+                .SelectMany(File.ReadAllLines)
+                .Where(line => !string.IsNullOrWhiteSpace(line))
+                .Select(line => JsonSerializer.Deserialize<JsonElement>(line))
+                .Where(entry => entry.GetProperty("component").GetString() == nameof(HostStartGate))
+                .ToList();
+
+            string?[] callers = entries.Select(entry => entry.GetProperty("caller").GetString()).ToArray();
+
+            callers.Count(one => one == caller).Should().Be(
+                2, "the named caller owns both its wait and its gated work, so a report can pick out its starts");
+            callers.Count(one => one == HostStartGate.UnattributedCaller).Should().Be(
+                2, "a caller that names nobody is labelled, so it never mixes with a stack start");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("AHKFLOW_TEST_TIMING", previousTiming);
+            Environment.SetEnvironmentVariable("AHKFLOW_TEST_TIMING_DIR", previousDirectory);
+            if (Directory.Exists(timingDirectory))
+            {
+                Directory.Delete(timingDirectory, recursive: true);
+            }
+        }
+    }
 }

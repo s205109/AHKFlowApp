@@ -62,7 +62,8 @@ public class StackFixture(string discriminator) : IAsyncLifetime
 
     private async Task InitializeCoreAsync()
     {
-        await Api.StartAsync();
+        // Named, so the report can pick the four stack starts out of every host this gate starts.
+        await Api.StartAsync(nameof(StackFixture));
 
         if (!Directory.Exists(PublishedWwwroot))
         {
