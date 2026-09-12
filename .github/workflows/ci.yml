@@ -3,10 +3,10 @@ name: CI
 on:
   pull_request:
     branches: [main]
-    # ready_for_review is not a default type. Stage 9 pushes the closure commit BEFORE it flips
-    # the pull request to ready, so without this trigger the last run is the draft-time run, and
-    # the shipping check below would never see a ready pull request. Backlog 151.
-    types: [opened, synchronize, reopened, ready_for_review]
+    # ready_for_review is left out on purpose. Listing it re-ran all five jobs, about ten minutes,
+    # on every ready flip. The one check that needs the flip runs alone, in
+    # shipping-pr-closes-item.yml. Backlog 153.
+    types: [opened, synchronize, reopened]
 
 permissions:
   contents: read
@@ -26,31 +26,6 @@ jobs:
       - name: Repository invariant checks
         shell: pwsh
         run: ./scripts/ci/check-repo-invariants.ps1
-      - name: A ready pull request closes the item it finishes
-        # Draft pull requests are work in progress, so the rule does not apply to them. The
-        # script takes the draft state as a parameter rather than reading it, which is what lets
-        # tests/ShippingPrClosesItem.Tests.ps1 drive both values. Backlog 151, ADR 0016.
-        #
-        # The base comes from 'git merge-base', NOT from the event's base.sha. base.sha is the
-        # TIP of the base branch, not the fork point. Diffing from the tip pulls in every backlog
-        # item other branches changed on main since this branch started, and this pull request
-        # would then be asked to close somebody else's item.
-        #
-        # head.sha DOES come from the event. On a pull_request event the checkout is the merge
-        # commit, so HEAD is not the branch head.
-        #
-        # This matches every other check here: check-citation-freshness.ps1 computes
-        # 'git merge-base HEAD origin/main' in CI, and the job's fetch-depth: 0 is what makes it
-        # work.
-        shell: pwsh
-        run: |
-          $isDraft = '${{ github.event.pull_request.draft }}' -eq 'true'
-          $head = '${{ github.event.pull_request.head.sha }}'
-          $base = (git merge-base $head origin/main)
-          if ($LASTEXITCODE -ne 0 -or -not $base) {
-            throw "Could not resolve the merge base of $head with origin/main."
-          }
-          ./scripts/check-shipping-pr-closes-item.ps1 -MergeBase ([string] $base).Trim() -TargetCommit $head -PullRequestIsDraft $isDraft
 
   build-test:
     runs-on: ubuntu-latest
