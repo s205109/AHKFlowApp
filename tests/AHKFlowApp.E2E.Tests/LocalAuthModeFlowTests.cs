@@ -20,9 +20,8 @@ public sealed class LocalAuthModeFlowTests(StackFixtureD fixture) : IAsyncLifeti
     public async Task LocalInstallMode_SignsInSyntheticUserAndAllowsCrud()
     {
         await using IBrowserContext ctx = await fixture.Browser.NewContextAsync();
-        IPage page = await ctx.NewPageAsync();
 
-        await page.GotoAsync($"{fixture.Spa.BaseUrl}/hotstrings");
+        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/hotstrings");
         await page.WaitForSelectorAsync("button.add-hotstring");
 
         // Local-install-mode signature (Shared/LoginDisplay.razor): this note only renders in the
