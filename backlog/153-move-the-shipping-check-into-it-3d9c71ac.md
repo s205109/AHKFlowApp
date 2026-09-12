@@ -92,3 +92,26 @@ The measurement is what changed. The decision was taken before any number existe
 - Terms pinned in `CONTEXT.md`: Shipping pull request, Records closed, Acceptance box.
 - Spec: none — the rule is already designed and this item only changes where it runs.
 - Plan: `docs/superpowers/plans/2026-09-11-shipping-check-own-workflow-plan-153.md`
+
+## Verification runs
+
+All on 2026-09-12, on pull request #409, head commit `b9eab7e3`.
+
+**Linux.** The new suite ran in Docker on `mcr.microsoft.com/powershell:latest` and printed
+`ShippingPrClosesItemWorkflow tests passed.` So its manifest `platform` keeps both values.
+
+**The draft push.** Run `34681215374`, `success`. Its log holds
+`Pull request 409 draft state at run time: true` and
+`This pull request closes the records of every item it finishes.` The first line proves the job
+read the draft state from the REST API, not from the event payload.
+
+**Ready flip 1, boxes still open, must pass.** The flip fired at 07:38:05Z. Run `34681242126`
+started at 07:38:07Z and finished `success` at 07:38:18Z, so the ready flip cost **11 seconds**.
+Its log holds `Pull request 409 draft state at run time: false`. The draft-time run on the same
+head said `true`, so the two lines together show the run-time read following the pull request.
+
+`ci.yml` started no run after the flip. Its newest run on this branch was created at 07:37:26Z,
+which is the push, not the flip.
+
+Before this change the same flip cost 9 min 59 s. The measured saving is about 9 minutes 48
+seconds per ready flip.

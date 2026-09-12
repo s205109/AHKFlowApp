@@ -203,6 +203,11 @@ if ($workflowText) {
     Test-MutationCase 'draft from the event payload' $eventDraft $ciText 'never read the draft state from github.event.pull_request.draft'
     Test-MutationCase 'draft from the event payload, no gh api' $eventDraft $ciText 'at run time with gh api'
 
+    # The case above drops 'gh api' as well, so it cannot show that the --jq assertion goes red on
+    # its own. This one keeps the call and changes only the field it asks for.
+    $wrongField = Get-Mutation $workflowText "--jq '.draft'" "--jq '.state'"
+    Test-MutationCase 'gh api asks for the wrong field' $wrongField $ciText "with --jq '.draft'"
+
     $noPermission = Get-Mutation $workflowText "`n  pull-requests: read" ''
     Test-MutationCase 'no pull-requests permission' $noPermission $ciText 'pull-requests: read permission'
 
