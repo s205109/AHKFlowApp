@@ -8,7 +8,8 @@ namespace AHKFlowApp.E2E.Tests;
 /// <summary>
 /// Keeps the rule from ADR 0017: an E2E page is opened only through the diagnosed helper.
 ///
-/// This reads source as text, and it is the only test in this repository that does. A Pester suite
+/// This reads source as text to find the banned call, and it is the only test in this repository
+/// that does. The exemption is read from the compiled class instead. A Pester suite
 /// would have been the usual home for a rule about how the repository is written, but
 /// .githooks/pre-push.ps1 runs the Fast slice and not the PowerShell suites, so a suite would stay
 /// silent until CI. The person who breaks this rule is writing an E2E test and running the E2E
@@ -17,7 +18,6 @@ namespace AHKFlowApp.E2E.Tests;
 public sealed class FirstPageLoadAdoptionTests
 {
     private const string BannedCall = "NewPageAsync";
-    private const string ExemptionAttribute = "OpensPagesWithoutDiagnosis";
 
     // Matches a top-level class declaration, which is how the per-file exemption stays safe. See
     // EveryTestFile_HoldsExactlyOneTestClass.
@@ -50,27 +50,45 @@ public sealed class FirstPageLoadAdoptionTests
         Directory.EnumerateFiles(ProjectRoot(), "*.cs", SearchOption.TopDirectoryOnly)
             .Where(file => Path.GetFileName(file) != "FirstPageLoadAdoptionTests.cs");
 
-    [Fact]
-    public void NoTestOpensAPageItself()
+    /// <summary>
+    /// The scanner itself. NoTestOpensAPageItself runs it over the real project, and
+    /// TheCheck_FailsAFileThatOpensAPageItself runs it over fixtures, so both exercise one code path.
+    /// </summary>
+    /// <param name="files">Each file's name without extension, and its source text.</param>
+    /// <param name="resolveType">Finds the class a file declares, by the file's name.</param>
+    private static List<string> FindOffenders(
+        IEnumerable<(string Name, string Source)> files,
+        Func<string, Type?> resolveType)
     {
         List<string> offenders = [];
 
-        foreach (string file in TestFiles())
+        foreach ((string name, string source) in files)
         {
-            string source = File.ReadAllText(file);
-
             if (!source.Contains(BannedCall, StringComparison.Ordinal))
             {
                 continue;
             }
 
-            if (source.Contains(ExemptionAttribute, StringComparison.Ordinal))
+            // Reflection, not text. A comment or a string can spell the attribute's name, but only a
+            // real attribute on the compiled class can be read back here. A file whose class cannot
+            // be found fails closed, because nothing proves it is exempt.
+            if (resolveType(name)?.IsDefined(typeof(OpensPagesWithoutDiagnosisAttribute), inherit: false) == true)
             {
                 continue;
             }
 
-            offenders.Add(Path.GetFileName(file));
+            offenders.Add(name);
         }
+
+        return offenders;
+    }
+
+    [Fact]
+    public void NoTestOpensAPageItself()
+    {
+        List<string> offenders = FindOffenders(
+            TestFiles().Select(file => (Path.GetFileNameWithoutExtension(file), File.ReadAllText(file))),
+            name => typeof(FirstPageLoadAdoptionTests).Assembly.GetType($"AHKFlowApp.E2E.Tests.{name}"));
 
         offenders.Should().BeEmpty(
             "every first page load goes through FirstPageLoad.OpenAsync, so the failure says why the "
@@ -98,7 +116,15 @@ public sealed class FirstPageLoadAdoptionTests
         counts.Should().BeEmpty("FirstPageLoadAdoptionTests reads the exemption attribute per file");
     }
 
-    // Without this, the check could quietly stop checking and every run would stay green.
+    // The fixture classes the scanner resolves to. Only the real attribute on a real class may
+    // exempt a file, so these carry the attribute, or do not, exactly as their names say.
+    [OpensPagesWithoutDiagnosis("A fixture for TheCheck_FailsAFileThatOpensAPageItself.")]
+    private sealed class AnnotatedFixture;
+
+    private sealed class UnannotatedFixture;
+
+    // Without this, the check could quietly stop checking and every run would stay green. It calls
+    // FindOffenders itself, not a copy of its rule, so a change to the scanner is a change here.
     [Fact]
     public void TheCheck_FailsAFileThatOpensAPageItself()
     {
@@ -124,14 +150,40 @@ public sealed class FirstPageLoadAdoptionTests
             }
             """;
 
-        // Same three decisions the [Fact] above makes, run against text this test controls.
-        static bool IsOffender(string source) =>
-            source.Contains(BannedCall, StringComparison.Ordinal)
-            && !source.Contains(ExemptionAttribute, StringComparison.Ordinal);
+        // The review finding. The attribute's name appears only in a comment and in a string, and
+        // the class itself carries nothing. A text match exempted this file.
+        string mentionsTheAttributeOnly = """
+            // TODO: decide whether this needs OpensPagesWithoutDiagnosis.
+            public sealed class PretendMentionTests
+            {
+                private const string Note = "[OpensPagesWithoutDiagnosis(\"not really\")]";
+                public async Task Open() { IPage page = await ctx.NewPageAsync(); }
+            }
+            """;
 
-        IsOffender(offender).Should().BeTrue("a bare NewPageAsync with no attribute is the thing this catches");
-        IsOffender(exempt).Should().BeFalse("the attribute is the opt-out");
-        IsOffender(compliant).Should().BeFalse("the helper is the sanctioned route");
+        Dictionary<string, Type> declared = new()
+        {
+            ["Offender"] = typeof(UnannotatedFixture),
+            ["Exempt"] = typeof(AnnotatedFixture),
+            ["Compliant"] = typeof(UnannotatedFixture),
+            ["MentionsTheAttributeOnly"] = typeof(UnannotatedFixture),
+        };
+
+        List<string> offenders = FindOffenders(
+            [
+                ("Offender", offender),
+                ("Exempt", exempt),
+                ("Compliant", compliant),
+                ("MentionsTheAttributeOnly", mentionsTheAttributeOnly),
+                ("DeclaresNoMatchingClass", offender),
+            ],
+            name => declared.GetValueOrDefault(name));
+
+        // A file whose class cannot be found fails closed. Nothing proves it is exempt.
+        offenders.Should().BeEquivalentTo(
+            ["Offender", "MentionsTheAttributeOnly", "DeclaresNoMatchingClass"],
+            "a bare NewPageAsync is caught, a comment or string naming the attribute is not an "
+            + "exemption, the real attribute is, and the helper is the sanctioned route");
 
         TestClassDeclaration.Matches(offender + exempt).Count.Should().Be(2,
             "the one-class-per-file check must see two classes when there are two");
