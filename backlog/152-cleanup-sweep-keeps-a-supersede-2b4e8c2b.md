@@ -6,7 +6,7 @@
 - **Type**: Fix
 - **Interfaces**: CLI
 - **Difficulty**: moderate
-- **Stage**: 3-plan
+- **Stage**: 4-execute
 
 ## Summary
 
@@ -105,4 +105,4 @@ of the log cannot tell a real refusal from "there was nothing here".
 - The reporting gap made the diagnosis much slower than the fix. Ship the reporting criteria even if
   a safe rule for the dropped-commit signal turns out to be hard to find.
 - Spec: none — the defects and the wanted behavior are named above.
-- Plan: none — not started.
+- Plan: docs/superpowers/plans/2026-09-12-cleanup-sweep-superseded-reset-plan-152.md
