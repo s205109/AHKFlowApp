@@ -23,6 +23,37 @@ Letting a merged pull request satisfy the whole rule was rejected. It answers on
 this reach the base", and cannot answer the two that protect work: whether the branch ever
 committed anything of its own, and whether removing it would discard commits a `git reset` dropped.
 
+### A reset the branch then redid does not count as a discard
+
+The reset rule above is narrowed by one case. A person who resets backwards and then writes the
+dropped commit again has rewritten history by hand. That is what `git rebase` and
+`git commit --amend` do, and this repository has never protected the originals those two strand.
+
+So a dropped commit stops keeping the worktree only when all three of these hold:
+
+1. The reset moved backwards: the position it moved to is an ancestor of the position it moved
+   from.
+2. After that reset, the branch created a commit whose subject line and author identity both equal
+   the dropped commit's.
+3. That commit has the reset target as an ancestor.
+
+The question is asked of each dropped commit on its own. A branch that drops two commits and redoes
+one of them keeps its worktree. Only the branch's own ref log is read, so a commit another branch
+made can never supply the match.
+
+Subject and author are commit metadata, not patch text, so this reintroduces nothing backlog 095
+removed. The rule also never compares the dropped commit against the base. It asks only what the
+branch itself did next.
+
+The cost is one case. Reset a commit away, then write a different commit that reuses its subject
+line under the same author, and the second reads as the redo of the first. Removal then deletes the
+ref log that held the dropped commit, and only `git fsck --lost-found` reaches it afterwards. That
+needs a person to reuse a subject line for unrelated work in the same branch, after a reset.
+
+Accepting any commit made after the reset was rejected. It is simpler, and an existing test
+disproves it: a branch that reset away a unique merge resolution and then committed unrelated work
+would have been removed.
+
 ## Consequences
 
 The removal decision now depends on a tool outside git. That dependency is one-directional: an

@@ -798,7 +798,9 @@ function Invoke-HookMode {
         # Every other refusal writes one outcome line, so a reader can always tell what an
         # attempt decided. Without this the log file is never created at all, and a worktree
         # left behind has nothing on disk explaining why.
-        Write-Outcome 'Kept: the hook received no worktree path.'
+        # 'Nothing to remove:', not 'Kept:'. There is no worktree here to keep, and a reader
+        # counting kept worktrees must not count this attempt as one.
+        Write-Outcome 'Nothing to remove: the hook received no worktree path.'
         return
     }
 
@@ -812,7 +814,7 @@ function Invoke-HookMode {
         if ($stdinError) { Write-DiagnosticLog $stdinError }
         Write-DiagnosticLog "WorktreePath = $worktreeFull"
         Write-DiagnosticLog 'Worktree folder does not exist; nothing to remove.'
-        Write-Outcome 'Kept: the worktree folder does not exist.'
+        Write-Outcome 'Nothing to remove: the worktree folder does not exist.'
         return
     }
 

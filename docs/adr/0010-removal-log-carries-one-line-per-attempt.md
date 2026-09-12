@@ -8,9 +8,9 @@ wrote exactly 20 lines, including a row of equals signs, two process IDs, a temp
 param-file path, `DatabaseName=`, and `ComposeProject=`.
 
 So the log splits in two. `worktree-removal.log` carries exactly one line per Removal
-attempt, and its message is one of `Removed.`, `Kept: <reason>.`, or `Failed: <reason>.`
-Everything else moves to `worktree-removal-diagnostics.log` beside it, in the same stamped
-line shape.
+attempt, and its message is one of `Removed.`, `Kept: <reason>.`, `Failed: <reason>.`, or
+`Nothing to remove: <reason>.` Everything else moves to `worktree-removal-diagnostics.log`
+beside it, in the same stamped line shape.
 
 ## Considered options
 
@@ -33,6 +33,16 @@ audit trail for a published figure to gain nothing.
 
 The log file holds two shapes: old-style lines before this change, new-style lines after it.
 That is accepted rather than fixed.
+
+**A fourth outcome word was added later: `Nothing to remove: `.** Two attempts keep nothing,
+because there is nothing there. The hook can fire with no worktree path at all, and it can fire
+for a folder that no longer exists. Both used to write `Kept:`, which told a reader a worktree
+had been preserved when none was. The word had to change for both lines together: fixing one
+and leaving its twin is how a rule rots.
+
+`Removed.` was considered for the missing-folder case and rejected. The folder is gone, which is
+this ADR's own dividing line, but friction metric 3 counts outcome words, and a run that removed
+nothing would inflate the removal count.
 
 **The nine existing outcome patterns stay, and three new ones are added beside them.**
 (`scripts/measure-process-friction.ps1:104`, "$script:CleanupOutcomePatterns = @(") is the

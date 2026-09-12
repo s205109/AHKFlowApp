@@ -363,10 +363,39 @@ try {
 
     $outcomeLines = @(Wait-ForOutcomeLine -RepoDir $repo)
     Assert-Equal 1 $outcomeLines.Count "A no-path hook writes exactly one outcome line, got $($outcomeLines.Count)"
-    Assert-True ($outcomeLines[0] -match 'Kept: the hook received no worktree path\.$') `
+    Assert-True ($outcomeLines[0] -match 'Nothing to remove: the hook received no worktree path\.$') `
         "Expected the no-path line, got '$($outcomeLines[0])'"
     Assert-True (-not (Test-Path -LiteralPath (Get-RemovalLogPath $wtPath))) `
         'A no-path hook must not leave the outcome in the linked worktree copy.'
+} finally {
+    Remove-TempTree $repo
+}
+
+# --- Test: a missing folder is not a kept worktree -----------------------------
+# 'Kept:' claims a worktree was preserved. Nothing was preserved here, because the folder is
+# already gone. The line has to use the fourth outcome word instead, or a reader counting kept
+# worktrees counts an attempt that kept nothing.
+$repo = New-TempGitRepo
+try {
+    $wtPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-gone-folder'
+    $hookScriptsDir = Join-Path $wtPath 'scripts'
+    New-Item -ItemType Directory -Path $hookScriptsDir -Force | Out-Null
+    $fixtureRemoveScript = Join-Path $hookScriptsDir 'remove-worktree-local-dev.ps1'
+    Copy-Item -LiteralPath $removeScript -Destination $fixtureRemoveScript
+    Copy-Item -LiteralPath (Join-Path $scriptsDir 'worktree-log.common.ps1') -Destination $hookScriptsDir
+
+    $missingPath = Join-Path (Split-Path -Parent $wtPath) 'wt-never-existed'
+    Assert-True (-not (Test-Path -LiteralPath $missingPath)) 'Sanity check: the fixture path must not exist.'
+
+    $result = Invoke-RemoveHook -WorktreePath $missingPath -HookScriptPath $fixtureRemoveScript
+    Assert-Equal 0 $result.ExitCode "Hook should exit 0. Stderr: $($result.Stderr)"
+
+    $outcomeLines = @(Wait-ForOutcomeLine -RepoDir $repo)
+    Assert-Equal 1 $outcomeLines.Count "A missing-folder hook writes exactly one outcome line, got $($outcomeLines.Count)"
+    Assert-True ($outcomeLines[0] -notmatch '\sKept: ') `
+        "A missing folder kept nothing, so the line must not say Kept:, got '$($outcomeLines[0])'"
+    Assert-True ($outcomeLines[0] -match 'Nothing to remove: the worktree folder does not exist\.$') `
+        "Expected the missing-folder line, got '$($outcomeLines[0])'"
 } finally {
     Remove-TempTree $repo
 }

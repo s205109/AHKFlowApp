@@ -33,9 +33,9 @@ branch ref log holds this sequence:
 ```
 
 `Test-StrandedWorkWasSuperseded` walks each `reset:` entry and asks git which commits the reset
-dropped (`scripts/worktree-git.common.ps1:396`, "rev-list $before --not $after"). That returns
+dropped (`scripts/worktree-git.common.ps1:476`, "rev-list $before --not $after"). That returns
 `53e298f8`, which is in the stranded set, so the function returns false
-(`scripts/worktree-git.common.ps1:400`, "if ($strandedSet.ContainsKey").
+(`scripts/worktree-git.common.ps1:400`, "if ($strandedSet.ContainsKey"). <!-- citation-check:ignore the fix replaced this line -->
 
 `53e298f8` was not lost. It came back as `dcee707a`, which is on `main`. `git diff 53e298f8 dcee707a`
 shows only the other commit on the branch, and that commit is on `main` too. The check compares by
@@ -51,7 +51,7 @@ So whatever answers this item must not reintroduce patch-text comparison. Findin
 the pickup's job; this item states the outcome only.
 
 The sweep then takes the silent skip
-(`scripts/cleanup-merged-worktrees.ps1:143`, "if (-not (Test-BranchOwnWorkWasMerged"). Three of the
+(`scripts/cleanup-merged-worktrees.ps1:287`, "if (-not (Test-BranchOwnWorkWasMerged"). Three of the
 four other refusal paths write a `Kept:` line through `Write-SweepOutcome`. The locked path runs
 before the merged check
 (`scripts/cleanup-merged-worktrees.ps1:126`, "Write-SweepOutcome -RepoRoot $RepoRoot").
@@ -60,12 +60,12 @@ The plan guard and the dirty check run after it. The merged-check skip writes no
 
 A second refusal path is silent in the same way. When `git status` itself fails, the sweep keeps the
 worktree and writes only to stderr
-(`scripts/cleanup-merged-worktrees.ps1:177`, "git -C $wtFull status --porcelain"). No outcome line
+(`scripts/cleanup-merged-worktrees.ps1:185`, "git -C $wtFull status --porcelain"). No outcome line
 reaches the log there either.
 
 The third defect showed up while clearing this up by hand. `remove-worktree-local-dev.ps1` run on a
 folder that is already gone writes
-(`scripts/remove-worktree-local-dev.ps1:815`, "Kept: the worktree folder does not exist."). Nothing
+(`scripts/remove-worktree-local-dev.ps1:815`, "Kept: the worktree folder does not exist."). <!-- citation-check:ignore the fix changed this string --> Nothing
 was kept. `Kept:` is the prefix the sweep uses when it deliberately preserves a worktree, so a reader
 of the log cannot tell a real refusal from "there was nothing here".
 
@@ -73,7 +73,7 @@ of the log cannot tell a real refusal from "there was nothing here".
 
 - [ ] The sweep removes a merged worktree whose branch reflog holds a `reset:` that dropped a commit
       the base later received, in the shape `chore/wt-backlog-housekeeping` had
-      (`scripts/worktree-git.common.ps1:378`, "function Test-StrandedWorkWasSuperseded {")
+      (`scripts/worktree-git.common.ps1:458`, "function Test-StrandedWorkWasSuperseded {")
 - [ ] The sweep keeps a merged worktree whose branch reflog holds a `reset:` that dropped a commit
       the base never received
 - [ ] The sweep keeps a merged worktree whose dropped commit differs from what the base holds only in
@@ -81,14 +81,14 @@ of the log cannot tell a real refusal from "there was nothing here".
       (`tests/WorktreeMergedCleanup.Tests.ps1:445`, "Content that differs only in whitespace must still count as discarded work.")
 - [ ] Every worktree the sweep declines to remove has exactly one line in `worktree-removal.log`
       saying why, including a merged-check refusal
-      (`scripts/cleanup-merged-worktrees.ps1:143`, "if (-not (Test-BranchOwnWorkWasMerged")
+      (`scripts/cleanup-merged-worktrees.ps1:146`, "$mergedVerdict = Get-BranchMergedVerdict")
 - [ ] A worktree the sweep keeps because `git status` failed has a line in `worktree-removal.log`
-      saying so (`scripts/cleanup-merged-worktrees.ps1:177`, "git -C $wtFull status --porcelain")
+      saying so (`scripts/cleanup-merged-worktrees.ps1:185`, "git -C $wtFull status --porcelain")
 - [ ] The log line for a merged-check refusal names which of the five signals refused
-      (`scripts/worktree-git.common.ps1:944`, "return (Test-StrandedWorkWasSuperseded -RepoRoot")
+      (`scripts/worktree-git.common.ps1:991`, "function Get-BranchMergedVerdict {")
 - [ ] `remove-worktree-local-dev.ps1` run on a folder that no longer exists writes an outcome line
       that does not start with `Kept:`, because it kept nothing
-      (`scripts/remove-worktree-local-dev.ps1:815`, "Kept: the worktree folder does not exist.")
+      (`scripts/remove-worktree-local-dev.ps1:817`, "Nothing to remove: the worktree folder does not exist.")
 
 ## Out of scope
 
@@ -105,4 +105,4 @@ of the log cannot tell a real refusal from "there was nothing here".
 - The reporting gap made the diagnosis much slower than the fix. Ship the reporting criteria even if
   a safe rule for the dropped-commit signal turns out to be hard to find.
 - Spec: none — the defects and the wanted behavior are named above.
-- Plan: docs/superpowers/plans/2026-09-12-cleanup-sweep-superseded-reset-plan-152.md
+- Plan: `docs/superpowers/plans/2026-09-12-cleanup-sweep-superseded-reset-plan-152.md`

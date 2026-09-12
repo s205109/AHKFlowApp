@@ -170,11 +170,11 @@ in about 80 seconds instead of 618, so that running them stops being a reason to
   6. *A lock whose safety depends on suite order.* One hit, the comment in
      `tests/WorktreeRemoveHook.Tests.ps1`. The claim was stale, and the audit corrected it. The
      hook now copies both helpers into a per-run directory
-     (`scripts/remove-worktree-local-dev.ps1:1040`, "            Copy-Item -LiteralPath $logSource -Destination (Join-Path $runDir 'worktree-log.common.ps1') -Force -ErrorAction Stop"),
+     (`scripts/remove-worktree-local-dev.ps1:1042`, "            Copy-Item -LiteralPath $logSource -Destination (Join-Path $runDir 'worktree-log.common.ps1') -Force -ErrorAction Stop"),
      so the lock on the shared name collides with nothing. No other suite writes those two
      names: every other file that mentions them reads the repository's own `scripts/` folder,
      or copies one into its own fixture. The comment now says that
-     (`tests/WorktreeRemoveHook.Tests.ps1:617`, "# This lock is on a file in the shared %TEMP%, and it collides with nothing. Backlog 118 moved the").
+     (`tests/WorktreeRemoveHook.Tests.ps1:646`, "# This lock is on a file in the shared %TEMP%, and it collides with nothing. Backlog 118 moved the").
      The suite stays `parallel`.
 - `Save-ProgressTimings` used to rebuild the store from the units one run completed and then
   replace the file whole. A tracker starts with no completed units

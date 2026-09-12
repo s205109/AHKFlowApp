@@ -66,7 +66,7 @@ moment somebody looked. Treating one route as a real event and the other as talk
 event would draw a line where the data has none.
 
 `Get-CleanupEventLine`
-(`scripts/measure-process-friction.ps1:401`, "function Get-CleanupEventLine {")
+(`scripts/measure-process-friction.ps1:402`, "function Get-CleanupEventLine {")
 therefore counts both, and that is deliberate rather than a defect to patch.
 
 ## 3. The route label that is worth keeping
@@ -84,7 +84,7 @@ to both is a tool result:
 The precedence is
 (`scripts/label-cleanup-events.ps1:218`, "function Get-RecordRoute {"),
 and the second rule is the metric's own human-turn rule, called rather than copied
-(`scripts/measure-process-friction.ps1:181`, "function Test-HumanTurn {"),
+(`scripts/measure-process-friction.ps1:182`, "function Test-HumanTurn {"),
 so the two agree by construction. Because the rule is mechanical,
 `scripts/label-cleanup-events.ps1` computes the label instead of a person judging it.
 
@@ -93,7 +93,7 @@ unresolved row is a row nobody labelled, and `tests/CleanupEventLabels.Tests.ps1
 
 A row's `Key` is the identity the metric wrote for its record: `msg:<message.id>` when the
 record carries a message id, `uuid:<uuid>` otherwise
-(`scripts/measure-process-friction.ps1:265`, "function Get-MessageKey {").
+(`scripts/measure-process-friction.ps1:266`, "function Get-MessageKey {").
 The labeller looks up both. Its third form, `text:<text>`, names no record and cannot be
 resolved; the same test fails a ledger row that carries one.
 

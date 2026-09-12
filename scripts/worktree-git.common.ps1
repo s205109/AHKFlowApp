@@ -362,6 +362,57 @@ function Get-StrandedCommits {
     return , @($stranded | ForEach-Object { ([string] $_).Trim() } | Where-Object { $_ })
 }
 
+# The closed list of ref-log subjects git writes for an operation that creates a commit.
+#
+# 'commit (finish):' is absent because git never writes it; only GIT_REFLOG_ACTION=commit on a
+# rebase produces that subject. 'merge <ref>:' is included only with the message git writes for a
+# real merge commit -- a fast-forward writes 'merge <ref>: Fast-forward' and creates nothing, so
+# accepting the whole 'merge' prefix would sweep unstarted worktrees.
+#
+# Two readers share it: Get-BranchRefLogFacts, which collects the work proof, and
+# Test-StrandedWorkWasSuperseded, which looks for the commit a branch made in a dropped commit's
+# place. One list, so the two can never drift apart.
+$WorktreeCommitSubjectPattern = "^(commit(:| \((amend|merge|initial)\):)|cherry-pick:|revert:|merge [^:]+: Merge made by )"
+
+# The subject and the author identity of one commit, read from the object store.
+#
+# Never from the ref log. A ref-log subject is caller-controlled text, and this file already
+# refuses to trust it on its own, so a forged ref-log line must not be able to manufacture a match.
+#
+# Returns $null when the read fails, which every caller must read as a failed check.
+function Get-CommitIdentity {
+    param(
+        [Parameter(Mandatory)][string] $RepoRoot,
+        [Parameter(Mandatory)][string] $Sha
+    )
+
+    $lines = @(& git -C $RepoRoot show --no-patch --format='%s%n%an%n%ae' $Sha 2>$null)
+    if ($LASTEXITCODE -ne 0) { return $null }
+    if ($lines.Count -lt 3) { return $null }
+
+    return [pscustomobject]@{
+        Subject     = ([string] $lines[0]).Trim()
+        AuthorName  = ([string] $lines[1]).Trim()
+        AuthorEmail = ([string] $lines[2]).Trim()
+    }
+}
+
+# $true when $Ancestor is an ancestor of $Descendant, $false for a plain "no", and $null when the
+# check itself failed. `git merge-base --is-ancestor` exits 0 for yes and 1 for no; any other code
+# is a broken check, and a broken check must never read as either answer.
+function Test-CommitIsAncestor {
+    param(
+        [Parameter(Mandatory)][string] $RepoRoot,
+        [Parameter(Mandatory)][string] $Ancestor,
+        [Parameter(Mandatory)][string] $Descendant
+    )
+
+    & git -C $RepoRoot merge-base --is-ancestor $Ancestor $Descendant 2>$null | Out-Null
+    if ($LASTEXITCODE -eq 0) { return $true }
+    if ($LASTEXITCODE -eq 1) { return $false }
+    return $null
+}
+
 # Decides whether the stranded commits are superseded work or discarded work.
 #
 # Every rebase and every `git commit --amend` strands the commits it replaced -- that is what
@@ -373,8 +424,37 @@ function Get-StrandedCommits {
 # reachable from the branch's previous position and not from where the reset moved it. If any of
 # those is stranded, this worktree still holds the last copy and must stay.
 #
+# One shape is excepted, because it is a rewrite done by hand rather than a discard. A person who
+# resets backwards and then writes the dropped commit again has put something in its place, exactly
+# as `git rebase` and `git commit --amend` do. The question is asked of EACH stranded dropped commit
+# on its own, and a commit stops blocking removal only when all three of these hold:
+#
+#   1. The reset moved backwards along the branch's own history: the position it moved to is an
+#      ancestor of the position it moved from.
+#   2. After that reset, the branch created a commit whose subject line, author name, and author
+#      email all equal the dropped commit's.
+#   3. That commit has the reset target as an ancestor, so the branch built it in the dropped
+#      commit's place rather than somewhere else.
+#
+# Any stranded dropped commit without such a match keeps the worktree. An unrelated later commit is
+# not evidence that the dropped work was replaced, and predicate 2 is what says so: without it, a
+# branch that reset away a unique merge resolution and then committed anything at all would be
+# removed.
+#
+# Only the branch's own ref log is read, so a commit another branch made can never supply the
+# match. Subject and author are commit metadata, not patch text, so nothing patch-comparison ever
+# got wrong is reintroduced here.
+#
+# The cost, stated plainly. Reset a commit away, then write a DIFFERENT commit that reuses its
+# subject line under the same author, and this reads the second as the redo of the first. Removal
+# deletes the branch, which deletes the ref log that held the dropped commit, so nothing reaches it
+# any more; the object survives until garbage collection prunes it, and only `git fsck --lost-found`
+# finds it. That needs a person to reuse a subject line for unrelated work in the same branch after
+# a reset. It is the same class of cost this file already accepts for a rebase and an amend, and
+# the note further down says so: superseded originals are not protected.
+#
 # $Entries is newest first, as `git reflog show` prints it, so entry i+1 is the position entry i
-# moved away from.
+# moved away from, and every entry before index i is something the branch did after that reset.
 function Test-StrandedWorkWasSuperseded {
     param(
         [Parameter(Mandatory)][string] $RepoRoot,
@@ -396,8 +476,45 @@ function Test-StrandedWorkWasSuperseded {
         $dropped = & git -C $RepoRoot rev-list $before --not $after 2>$null
         if ($LASTEXITCODE -ne 0) { return $false }
 
-        foreach ($sha in $dropped) {
-            if ($strandedSet.ContainsKey(([string] $sha).Trim())) { return $false }
+        $strandedDropped = @($dropped |
+            ForEach-Object { ([string] $_).Trim() } |
+            Where-Object { $_ -and $strandedSet.ContainsKey($_) })
+        if ($strandedDropped.Count -eq 0) { continue }
+
+        # Predicate 1. A reset that did not move backwards rewrote nothing this rule can excuse.
+        if ((Test-CommitIsAncestor -RepoRoot $RepoRoot -Ancestor $after -Descendant $before) -ne $true) { return $false }
+
+        # The commits the branch itself created after this reset, newest first.
+        $redoShas = @()
+        for ($j = $i - 1; $j -ge 0; $j--) {
+            if ($Entries[$j].Subject -match $WorktreeCommitSubjectPattern) { $redoShas += $Entries[$j].Sha }
+        }
+        if ($redoShas.Count -eq 0) { return $false }
+
+        foreach ($sha in $strandedDropped) {
+            $droppedIdentity = Get-CommitIdentity -RepoRoot $RepoRoot -Sha $sha
+            if ($null -eq $droppedIdentity) { return $false }
+
+            $matched = $false
+            foreach ($redo in $redoShas) {
+                $redoIdentity = Get-CommitIdentity -RepoRoot $RepoRoot -Sha $redo
+                if ($null -eq $redoIdentity) { return $false }
+
+                # Predicate 2.
+                if ($redoIdentity.Subject -ne $droppedIdentity.Subject) { continue }
+                if ($redoIdentity.AuthorName -ne $droppedIdentity.AuthorName) { continue }
+                if ($redoIdentity.AuthorEmail -ne $droppedIdentity.AuthorEmail) { continue }
+
+                # Predicate 3.
+                $descends = Test-CommitIsAncestor -RepoRoot $RepoRoot -Ancestor $after -Descendant $redo
+                if ($null -eq $descends) { return $false }
+                if (-not $descends) { continue }
+
+                $matched = $true
+                break
+            }
+
+            if (-not $matched) { return $false }
         }
     }
 
@@ -408,7 +525,7 @@ function Test-StrandedWorkWasSuperseded {
 # A just-created worktree branch points at a commit main already had, so the merged test passes
 # for it and the sweep would delete unstarted work.
 #
-# Removal is destructive, so this returns $true only when ALL FIVE signals agree, and $false for
+# Removal is destructive, so this says merged only when ALL FIVE signals agree, and refuses for
 # anything it cannot establish -- an unclear answer keeps the worktree.
 #
 #   1. WORK. The branch ref log holds a subject for an operation that creates a commit. Git writes
@@ -452,7 +569,8 @@ function Test-StrandedWorkWasSuperseded {
 # Signal 3 asks about discarding, not about merging. A rebase or an amend strands the commits it
 # rewrote, and those originals are superseded work nobody expects back. A reset strands commits
 # without replacing them, and after it the ref log is their last holder -- so a reset that stranded
-# anything keeps the worktree.
+# anything keeps the worktree, unless the branch wrote the dropped commit again in its place.
+# Test-StrandedWorkWasSuperseded states that exception and its cost in full.
 #
 # Signal 2 accepts 'rebase (finish)' because a rebased branch merges under a SHA that no commit
 # entry ever held. `git rebase` replays the work and records the new tip under that subject, while
@@ -512,12 +630,9 @@ function Get-BranchRefLogFacts {
         $allShas[$sha] = $true
         $entryList += [pscustomobject]@{ Sha = $sha; Subject = $subject }
 
-        # The closed list of subjects git writes for an operation that creates a commit.
-        # 'commit (finish):' is absent because git never writes it; only GIT_REFLOG_ACTION=commit on
-        # a rebase produces that subject. 'merge <ref>:' is included only with the message git
-        # writes for a real merge commit -- a fast-forward writes 'merge <ref>: Fast-forward' and
-        # creates nothing, so accepting the whole 'merge' prefix would sweep unstarted worktrees.
-        if ($subject -match "^(commit(:| \((amend|merge|initial)\):)|cherry-pick:|revert:|merge [^:]+: Merge made by )") {
+        # The closed list of subjects git writes for an operation that creates a commit, defined
+        # once beside Test-StrandedWorkWasSuperseded, which reads the same list.
+        if ($subject -match $WorktreeCommitSubjectPattern) {
             $commitShas[$sha] = $true
             $mergeProofShas[$sha] = $true
         }
@@ -865,7 +980,15 @@ function Get-WorkAfterMergeProof {
     return , @($after | ForEach-Object { ([string] $_).Trim() } | Where-Object { $_ })
 }
 
-function Test-BranchOwnWorkWasMerged {
+# The merged decision, and the reason it came out that way.
+#
+# Returns an object with 'Merged' and 'Reason'. 'Reason' names the signal that refused, in one
+# plain sentence, so a reader of worktree-removal.log learns which question the branch failed. On
+# an accepted removal 'Reason' is empty.
+#
+# No reason promises an answer that was never fetched. Signal 2's reason says only that no merge
+# reached the base, because the GitHub half is optional and may not have been asked at all.
+function Get-BranchMergedVerdict {
     param(
         [Parameter(Mandatory)][string] $RepoRoot,
         [Parameter(Mandatory)][string] $Branch,
@@ -874,14 +997,17 @@ function Test-BranchOwnWorkWasMerged {
         [scriptblock] $MergedPullRequestLookup
     )
 
-    # Signal 1. A branch nobody has committed on is unstarted, not finished.
+    $refuse = { param([string] $Reason) [pscustomobject]@{ Merged = $false; Reason = $Reason } }
+
+    # Signal 1. A branch nobody has committed on is unstarted, not finished. An unreadable ref log
+    # reads the same way, because nothing then records a commit.
     $facts = Get-BranchRefLogFacts -RepoRoot $RepoRoot -Branch $Branch
-    if ($null -eq $facts) { return $false }
-    if ($facts.CommitShas.Count -eq 0) { return $false }
+    if ($null -eq $facts) { return (& $refuse 'nobody has committed on the branch') }
+    if ($facts.CommitShas.Count -eq 0) { return (& $refuse 'nobody has committed on the branch') }
 
     # Signal 2.
     $proofs = Get-LocalMergeProofShas -RepoRoot $RepoRoot -MainRef $MainRef -MergeProofShas $facts.MergeProofShas
-    if ($null -eq $proofs) { return $false }
+    if ($null -eq $proofs) { return (& $refuse 'no merge of this branch reached the base') }
 
     # Signal 2, the GitHub half. Asked LAST, and only when local git proved nothing: a merge-commit
     # merge therefore costs no network call at all. This signal may only ACCEPT a removal, so an
@@ -905,7 +1031,7 @@ function Test-BranchOwnWorkWasMerged {
         }
     }
 
-    if ($proofs.Count -eq 0) { return $false }
+    if ($proofs.Count -eq 0) { return (& $refuse 'no merge of this branch reached the base') }
 
     # Signal 5. The proof must point at work the base did not already have.
     #
@@ -929,19 +1055,41 @@ function Test-BranchOwnWorkWasMerged {
             # must not count as proof.
             if ($LASTEXITCODE -eq 1) { $ownProof = $true; break }
         }
-        if (-not $ownProof) { return $false }
+        if (-not $ownProof) { return (& $refuse 'the only merge proof is work the base already had') }
     }
 
     # Signal 4. The merge proves the work that existed when it happened, and nothing after it.
     $after = Get-WorkAfterMergeProof -RepoRoot $RepoRoot -Branch $Branch -ProofShas $proofs
-    if ($null -eq $after -or $after.Count -gt 0) { return $false }
+    if ($null -eq $after -or $after.Count -gt 0) { return (& $refuse 'the branch gained work after it merged') }
 
     # Signal 3. Signals 1 and 2 can be satisfied by different work, so the last question is the one
     # that makes removal safe: would removing this branch discard a commit nothing else holds?
     $stranded = Get-StrandedCommits -RepoRoot $RepoRoot -Branch $Branch -Shas @($facts.AllShas.Keys)
-    if ($null -eq $stranded) { return $false }
+    if ($null -eq $stranded) { return (& $refuse 'removing it would discard work a reset dropped') }
 
-    return (Test-StrandedWorkWasSuperseded -RepoRoot $RepoRoot -Entries $facts.Entries -Stranded $stranded)
+    if (-not (Test-StrandedWorkWasSuperseded -RepoRoot $RepoRoot -Entries $facts.Entries -Stranded $stranded)) {
+        return (& $refuse 'removing it would discard work a reset dropped')
+    }
+
+    return [pscustomobject]@{ Merged = $true; Reason = '' }
+}
+
+# The boolean form of Get-BranchMergedVerdict, and the only form most callers want.
+#
+# This wrapper is load-bearing, not tidiness. Every other caller tests the result in a boolean
+# context, and a non-null object is always true there -- so returning the verdict object directly
+# would silently invert every one of those tests.
+function Test-BranchOwnWorkWasMerged {
+    param(
+        [Parameter(Mandatory)][string] $RepoRoot,
+        [Parameter(Mandatory)][string] $Branch,
+        [string] $MainRef = 'main',
+        [object[]] $MergedPullRequests,
+        [scriptblock] $MergedPullRequestLookup
+    )
+
+    return (Get-BranchMergedVerdict -RepoRoot $RepoRoot -Branch $Branch -MainRef $MainRef `
+        -MergedPullRequests $MergedPullRequests -MergedPullRequestLookup $MergedPullRequestLookup).Merged
 }
 
 # Returned when the manifest is there but cannot be read, usually because another process holds

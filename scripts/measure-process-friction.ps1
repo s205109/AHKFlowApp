@@ -105,6 +105,7 @@ $script:CleanupOutcomePatterns = @(
     # --- the shape written from backlog 073 onward: one line per removal attempt ---
     '^Removed\.'                                                # remove-worktree-local-dev.ps1, watcher terminal state
     '^Kept: '                                                   # every deliberate refusal, hook, watcher and sweep
+    '^Nothing to remove: '                                      # remove-worktree-local-dev.ps1, no path and no folder
     '^Failed: '                                                 # every failure that left the worktree half-removed
 
     # --- the shape written before backlog 073. Kept so the historical part of the same file

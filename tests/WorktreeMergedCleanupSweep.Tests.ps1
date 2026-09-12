@@ -393,7 +393,7 @@ try {
 
     # Every line in this file is an outcome. Anything else belongs in the diagnostics file beside it.
     foreach ($line in $outcomeLines) {
-        Assert-True ($line -match '\s(Removed\.|Kept: |Failed: )') `
+        Assert-True ($line -match '\s(Removed\.|Kept: |Failed: |Nothing to remove: )') `
             "The outcome log may hold only outcomes, found '$line'"
     }
 
