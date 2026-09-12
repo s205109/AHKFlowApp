@@ -134,3 +134,31 @@ ready. So under these protection settings nothing else blocks the merge. The rul
 
 This baseline is what makes flip 2's result readable. `mergeStateStatus` says the merge is
 blocked; it never says which rule blocked it.
+
+**Ready flip 2, every box ticked and the item still open.** Head `1e39606f`, 2026-09-12.
+
+Two shipping runs report on that one commit:
+
+| Run | Event | Started | Finished | Draft state it read | Result |
+|---|---|---|---|---|---|
+| `34682527535` | the push | 08:08:59Z | 08:09:11Z | `true` | `success` |
+| `34682982725` | the ready flip | 08:19:44Z | 08:19:58Z | `false` | `failure` |
+
+The failing run's log names both reasons:
+`Backlog 153 has every acceptance box ticked and is still open in backlog/.` and
+`PLAN-PROGRESS.md is still tracked in this pull request.`
+
+The merge surface then read:
+
+- `headRefOid` still `1e39606f`, so nothing pushed in between.
+- The five other required checks all still `SUCCESS`, with the same finish times as before the
+  flip. None of them re-ran.
+- `shipping-pr-closes-item` read `FAILURE`, and its `detailsUrl` pointed at run `34682982725`.
+- `mergeStateStatus` read `BLOCKED`.
+
+Flip 1b read `CLEAN` fifteen minutes earlier, under the same six required checks and the same
+ruleset. The only thing that changed is the shipping conclusion. So the shipping check is what
+blocks the merge.
+
+**This settles the plan's one assumption.** GitHub counts the newer of two same-name results on
+one commit. The older `success` did not win.
