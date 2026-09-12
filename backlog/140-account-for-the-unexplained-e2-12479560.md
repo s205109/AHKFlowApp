@@ -32,9 +32,13 @@ of the wall clock, so that the next speed item attacks the real cost instead of 
 ## Acceptance criteria
 
 - [x] This item records where the unexplained time goes, measured, with each step named and timed.
-- [x] The measurement separates the SQL container start, the Blazor publish, Playwright browser
+- [ ] The measurement separates the SQL container start, the Blazor publish, Playwright browser
       install and launch, the API and SPA host start, and any time the test host reports outside
       the tests themselves.
+      **Not yet true for the API host start.** The ten recorded warm runs predate the `caller`
+      field, so their host-start-gate rows mix the four stack starts with hosts that tests start
+      for themselves. The instrumentation now records the caller, and one fresh five-run session
+      would isolate the four stack starts. Every other part of this box is measured.
 - [x] The solution build is timed separately, and this item states whether it belongs in the E2E
       figure at all. A `-NoBuild` run excludes it; a plain `dotnet test` does not.
 - [x] Every figure is the median of five runs, with all five runs and the maximum written down.
@@ -109,11 +113,15 @@ inside about 2.0 s.
 
 Two notes a later reader needs:
 
-- The gate counts are 24 and 23, not 4 and 4. `HostStartGateTests` starts hosts of its own
-  through the same gate, and those records carry the same operation names. The current record
-  has no field that tells a stack start apart from a test's own start. Taking only the four
+- The gate counts are 24 and 23, not 4 and 4. `HostStartGateTests` and `StackIsolationTests`
+  start hosts of their own through the same gate, and those records carry the same operation
+  names. So the two gate rows above do not measure the four stack starts. Taking only the four
   largest `GatedWork` entries gives 1.50 s summed, and the four largest `QueueWait` entries give
   3.72 s summed, but that ordering is an assumption, not a label.
+- Review fixed the instrumentation after these runs. Every record now carries a `caller`, a stack
+  fixture names itself, and `scripts/report-harness-overhead.ps1` keeps each caller in its own row.
+  A record from these ten runs has no caller and reports with an empty one, so it never joins a
+  stack start. A fresh session is what turns the gate rows into a figure for the four stacks.
 - `GatedWork` is written after the work finishes, so a host start that throws writes no record.
   That is why there are 24 waits and 23 works.
 
