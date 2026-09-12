@@ -65,21 +65,110 @@ parallel. Settled measurement on 2026-09-10 put the same 239 tests at 11 to 13 s
 3 s and 10 s. That moved the item's predicted saving from about 12 s to about 5 to 7 s, below the
 8 s threshold the item itself set for being worth doing.
 
+## The stability figure, and why
+
+**Relative spread**, printed as `(max - min) / median` in percent, beside the median. A `built`
+line prints next to it and says how long the tree had been built when the counted runs started.
+
+Spread answers the question a reader actually has: how much is this median worth? It does not say
+whether the tree was cold, and no figure computed inside one measurement window can. In the record
+above, the cold window spread 12.1 percent of its median and the settled ten-run window spread
+31.9 percent, so the coldest measurement of the three looked like the tightest. A drift figure
+fails the same way: the cold window is flat, and the settled window drifts upward by 12 percent.
+The `built` line carries coldness instead.
+
+The two measurements below show the figure doing its job. The first reads 21.3 percent and was
+still moving. The second reads 5.9 percent and was steady.
+
+## The two measurements
+
+Measured 2026-09-12 on `fix/wt-test-measurement-counts-warm-up-runs` at 77da3180, Integration
+Mode, five counted runs each. The tree was built once with `--no-incremental` before the first
+measurement and was not touched again.
+
+Right after the build:
+
+```
+Integration over 5 counted runs
+  warm-up: 49.90 / 47.17 / 47.36 / 48.80 / 47.63 / 48.12 / 47.64 / 48.41 / 49.54 / 50.38 / 62.04 / 64.48 (discarded, 12)
+  runs   : 57.76 / 52.44 / 49.12 / 47.28 / 47.85
+  median : 49.12 s
+  mean   : 50.89 s
+  max    : 57.76 s
+  spread : 21.3 % of the median
+  built  : 638 s before the first counted run
+```
+
+About an hour later, with no rebuild:
+
+```
+Integration over 5 counted runs
+  warm-up: 58.44 / 57.68 (discarded, 2)
+  runs   : 58.09 / 57.36 / 57.06 / 57.28 / 60.44
+  median : 57.36 s
+  mean   : 58.05 s
+  max    : 60.44 s
+  spread : 5.9 % of the median
+  built  : 4,181 s before the first counted run
+```
+
+**The two medians differ by 14.4 percent of the larger one. The fourth acceptance box stays
+unticked.**
+
+### What the two mechanisms did achieve
+
+The settle clock worked. The first measurement's counted runs did not start until the tree had
+been built for 638 s, and twelve warm-up runs filled that wait. The effect this item was filed for
+is gone: the measurement taken right after the build is now the **faster** of the two.
+
+The warm-up discard worked. The first measurement's twelve discarded runs show the machine flat
+near 48 s for ten runs, then a jump to 62.04 s and 64.48 s. Without the discard those two runs
+would have entered the median.
+
+### Why the criterion still fails, and why the build is not the cause
+
+The later measurement is the slower one, by about 17 percent. A build cannot explain that. The
+tree was older at the second measurement, not fresher.
+
+Every part of the run got slower by about the same share:
+
+| Step | Right after the build | An hour later |
+|---|---|---|
+| SQL container start | 7.2 s, on 14 of 17 runs | 9.4 to 9.7 s, on every run |
+| `Application.Tests` | 4 s, on 12 of 17 runs | 6 s, on every run |
+| `CLI.Tests` | 6 s, on 10 of 17 runs | 7 s, on every run |
+| `API.Tests` | 11 s, on 9 of 17 runs | 12 to 13 s |
+| `Infrastructure.Tests` | 8 s, on 8 of 17 runs | 11 to 12 s |
+
+A slowdown spread evenly across the container start and all four test projects is a change in the
+machine, not a change in the tests. The first measurement also caught a transient: warm-up runs 11
+and 12 read 62.04 s and 64.48 s, their container starts read 8.5 s, 10.5 s and 9.6 s, and the
+counted runs then decayed from 57.76 s back to 47.28 s.
+
+So this machine moves by 15 to 20 percent over an hour, for a reason this item did not set out to
+find and has not removed. Naming that reason would go beyond the evidence: thermal state, a
+background process, and a power-plan change would all look exactly like this.
+
 ## Acceptance criteria
 
-- [ ] `scripts/measure-test-modes.ps1` discards warm-up runs before it computes the median, and
+- [x] `scripts/measure-test-modes.ps1` discards warm-up runs before it computes the median, and
       the number it discards is visible in the output rather than hidden in the code.
-- [ ] The script prints the discarded runs as well as the counted ones. A reader can see the
+- [x] The script prints the discarded runs as well as the counted ones. A reader can see the
       decay and judge whether the run settled.
-- [ ] The script reports a stability figure beside the median, so a reader can tell a settled
+- [x] The script reports a stability figure beside the median, so a reader can tell a settled
       measurement from one that is still moving. The item names the figure it chose and why.
 - [ ] Running the same Mode twice on one unchanged tree, once right after a build and once an
       hour later, produces medians within 10 percent of each other. Record both, with every run.
-- [ ] `docs/development/testing-workflow.md` states the warm-up rule where it states the
+      **Not met. Both measurements are recorded above, with every run.** The medians differ by
+      14.4 percent. The build is not the cause: the measurement taken right after the build is the
+      faster one, and the whole machine ran 15 to 20 percent slower an hour later, container start
+      included. The two mechanisms this item built both work; a second source of variance, which
+      this item did not set out to find, is what keeps the box unticked.
+- [x] `docs/development/testing-workflow.md` states the warm-up rule where it states the
       measurement rule, so the next person setting a target does not have to find this item.
-- [ ] `tests/MeasureTestModes.Tests.ps1` covers the discard: a stubbed run list with a slow head
+- [x] `tests/MeasureTestModes.Tests.ps1` covers the discard: a stubbed run list with a slow head
       and a flat tail reports the tail's median, not the whole list's.
-- [ ] Every open item that carries a numeric speed threshold measured with this script is listed
+- [x] Every open item that carries a numeric speed threshold measured with this script is listed
       here, with a note saying whether its threshold survives re-measurement. Backlog 133 is one;
       the list names the rest.
 
