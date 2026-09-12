@@ -140,7 +140,15 @@ function Get-EligibleMergedWorktrees {
         # carries a pull request whose head SHA this branch recorded. Deciding here -- in
         # eligibility, ahead of every setting -- means no flag, env override, or config value can
         # remove one of those, and report-only mode never lists one either.
-        if (-not (Test-BranchOwnWorkWasMerged -RepoRoot $RepoRoot -Branch $wt.Branch -MainRef $MainRef -MergedPullRequests $MergedPullRequests)) { continue }
+        # The verdict form, not the boolean one, because a refusal here used to be completely
+        # silent. A worktree the sweep kept for a merged-check reason had nothing on disk saying
+        # which of the five signals refused, so an investigation started from nothing.
+        $mergedVerdict = Get-BranchMergedVerdict -RepoRoot $RepoRoot -Branch $wt.Branch -MainRef $MainRef -MergedPullRequests $MergedPullRequests
+        if (-not $mergedVerdict.Merged) {
+            Write-SweepOutcome -RepoRoot $RepoRoot -WorktreePath $wtFull `
+                -Message ('Kept: ' + (Format-WorktreeLogReason -Text $mergedVerdict.Reason) + '.')
+            continue
+        }
 
         # A merged branch does not prove the work happened. Plans live in a second private
         # repository the public branch never carries, so a branch can merge holding only its
@@ -177,6 +185,10 @@ function Get-EligibleMergedWorktrees {
         $status = & git -C $wtFull status --porcelain 2>$null
         if ($LASTEXITCODE -ne 0) {
             Write-Stderr "cleanup: status check failed for '$wtFull'; skipping it."
+            # The stderr line reaches nobody once the run ends, and this refusal is never handed
+            # over, so the sweep owns the outcome line for it too.
+            Write-SweepOutcome -RepoRoot $RepoRoot -WorktreePath $wtFull `
+                -Message 'Kept: the git status check failed for this worktree.'
             continue
         }
         if ($status) {

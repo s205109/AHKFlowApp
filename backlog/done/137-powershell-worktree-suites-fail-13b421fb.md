@@ -77,18 +77,18 @@ The failure cleanup also stops both known process IDs
 early assertion can no longer leave the fixture child running until its own timeout.
 
 `WorktreeRemoveHook.Tests.ps1` used to wait only until the worktree folder was gone
-(`tests/WorktreeRemoveHook.Tests.ps1:545`, "$removed = Wait-ForCondition { -not (Test-Path -LiteralPath $wtPath) }"). It then read the diagnostic file without waiting for the watcher. The
-fixed ordering waits for the outcome (`tests/WorktreeRemoveHook.Tests.ps1:549`, "$outcomeLines = @(Wait-ForOutcomeLine -RepoDir $repo)") before the raw diagnostic read
-(`tests/WorktreeRemoveHook.Tests.ps1:556`, "$diagnostics = Get-Content -Raw -LiteralPath (Get-RemovalDiagnosticsPath $repo)"). The watcher deletes the folder
-(`scripts/remove-worktree-local-dev.ps1:1292`, "Remove-Item -LiteralPath $tempName -Recurse -Force -ErrorAction Stop"), then prunes Git and deletes the branch
-(`scripts/remove-worktree-local-dev.ps1:1320`, "$branchDelete = Invoke-GitCapture @('-C', $mainCheckout, 'branch', '-d', '--', $branchName)"). It writes its final diagnostic
-(`scripts/remove-worktree-local-dev.ps1:1430`, "Write-DiagnosticLog 'Watcher done (worktree removed; branch preserved).'") before the outcome
-(`scripts/remove-worktree-local-dev.ps1:1436`, "Write-Outcome 'Removed.'"). The premature read
+(`tests/WorktreeRemoveHook.Tests.ps1:574`, "$removed = Wait-ForCondition { -not (Test-Path -LiteralPath $wtPath) }"). It then read the diagnostic file without waiting for the watcher. The
+fixed ordering waits for the outcome (`tests/WorktreeRemoveHook.Tests.ps1:578`, "$outcomeLines = @(Wait-ForOutcomeLine -RepoDir $repo)") before the raw diagnostic read
+(`tests/WorktreeRemoveHook.Tests.ps1:585`, "$diagnostics = Get-Content -Raw -LiteralPath (Get-RemovalDiagnosticsPath $repo)"). The watcher deletes the folder
+(`scripts/remove-worktree-local-dev.ps1:1294`, "Remove-Item -LiteralPath $tempName -Recurse -Force -ErrorAction Stop"), then prunes Git and deletes the branch
+(`scripts/remove-worktree-local-dev.ps1:1322`, "$branchDelete = Invoke-GitCapture @('-C', $mainCheckout, 'branch', '-d', '--', $branchName)"). It writes its final diagnostic
+(`scripts/remove-worktree-local-dev.ps1:1432`, "Write-DiagnosticLog 'Watcher done (worktree removed; branch preserved).'") before the outcome
+(`scripts/remove-worktree-local-dev.ps1:1438`, "Write-Outcome 'Removed.'"). The premature read
 produced the `System.Object[]` passed to `Assert-True` in CI attempt 2.
 
 The `feat-forced` branch error is expected. The fixture creates an unmerged branch
-(`tests/WorktreeRemoveHook.Tests.ps1:540`, "$wtPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-forced' -Unmerged"). The watcher deliberately uses safe `git branch -d`
-(`scripts/remove-worktree-local-dev.ps1:1320`, "$branchDelete = Invoke-GitCapture @('-C', $mainCheckout, 'branch', '-d', '--', $branchName)"), so Git preserves that branch. The branch
+(`tests/WorktreeRemoveHook.Tests.ps1:569`, "$wtPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-forced' -Unmerged"). The watcher deliberately uses safe `git branch -d`
+(`scripts/remove-worktree-local-dev.ps1:1322`, "$branchDelete = Invoke-GitCapture @('-C', $mainCheckout, 'branch', '-d', '--', $branchName)"), so Git preserves that branch. The branch
 refusal was text captured during the premature diagnostic read. It did not cause the failure.
 
 The failed suites have unique GUID-based fixture paths and run in separate PowerShell processes.

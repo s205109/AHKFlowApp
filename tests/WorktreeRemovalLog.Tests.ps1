@@ -109,7 +109,7 @@ try {
     Assert-True ($outcomeCalls.Count -ge 9) "Expected at least 9 literal Write-Outcome call sites, got $($outcomeCalls.Count)"
     foreach ($call in $outcomeCalls) {
         $text = $call.Groups[1].Value
-        Assert-True ($text -match '^(Removed\.|Kept: |Failed: )') "Outcome '$text' must start with Removed., Kept: or Failed:"
+        Assert-True ($text -match '^(Removed\.|Kept: |Failed: |Nothing to remove: )') "Outcome '$text' must start with Removed., Kept:, Failed: or Nothing to remove:"
     }
 
     # --- the timeout path names holders, or says it could not -------------
@@ -127,7 +127,7 @@ try {
     $sweepSource = Get-Content -Raw -LiteralPath (Join-Path $scriptsDir 'cleanup-merged-worktrees.ps1')
     foreach ($call in [regex]::Matches($sweepSource, "(?m)^\s*Write-SweepOutcome\b[\s\S]*?-Message\s+'([^']+)'")) {
         $text = $call.Groups[1].Value
-        Assert-True ($text -match '^(Removed\.|Kept: |Failed: )') "Sweep outcome '$text' must start with Removed., Kept: or Failed:"
+        Assert-True ($text -match '^(Removed\.|Kept: |Failed: |Nothing to remove: )') "Sweep outcome '$text' must start with Removed., Kept:, Failed: or Nothing to remove:"
     }
 
     Write-Host 'Worktree removal log tests passed.'
