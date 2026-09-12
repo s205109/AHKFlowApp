@@ -87,4 +87,21 @@ public sealed class StartupErrorTests : BunitContext
         nav.History.Should().NotBeEmpty();
         nav.History.Last().Options.ForceLoad.Should().BeTrue();
     }
+
+    // The E2E first page load diagnosis reads these two attributes to tell a failed boot from an
+    // app that started and could not run. It reads the reason attribute and never the visible
+    // copy, so rewording this screen cannot break the diagnosis.
+    [Theory]
+    [InlineData(StartupErrorReason.MissingFrontendConfig)]
+    [InlineData(StartupErrorReason.PlaceholderConfig)]
+    [InlineData(StartupErrorReason.BackendUnreachable)]
+    [InlineData(StartupErrorReason.Unexpected)]
+    public void EveryReason_MarksTheScreenAndNamesItself(StartupErrorReason reason)
+    {
+        IRenderedComponent<StartupError> cut = Render<StartupError>(ps => ps
+            .Add(p => p.Reason, reason));
+
+        IElement marker = cut.Find("[data-test=\"startup-error\"]");
+        marker.GetAttribute("data-test-reason").Should().Be(reason.ToString());
+    }
 }
