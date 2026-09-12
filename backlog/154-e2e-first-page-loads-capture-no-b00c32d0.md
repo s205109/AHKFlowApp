@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: none (test code only)
 - **Difficulty**: complex
-- **Stage**: 1-pickup
+- **Stage**: 2-design
 
 ## Summary
 
