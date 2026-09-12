@@ -37,14 +37,29 @@ public static class FirstPageLoad
     private const string BootErrorSelector = "[data-test=\"boot-error\"]";
 
     /// <summary>
-    /// Opens a page in the given context, navigates to <paramref name="url"/>, and waits for
-    /// <paramref name="readySelector"/> to become visible.
+    /// The startup error screen. The app started and cannot run: bad configuration, an unreachable
+    /// API, or an unexpected error. Terminal for a test, because it recovers only on a click or on
+    /// a configuration change no test makes.
+    /// </summary>
+    private const string StartupErrorSelector = "[data-test=\"startup-error\"]";
+
+    /// <summary>
+    /// The app shell, rendered by MainLayout once Blazor is running and a route matched. Its
+    /// presence is the proof that the app started. It says nothing about the page's own data, and
+    /// that is the point: the caller's own wait answers that question, and its failure then reads
+    /// as a data problem rather than a boot problem.
+    /// </summary>
+    private const string AppShellSelector = "[data-test=\"app-shell\"]";
+
+    /// <summary>
+    /// Opens a page in the given context, navigates to <paramref name="url"/>, and waits for the
+    /// app to start.
     /// </summary>
     /// <exception cref="TimeoutException">
-    /// The app showed its boot error screen, or the budget ran out. The message names which, how
-    /// many documents the page loaded, and every error the browser reported.
+    /// The app never started. The message names which screen is showing, how many documents the
+    /// page loaded, and every error the browser reported.
     /// </exception>
-    public static async Task<IPage> OpenAsync(IBrowserContext context, string url, string readySelector)
+    public static async Task<IPage> OpenAsync(IBrowserContext context, string url)
     {
         var watch = BootWatch.Attach(context);
         IPage page = await context.NewPageAsync();
@@ -55,11 +70,12 @@ public static class FirstPageLoad
         // run for a full minute while the class claimed a 30 second budget.
         var spent = Stopwatch.StartNew();
 
-        ILocator ready = page.Locator(readySelector);
+        ILocator appShell = page.Locator(AppShellSelector);
         ILocator bootError = page.Locator(BootErrorSelector);
+        ILocator startupError = page.Locator(StartupErrorSelector);
 
         // Both steps sit inside the try. A navigation that times out is a first page load that did
-        // not arrive, and it deserves the same diagnosis as a selector that never showed.
+        // not arrive, and it deserves the same diagnosis as a shell that never showed.
         try
         {
             // Commit, not the default Load. bootBlazor.js can reload while the first load is still
@@ -71,21 +87,22 @@ public static class FirstPageLoad
                 Timeout = Remaining(spent),
             });
 
-            // Whichever arrives first ends the wait. Without the boot error in the race, a failed
-            // boot would sit here for the whole budget and then report only that time had passed.
-            await ready.Or(bootError).First.WaitForAsync(new LocatorWaitForOptions
+            // Whichever arrives first ends the wait. Without the two failure screens in the race, a
+            // failed boot would sit here for the whole budget and then report only that time passed.
+            await appShell.Or(bootError).Or(startupError).First.WaitForAsync(new LocatorWaitForOptions
             {
                 Timeout = Remaining(spent),
             });
         }
         catch (TimeoutException timeout)
         {
-            throw new TimeoutException(await DescribeAsync(page, readySelector, watch, spent), timeout);
+            throw new TimeoutException(await DescribeAsync(page, watch, spent), timeout);
         }
 
-        if (await bootError.CountAsync() > 0)
+        // The race can end on a failure screen. Reaching one is not success, however fast it came.
+        if (await bootError.CountAsync() > 0 || await startupError.CountAsync() > 0)
         {
-            throw new TimeoutException(await DescribeAsync(page, readySelector, watch, spent));
+            throw new TimeoutException(await DescribeAsync(page, watch, spent));
         }
 
         return page;
@@ -100,11 +117,7 @@ public static class FirstPageLoad
     private static float Remaining(Stopwatch spent) =>
         Math.Max(1L, TimeoutMs - spent.ElapsedMilliseconds);
 
-    private static async Task<string> DescribeAsync(
-        IPage page,
-        string readySelector,
-        BootWatch watch,
-        Stopwatch spent)
+    private static async Task<string> DescribeAsync(IPage page, BootWatch watch, Stopwatch spent)
     {
         StringBuilder report = new();
 
@@ -112,23 +125,10 @@ public static class FirstPageLoad
         // happened, and a boot that gave up early spends far less than the budget. The budget says
         // what the limit was, so a reader can tell a slow page from a page that stopped.
         report.AppendLine(
-            $"The first page load never showed '{readySelector}'. "
+            "The app never started: the app shell never appeared. "
             + $"Gave up after {spent.ElapsedMilliseconds} ms of a {TimeoutMs} ms budget.");
 
-        // Reading the page can itself fail, and a broken diagnosis must never hide the timeout it
-        // was called to explain. Both types are needed: Playwright 1.59 has no timeout exception of
-        // its own, so a slow read throws System.TimeoutException, not PlaywrightException.
-        try
-        {
-            report.AppendLine(await page.Locator(BootErrorSelector).CountAsync() > 0
-                ? "The app failed to boot. The page is showing the boot error screen, so no app content was ever going to appear. A longer wait would not help."
-                : "The app is not showing its boot error screen, so the boot did not report a failure.");
-        }
-        catch (Exception readError) when (readError is PlaywrightException or TimeoutException)
-        {
-            report.AppendLine($"The boot error screen could not be read: {readError.Message}");
-        }
-
+        report.AppendLine(await WhichScreenAsync(page));
         report.AppendLine($"Documents loaded: {watch.Documents}. More than one means bootBlazor.js reloaded the page after a failed boot.");
 
         IReadOnlyList<string> errors = watch.Errors;
@@ -146,6 +146,38 @@ public static class FirstPageLoad
         }
 
         return report.ToString();
+    }
+
+    /// <summary>
+    /// Names the screen the page is showing, which is the single most useful line in the report.
+    /// </summary>
+    /// <remarks>
+    /// Reading the page can itself fail, and a broken diagnosis must never hide the timeout it was
+    /// called to explain. Both exception types are needed: Playwright 1.59 has no timeout exception
+    /// of its own, so a slow read throws System.TimeoutException, not PlaywrightException.
+    /// </remarks>
+    private static async Task<string> WhichScreenAsync(IPage page)
+    {
+        try
+        {
+            if (await page.Locator(BootErrorSelector).CountAsync() > 0)
+            {
+                return "The app failed to boot. The page is showing the boot error screen, so no app content was ever going to appear. A longer wait would not help.";
+            }
+
+            ILocator startupError = page.Locator(StartupErrorSelector);
+            if (await startupError.CountAsync() > 0)
+            {
+                string reason = await startupError.First.GetAttributeAsync("data-test-reason") ?? "unknown";
+                return $"The app started but could not run. The page is showing the startup error screen for {reason}, so no app content was ever going to appear.";
+            }
+
+            return "The page is showing neither the boot error screen nor a startup error screen, so nothing reported a failure.";
+        }
+        catch (Exception readError) when (readError is PlaywrightException or TimeoutException)
+        {
+            return $"The screen could not be read: {readError.Message}";
+        }
     }
 }
 

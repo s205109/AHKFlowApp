@@ -25,8 +25,8 @@ public sealed class WindowSnapFlowTests(StackFixtureD fixture) : IAsyncLifetime
     public async Task CreateSnapLeftHotkey_PreviewKeepsBlockBodyLines_ThenGridShowsWindowAction()
     {
         await using IBrowserContext ctx = await fixture.Browser.NewContextAsync();
-        IPage page = await FirstPageLoad.OpenAsync(
-            ctx, $"{fixture.Spa.BaseUrl}/hotkeys", "button.add-hotkey");
+        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/hotkeys");
+        await page.WaitForSelectorAsync("button.add-hotkey");
 
         await page.ClickAsync("button.add-hotkey");
         await page.WaitForSelectorAsync(".hotkey-edit-dialog");
@@ -73,8 +73,8 @@ public sealed class WindowSnapFlowTests(StackFixtureD fixture) : IAsyncLifetime
     public async Task SendKeysWinPlusArrow_ShowsAdvisoryUntilWinCleared_AndStillSaves()
     {
         await using IBrowserContext ctx = await fixture.Browser.NewContextAsync();
-        IPage page = await FirstPageLoad.OpenAsync(
-            ctx, $"{fixture.Spa.BaseUrl}/hotkeys", "button.add-hotkey");
+        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/hotkeys");
+        await page.WaitForSelectorAsync("button.add-hotkey");
 
         await page.ClickAsync("button.add-hotkey");
         await page.WaitForSelectorAsync(".hotkey-edit-dialog");

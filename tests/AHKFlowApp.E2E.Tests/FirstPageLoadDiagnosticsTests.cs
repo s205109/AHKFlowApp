@@ -26,13 +26,12 @@ public sealed class FirstPageLoadDiagnosticsTests(StackFixtureD fixture) : IAsyn
         await using IBrowserContext ctx = await fixture.Browser.NewContextAsync();
         await BootFault.Fail404OnAppAssemblyAsync(ctx);
 
-        Func<Task> open = () => FirstPageLoad.OpenAsync(
-            ctx, $"{fixture.Spa.BaseUrl}/hotkeys", "button.add-hotkey");
+        Func<Task> open = () => FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/hotkeys");
 
         TimeoutException thrown = (await open.Should().ThrowAsync<TimeoutException>()).Which;
 
         thrown.Message.Should().Contain("The app failed to boot");
-        thrown.Message.Should().Contain("button.add-hotkey");
+        thrown.Message.Should().Contain("the app shell never appeared");
 
         // One load, one guarded reload. The same count BootFailureFlowTests asserts exactly.
         thrown.Message.Should().Contain("Documents loaded: 2");
@@ -58,8 +57,7 @@ public sealed class FirstPageLoadDiagnosticsTests(StackFixtureD fixture) : IAsyn
             "console.error('E2E-CONSOLE-MARKER');"
             + "setTimeout(function () { throw new Error('E2E-UNCAUGHT-MARKER'); }, 0);");
 
-        Func<Task> open = () => FirstPageLoad.OpenAsync(
-            ctx, $"{fixture.Spa.BaseUrl}/hotkeys", "button.add-hotkey");
+        Func<Task> open = () => FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/hotkeys");
 
         TimeoutException thrown = (await open.Should().ThrowAsync<TimeoutException>()).Which;
 
@@ -83,8 +81,7 @@ public sealed class FirstPageLoadDiagnosticsTests(StackFixtureD fixture) : IAsyn
         // turn this assertion red or green on its own.
         var spent = Stopwatch.StartNew();
 
-        Func<Task> open = () => FirstPageLoad.OpenAsync(
-            ctx, $"{fixture.Spa.BaseUrl}/hotkeys", "button.add-hotkey");
+        Func<Task> open = () => FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/hotkeys");
         TimeoutException thrown = (await open.Should().ThrowAsync<TimeoutException>()).Which;
 
         spent.Stop();
@@ -105,14 +102,45 @@ public sealed class FirstPageLoadDiagnosticsTests(StackFixtureD fixture) : IAsyn
 
     // The healthy path has to keep working, and the returned page has to be usable by the caller.
     [Fact]
-    public async Task HealthyBoot_Open_ReturnsAPageShowingTheReadySelector()
+    public async Task HealthyBoot_Open_ReturnsAPageShowingTheApp()
     {
         await using IBrowserContext ctx = await fixture.Browser.NewContextAsync();
 
-        IPage page = await FirstPageLoad.OpenAsync(
-            ctx, $"{fixture.Spa.BaseUrl}/hotkeys", "button.add-hotkey");
+        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/hotkeys");
 
+        await Assertions.Expect(page.Locator("[data-test=\"app-shell\"]")).ToBeVisibleAsync();
         await Assertions.Expect(page.Locator("button.add-hotkey")).ToBeVisibleAsync();
         (await page.Locator("[data-test=\"boot-error\"]").CountAsync()).Should().Be(0);
+    }
+
+    // The blind spot backlog 154 found. The app can start and still be unable to run, and the old
+    // diagnosis reported that as "the boot did not report a failure" — the wrong trail.
+    //
+    // SpaHost serves every appsettings request with Auth:UseTestProvider=true, and that flag makes
+    // Program.cs skip the configuration check entirely. This route serves configuration without the
+    // flag and without the Azure AD keys, so the check runs, fails, and the app boots its error
+    // root instead of the app. The app shell therefore never appears.
+    [Fact]
+    public async Task UnusableConfiguration_Open_ThrowsAMessageNamingTheStartupErrorScreen()
+    {
+        await using IBrowserContext ctx = await fixture.Browser.NewContextAsync();
+
+        await ctx.RouteAsync("**/appsettings*.json", route => route.FulfillAsync(new RouteFulfillOptions
+        {
+            Status = 200,
+            ContentType = "application/json",
+            Body = """{"ApiHttpClient":{"BaseAddress":"/"}}""",
+        }));
+
+        Func<Task> open = () => FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/hotkeys");
+
+        TimeoutException thrown = (await open.Should().ThrowAsync<TimeoutException>()).Which;
+
+        thrown.Message.Should().Contain("The app started but could not run");
+        thrown.Message.Should().Contain("MissingFrontendConfig");
+
+        // The boot never failed, so the boot sentence must not appear. Printing both would send the
+        // reader down the trail this class exists to close.
+        thrown.Message.Should().NotContain("The app failed to boot");
     }
 }
