@@ -6,7 +6,7 @@
 - **Type**: Process / tooling
 - **Interfaces**: none (CI)
 - **Difficulty**: moderate
-- **Stage**: 8-review
+- **Stage**: 9-ship
 
 ## Summary
 
