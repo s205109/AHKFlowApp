@@ -146,14 +146,19 @@ records in each run came from tests and carried `Unattributed`.
 | `InitializeAsync`, per stack | 2376 / 2395 / 2976 / 2379 / 2357 | 2379 | 2976 |
 | Harness overhead | 1379 / 2039 / 1534 / 1388 / 1267 | 1388 | 2039 |
 
-The shape repeats in every run. The first stack's host start does the real work, 1.09 to 1.60 s,
-because it is the first host the process builds. The other three take 0.10 to 0.25 s each. The
-waits read 0, then about 1.2, 1.35 and 1.5 s: stacks two to four mostly wait out that first
-start, not each other.
+The shape repeats in every run. The first stack's gated work takes 1.09 to 1.60 s, and the other
+three take 0.10 to 0.25 s each. The waits read 0, then about 1.2, 1.35 and 1.5 s, so stacks two
+to four spend most of their wait on that first start.
 
-**So serialising the four API host starts costs the wall clock about 1.5 s, and most of that is
-one cold start that running the hosts in parallel would not remove.** One host still has to be
-built first. The spec named this gate as the first place to look; it is not where the time goes.
+**Measured: under the current serial gate, the last stack waits about 1.5 s, and one start
+dominates the gated work.** The spec named this gate as the first place to look, and at about
+1.5 s of wall clock it is not where the time goes.
+
+**Inferred, not measured: most of that first start is one-time work in the test process, so
+running the host starts in parallel would probably not remove it.** The obvious reading is that
+the first host pays for work every later host reuses, such as loading and compiling code. No run
+here started hosts in parallel, and the Serilog race the gate prevents means none can without a
+code change. So these numbers do not show what parallel startup would cost.
 
 ### The SQL container and the Blazor publish
 
@@ -250,7 +255,8 @@ Two smaller findings, recorded but not worth an item on their own:
 - Stack setup costs about 2.0 s per stack warm and about 5.9 s cold. Serialising the four API
   host starts behind one semaphore is not the cost the spec suspected it might be.
 - The first stack's API host start is the only expensive one, 1.09 to 1.60 s, and the other three
-  wait it out. That is a property of the first host a process builds, not of the gate.
+  wait it out. That it is one-time work in the process, rather than a cost of the gate, is an
+  inference. No parallel start was measured.
 
 ## Out of scope
 
