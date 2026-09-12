@@ -20,9 +20,8 @@ public sealed class DownloadsSaveFailureFlowTests(StackFixtureD fixture) : IAsyn
     public async Task ProfileDownload_WhenTheSaveFails_ReportsItAndFreesTheButton()
     {
         await using IBrowserContext ctx = await fixture.Browser.NewContextAsync();
-        IPage page = await ctx.NewPageAsync();
 
-        await page.GotoAsync($"{fixture.Spa.BaseUrl}/downloads");
+        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/downloads");
         await page.WaitForSelectorAsync("button.download-profile");
         await page.EvaluateAsync(BreakSaveBlob);
         await page.ClickAsync("button.download-profile");
@@ -35,9 +34,8 @@ public sealed class DownloadsSaveFailureFlowTests(StackFixtureD fixture) : IAsyn
     public async Task DownloadAll_WhenTheSaveFails_ReportsItAndFreesTheButton()
     {
         await using IBrowserContext ctx = await fixture.Browser.NewContextAsync();
-        IPage page = await ctx.NewPageAsync();
 
-        await page.GotoAsync($"{fixture.Spa.BaseUrl}/downloads");
+        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/downloads");
         await page.WaitForSelectorAsync("button.download-profile");
         await page.EvaluateAsync(BreakSaveBlob);
         await page.ClickAsync("button.download-all");

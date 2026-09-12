@@ -37,29 +37,62 @@ public static class FirstPageLoad
     private const string BootErrorSelector = "[data-test=\"boot-error\"]";
 
     /// <summary>
-    /// Opens a page in the given context, navigates to <paramref name="url"/>, and waits for
-    /// <paramref name="readySelector"/> to become visible.
+    /// The startup error screen. The app started and cannot run: bad configuration, an unreachable
+    /// API, or an unexpected error. Terminal for a test, because it recovers only on a click or on
+    /// a configuration change no test makes.
+    /// </summary>
+    private const string StartupErrorSelector = "[data-test=\"startup-error\"]";
+
+    /// <summary>
+    /// The app shell, rendered by MainLayout once Blazor is running and a route matched. Its
+    /// presence is the proof that the app started. It says nothing about the page's own data, and
+    /// that is the point: the caller's own wait answers that question, and its failure then reads
+    /// as a data problem rather than a boot problem.
+    /// </summary>
+    private const string AppShellSelector = "[data-test=\"app-shell\"]";
+
+    /// <summary>
+    /// Opens a page in the given context, navigates to <paramref name="url"/>, and waits for the
+    /// app to start.
     /// </summary>
     /// <exception cref="TimeoutException">
-    /// The app showed its boot error screen, or the budget ran out. The message names which, how
-    /// many documents the page loaded, and every error the browser reported.
+    /// The app never started. The message names which screen is showing, how many documents the
+    /// page loaded, and every error the browser reported.
     /// </exception>
-    public static async Task<IPage> OpenAsync(IBrowserContext context, string url, string readySelector)
+    public static async Task<IPage> OpenAsync(
+        IBrowserContext context,
+        string url,
+        params string[] awaitedApiPaths)
     {
         var watch = BootWatch.Attach(context);
         IPage page = await context.NewPageAsync();
         watch.Follow(page);
+
+        // Registered before the navigation, which is the whole reason this parameter exists. A
+        // caller cannot do this for itself: the page does not exist until this method makes it, and
+        // WaitForResponseAsync only resolves on the next matching response after it is called. So a
+        // caller waiting after this method returns would miss a response that already arrived.
+        //
+        // Before the navigation is earlier than strictly needed — the app cannot call the API until
+        // the runtime has started — and it is the simplest place that is provably early enough.
+        List<Task<IResponse>> awaited = [.. awaitedApiPaths.Select(path =>
+            page.WaitForResponseAsync(
+                response =>
+                    response.Url.Contains(path, StringComparison.OrdinalIgnoreCase)
+                    && response.Status == 200,
+                new PageWaitForResponseOptions { Timeout = TimeoutMs }))];
 
         // One budget for the whole first page load, spent across both steps below. Playwright gives
         // navigation its own 30 second default, so leaving that alone would let a first page load
         // run for a full minute while the class claimed a 30 second budget.
         var spent = Stopwatch.StartNew();
 
-        ILocator ready = page.Locator(readySelector);
+        ILocator appShell = page.Locator(AppShellSelector);
         ILocator bootError = page.Locator(BootErrorSelector);
+        ILocator startupError = page.Locator(StartupErrorSelector);
 
         // Both steps sit inside the try. A navigation that times out is a first page load that did
-        // not arrive, and it deserves the same diagnosis as a selector that never showed.
+        // not arrive, and it deserves the same diagnosis as a shell that never showed.
         try
         {
             // Commit, not the default Load. bootBlazor.js can reload while the first load is still
@@ -71,24 +104,76 @@ public static class FirstPageLoad
                 Timeout = Remaining(spent),
             });
 
-            // Whichever arrives first ends the wait. Without the boot error in the race, a failed
-            // boot would sit here for the whole budget and then report only that time had passed.
-            await ready.Or(bootError).First.WaitForAsync(new LocatorWaitForOptions
+            // Whichever arrives first ends the wait. Without the two failure screens in the race, a
+            // failed boot would sit here for the whole budget and then report only that time passed.
+            await appShell.Or(bootError).Or(startupError).First.WaitForAsync(new LocatorWaitForOptions
             {
                 Timeout = Remaining(spent),
             });
         }
         catch (TimeoutException timeout)
         {
-            throw new TimeoutException(await DescribeAsync(page, readySelector, watch, spent), timeout);
+            throw new TimeoutException(await DescribeAsync(page, watch, spent), timeout);
         }
 
-        if (await bootError.CountAsync() > 0)
+        // The race can end on a failure screen. Reaching one is not success, however fast it came.
+        if (await bootError.CountAsync() > 0 || await startupError.CountAsync() > 0)
         {
-            throw new TimeoutException(await DescribeAsync(page, readySelector, watch, spent));
+            throw new TimeoutException(await DescribeAsync(page, watch, spent));
+        }
+
+        // After the app shell, so a boot failure is reported as a boot failure rather than as a
+        // missing response. The app shell already proved the app started, so a failure here is a
+        // different problem and gets a different message.
+        try
+        {
+            await Task.WhenAll(awaited);
+        }
+        catch (TimeoutException timeout)
+        {
+            throw new TimeoutException(
+                DescribeMissingResponse(awaitedApiPaths, awaited, watch, spent), timeout);
         }
 
         return page;
+    }
+
+    /// <summary>
+    /// The message for a first page load that reached the app shell and then never saw a response
+    /// it was told to wait for.
+    /// </summary>
+    /// <remarks>
+    /// None of the boot sentences appear here. The app shell proved the app started, so repeating
+    /// boot evidence would send the reader down the trail this class exists to close. The request
+    /// trail does appear, because it is the useful evidence for a call that never came back.
+    /// </remarks>
+    private static string DescribeMissingResponse(
+        IReadOnlyList<string> paths,
+        IReadOnlyList<Task<IResponse>> awaited,
+        BootWatch watch,
+        Stopwatch spent)
+    {
+        StringBuilder report = new();
+
+        IEnumerable<string> missing = paths
+            .Where((_, index) => !awaited[index].IsCompletedSuccessfully);
+
+        report.AppendLine(
+            $"The app started, but {string.Join(", ", missing)} never answered with status 200 "
+            + $"inside the first page load budget. "
+            + $"Gave up after {spent.ElapsedMilliseconds} ms of a {TimeoutMs} ms budget.");
+
+        IReadOnlyList<string> trail = watch.RequestTrail;
+        if (trail.Count > 0)
+        {
+            report.AppendLine("The last requests the page made:");
+            foreach (string request in trail)
+            {
+                report.AppendLine($"  {request}");
+            }
+        }
+
+        return report.ToString();
     }
 
     /// <summary>
@@ -100,11 +185,7 @@ public static class FirstPageLoad
     private static float Remaining(Stopwatch spent) =>
         Math.Max(1L, TimeoutMs - spent.ElapsedMilliseconds);
 
-    private static async Task<string> DescribeAsync(
-        IPage page,
-        string readySelector,
-        BootWatch watch,
-        Stopwatch spent)
+    private static async Task<string> DescribeAsync(IPage page, BootWatch watch, Stopwatch spent)
     {
         StringBuilder report = new();
 
@@ -112,23 +193,10 @@ public static class FirstPageLoad
         // happened, and a boot that gave up early spends far less than the budget. The budget says
         // what the limit was, so a reader can tell a slow page from a page that stopped.
         report.AppendLine(
-            $"The first page load never showed '{readySelector}'. "
+            "The app never started: the app shell never appeared. "
             + $"Gave up after {spent.ElapsedMilliseconds} ms of a {TimeoutMs} ms budget.");
 
-        // Reading the page can itself fail, and a broken diagnosis must never hide the timeout it
-        // was called to explain. Both types are needed: Playwright 1.59 has no timeout exception of
-        // its own, so a slow read throws System.TimeoutException, not PlaywrightException.
-        try
-        {
-            report.AppendLine(await page.Locator(BootErrorSelector).CountAsync() > 0
-                ? "The app failed to boot. The page is showing the boot error screen, so no app content was ever going to appear. A longer wait would not help."
-                : "The app is not showing its boot error screen, so the boot did not report a failure.");
-        }
-        catch (Exception readError) when (readError is PlaywrightException or TimeoutException)
-        {
-            report.AppendLine($"The boot error screen could not be read: {readError.Message}");
-        }
-
+        report.AppendLine(await WhichScreenAsync(page));
         report.AppendLine($"Documents loaded: {watch.Documents}. More than one means bootBlazor.js reloaded the page after a failed boot.");
 
         IReadOnlyList<string> errors = watch.Errors;
@@ -145,18 +213,73 @@ public static class FirstPageLoad
             }
         }
 
+        IReadOnlyList<string> trail = watch.RequestTrail;
+        if (trail.Count > 0)
+        {
+            // The gap between the last two lines is the evidence. A page that stopped shows a last
+            // request and then nothing, and that is what the SPA host log had to be read for before.
+            report.AppendLine("The last requests the page made:");
+            foreach (string request in trail)
+            {
+                report.AppendLine($"  {request}");
+            }
+        }
+
         return report.ToString();
+    }
+
+    /// <summary>
+    /// Names the screen the page is showing, which is the single most useful line in the report.
+    /// </summary>
+    /// <remarks>
+    /// Reading the page can itself fail, and a broken diagnosis must never hide the timeout it was
+    /// called to explain. Both exception types are needed: Playwright 1.59 has no timeout exception
+    /// of its own, so a slow read throws System.TimeoutException, not PlaywrightException.
+    /// </remarks>
+    private static async Task<string> WhichScreenAsync(IPage page)
+    {
+        try
+        {
+            if (await page.Locator(BootErrorSelector).CountAsync() > 0)
+            {
+                return "The app failed to boot. The page is showing the boot error screen, so no app content was ever going to appear. A longer wait would not help.";
+            }
+
+            ILocator startupError = page.Locator(StartupErrorSelector);
+            if (await startupError.CountAsync() > 0)
+            {
+                string reason = await startupError.First.GetAttributeAsync("data-test-reason") ?? "unknown";
+                return $"The app started but could not run. The page is showing the startup error screen for {reason}, so no app content was ever going to appear.";
+            }
+
+            return "The page is showing neither the boot error screen nor a startup error screen, so nothing reported a failure.";
+        }
+        catch (Exception readError) when (readError is PlaywrightException or TimeoutException)
+        {
+            return $"The screen could not be read: {readError.Message}";
+        }
     }
 }
 
 /// <summary>
-/// Collects the three signals that tell a failed boot from a slow one: how many documents the page
-/// loaded, what the console logged as an error, and what went uncaught.
+/// Collects the signals that tell a failed boot from a slow one: how many documents the page
+/// loaded, what the console logged as an error, what went uncaught, and what the page last asked
+/// the server for.
 /// </summary>
 public sealed class BootWatch
 {
+    /// <summary>
+    /// How many requests the report prints. Ten is enough to show the last healthy asset and the
+    /// silence after it, and short enough that a reader takes it in at once. The queue is bounded
+    /// so a page that loads hundreds of assets cannot grow the report without limit.
+    /// </summary>
+    private const int TrailLength = 10;
+
     private readonly DocumentRequestCounter _documents;
     private readonly ConcurrentQueue<string> _errors = new();
+    private readonly ConcurrentQueue<string> _trail = new();
+    private readonly Stopwatch _sinceFirstRequest = new();
+    private readonly Lock _trailGate = new();
 
     private BootWatch(DocumentRequestCounter documents) => _documents = documents;
 
@@ -164,9 +287,17 @@ public sealed class BootWatch
 
     public IReadOnlyList<string> Errors => [.. _errors];
 
-    /// <summary>Starts counting documents. Call this before the context opens any page.</summary>
-    public static BootWatch Attach(IBrowserContext context) =>
-        new(DocumentRequestCounter.Attach(context));
+    public IReadOnlyList<string> RequestTrail => [.. _trail];
+
+    /// <summary>Starts counting documents and recording requests. Call this before the context opens any page.</summary>
+    public static BootWatch Attach(IBrowserContext context)
+    {
+        BootWatch watch = new(DocumentRequestCounter.Attach(context));
+
+        context.Request += (_, request) => watch.Record(request.Url);
+
+        return watch;
+    }
 
     /// <summary>Starts collecting errors from one page. Call this before the page navigates.</summary>
     public void Follow(IPage page)
@@ -180,5 +311,32 @@ public sealed class BootWatch
         };
 
         page.PageError += (_, error) => _errors.Enqueue($"uncaught: {error}");
+    }
+
+    /// <summary>
+    /// Records one request with its offset from the first request seen.
+    /// </summary>
+    /// <remarks>
+    /// Playwright raises the request event from its own reader, so two requests can arrive at once.
+    /// The lock covers starting the clock and trimming the queue together: without it, two threads
+    /// could both start the stopwatch, and a trim racing an enqueue could leave more than
+    /// <see cref="TrailLength"/> entries.
+    /// </remarks>
+    private void Record(string url)
+    {
+        lock (_trailGate)
+        {
+            if (!_sinceFirstRequest.IsRunning)
+            {
+                _sinceFirstRequest.Start();
+            }
+
+            _trail.Enqueue($"{_sinceFirstRequest.ElapsedMilliseconds} ms  {url}");
+
+            while (_trail.Count > TrailLength)
+            {
+                _trail.TryDequeue(out _);
+            }
+        }
     }
 }

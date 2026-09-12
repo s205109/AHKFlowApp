@@ -40,9 +40,8 @@ public sealed class KnownShortcutsMobileFlowTests(StackFixtureD fixture) : IAsyn
     public async Task PhoneViewport_SilencesAUse_AndBringsItBack()
     {
         await using IBrowserContext ctx = await fixture.Browser.NewContextAsync(PhoneViewport);
-        IPage page = await ctx.NewPageAsync();
 
-        await page.GotoAsync($"{fixture.Spa.BaseUrl}/known-shortcuts");
+        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/known-shortcuts");
         await page.WaitForSelectorAsync("button.reload-known-shortcuts");
 
         // The catalog runs past a hundred uses and the card list pages at 20, so reach the row
@@ -60,9 +59,8 @@ public sealed class KnownShortcutsMobileFlowTests(StackFixtureD fixture) : IAsyn
     public async Task PhoneViewport_ShowsWhatUsesTheKeysAndWhatItDoes()
     {
         await using IBrowserContext ctx = await fixture.Browser.NewContextAsync(PhoneViewport);
-        IPage page = await ctx.NewPageAsync();
 
-        await page.GotoAsync($"{fixture.Spa.BaseUrl}/known-shortcuts");
+        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/known-shortcuts");
         await page.WaitForSelectorAsync("button.reload-known-shortcuts");
         await page.FillAsync("input[data-test=\"known-shortcut-search\"]", "Win+E");
 
@@ -84,9 +82,8 @@ public sealed class KnownShortcutsMobileFlowTests(StackFixtureD fixture) : IAsyn
         await SeedLongOwnerRecordAsync(fixture);
 
         await using IBrowserContext ctx = await fixture.Browser.NewContextAsync(PhoneViewport);
-        IPage page = await ctx.NewPageAsync();
 
-        await page.GotoAsync($"{fixture.Spa.BaseUrl}/known-shortcuts");
+        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/known-shortcuts");
         await page.WaitForSelectorAsync("button.reload-known-shortcuts");
         await page.FillAsync("input[data-test=\"known-shortcut-search\"]", LongUsedBy);
         await page.WaitForSelectorAsync(".mobile-branch .mobile-row");
@@ -102,9 +99,8 @@ public sealed class KnownShortcutsMobileFlowTests(StackFixtureD fixture) : IAsyn
     public async Task TabletViewport_DoesNotCreatePageHorizontalOverflow()
     {
         await using IBrowserContext ctx = await fixture.Browser.NewContextAsync(TabletViewport);
-        IPage page = await ctx.NewPageAsync();
 
-        await page.GotoAsync($"{fixture.Spa.BaseUrl}/known-shortcuts");
+        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/known-shortcuts");
         await page.WaitForSelectorAsync(".mobile-branch .mobile-row");
 
         OverflowMetrics metrics = await page.EvaluateAsync<OverflowMetrics>(

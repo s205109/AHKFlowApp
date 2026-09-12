@@ -15,9 +15,8 @@ public sealed class ShortcutWarningFlowTests(StackFixtureA fixture) : IAsyncLife
     public async Task WinE_ShowsTheWarningAndStillSaves()
     {
         await using IBrowserContext context = await fixture.Browser.NewContextAsync();
-        IPage page = await context.NewPageAsync();
 
-        await OpenCreateDialogAsync(page);
+        IPage page = await OpenCreateDialogAsync(context);
 
         await CommitKeyAsync(page, "e");
         await page.CheckAsync(".hotkey-edit-dialog input[data-test=\"win-checkbox\"]");
@@ -42,9 +41,8 @@ public sealed class ShortcutWarningFlowTests(StackFixtureA fixture) : IAsyncLife
     public async Task ClearingTheModifier_RemovesTheWarning()
     {
         await using IBrowserContext context = await fixture.Browser.NewContextAsync();
-        IPage page = await context.NewPageAsync();
 
-        await OpenCreateDialogAsync(page);
+        IPage page = await OpenCreateDialogAsync(context);
 
         await CommitKeyAsync(page, "e");
         await page.CheckAsync(".hotkey-edit-dialog input[data-test=\"win-checkbox\"]");
@@ -59,11 +57,10 @@ public sealed class ShortcutWarningFlowTests(StackFixtureA fixture) : IAsyncLife
     public async Task RekeyingAnExistingHotkeyInline_WarnsInTheRow()
     {
         await using IBrowserContext context = await fixture.Browser.NewContextAsync();
-        IPage page = await context.NewPageAsync();
 
         // A SendText hotkey edits inline, in the grid row, never in the dialog. The row changes the
         // key and every modifier, so the row has to warn about them too.
-        await OpenCreateDialogAsync(page);
+        IPage page = await OpenCreateDialogAsync(context);
         await CommitKeyAsync(page, "F13");
         await page.FillAsync(".hotkey-edit-dialog input[data-test=\"description-input\"]", "E2E inline rekey");
         await page.FillAsync(".hotkey-edit-dialog [data-test=\"text-input\"]", "my notes");
@@ -94,9 +91,8 @@ public sealed class ShortcutWarningFlowTests(StackFixtureA fixture) : IAsyncLife
     public async Task AnInlineEditableRow_CanStillOpenTheFullEditor()
     {
         await using IBrowserContext context = await fixture.Browser.NewContextAsync();
-        IPage page = await context.NewPageAsync();
 
-        await OpenCreateDialogAsync(page);
+        IPage page = await OpenCreateDialogAsync(context);
         await CommitKeyAsync(page, "F14");
         await page.FillAsync(".hotkey-edit-dialog input[data-test=\"description-input\"]", "E2E full editor");
         await page.FillAsync(".hotkey-edit-dialog [data-test=\"text-input\"]", "my notes");
@@ -122,10 +118,9 @@ public sealed class ShortcutWarningFlowTests(StackFixtureA fixture) : IAsyncLife
     public async Task IgnoringTheWindowsUse_SilencesTheWarning_AndRestoringBringsItBack()
     {
         await using IBrowserContext context = await fixture.Browser.NewContextAsync();
-        IPage page = await context.NewPageAsync();
 
         // Silence the Windows use of Win+E.
-        await OpenKnownShortcutsAsync(page, "Win+E");
+        IPage page = await OpenKnownShortcutsAsync(context, "Win+E");
         await page.ClickAsync(string.Format(WindowsFileExplorerUse, ".ignore-use"));
         await page.WaitForSelectorAsync(string.Format(WindowsFileExplorerUse, ".restore-use"));
 
@@ -172,7 +167,6 @@ public sealed class ShortcutWarningFlowTests(StackFixtureA fixture) : IAsyncLife
     public async Task WhileAWriteIsInFlight_HoveringADisabledAction_StillShowsItsText()
     {
         await using IBrowserContext context = await fixture.Browser.NewContextAsync();
-        IPage page = await context.NewPageAsync();
 
         // Hold the write open, so the button is really disabled while the hover happens. The
         // handler waits on the source below instead of on a fixed delay, so the test never races.
@@ -183,7 +177,7 @@ public sealed class ShortcutWarningFlowTests(StackFixtureA fixture) : IAsyncLife
             await route.ContinueAsync();
         });
 
-        await OpenKnownShortcutsAsync(page, "Win+E");
+        IPage page = await OpenKnownShortcutsAsync(context, "Win+E");
         await page.ClickAsync(string.Format(WindowsFileExplorerUse, ".ignore-use"));
 
         // MudBlazor sets pointer-events: none on a disabled button, so a title on the button would
@@ -217,9 +211,8 @@ public sealed class ShortcutWarningFlowTests(StackFixtureA fixture) : IAsyncLife
     public async Task AnOwnerRecord_WarnsOnItsOwnCombination()
     {
         await using IBrowserContext context = await fixture.Browser.NewContextAsync();
-        IPage page = await context.NewPageAsync();
 
-        await OpenKnownShortcutsAsync(page);
+        IPage page = await OpenKnownShortcutsAsync(context);
         await page.ClickAsync("button.add-known-shortcut");
 
         ILocator keyInput = page.Locator("input[data-test=\"known-shortcut-key-picker\"]");
@@ -250,9 +243,8 @@ public sealed class ShortcutWarningFlowTests(StackFixtureA fixture) : IAsyncLife
     public async Task RemappingCapsLockToCtrl_WarnsAboutTheDestination()
     {
         await using IBrowserContext context = await fixture.Browser.NewContextAsync();
-        IPage page = await context.NewPageAsync();
 
-        await OpenCreateDialogAsync(page);
+        IPage page = await OpenCreateDialogAsync(context);
         await CommitKeyAsync(page, "CapsLock");
         await page.ClickAsync(".hotkey-edit-dialog [data-test=\"action-kind-Remap\"]");
         await CommitRemapDestAsync(page, "Ctrl");
@@ -275,10 +267,9 @@ public sealed class ShortcutWarningFlowTests(StackFixtureA fixture) : IAsyncLife
     public async Task AHotkeyOnAKnownShortcut_IsMarkedOnTheList()
     {
         await using IBrowserContext context = await fixture.Browser.NewContextAsync();
-        IPage page = await context.NewPageAsync();
 
         // Win+L is a seeded Protected row: Windows locks the computer with it.
-        await OpenCreateDialogAsync(page);
+        IPage page = await OpenCreateDialogAsync(context);
         await CommitKeyAsync(page, "l");
         await page.CheckAsync(".hotkey-edit-dialog input[data-test=\"win-checkbox\"]");
         await page.FillAsync(".hotkey-edit-dialog input[data-test=\"description-input\"]", "E2E lock marker");
@@ -301,10 +292,9 @@ public sealed class ShortcutWarningFlowTests(StackFixtureA fixture) : IAsyncLife
     public async Task AHotkeyOnAKeyTheProfileHeaderUses_IsWarnedAbout()
     {
         await using IBrowserContext context = await fixture.Browser.NewContextAsync();
-        IPage page = await context.NewPageAsync();
 
         // Put the Caps Lock layer into the seeded profile's header template.
-        await SetProfileHeaderAsync(page, CapsLockLayerHeader);
+        IPage page = await SetProfileHeaderAsync(context, CapsLockLayerHeader);
 
         // Now bind a hotkey to the same key. "Apply to all profiles" avoids picking one by name.
         await OpenCreateDialogAsync(page);
@@ -334,9 +324,8 @@ public sealed class ShortcutWarningFlowTests(StackFixtureA fixture) : IAsyncLife
     public async Task WhileTheProfileListIsStillLoading_TheCreateDialogStillWarns()
     {
         await using IBrowserContext context = await fixture.Browser.NewContextAsync();
-        IPage page = await context.NewPageAsync();
 
-        await SetProfileHeaderAsync(page, CapsLockLayerHeader);
+        IPage page = await SetProfileHeaderAsync(context, CapsLockLayerHeader);
 
         // Hold the Profile list open, so the hotkeys page reaches its first render without it. The
         // handler waits on the source below rather than on a fixed delay, so the test never races.
@@ -368,9 +357,8 @@ public sealed class ShortcutWarningFlowTests(StackFixtureA fixture) : IAsyncLife
     public async Task AHotkeyOnAKeyTheHeaderSpellsDifferently_IsWarnedAbout()
     {
         await using IBrowserContext context = await fixture.Browser.NewContextAsync();
-        IPage page = await context.NewPageAsync();
 
-        await SetProfileHeaderAsync(page,
+        IPage page = await SetProfileHeaderAsync(context,
             "#Requires AutoHotkey v2.0\n\n*LControl::\n{\n    Send \"{Blind}{LAlt DownR}\"\n}");
 
         await OpenCreateDialogAsync(page);
@@ -386,9 +374,21 @@ public sealed class ShortcutWarningFlowTests(StackFixtureA fixture) : IAsyncLife
 
     // The table holds a row per use, over a hundred of them, and pages at 25. Every row this file
     // acts on is addressed through the search box, never by paging to it.
+    private async Task<IPage> OpenKnownShortcutsAsync(IBrowserContext context, string? search = null)
+    {
+        IPage page = await FirstPageLoad.OpenAsync(context, $"{fixture.Spa.BaseUrl}/known-shortcuts");
+        await OnKnownShortcutsAsync(page, search);
+        return page;
+    }
+
     private async Task OpenKnownShortcutsAsync(IPage page, string? search = null)
     {
         await page.GotoAsync($"{fixture.Spa.BaseUrl}/known-shortcuts");
+        await OnKnownShortcutsAsync(page, search);
+    }
+
+    private static async Task OnKnownShortcutsAsync(IPage page, string? search)
+    {
         await page.WaitForSelectorAsync("button.reload-known-shortcuts");
 
         if (search is not null)
@@ -397,9 +397,21 @@ public sealed class ShortcutWarningFlowTests(StackFixtureA fixture) : IAsyncLife
 
     // Writes one template into the seeded Profile's header and waits for the save to land. Three
     // tests start this way, and each of them then binds a hotkey to a key the template uses.
+    private async Task<IPage> SetProfileHeaderAsync(IBrowserContext context, string template)
+    {
+        IPage page = await FirstPageLoad.OpenAsync(context, $"{fixture.Spa.BaseUrl}/profiles");
+        await OnProfilesAsync(page, template);
+        return page;
+    }
+
     private async Task SetProfileHeaderAsync(IPage page, string template)
     {
         await page.GotoAsync($"{fixture.Spa.BaseUrl}/profiles");
+        await OnProfilesAsync(page, template);
+    }
+
+    private static async Task OnProfilesAsync(IPage page, string template)
+    {
         await page.WaitForSelectorAsync("button.start-edit");
         await page.ClickAsync("button.start-edit");
         await page.WaitForSelectorAsync("textarea[data-test=\"profile-header-input\"]");
@@ -411,9 +423,21 @@ public sealed class ShortcutWarningFlowTests(StackFixtureA fixture) : IAsyncLife
     private const string CapsLockLayerHeader =
         "#Requires AutoHotkey v2.0\n\n*CapsLock::\n{\n    Send \"{Blind}{LCtrl DownR}\"\n}";
 
+    private async Task<IPage> OpenCreateDialogAsync(IBrowserContext context)
+    {
+        IPage page = await FirstPageLoad.OpenAsync(context, $"{fixture.Spa.BaseUrl}/hotkeys");
+        await OnCreateDialogAsync(page);
+        return page;
+    }
+
     private async Task OpenCreateDialogAsync(IPage page)
     {
         await page.GotoAsync($"{fixture.Spa.BaseUrl}/hotkeys");
+        await OnCreateDialogAsync(page);
+    }
+
+    private static async Task OnCreateDialogAsync(IPage page)
+    {
         await page.WaitForSelectorAsync("button.add-hotkey");
         await page.ClickAsync("button.add-hotkey");
         await page.WaitForSelectorAsync(".hotkey-edit-dialog");

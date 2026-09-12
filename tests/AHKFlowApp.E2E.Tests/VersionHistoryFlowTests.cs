@@ -25,9 +25,8 @@ public sealed class VersionHistoryFlowTests(StackFixtureC fixture) : IAsyncLifet
     public async Task HotstringHistoryRecycleRestoreAndPurge_DrivesBrowserFlow()
     {
         await using IBrowserContext ctx = await fixture.Browser.NewContextAsync();
-        IPage page = await ctx.NewPageAsync();
 
-        await page.GotoAsync($"{fixture.Spa.BaseUrl}/hotstrings");
+        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/hotstrings");
         await page.WaitForSelectorAsync("button.add-hotstring");
 
         await CreateHotstringAsync(page, "vh-hs", "original text");
@@ -83,9 +82,8 @@ public sealed class VersionHistoryFlowTests(StackFixtureC fixture) : IAsyncLifet
         Guid hotkeyId = await SeedHotkeyAsync();
 
         await using IBrowserContext ctx = await fixture.Browser.NewContextAsync();
-        IPage page = await ctx.NewPageAsync();
 
-        await page.GotoAsync($"{fixture.Spa.BaseUrl}/hotkeys");
+        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/hotkeys");
         await page.WaitForSelectorAsync("tbody tr:has-text(\"Open Terminal\")");
 
         await UpdateHotkeyAsync(page, "Open Terminal", "F10", "wt first");

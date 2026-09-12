@@ -16,10 +16,9 @@ public sealed class ProfileScriptDownloadFlowTests(StackFixtureD fixture) : IAsy
     public async Task DownloadFromProfilesPage_SavesThatProfilesScript()
     {
         await using IBrowserContext ctx = await fixture.Browser.NewContextAsync();
-        IPage page = await ctx.NewPageAsync();
 
         // A hotstring gives the generated script something to prove it came from this profile.
-        await page.GotoAsync($"{fixture.Spa.BaseUrl}/hotstrings");
+        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/hotstrings");
         await page.WaitForSelectorAsync("button.add-hotstring");
         await page.ClickAsync("button.add-hotstring");
         await page.FillAsync("input[data-test=\"trigger-input\"]", "dlflow");
@@ -47,9 +46,8 @@ public sealed class ProfileScriptDownloadFlowTests(StackFixtureD fixture) : IAsy
     public async Task BlockedDownload_ReachableByKeyboard_ShowsWhyItRefuses()
     {
         await using IBrowserContext ctx = await fixture.Browser.NewContextAsync();
-        IPage page = await ctx.NewPageAsync();
 
-        await page.GotoAsync($"{fixture.Spa.BaseUrl}/profiles");
+        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/profiles");
         await page.WaitForSelectorAsync("button.start-edit");
 
         // Editing a row blocks its download: the server builds the script from saved data.

@@ -17,9 +17,8 @@ public sealed class HotstringsCrudFlowTests(StackFixtureC fixture) : IAsyncLifet
     public async Task CreateEditDelete_DrivesBlazorSpaThroughBrowser()
     {
         await using IBrowserContext ctx = await fixture.Browser.NewContextAsync();
-        IPage page = await ctx.NewPageAsync();
 
-        await page.GotoAsync($"{fixture.Spa.BaseUrl}/hotstrings");
+        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/hotstrings");
         await page.WaitForSelectorAsync("button.add-hotstring");
 
         await page.ClickAsync("button.add-hotstring");

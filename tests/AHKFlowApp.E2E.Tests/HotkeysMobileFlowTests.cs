@@ -45,9 +45,8 @@ public sealed class HotkeysMobileFlowTests(StackFixtureB fixture) : IAsyncLifeti
     public async Task TabletViewport_DoesNotCreatePageHorizontalOverflow()
     {
         await using IBrowserContext ctx = await fixture.Browser.NewContextAsync(TabletViewport);
-        IPage page = await ctx.NewPageAsync();
 
-        await page.GotoAsync($"{fixture.Spa.BaseUrl}/hotkeys");
+        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/hotkeys");
         await page.WaitForSelectorAsync("button.add-hotkey-fab");
 
         OverflowMetrics metrics = await page.EvaluateAsync<OverflowMetrics>(
@@ -61,18 +60,18 @@ public sealed class HotkeysMobileFlowTests(StackFixtureB fixture) : IAsyncLifeti
     public async Task AddFab_OnPhoneViewport_OpensHotkeyDialog()
     {
         await using IBrowserContext ctx = await fixture.Browser.NewContextAsync(PhoneViewport);
-        IPage page = await ctx.NewPageAsync();
 
-        Task<IResponse> profilesLoaded = page.WaitForResponseAsync(response =>
-            response.Url.Contains("/api/v1/profiles", StringComparison.OrdinalIgnoreCase) &&
-            response.Status == 200);
-        Task<IResponse> categoriesLoaded = page.WaitForResponseAsync(response =>
-            response.Url.Contains("/api/v1/categories", StringComparison.OrdinalIgnoreCase) &&
-            response.Status == 200);
+        // Both lists must have arrived before the click below. The page hands the dialog the lists
+        // it holds at the moment the dialog opens, so a click that lands first produces a dialog
+        // that can never warn. The helper registers these waits before it navigates, which is the
+        // only place early enough.
+        IPage page = await FirstPageLoad.OpenAsync(
+            ctx,
+            $"{fixture.Spa.BaseUrl}/hotkeys",
+            "/api/v1/profiles",
+            "/api/v1/categories");
 
-        await page.GotoAsync($"{fixture.Spa.BaseUrl}/hotkeys");
         await page.WaitForSelectorAsync("button.add-hotkey-fab");
-        await Task.WhenAll(profilesLoaded, categoriesLoaded);
 
         await page.ClickAsync("button.add-hotkey-fab");
         await page.WaitForSelectorAsync(".hotkey-edit-dialog");
@@ -88,9 +87,8 @@ public sealed class HotkeysMobileFlowTests(StackFixtureB fixture) : IAsyncLifeti
         await SeedRunHotkeyAsync(fixture, "Launch Terminal", "F5", "wt.exe");
 
         await using IBrowserContext ctx = await fixture.Browser.NewContextAsync(PhoneViewport);
-        IPage page = await ctx.NewPageAsync();
 
-        await page.GotoAsync($"{fixture.Spa.BaseUrl}/hotkeys");
+        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/hotkeys");
         ILocator row = page.Locator(".mobile-row", new() { HasTextString = "Launch Terminal" });
         await row.WaitForAsync();
 
@@ -110,9 +108,8 @@ public sealed class HotkeysMobileFlowTests(StackFixtureB fixture) : IAsyncLifeti
         await SeedHotkeysAsync(fixture, ("Macro A", "F1"), ("Macro B", "F2"));
 
         await using IBrowserContext ctx = await fixture.Browser.NewContextAsync(PhoneViewport);
-        IPage page = await ctx.NewPageAsync();
 
-        await page.GotoAsync($"{fixture.Spa.BaseUrl}/hotkeys");
+        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/hotkeys");
         await page.WaitForSelectorAsync(".mobile-row:has-text(\"F1\")");
         await page.WaitForSelectorAsync(".mobile-row:has-text(\"F2\")");
 
@@ -135,9 +132,8 @@ public sealed class HotkeysMobileFlowTests(StackFixtureB fixture) : IAsyncLifeti
         await SeedMarkedHotkeyAsync(fixture, "Task manager row");
 
         await using IBrowserContext ctx = await fixture.Browser.NewContextAsync(PhoneViewport);
-        IPage page = await ctx.NewPageAsync();
 
-        await page.GotoAsync($"{fixture.Spa.BaseUrl}/hotkeys");
+        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/hotkeys");
 
         ILocator row = page.Locator(
             ".mobile-branch tr.mobile-row",
@@ -166,9 +162,8 @@ public sealed class HotkeysMobileFlowTests(StackFixtureB fixture) : IAsyncLifeti
         await SeedLongComboHotkeyAsync(fixture, "Long combo row");
 
         await using IBrowserContext ctx = await fixture.Browser.NewContextAsync(PhoneViewport);
-        IPage page = await ctx.NewPageAsync();
 
-        await page.GotoAsync($"{fixture.Spa.BaseUrl}/hotkeys");
+        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/hotkeys");
 
         ILocator row = page.Locator(
             ".mobile-branch tr.mobile-row",
