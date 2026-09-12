@@ -46,10 +46,15 @@ and Ship flips it to ready. A pull request opened ready from the start would be 
 time. `workflow.md` Stage 1 makes drafts the route, so the assumption holds, but it is an assumption
 and not a fact about GitHub.
 
-**`ci.yml` needs one more trigger.** Its `on: pull_request` block names no `types:`, so it defaults
-to `opened`, `synchronize` and `reopened`. Flipping a pull request to ready fires
-`ready_for_review`, which is not in that list. Without adding it, the check would never run at the
-one moment it is meant to.
+**The check runs in its own workflow.** Flipping a pull request to ready fires `ready_for_review`,
+which is not a default pull request type, so the check needs a workflow that lists it. Backlog 151
+first listed it in `ci.yml`, and every ready flip then re-ran all five `ci.yml` jobs for about ten
+minutes. Backlog 153 moved the check into `.github/workflows/shipping-pr-closes-item.yml`, which
+runs nothing else.
+
+**Branch protection must require that workflow's job.** GitHub does not block a merge on a check
+that branch protection does not list. So `main` lists `shipping-pr-closes-item` as a required
+check. The cost is that a person who reads a red mark must look in two workflows, not one.
 
 **The draft state cannot be read locally.** Stage 9 pushes before it flips to ready, so at pre-push
 time the pull request is always still a draft. This check is therefore CI-only, and the local Gate
