@@ -382,6 +382,45 @@ If a run is killed, Windows releases the lock automatically. Never delete `.test
 recover. Only a live run blocks you, and the file stays on disk between runs by design. A
 leftover `.test-run.lock.owner` file alone never blocks a run either.
 
+## Measuring a Mode's speed
+
+```bash
+pwsh .\scripts\measure-test-modes.ps1 -Mode Fast -Runs 5
+```
+
+**A speed number is the median of five counted runs.** One run is not evidence. Record every run,
+the median and the maximum, not only the median.
+
+**Warm-up runs come first and are thrown away.** The script takes two of them by default and prints
+them, marked as discarded. The runs taken soon after a build are much slower for reasons that have
+nothing to do with the tests, so counting them makes a tree look slow.
+
+**The counted runs do not start until the tree has been built for ten minutes.** Warm-up runs fill
+that wait, so the time buys something. `-SettleSeconds 0` turns the wait off and `-WarmUpRuns 0`
+turns the discard off. Use either one only when you are timing the script itself.
+
+**`-MaxWarmUpRuns` caps the runs, never the wait.** A Mode whose runs are short cannot fill ten
+minutes with runs alone. The Fast Mode measured 13.5 to 16.1 s a run on 2026-09-12, so filling the
+target would take more than forty runs. When the cap is reached and the tree is still too new, the
+script waits out the rest and says so.
+
+**Why the wait exists as well as the discard.** Backlog 150 measured one tree three times in an hour
+with no code change. Five runs started right after a Release build read 91.21 / 85.46 / 96.13 /
+87.87 / 88.40 s. Ten runs an hour later read a median of 55.05 s. The first window never decayed. It
+was slow from end to end, so no number of discarded runs would have saved it. Only waiting did.
+
+**The spread line says how much the median is worth. It does not say whether the tree was cold.**
+The spread is the slowest run minus the fastest, as a share of the median. In the record above the
+cold window spread 12.1 percent and the settled window spread 31.9 percent, so the coldest
+measurement of the three looked like the tightest. Read the `built` line for coldness, and the
+`spread` line for how far to trust the median.
+
+**A soak takes no warm-up runs.** It counts passes and failures, not seconds:
+
+```bash
+pwsh .\scripts\measure-test-modes.ps1 -Soak tests/AHKFlowApp.Infrastructure.Tests -Runs 30
+```
+
 ## Trait contract
 
 `Application.Tests` classes using these collections must have `[Trait("Category", "Integration")]`:

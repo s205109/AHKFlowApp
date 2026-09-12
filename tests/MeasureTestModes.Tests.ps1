@@ -183,7 +183,18 @@ Add-Content -LiteralPath (Join-Path $stubFolder 'signals.txt') -Value "test-fast
 # a fixed 0.05 s margin, which a slow run could close by accident. The fixed-value case above
 # owns that comparison now, where the numbers are constants and nothing can move them.
 $run = @(Get-Content -LiteralPath $callsPath).Count
-$sleep = @(900, 100, 300)[($run - 1) % 3]
+
+# The sleeps this fixture uses, in milliseconds, one per run. A case writes 'sleeps.txt' to
+# choose them, which is how the warm-up cases get a slow head and a flat tail. The fallback is
+# the original cycle, which the median and mean cases above rely on.
+$sleepsPath = Join-Path $stubFolder 'sleeps.txt'
+if (Test-Path -LiteralPath $sleepsPath) {
+    $sleeps = @((Get-Content -LiteralPath $sleepsPath -Raw).Trim() -split ',' | ForEach-Object { [int]$_.Trim() })
+}
+else {
+    $sleeps = @(900, 100, 300)
+}
+$sleep = $sleeps[($run - 1) % $sleeps.Count]
 Start-Sleep -Milliseconds $sleep
 '@
 
@@ -222,7 +233,8 @@ Write-Host "Testing $(Join-Path $repoRoot 'scripts\measure-test-modes.ps1')"
 Invoke-TestCase 'Timing mode calls the Mode once per run' {
     $root = New-HarnessFixture
     try {
-        $result = Invoke-Harness -Root $root -Arguments @('-Mode', 'Fast', '-Runs', '3', '-NoBuild')
+        # -WarmUpRuns 0 because this case counts calls. The default of 2 would add two more.
+        $result = Invoke-Harness -Root $root -Arguments @('-Mode', 'Fast', '-Runs', '3', '-WarmUpRuns', '0', '-SettleSeconds', '0', '-NoBuild')
         Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
 
         $calls = @(Get-Content -LiteralPath (Join-Path $root 'stub\testfast-calls.txt'))
@@ -250,6 +262,26 @@ Invoke-TestCase 'Get-AhkFlowMedian is the middle sorted value, and the mean of t
     $threw = $false
     try { Get-AhkFlowMedian -Values @() } catch { $threw = $true }
     Assert-True $threw 'An empty set has no median, and silently returning zero would read as a fast run.'
+}
+
+Invoke-TestCase 'Get-AhkFlowRelativeSpread is the range as a share of the median' {
+    # Fixed values, no wall clock. 20 minus 10 over a median of 15 is two thirds of the median.
+    $spread = Get-AhkFlowRelativeSpread -Values @(10, 15, 20)
+    Assert-True ([Math]::Abs($spread - 66.6667) -lt 0.01) "Expected 66.67 percent, got $spread."
+
+    Assert-True ((Get-AhkFlowRelativeSpread -Values @(7, 7, 7)) -eq 0) `
+        'Identical runs spread by nothing at all.'
+
+    # The record for backlog 150. Window 1 was the coldest of the three measurements and reads as
+    # the tightest, which is why the documentation says this figure does not detect a cold tree.
+    $coldWindow = Get-AhkFlowRelativeSpread -Values @(91.21, 85.46, 96.13, 87.87, 88.40)
+    $settledWindow = Get-AhkFlowRelativeSpread -Values @(55.64, 51.10, 53.68, 51.15, 51.53, 54.45, 56.79, 57.92, 68.64, 62.83)
+    Assert-True ($coldWindow -lt $settledWindow) `
+        "The record says the cold window is the tighter one: cold $coldWindow against settled $settledWindow."
+
+    $threw = $false
+    try { Get-AhkFlowRelativeSpread -Values @() } catch { $threw = $true }
+    Assert-True $threw 'An empty set has no spread, and returning zero would read as a perfect measurement.'
 }
 
 Invoke-TestCase 'Get-AhkFlowTestCount returns zero for every shape of TRX nobody can read' {
@@ -282,7 +314,8 @@ Invoke-TestCase 'Get-AhkFlowTestCount returns zero for every shape of TRX nobody
 Invoke-TestCase 'The reported median is the middle of the sorted runs, and the mean line is the mean' {
     $root = New-HarnessFixture
     try {
-        $result = Invoke-Harness -Root $root -Arguments @('-Mode', 'Fast', '-Runs', '3', '-NoBuild')
+        # -WarmUpRuns 0 because this case counts calls. The default of 2 would add two more.
+        $result = Invoke-Harness -Root $root -Arguments @('-Mode', 'Fast', '-Runs', '3', '-WarmUpRuns', '0', '-SettleSeconds', '0', '-NoBuild')
         Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
 
         # Every number here comes from the harness's own output, so both sides of each assertion
@@ -301,6 +334,138 @@ Invoke-TestCase 'The reported median is the middle of the sorted runs, and the m
             "Median $median must be the middle sorted run $($sorted[1]). Runs: $($runs -join ', ')"
         Assert-True ([Math]::Abs($mean - ($runs | Measure-Object -Average).Average) -lt 0.02) `
             "Mean $mean must be the average of the runs. Runs: $($runs -join ', ')"
+    }
+    finally { Remove-HarnessFixture -Root $root }
+}
+
+Invoke-TestCase 'A slow head is discarded and the median is the flat tail' {
+    $root = New-HarnessFixture
+    try {
+        # Three slow runs then two flat ones. The median of all five is 0.90 s. The median of the
+        # counted tail is 0.10 s. A harness that forgot to discard cannot land near 0.10 s by
+        # accident, so no threshold here has to survive machine load.
+        Set-Content -LiteralPath (Join-Path $root 'stub\sleeps.txt') -Value '900,900,900,100,100' -Encoding utf8
+
+        $result = Invoke-Harness -Root $root -Arguments @(
+            '-Mode', 'Fast', '-Runs', '2', '-WarmUpRuns', '3', '-NoBuild')
+        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
+
+        $calls = @(Get-Content -LiteralPath (Join-Path $root 'stub\testfast-calls.txt'))
+        Assert-True ($calls.Count -eq 5) "Expected 3 warm-up plus 2 counted runs, got $($calls.Count)."
+
+        $text = $result.Output -join "`n"
+        Assert-True ($text -match 'median\s+:\s+([\d.,]+)') "No median line. Output: $text"
+        $median = [double]($Matches[1] -replace ',', '.')
+        Assert-True ($median -lt 0.5) `
+            "The median must come from the flat tail near 0.10 s, not the whole list near 0.90 s. Got $median."
+    }
+    finally { Remove-HarnessFixture -Root $root }
+}
+
+Invoke-TestCase 'The discarded runs are printed, with how many there were' {
+    $root = New-HarnessFixture
+    try {
+        Set-Content -LiteralPath (Join-Path $root 'stub\sleeps.txt') -Value '900,900,100,100,100' -Encoding utf8
+
+        $result = Invoke-Harness -Root $root -Arguments @(
+            '-Mode', 'Fast', '-Runs', '3', '-WarmUpRuns', '2', '-NoBuild')
+        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
+
+        # The reader has to see the decay to judge it. A bare count of 2 cannot be judged at all.
+        $text = $result.Output -join "`n"
+        Assert-True ($text -match 'warm-up\s*:\s+([\d.,/ ]+)\(discarded, (\d+)\)') `
+            "No warm-up line naming the discarded runs and their count. Output: $text"
+        $discarded = @($Matches[1] -split '/' | ForEach-Object { [double]($_.Trim() -replace ',', '.') })
+        Assert-True ($discarded.Count -eq 2) "Expected two discarded runs printed, got $($discarded.Count)."
+        Assert-True ([int]$Matches[2] -eq 2) "The printed count must be 2, got $($Matches[2])."
+    }
+    finally { Remove-HarnessFixture -Root $root }
+}
+
+Invoke-TestCase 'The warm-up ceiling caps the runs and never the wait' {
+    $root = New-HarnessFixture
+    try {
+        Set-Content -LiteralPath (Join-Path $root 'stub\sleeps.txt') -Value '300' -Encoding utf8
+
+        # A build output file written just now, so the settle clock is not satisfied.
+        $binFolder = Join-Path $root 'tests\FakeProject\bin\Release\net10.0'
+        New-Item -ItemType Directory -Path $binFolder -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $binFolder 'Fake.dll') -Value 'not a real assembly' -Encoding utf8
+
+        # Four warm-up runs at 300 ms cannot fill a 5 s target, so the ceiling is reached first.
+        # That is the shape of a real short Mode: the Fast Mode measured 13.5 to 16.1 s a run, and
+        # a 600 s target would need more than forty runs to fill. The ceiling must cap the runs
+        # without ever letting the counted runs start on a tree that is still cold.
+        $result = Invoke-Harness -Root $root -Arguments @(
+            '-Mode', 'Fast', '-Runs', '1', '-WarmUpRuns', '1',
+            '-SettleSeconds', '5', '-MaxWarmUpRuns', '4', '-NoBuild')
+        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
+
+        # Warm-ups past the minimum of one, capped at four, then one counted run.
+        $calls = @(Get-Content -LiteralPath (Join-Path $root 'stub\testfast-calls.txt'))
+        Assert-True ($calls.Count -eq 5) "Expected 4 warm-up plus 1 counted run, got $($calls.Count)."
+
+        $text = $result.Output -join "`n"
+        Assert-True ($text -match 'warm-up ceiling') `
+            "Reaching the ceiling must say so, or a reader reads a cold median as a settled one. Output: $text"
+        Assert-True ($text -match 'Waiting') `
+            "The ceiling caps the runs, not the wait. It must wait out the rest. Output: $text"
+
+        # The assertion that proves the wait really happened. Without it the counted runs start
+        # about 2 s after the build, and the build-age line reads well under the 5 s target.
+        Assert-True ($text -match 'built\s+:\s+([\d.,]+)\s+s') "No build-age line. Output: $text"
+        $builtAge = [double]($Matches[1] -replace '[,.]', '')
+        Assert-True ($builtAge -ge 5) `
+            "The counted runs must start at or after the 5 s settle target, but the build age reads $builtAge s. Output: $text"
+    }
+    finally { Remove-HarnessFixture -Root $root }
+}
+
+Invoke-TestCase 'With no build output the settle clock is off, and it says so' {
+    $root = New-HarnessFixture
+    try {
+        Set-Content -LiteralPath (Join-Path $root 'stub\sleeps.txt') -Value '50' -Encoding utf8
+
+        # The fixture has tests\FakeProject but no bin folder, so nothing dates the build.
+        $result = Invoke-Harness -Root $root -Arguments @(
+            '-Mode', 'Fast', '-Runs', '1', '-WarmUpRuns', '1', '-SettleSeconds', '3600', '-NoBuild')
+        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
+
+        $calls = @(Get-Content -LiteralPath (Join-Path $root 'stub\testfast-calls.txt'))
+        Assert-True ($calls.Count -eq 2) "Expected 1 warm-up plus 1 counted run, got $($calls.Count)."
+
+        # Silence would be the worst outcome: the clock off and nobody told.
+        $text = $result.Output -join "`n"
+        Assert-True ($text -match 'no build output') `
+            "A settle clock that cannot find a build date must say so. Output: $text"
+    }
+    finally { Remove-HarnessFixture -Root $root }
+}
+
+Invoke-TestCase 'The report names the spread and how old the build was' {
+    $root = New-HarnessFixture
+    try {
+        Set-Content -LiteralPath (Join-Path $root 'stub\sleeps.txt') -Value '100,300,900' -Encoding utf8
+
+        $result = Invoke-Harness -Root $root -Arguments @(
+            '-Mode', 'Fast', '-Runs', '3', '-WarmUpRuns', '0', '-SettleSeconds', '0', '-NoBuild')
+        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
+
+        # Both sides of the assertion come from the harness's own output, so machine load moves
+        # them together. The fixed-value case above owns the arithmetic.
+        $text = $result.Output -join "`n"
+        Assert-True ($text -match 'runs\s+:\s+([\d.,/ ]+)') "No runs line. Output: $text"
+        $runs = @($Matches[1] -split '/' | ForEach-Object { [double]($_.Trim() -replace ',', '.') })
+        Assert-True ($text -match 'spread\s+:\s+([\d.,]+)') "No spread line. Output: $text"
+        $spread = [double]($Matches[1] -replace ',', '.')
+
+        $expected = Get-AhkFlowRelativeSpread -Values $runs
+        Assert-True ([Math]::Abs($spread - $expected) -lt 0.5) `
+            "Spread $spread must match the printed runs, which give $expected. Runs: $($runs -join ', ')"
+
+        # The fixture has no build output, so this run must say the age is unknown rather than
+        # print a number it cannot have.
+        Assert-True ($text -match 'built\s+:\s+unknown') "No build-age line. Output: $text"
     }
     finally { Remove-HarnessFixture -Root $root }
 }
@@ -465,7 +630,8 @@ Invoke-TestCase 'The build runs inside the lock, and timing mode releases it bef
     $root = New-HarnessFixture
     try {
         # Note the absent -NoBuild: this case is about the build.
-        $result = Invoke-Harness -Root $root -Arguments @('-Mode', 'Fast', '-Runs', '2')
+        # -WarmUpRuns 0 because this case counts calls. The default of 2 would add two more.
+        $result = Invoke-Harness -Root $root -Arguments @('-Mode', 'Fast', '-Runs', '2', '-WarmUpRuns', '0', '-SettleSeconds', '0')
         Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
 
         $signals = @(Get-Content -LiteralPath (Join-Path $root 'stub\signals.txt'))

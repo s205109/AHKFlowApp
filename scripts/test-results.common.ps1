@@ -136,6 +136,41 @@ function Get-AhkFlowMedian {
     return ($sorted[$middle - 1] + $sorted[$middle]) / 2
 }
 
+function Get-AhkFlowRelativeSpread {
+    <#
+      How far the slowest and fastest runs sit apart, as a percentage of the median.
+
+      Backlog 150. It answers one question: how much is this median worth? A settled ten-run window
+      in that item spread 31.9 percent, so its median carried roughly plus or minus 16 percent, and
+      anybody comparing two medians against a 10 percent threshold needs to know that first.
+
+      It does not detect a tree that is uniformly cold, and no figure computed inside one window
+      does. The same item records a window taken right after a build whose five runs were 60 percent
+      slow and spread only 12.1 percent, which is tighter than the settled window. The settle clock
+      in scripts/measure-test-modes.ps1 is what handles a cold tree.
+
+      An empty set throws, for the same reason Get-AhkFlowMedian does: zero would print as a
+      perfect measurement.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyCollection()]
+        [double[]]$Values
+    )
+
+    if ($Values.Count -lt 1) {
+        throw 'Get-AhkFlowRelativeSpread needs at least one value.'
+    }
+
+    $median = Get-AhkFlowMedian -Values $Values
+    if ($median -le 0) {
+        throw 'Get-AhkFlowRelativeSpread needs a median above zero.'
+    }
+
+    $measured = $Values | Measure-Object -Minimum -Maximum
+    return (($measured.Maximum - $measured.Minimum) / $median) * 100
+}
+
 function New-AhkFlowTestSummary {
     <#
       One row of the table a test slice prints, plus the guard that refuses an empty one.
