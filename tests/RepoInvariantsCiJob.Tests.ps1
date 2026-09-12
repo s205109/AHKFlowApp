@@ -21,10 +21,15 @@ function Assert-True {
 }
 
 $expectedSuites = @(
+    # Backlog 151. Both of these are backlog-record invariants: the counter that decides whether
+    # an item claims to be finished, and the rule that refuses a ready pull request leaving such
+    # an item open. They belong beside the other backlog checks.
+    'AcceptanceBoxes.Tests.ps1'
     'BacklogNumbering.Tests.ps1'
     'BacklogPlanPointer.Tests.ps1'
     'BacklogStaleOpen.Tests.ps1'
     'CitationFreshness.Tests.ps1'
+    'ShippingPrClosesItem.Tests.ps1'
     'SkillParity.Tests.ps1'
     # Backlog 127. This one is in the job so that every pull request proves the runner starts,
     # reads a manifest, and selects suites on Linux. It is the only member that is here for the

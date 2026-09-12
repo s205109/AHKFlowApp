@@ -14,6 +14,7 @@
 Set-StrictMode -Version Latest
 
 . (Join-Path $PSScriptRoot 'backlog.common.ps1')
+. (Join-Path $PSScriptRoot 'backlog-acceptance.common.ps1')
 
 # Stage 3's exit condition is 'Plan committed', so 4-execute is the first stage whose records
 # can outlive their own work. The plan-pointer check uses the same index for the same reason
@@ -101,7 +102,7 @@ function Get-BacklogStaleOpenProblem {
 
     # A shallow clone cannot answer the question, and a silent pass would be a false green.
     # This check runs in the repo-invariants job, which checks out full history for it
-    # (`.github/workflows/ci.yml:21`, "fetch-depth: 0").
+    # (`.github/workflows/ci.yml:25`, "fetch-depth: 0").
     $shallow = Invoke-BacklogGit -RepoRoot $RepoRoot -GitArgs @('rev-parse', '--is-shallow-repository')
     if ($shallow.ExitCode -ne 0) {
         return @("Cannot read git history in $RepoRoot. The stale-open check needs a git repository.")
@@ -139,6 +140,19 @@ Backlog $($item.Key) reads 'Stage: 9-ship' and is still open.
         }
 
         if ($index -lt $script:BacklogStaleTriggerIndex) { continue }
+
+        # Arm 3: the item says it is finished and is still open. Backlog 151. Arm 1's threshold of
+        # 12 is right for its own question and too slow for this one: backlog 132 merged with all
+        # five boxes ticked and was caught by hand nine hours later, with the base only 2 commits
+        # past the merge. An item claiming every criterion is met needs no waiting period.
+        #
+        # Every box ticked is what keeps a partial delivery out. Most items ship over more than
+        # one pull request, and every pull request but the last leaves a box unticked.
+        #
+        # An item with no boxes is vacuously finished, so Total must be over zero first.
+        $itemLines = @(Get-Content -LiteralPath $item.Path -ErrorAction SilentlyContinue)
+        $boxes = Get-AcceptanceBoxCount -Lines $itemLines
+        $allTicked = ($boxes.Total -gt 0 -and $boxes.Ticked -eq $boxes.Total)
 
         # The newest commit that changed this item's Stage line. -G matches the line text
         # without its '+' or '-' prefix, so one pattern covers both sides of the diff.
@@ -186,6 +200,43 @@ Backlog $($item.Key) reads 'Stage: 9-ship' and is still open.
 
         # Nothing to place it against. Say nothing rather than guess a number.
         if ($distance -lt 0) { continue }
+
+        # Arm 3 asks whether the FINISHED state merged, not whether the Stage line did. The two
+        # are not the same question. A branch that ticks its last box at Document leaves the
+        # Stage line alone, so the stamp above is an old merged commit while the ticks sit on a
+        # branch that has reached nothing. Reading the working tree alone called that branch late
+        # and refused it, which blocks the exact thing AGENTS.md asks for. Backlog 151, in review.
+        #
+        # Fully ticked in the base proves the ticks reached it. Fully ticked in the working tree,
+        # already tested above, proves they still stand: an honest untick after the merge switches
+        # arm 3 back off, which is the escape hatch the item's own criteria promise.
+        #
+        # The item may be absent from the base, or sit there under another name after a renumber.
+        # Either way its finished state has not merged under this path, so say nothing. That is
+        # the same stance the distance walk takes four lines above.
+        $mergedAllTicked = $false
+        if ($allTicked) {
+            $basePath = $item.RelativePath.Replace('\', '/')
+            $baseItem = Invoke-BacklogGit -RepoRoot $RepoRoot -GitArgs @('show', "${BaseRef}:$basePath")
+            if ($baseItem.ExitCode -eq 0) {
+                $mergedBoxes = Get-AcceptanceBoxCount -Lines @($baseItem.Text -split "`n")
+                $mergedAllTicked = ($mergedBoxes.Total -gt 0 -and $mergedBoxes.Ticked -eq $mergedBoxes.Total)
+            }
+        }
+
+        if ($allTicked -and $mergedAllTicked) {
+            $problems += @"
+Backlog $($item.Key) has every acceptance box ticked, its records merged, and it is still open.
+  File:     $($item.RelativePath)
+  Stage:    $stage
+  Boxes:    $($boxes.Ticked) of $($boxes.Total) ticked
+  Stamp:    $stamp (the newest commit that changed its Stage line)
+  Distance: $distance first-parent commits behind $BaseRef
+  Fix:      close it - set 'Stage: 9-ship' and 'git mv' it into backlog/done/, in one commit.
+            If the work is not finished, untick the box that is not true and say why.
+"@
+            continue
+        }
 
         if ($distance -le $Threshold) { continue }
 
