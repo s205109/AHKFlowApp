@@ -247,6 +247,11 @@ run at the same time. Sharing one fixture instance across test classes requires 
 classes in one Collection, which is why some Slices run one test at a time.
 _Avoid_: group, bucket, batch
 
+**Stack**:
+Everything one E2E Collection owns for itself: its own database, API host, SPA host and browser.
+Four Stacks run at the same time, and no two of them share mutable state.
+_Avoid_: environment, instance, rig, harness
+
 **Reused test server**:
 The SQL Server container that stays alive between test runs in one checkout, instead of being
 started and removed for each run. One checkout has at most one, and two checkouts never share one.
@@ -262,6 +267,17 @@ two common ways to earn the property, not the only ways. A test that needs only 
 exists, and creates one when it does not, is run-independent without doing either. Every SQL-backed
 test needs this property, because the Reused test server outlives the run that filled it.
 _Avoid_: idempotent test, repeatable test, clean test
+
+**Warm run**:
+A timed run on a checkout that already holds a Reused test server, a published app folder and an
+installed browser. A cold run pays for all three, so a warm figure and a cold figure are never
+compared with each other.
+_Avoid_: hot run, cached run, second run
+
+**Harness overhead**:
+The part of a Mode's wall clock that no test duration and no named setup step accounts for. It is
+what is left after subtraction, so it only shrinks when a step is named, never on its own.
+_Avoid_: unexplained time, framework time, fixture cost
 
 **Merge proof**:
 The evidence that a branch's own work reached the base, which is what lets a worktree be removed. Local git proves it when the branch SHA is a non-first parent of a merge commit on the base. A rebase merge leaves no such commit, so the proof then comes from a merged pull request whose head SHA the branch really pointed at.
