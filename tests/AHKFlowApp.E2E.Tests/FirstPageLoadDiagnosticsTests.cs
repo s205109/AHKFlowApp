@@ -143,4 +143,26 @@ public sealed class FirstPageLoadDiagnosticsTests(StackFixtureD fixture) : IAsyn
         // reader down the trail this class exists to close.
         thrown.Message.Should().NotContain("The app failed to boot");
     }
+
+    // The evidence that actually named the second CI failure in backlog 154, and the only piece
+    // that lived outside the test process until now.
+    [Fact]
+    public async Task FailedBoot_Open_ReportsTheLastRequestsThePageMade()
+    {
+        await using IBrowserContext ctx = await fixture.Browser.NewContextAsync();
+        await BootFault.Fail404OnAppAssemblyAsync(ctx);
+
+        Func<Task> open = () => FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/hotkeys");
+
+        TimeoutException thrown = (await open.Should().ThrowAsync<TimeoutException>()).Which;
+
+        thrown.Message.Should().Contain("The last requests the page made:");
+
+        // Every boot asks for this file, and it is the request the second CI failure stopped after.
+        thrown.Message.Should().Contain("blazor.webassembly.js");
+
+        // An offset, not a wall clock. A reader needs the gap between requests, which is what says
+        // "and then it stopped", and an absolute time cannot show that at a glance.
+        thrown.Message.Should().MatchRegex(@"\d+ ms  http");
+    }
 }

@@ -145,6 +145,18 @@ public static class FirstPageLoad
             }
         }
 
+        IReadOnlyList<string> trail = watch.RequestTrail;
+        if (trail.Count > 0)
+        {
+            // The gap between the last two lines is the evidence. A page that stopped shows a last
+            // request and then nothing, and that is what the SPA host log had to be read for before.
+            report.AppendLine("The last requests the page made:");
+            foreach (string request in trail)
+            {
+                report.AppendLine($"  {request}");
+            }
+        }
+
         return report.ToString();
     }
 
@@ -182,13 +194,24 @@ public static class FirstPageLoad
 }
 
 /// <summary>
-/// Collects the three signals that tell a failed boot from a slow one: how many documents the page
-/// loaded, what the console logged as an error, and what went uncaught.
+/// Collects the signals that tell a failed boot from a slow one: how many documents the page
+/// loaded, what the console logged as an error, what went uncaught, and what the page last asked
+/// the server for.
 /// </summary>
 public sealed class BootWatch
 {
+    /// <summary>
+    /// How many requests the report prints. Ten is enough to show the last healthy asset and the
+    /// silence after it, and short enough that a reader takes it in at once. The queue is bounded
+    /// so a page that loads hundreds of assets cannot grow the report without limit.
+    /// </summary>
+    private const int TrailLength = 10;
+
     private readonly DocumentRequestCounter _documents;
     private readonly ConcurrentQueue<string> _errors = new();
+    private readonly ConcurrentQueue<string> _trail = new();
+    private readonly Stopwatch _sinceFirstRequest = new();
+    private readonly Lock _trailGate = new();
 
     private BootWatch(DocumentRequestCounter documents) => _documents = documents;
 
@@ -196,9 +219,17 @@ public sealed class BootWatch
 
     public IReadOnlyList<string> Errors => [.. _errors];
 
-    /// <summary>Starts counting documents. Call this before the context opens any page.</summary>
-    public static BootWatch Attach(IBrowserContext context) =>
-        new(DocumentRequestCounter.Attach(context));
+    public IReadOnlyList<string> RequestTrail => [.. _trail];
+
+    /// <summary>Starts counting documents and recording requests. Call this before the context opens any page.</summary>
+    public static BootWatch Attach(IBrowserContext context)
+    {
+        BootWatch watch = new(DocumentRequestCounter.Attach(context));
+
+        context.Request += (_, request) => watch.Record(request.Url);
+
+        return watch;
+    }
 
     /// <summary>Starts collecting errors from one page. Call this before the page navigates.</summary>
     public void Follow(IPage page)
@@ -212,5 +243,32 @@ public sealed class BootWatch
         };
 
         page.PageError += (_, error) => _errors.Enqueue($"uncaught: {error}");
+    }
+
+    /// <summary>
+    /// Records one request with its offset from the first request seen.
+    /// </summary>
+    /// <remarks>
+    /// Playwright raises the request event from its own reader, so two requests can arrive at once.
+    /// The lock covers starting the clock and trimming the queue together: without it, two threads
+    /// could both start the stopwatch, and a trim racing an enqueue could leave more than
+    /// <see cref="TrailLength"/> entries.
+    /// </remarks>
+    private void Record(string url)
+    {
+        lock (_trailGate)
+        {
+            if (!_sinceFirstRequest.IsRunning)
+            {
+                _sinceFirstRequest.Start();
+            }
+
+            _trail.Enqueue($"{_sinceFirstRequest.ElapsedMilliseconds} ms  {url}");
+
+            while (_trail.Count > TrailLength)
+            {
+                _trail.TryDequeue(out _);
+            }
+        }
     }
 }
