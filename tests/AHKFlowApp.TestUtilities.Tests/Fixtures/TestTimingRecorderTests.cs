@@ -67,4 +67,36 @@ public sealed class TestTimingRecorderTests : IDisposable
         // Assert
         Directory.Exists(_timingDirectory).Should().BeFalse();
     }
+
+    [Fact]
+    public async Task RecordAsync_TimingEnabled_WritesAnIntervalThatMatchesTheElapsedFigure()
+    {
+        // Arrange
+        Environment.SetEnvironmentVariable(TimingEnabledEnvironmentVariable, "1");
+        Environment.SetEnvironmentVariable(TimingDirectoryEnvironmentVariable, _timingDirectory);
+        DateTimeOffset before = DateTimeOffset.UtcNow;
+
+        // Act
+        await TestTimingRecorder.RecordAsync(
+            "TestTimingRecorder",
+            "AHKFlowApp.TestUtilities.Fixtures.TestTimingRecorder",
+            "RecordAsync",
+            () => Task.Delay(20));
+
+        // Assert
+        DateTimeOffset after = DateTimeOffset.UtcNow;
+        string timingFile = Directory.GetFiles(_timingDirectory, "fixture-timings-*.jsonl").Should().ContainSingle().Subject;
+        JsonElement timingEntry = JsonSerializer.Deserialize<JsonElement>(await File.ReadAllTextAsync(timingFile));
+
+        DateTimeOffset startedUtc = timingEntry.GetProperty("startedUtc").GetDateTimeOffset();
+        DateTimeOffset finishedUtc = timingEntry.GetProperty("finishedUtc").GetDateTimeOffset();
+        double elapsedMilliseconds = timingEntry.GetProperty("elapsedMilliseconds").GetDouble();
+
+        startedUtc.Should().BeOnOrAfter(before, "the interval cannot start before the call did");
+        finishedUtc.Should().BeOnOrBefore(after, "the interval cannot finish after the call returned");
+        finishedUtc.Should().BeOnOrAfter(startedUtc, "an interval never ends before it starts");
+        (finishedUtc - startedUtc).TotalMilliseconds.Should().BeApproximately(
+            elapsedMilliseconds, 0.001,
+            "the interval length is the elapsed figure, so a reader can use either one");
+    }
 }

@@ -22,12 +22,18 @@ public static class TestTimingRecorder
             return;
         }
 
+        DateTimeOffset startedUtc = DateTimeOffset.UtcNow;
         var stopwatch = Stopwatch.StartNew();
         await action();
         stopwatch.Stop();
 
+        // The stopwatch measures the length and the wall clock anchors it. Deriving the finish
+        // from the start plus the elapsed figure keeps the two consistent: a reader who subtracts
+        // the interval gets the elapsed figure back exactly, with no second clock reading to drift.
         TimingEntry entry = new(
             TimestampUtc: DateTimeOffset.UtcNow,
+            StartedUtc: startedUtc,
+            FinishedUtc: startedUtc.AddMilliseconds(stopwatch.Elapsed.TotalMilliseconds),
             TestAssembly: GetTestAssemblyName(),
             ProcessId: Environment.ProcessId,
             Component: component,
@@ -86,6 +92,8 @@ public static class TestTimingRecorder
 
     private sealed record TimingEntry(
         DateTimeOffset TimestampUtc,
+        DateTimeOffset StartedUtc,
+        DateTimeOffset FinishedUtc,
         string TestAssembly,
         int ProcessId,
         string Component,
