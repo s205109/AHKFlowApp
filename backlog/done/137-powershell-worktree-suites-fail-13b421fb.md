@@ -82,8 +82,8 @@ fixed ordering waits for the outcome (`tests/WorktreeRemoveHook.Tests.ps1:578`, 
 (`tests/WorktreeRemoveHook.Tests.ps1:585`, "$diagnostics = Get-Content -Raw -LiteralPath (Get-RemovalDiagnosticsPath $repo)"). The watcher deletes the folder
 (`scripts/remove-worktree-local-dev.ps1:1294`, "Remove-Item -LiteralPath $tempName -Recurse -Force -ErrorAction Stop"), then prunes Git and deletes the branch
 (`scripts/remove-worktree-local-dev.ps1:1322`, "$branchDelete = Invoke-GitCapture @('-C', $mainCheckout, 'branch', '-d', '--', $branchName)"). It writes its final diagnostic
-(`scripts/remove-worktree-local-dev.ps1:1397`, "Write-DiagnosticLog 'Watcher done (worktree removed; branch preserved).'") before the outcome
-(`scripts/remove-worktree-local-dev.ps1:1403`, "Write-Outcome 'Removed.'"). The premature read
+(`scripts/remove-worktree-local-dev.ps1:1432`, "Write-DiagnosticLog 'Watcher done (worktree removed; branch preserved).'") before the outcome
+(`scripts/remove-worktree-local-dev.ps1:1438`, "Write-Outcome 'Removed.'"). The premature read
 produced the `System.Object[]` passed to `Assert-True` in CI attempt 2.
 
 The `feat-forced` branch error is expected. The fixture creates an unmerged branch

@@ -3,9 +3,6 @@ using AHKFlowApp.TestUtilities.Fixtures;
 using FluentAssertions;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Infrastructure;
-using Microsoft.EntityFrameworkCore.Migrations;
-using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace AHKFlowApp.Infrastructure.Tests.Migrations;
@@ -36,9 +33,9 @@ public sealed class SchemaPolishBackfillTests(SharedSqlServerFixture sqlFixture)
 
         await using (AppDbContext setup = CreateContext("SchemaPolish_Backfill"))
         {
-            // Apply every migration up to but not including SchemaPolish.
-            IMigrator migrator = ((IInfrastructure<IServiceProvider>)setup).Instance.GetRequiredService<IMigrator>();
-            await migrator.MigrateAsync("Phase3HotkeyRebuild");
+            // Drop first, then apply every migration up to but not including SchemaPolish. The
+            // drop is what keeps this fact working on a server an earlier run already used.
+            await RunIndependentDatabase.DropThenMigrateToAsync(setup, "Phase3HotkeyRebuild");
 
             // Seed intentionally-inconsistent rows directly via SQL — the EF model already
             // has the Description column, so entity inserts would fail before SchemaPolish runs.

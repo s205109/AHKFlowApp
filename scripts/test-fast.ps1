@@ -18,6 +18,11 @@ param(
 
     [switch]$NoBuild,
 
+    # Integration and E2E modes only. Removes the checkout's SQL test container and builds a new
+    # one, so the run starts from an empty server. Every other run reuses the container the last
+    # one left, which is what makes a second run start in about a second instead of sixteen.
+    [switch]$FreshSql,
+
     # Coverage mode only. Runs the slice even when the filter excludes every changed path.
     [switch]$Force,
 
@@ -389,10 +394,17 @@ try {
     $testRunLock = Enter-AhkFlowTestRunLock -RepoRoot $repoRoot -Mode $Mode
 
     if ($Mode -eq 'Integration' -or $Mode -eq 'E2E') {
-        Write-Step 'Starting shared SQL test container'
-        $sharedSqlContainer = Start-AhkFlowTestSqlContainer
+        Write-Step 'Preparing shared SQL test container'
+        $sharedSqlContainer = Start-AhkFlowTestSqlContainer -Fresh:$FreshSql -RepoRoot $repoRoot
         $env:AHKFLOW_TEST_SQL_CONNECTION_STRING = $sharedSqlContainer.ConnectionString
-        Write-Success ("Shared SQL test container ready in {0} ms." -f $sharedSqlContainer.ElapsedMilliseconds)
+
+        # The id is printed short, and it is the thing to compare between two runs: the same id
+        # means the container was reused, a different one means it was replaced.
+        $sharedSqlId = $sharedSqlContainer.ContainerId
+        if ($sharedSqlId.Length -ge 12) { $sharedSqlId = $sharedSqlId.Substring(0, 12) }
+        $sharedSqlVerb = if ($sharedSqlContainer.Reused) { 'reused' } else { 'started' }
+        Write-Success ("Shared SQL test container {0} in {1} ms: {2} ({3})." -f `
+            $sharedSqlVerb, $sharedSqlContainer.ElapsedMilliseconds, $sharedSqlContainer.ContainerName, $sharedSqlId)
     }
 
     if (Test-Path -LiteralPath $resultsRoot) {
@@ -449,10 +461,10 @@ try {
     $summaries | Format-Table -AutoSize
 }
 finally {
+    # The container is deliberately left running, whether the run passed or failed. A failed run is
+    # the one whose next attempt most wants a warm schema. Three things remove it: -FreshSql, a
+    # verification the next run cannot repair, and cleanup when the worktree goes away.
     $env:AHKFLOW_TEST_SQL_CONNECTION_STRING = $previousSharedSqlConnectionString
-    if ($sharedSqlContainer) {
-        Stop-AhkFlowTestSqlContainer -ContainerName $sharedSqlContainer.ContainerName
-    }
 
     Exit-AhkFlowTestRunLock -Handle $testRunLock
     Pop-Location

@@ -173,6 +173,15 @@ function Copy-WorktreeIncludeEntries {
 function Invoke-OrphanDockerPrune {
     param([string] $RepoRoot)
 
+    # A test fixture that copies scripts\*.ps1 into a throwaway repository, then spawns this
+    # script, runs inside a repository that holds none of this project's real worktrees. The
+    # sweep would then read every real checkout's running container as an orphan and remove it.
+    # Such a fixture must set this variable for the child process. See prune-worktree-docker.ps1
+    # for the matching guard on the direct-call route.
+    if ($env:AHKFLOW_SKIP_ORPHAN_PRUNE) {
+        return
+    }
+
     $pruneScript = Join-Path $RepoRoot 'scripts\prune-worktree-docker.ps1'
     if (-not (Test-Path -LiteralPath $pruneScript)) {
         return

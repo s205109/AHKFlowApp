@@ -239,7 +239,10 @@ try {
 
     if (Test-UsesSharedSqlFixture -ProjectPaths $projectPaths) {
         Write-Host 'Starting shared SQL test container...' -ForegroundColor Cyan
-        $sharedSqlContainer = Start-AhkFlowTestSqlContainer
+        # A throwaway container, not the shared one. This script takes no test-run lock, so it can
+        # run beside scripts/test-fast.ps1, and touching the shared container would mean two
+        # sessions preparing one server at the same time.
+        $sharedSqlContainer = Start-AhkFlowTestSqlContainer -Ephemeral
         $env:AHKFLOW_TEST_SQL_CONNECTION_STRING = $sharedSqlContainer.ConnectionString
         $sharedSqlTiming = [pscustomobject]@{
             Project = '(shared)'

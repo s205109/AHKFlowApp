@@ -39,9 +39,9 @@ The five Gate steps on that branch:
 
 The Gate is defined at (`docs/development/testing-workflow.md:24`, "dotnet build AHKFlowApp.slnx --configuration Release").
 
-Coverage mode hands off to `run-coverage.ps1` (`scripts/test-fast.ps1:346`, "& (Join-Path $PSScriptRoot 'run-coverage.ps1') -Configuration $Configuration").
+Coverage mode hands off to `run-coverage.ps1` (`scripts/test-fast.ps1:351`, "& (Join-Path $PSScriptRoot 'run-coverage.ps1') -Configuration $Configuration").
 That script starts a real SQL Server container, then runs `dotnet test` per project with coverlet
-instrumentation (`scripts/run-coverage.ps1:98`, "dotnet test $project.Path --configuration $Configuration").
+instrumentation (`scripts/run-coverage.ps1:100`, "dotnet test $project.Path --configuration $Configuration").
 
 The PowerShell slice is a separate cost and is not in scope here. Four suites are 59% of its 611
 seconds: `WorktreeMergedCleanup` 118.6 s, `AgentWorktreeGuard` 111.7 s, `CitationFreshness` 93 s,
@@ -51,9 +51,9 @@ on disk, and `run-powershell-suites.ps1` runs every suite as its own process, on
 ## What CI does — measured, not read from the YAML
 
 `ci.yml` skips every .NET step when its `code` filter is false
-(`.github/workflows/ci.yml:79`, "        if: steps.filter.outputs.code == 'false'").
+(`.github/workflows/ci.yml:54`, "        if: steps.filter.outputs.code == 'false'").
 The filter is three negative patterns under `predicate-quantifier: 'every'`
-(`.github/workflows/ci.yml:76`, "          predicate-quantifier: 'every'").
+(`.github/workflows/ci.yml:51`, "          predicate-quantifier: 'every'").
 
 Reading that config, it looked possible that `code` would be false for a *mixed* pull request —
 one changing a `.ps1` file and a `.md` file together — because the `.md` file fails `!**/*.md`.

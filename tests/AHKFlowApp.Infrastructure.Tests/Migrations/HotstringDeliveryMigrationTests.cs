@@ -8,9 +8,6 @@ using AHKFlowApp.TestUtilities.Fixtures;
 using FluentAssertions;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Infrastructure;
-using Microsoft.EntityFrameworkCore.Migrations;
-using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace AHKFlowApp.Infrastructure.Tests.Migrations;
@@ -38,9 +35,7 @@ public sealed class HotstringDeliveryMigrationTests(SharedSqlServerFixture sqlFi
 
         await using (AppDbContext setup = CreateContext())
         {
-            IMigrator migrator = ((IInfrastructure<IServiceProvider>)setup)
-                .Instance.GetRequiredService<IMigrator>();
-            await migrator.MigrateAsync("RawHotstringKind");
+            await RunIndependentDatabase.DropThenMigrateToAsync(setup, "RawHotstringKind");
             await setup.Database.ExecuteSqlRawAsync(
                 """
                 INSERT INTO Hotstrings

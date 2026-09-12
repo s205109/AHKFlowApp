@@ -43,9 +43,9 @@ It holds the watcher script, the param file, and both helper copies
 (`scripts/remove-worktree-local-dev.ps1:1042`, "Copy-Item -LiteralPath $logSource -Destination (Join-Path $runDir 'worktree-log.common.ps1') -Force -ErrorAction Stop").
 
 `Remove-WatcherArtifacts` deletes the directory as one unit
-(`scripts/remove-worktree-local-dev.ps1:1444`, "Remove-Item -LiteralPath $runDir -Recurse -Force -ErrorAction Stop"),
+(`scripts/remove-worktree-local-dev.ps1:1479`, "Remove-Item -LiteralPath $runDir -Recurse -Force -ErrorAction Stop"),
 after `Test-RemovalRunTempDirPath` confirms the path is a run directory in the temp root
-(`scripts/remove-worktree-local-dev.ps1:1453`, "function Test-RemovalRunTempDirPath {").
+(`scripts/remove-worktree-local-dev.ps1:1488`, "function Test-RemovalRunTempDirPath {").
 
 `Get-RemovalTempDir` still means the temp root
 (`scripts/remove-worktree-local-dev.ps1:289`, "function Get-RemovalTempDir {"). The shared outcome

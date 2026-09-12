@@ -5,9 +5,6 @@ using AHKFlowApp.TestUtilities.Fixtures;
 using FluentAssertions;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Infrastructure;
-using Microsoft.EntityFrameworkCore.Migrations;
-using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace AHKFlowApp.Infrastructure.Tests.Migrations;
@@ -41,9 +38,8 @@ public sealed class HotkeyTypedActionsMigrationTests(SharedSqlServerFixture sqlF
 
         await using (AppDbContext setup = CreateContext())
         {
-            // Migrate up to the migration immediately before HotkeyTypedActions.
-            IMigrator migrator = ((IInfrastructure<IServiceProvider>)setup).Instance.GetRequiredService<IMigrator>();
-            await migrator.MigrateAsync("AddHotstringDelivery");
+            // Drop first, then migrate up to the migration immediately before HotkeyTypedActions.
+            await RunIndependentDatabase.DropThenMigrateToAsync(setup, "AddHotstringDelivery");
 
             foreach (LegacyHotkeyFixture f in LegacyHotkeyFixtures.All)
             {
@@ -100,8 +96,7 @@ public sealed class HotkeyTypedActionsMigrationTests(SharedSqlServerFixture sqlF
 
         await using (AppDbContext setup = CreateContext(DivergenceDbName))
         {
-            IMigrator migrator = ((IInfrastructure<IServiceProvider>)setup).Instance.GetRequiredService<IMigrator>();
-            await migrator.MigrateAsync("AddHotstringDelivery");
+            await RunIndependentDatabase.DropThenMigrateToAsync(setup, "AddHotstringDelivery");
 
             // Legacy Action: Send = 0, Run = 1. Parameters is a SQL parameter, not embedded in the
             // literal text — ExecuteSqlRawAsync treats the raw SQL as a composite format string, and

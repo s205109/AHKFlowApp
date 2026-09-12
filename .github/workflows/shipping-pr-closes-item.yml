@@ -1,0 +1,89 @@
+name: Shipping PR closes item
+
+# Backlog 153. This check used to be a step in ci.yml's repo-invariants job. A ready flip then
+# re-ran all five ci.yml jobs, about ten minutes, for a step that takes under one second. It now
+# runs here, alone. The rule is in scripts/check-shipping-pr-closes-item.ps1, and the reasons are
+# in docs/adr/0016-a-shipping-pull-request-is-ready-and-fully-ticked.md.
+#
+# Branch protection on main must list the job below, shipping-pr-closes-item, as a required check.
+# A check that branch protection does not list can fail, and the merge is still permitted.
+#
+# tests/ShippingPrClosesItemWorkflow.Tests.ps1 pins the parts of this file the rule depends on.
+
+on:
+  pull_request:
+    branches: [main]
+    # ready_for_review is not a default type. Stage 9 pushes the closure commit BEFORE it flips
+    # the pull request to ready, so without this type the check never sees a ready pull request.
+    #
+    # The other three types are not optional. Every new head commit needs a result from this job,
+    # or a required check waits and blocks the merge. A draft gets a result too: the script passes
+    # a draft by itself, so the job reports success instead of a skip.
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  # The step below reads the pull request's draft state from the REST API, which needs this.
+  pull-requests: read
+
+# One run of this job at a time per pull request. Stage 9 pushes and then flips to ready seconds
+# later, so two runs can report on the same commit.
+#
+# This group makes the second run wait for the first instead of running beside it. Both still run:
+# serialising them skips no work. It is also NOT what makes the reported result correct. That is
+# the run-time draft read in the step below, which lets a late run still report the state the pull
+# request is in now. ADR 0016 has the reasoning.
+#
+# cancel-in-progress: false keeps a running job alive when the next one queues. A cancelled run is
+# not a successful run, so a cancelled required check blocks the merge rather than passing it.
+concurrency:
+  group: shipping-pr-closes-item-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  shipping-pr-closes-item:
+    runs-on: ubuntu-latest
+    # The job takes seconds. Five minutes still stops a hung git or gh call quickly.
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The check reads the merge base with origin/main, so it needs the full history.
+          fetch-depth: 0
+      - name: A ready pull request closes the item it finishes
+        # The script takes the draft state as a parameter rather than reading it. That is what
+        # lets tests/ShippingPrClosesItem.Tests.ps1 drive both values. Backlog 151, ADR 0016.
+        #
+        # The draft state comes from the API, NOT from github.event.pull_request.draft. The event
+        # payload carries the state at the moment the event fired. Two runs can report on one
+        # commit: the push run and the ready-flip run. GitHub does not guarantee which of the two
+        # finishes last, so a push run that arrives late would report a stale "draft" and pass a
+        # pull request that is now ready. Reading the state at run time makes both runs reach the
+        # same verdict, whatever order they run in. It also makes a re-run of an old run report
+        # today's state instead of the state that run first saw.
+        #
+        # The base comes from 'git merge-base', NOT from the event's base sha. That value is the
+        # TIP of the base branch, not the fork point. Diffing from the tip pulls in every backlog
+        # item that other branches changed on main since this branch started, and this pull
+        # request would then be asked to close somebody else's item.
+        #
+        # The head DOES come from the event. On a pull_request event the checkout is the merge
+        # commit, so HEAD is not the branch head. The head also pins the result to the commit the
+        # event was for, which is the commit branch protection reads.
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $number = '${{ github.event.pull_request.number }}'
+          $draftNow = (@(gh api "repos/${{ github.repository }}/pulls/$number" --jq '.draft') -join '').Trim()
+          if ($LASTEXITCODE -ne 0 -or $draftNow -notin @('true', 'false')) {
+            throw "Could not read the draft state of pull request $number. gh printed '$draftNow'."
+          }
+          Write-Host "Pull request $number draft state at run time: $draftNow"
+          $isDraft = $draftNow -eq 'true'
+          $head = '${{ github.event.pull_request.head.sha }}'
+          $base = (git merge-base $head origin/main)
+          if ($LASTEXITCODE -ne 0 -or -not $base) {
+            throw "Could not resolve the merge base of $head with origin/main."
+          }
+          ./scripts/check-shipping-pr-closes-item.ps1 -MergeBase ([string] $base).Trim() -TargetCommit $head -PullRequestIsDraft $isDraft

@@ -4,8 +4,6 @@ using AHKFlowApp.TestUtilities.Fixtures;
 using FluentAssertions;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Infrastructure;
-using Microsoft.EntityFrameworkCore.Migrations;
 using Xunit;
 
 namespace AHKFlowApp.Infrastructure.Tests.Persistence;
@@ -33,7 +31,10 @@ public sealed class MigrationTests(SharedSqlServerFixture sqlFixture)
     public async Task Migrate_AppliesPendingMigrationsWithoutError()
     {
         // Arrange
+        // Without the drop, a server an earlier run used has no pending migration left, so this
+        // fact applies nothing and passes without testing anything.
         await using AppDbContext context = CreateContext("MigrationTests_Apply");
+        await RunIndependentDatabase.DropAsync(context);
 
         // Act
         Func<Task> act = () => context.Database.MigrateAsync();
@@ -46,7 +47,11 @@ public sealed class MigrationTests(SharedSqlServerFixture sqlFixture)
     public async Task Migrate_IsIdempotent_RunsTwiceWithoutError()
     {
         // Arrange
+        // The drop goes before the first call, not instead of it. Two migration calls are this
+        // fact's whole subject, and on a warm server without the drop neither call changes
+        // anything, so idempotency is never exercised.
         await using AppDbContext context = CreateContext("MigrationTests_Idempotent");
+        await RunIndependentDatabase.DropAsync(context);
         await context.Database.MigrateAsync();
 
         // Act
@@ -66,8 +71,7 @@ public sealed class MigrationTests(SharedSqlServerFixture sqlFixture)
     {
         // Arrange
         await using AppDbContext context = CreateContext("MigrationTests_HotkeyContext");
-        IMigrator migrator = context.GetService<IMigrator>();
-        await migrator.MigrateAsync("20260729151833_AddKnownShortcuts");
+        await RunIndependentDatabase.DropThenMigrateToAsync(context, "20260729151833_AddKnownShortcuts");
 
         var owner = Guid.NewGuid();
         var firstId = Guid.NewGuid();

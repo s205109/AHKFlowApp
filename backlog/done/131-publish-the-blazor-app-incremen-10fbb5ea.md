@@ -52,7 +52,7 @@ The stated root cause is disproved. The delete does not re-run the IL linker, so
 changed nothing does not pay for a full relink" describes a cost that was never there.
 
 **CI never benefits.** CI builds, then runs one solution-wide test call
-(`.github/workflows/ci.yml:100`, "dotnet test --configuration Release --no-build"). A fresh runner
+(`.github/workflows/ci.yml:75`, "dotnet test --configuration Release --no-build"). A fresh runner
 has no publish folder and no stamp, so the target
 always runs. How long the publish takes on a CI runner is not measured here, and no number is
 claimed for it. The only 95.39 s observation was local, after the tree changed.
@@ -71,7 +71,7 @@ things the earlier draft used against it do not hold.
    or chasing a flake looks like. The repository tells developers to run E2E mode for browser
    flows, Playwright UI behavior, mobile viewport behavior, PWA behavior, and changes to the E2E
    fixture or the published Blazor output
-   (`docs/development/testing-workflow.md:142`, "Use it for browser flows"). So the repository
+   (`docs/development/testing-workflow.md:178`, "Use it for browser flows"). So the repository
    expects that loop to happen. The owner said on 2026-09-06 that they run E2E once per branch.
    That is a
    priority call about one person's workflow, and the earlier draft wrote it as though it were a
