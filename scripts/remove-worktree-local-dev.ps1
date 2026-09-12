@@ -1394,6 +1394,11 @@ function Invoke-WatcherMode {
                 $testSqlResult = Remove-WorktreeTestSqlContainer -Name $testSqlName -ExpectedProject $composeProject -ExpectedRepository $testSqlRepository
                 if ($testSqlResult.Removed) {
                     Write-DiagnosticLog "Removed test SQL container [$testSqlName]."
+                } elseif ($testSqlResult.Skipped) {
+                    # A guard refused it, and the guard's own message already says what to do. The
+                    # sweep does not reclaim a container it refuses either -- it skips one whose
+                    # clone it cannot read -- so pointing at the sweep here would be wrong.
+                    Write-DiagnosticLog "Left test SQL container [$testSqlName] alone: $($testSqlResult.Error)"
                 } else {
                     Write-DiagnosticLog "Could not remove test SQL container [$testSqlName]: $($testSqlResult.Error). It was left intact; reclaim it with 'scripts\prune-worktree-docker.ps1'."
                 }

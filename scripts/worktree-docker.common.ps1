@@ -362,21 +362,27 @@ function Remove-WorktreeTestSqlContainer {
             }
         }
 
-        # An empty label is not another clone. It means the container was built before this
-        # repository recorded which clone owns a container, and the project check above has already
-        # agreed it is this checkout's. Refusing it here would deadlock the one caller that reaches
-        # this line with such a container: Start-AhkFlowTestSqlContainer cannot reuse an unlabelled
-        # container and would then be unable to replace it either.
-        #
-        # What this gives up is narrow and it closes by itself. Two clones both older than this
-        # label, both holding a branch by the same name, running at the same time, could still take
-        # each other's container -- which is what they did before this label existed. One run in
-        # each clone labels both, and then they never can again.
         if ($owned[0].Repository -and $owned[0].Repository -ne $ExpectedRepository) {
             return [pscustomobject]@{
                 Removed = $false
                 Skipped = $true
                 Error = "the container '$Name' belongs to another clone -- the clone at '$($owned[0].Repository)' -- and this clone is '$ExpectedRepository'"
+            }
+        }
+
+        # No label at all is refused as well. An earlier version let it through, on the reasoning
+        # that a matching project name made it this clone's own from before the label existed. A
+        # project name cannot establish that. It is derived from a branch name, and two clones can
+        # each hold a branch by that name, so the container may belong to another clone that is
+        # running its tests right now. This line then reached 'docker rm --force' and took it.
+        #
+        # Refusing costs the caller a clear stop instead of a silent loss, and it takes only one
+        # upgraded caller plus one older container elsewhere to tell the two apart wrongly.
+        if ([string]::IsNullOrWhiteSpace($owned[0].Repository)) {
+            return [pscustomobject]@{
+                Removed = $false
+                Skipped = $true
+                Error = "the container '$Name' does not say which clone owns it, so it cannot be told apart from another clone's container that is still in use. Check that no other checkout is running tests against it, then remove it by hand with: docker rm --force $Name"
             }
         }
     }

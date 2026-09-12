@@ -177,15 +177,22 @@ function Assert-AhkFlowTestSqlOwnership {
     # right: reusing it would hand this run the other clone's live server, and both runs write to
     # databases with identical names.
     #
-    # An empty label is a different thing and must not be read as another clone. It means the
-    # container was built before this checkout recorded which clone owns a container, so it is this
-    # repository's own, from an earlier run. Test-AhkFlowTestSqlContainer reports it as a reason to
-    # replace, and the one replacement below rebuilds it with all three labels. Throwing here
-    # instead would stop the first run after an upgrade and tell the reader to go and delete a
-    # container by hand.
     if ($State.Repository -and $State.Repository -ne $RepositoryId) {
-        $whose = if ($State.Repository) { "the clone at '$($State.Repository)'" } else { 'a clone that did not label it' }
-        throw "The container named '$ContainerName' belongs to another clone -- $whose -- and this clone is '$RepositoryId'. Using it would give both clones one SQL server, and their database names are identical. Remove it by hand, or run the two clones one at a time."
+        throw "The container named '$ContainerName' belongs to another clone -- the clone at '$($State.Repository)' -- and this clone is '$RepositoryId'. Using it would give both clones one SQL server, and their database names are identical. Remove it by hand, or run the two clones one at a time."
+    }
+
+    # No label at all is refused too, and it is not read as "ours, from before the label existed".
+    # An earlier version did read it that way and replaced the container. That was wrong. This name
+    # comes from the Compose project, which is derived from a branch name, and two clones can each
+    # hold a branch by that name. So an unlabelled container at this name is either this clone's own
+    # from before the label, or another clone's, still serving its tests. Nothing here can tell them
+    # apart, and the replacement path ended in 'docker rm --force' against a running server.
+    #
+    # One upgraded caller and one older container in another clone was enough to reach it, so this
+    # refuses instead and names the command that clears it. A developer pays this once, on the first
+    # run after the upgrade, and every container built from here on carries the label.
+    if ([string]::IsNullOrWhiteSpace($State.Repository)) {
+        throw "The container named '$ContainerName' does not say which clone owns it, so this script cannot tell which clone built it -- this one, before it started recording that, or another clone of this repository that is using it right now. It will not be removed on a guess. Check that no other checkout is running tests against it, then clear it with: docker rm --force $ContainerName"
     }
 }
 
@@ -208,15 +215,12 @@ function Test-AhkFlowTestSqlContainer {
         [Parameter(Mandatory = $true)][object]$State
     )
 
-    # A container built before this checkout recorded which clone owns a container. It is this
-    # repository's own -- Assert-AhkFlowTestSqlOwnership has already refused one that names a
-    # different clone -- so it is replaced rather than refused, and the new one carries all three
-    # labels. This costs one rebuild on the first run after an upgrade, once, and then never again.
-    if ([string]::IsNullOrWhiteSpace($State.Repository)) {
-        return 'it carries no repository label, so it was built before this checkout recorded which clone owns a container'
-    }
-
-    # The image comes next. Restarting a container built from the wrong image fixes nothing.
+    # Nothing about ownership is decided here, and that is deliberate. This function answers whether
+    # a container is healthy enough to use, and it runs for a throwaway '-Ephemeral' container too.
+    # That container is built with no labels on purpose, so a missing label is normal here.
+    # Assert-AhkFlowTestSqlOwnership owns the ownership question, and only the reusable path calls it.
+    #
+    # The image comes first. Restarting a container built from the wrong image fixes nothing.
     if ($State.Image -ne $script:AhkFlowTestSqlImage) {
         return "it was built from image '$($State.Image)' and this run expects '$script:AhkFlowTestSqlImage'"
     }

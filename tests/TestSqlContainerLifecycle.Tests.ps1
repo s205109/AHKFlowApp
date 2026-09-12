@@ -223,9 +223,14 @@ switch ($args[0]) {
             # same name, so the project label alone cannot tell them apart and the ownership check
             # has to read the repository label to refuse this one.
             'wrongrepository' { Write-InspectJson -Running $true -Image $image -Role 'test-sql' -Project $project -HostPort '14399' -Repository 'D:\another\clone'; exit 0 }
-            # A container built before the repository label existed. This repository's own, from an
-            # earlier run, and not another clone's.
+            # A container built before the repository label existed: it carries the role and the
+            # project, and nothing says which clone built it.
             'nolabel'      { Write-InspectJson -Running $true  -Image $image -Role 'test-sql' -Project $project -HostPort '14399' -Repository ''; exit 0 }
+            # What docker really reports for a container built with no --label at all, which is what
+            # New-AhkFlowTestSqlContainer builds for -Ephemeral. Every label is absent, not just the
+            # repository one. The ephemeral case used the 'healthy' shape before, which claimed a
+            # repository label the run had never asked docker to write.
+            'unlabelled'   { Write-InspectJson -Running $true  -Image $image -Role '' -Project '' -HostPort '14399' -Repository ''; exit 0 }
             default        { Write-Output 'Error: No such object'; exit 1 }
         }
     }
@@ -591,7 +596,11 @@ Invoke-TestCase 'A checkout git cannot name stops the run instead of guessing' {
 }
 
 Invoke-TestCase 'Ephemeral builds a throwaway container that carries no labels' {
-    $root = New-SqlContainerFixture -InspectPlan @('healthy')
+    # The inspect shape has to be the unlabelled one. A throwaway container is built with no
+    # --label, so docker reports no labels for it, and answering 'healthy' here would claim an
+    # ownership label this run never wrote. That is what let a check which rejects every unlabelled
+    # container pass this case while breaking scripts/measure-tests.ps1 for real.
+    $root = New-SqlContainerFixture -InspectPlan @('unlabelled')
     try {
         $out = Invoke-InFixture -Root $root -Expression '$r = Start-AhkFlowTestSqlContainer -Ephemeral; "name=$($r.ContainerName) reused=$($r.Reused)"'
         Assert-True ($out -match 'name=ahkflow-testsql-') "Expected a throwaway name. Got: $out"
@@ -961,33 +970,51 @@ Invoke-TestCase 'A container from another clone is refused, not reused' {
     } finally { Remove-SqlContainerFixture -Root $root }
 }
 
-Invoke-TestCase 'A container built before the repository label is replaced, not refused' {
-    # Found by running the real script, not by a stub. Every container already on a machine when
-    # this change lands carries no repository label, and reading that as "another clone" stopped the
-    # first run outright and told the reader to delete a container by hand. It is this repository's
-    # own container from an earlier run, so it is replaced once and rebuilt with all three labels.
-    # The unlabelled container the run finds, then the labelled one it builds to replace it.
-    $root = New-SqlContainerFixture -InspectPlan @('nolabel', 'healthy')
+Invoke-TestCase 'An unlabelled container stops the run instead of being force-removed' {
+    # The container name is derived from the Compose project, and two clones of this repository can
+    # each hold a branch by the same name. So an unlabelled container sitting at this checkout's name
+    # may be this clone's own from before the label existed, or another clone's, still running its
+    # tests. Nothing here can tell those apart.
+    #
+    # An earlier fix read it as "ours, from before" and replaced it. That needed only one upgraded
+    # caller and one older container in another clone, and it issued 'docker rm --force' against a
+    # running server. The run stops instead and says what to remove.
+    $root = New-SqlContainerFixture -InspectPlan @('nolabel')
     try {
         $stub = Join-Path $root 'stub'
-        # A fourth field left empty, so the removal guard sees the same missing label the inspect
-        # reports. Without it the guard would refuse the removal and the run would deadlock: unable
-        # to reuse the container, and unable to replace it either.
         Set-Content -LiteralPath (Join-Path $stub 'ps-lines.txt') -Encoding utf8 `
             -Value 'ahkflowapp_probe_deadbeef-testsql|ahkflowapp_probe_deadbeef|running|'
 
         $out = Invoke-InFixture -Root $root -Expression 'Start-AhkFlowTestSqlContainer -RepoRoot <ROOT>'
-        Assert-True ($out -notmatch 'THREW') "The run must not stop. Got: $out"
-        Assert-True ((Get-DockerCallCount -Root $root -Verb 'rm') -eq 1) `
-            "The old container must be removed exactly once. Got $((Get-DockerCallCount -Root $root -Verb 'rm'))."
-        Assert-True ((Get-DockerCallCount -Root $root -Verb 'run') -eq 1) `
-            "A replacement must be built. Got $((Get-DockerCallCount -Root $root -Verb 'run'))."
+        Assert-True ($out -match 'THREW') "The run must stop. Got: $out"
+        Assert-True ($out -match 'cannot tell which clone') "The message must say why. Got: $out"
+        Assert-True ($out -match 'docker rm') "The message must name the command that clears it. Got: $out"
+        Assert-True ((Get-DockerCallCount -Root $root -Verb 'rm') -eq 0) `
+            "No docker rm may run against a container whose owner is unknown. Got $((Get-DockerCallCount -Root $root -Verb 'rm'))."
+        Assert-True ((Get-DockerCallCount -Root $root -Verb 'run') -eq 0) `
+            "Nothing may be built over it either. Got $((Get-DockerCallCount -Root $root -Verb 'run'))."
+    } finally { Remove-SqlContainerFixture -Root $root }
+}
 
-        # The replacement must carry the label whose absence caused the rebuild, or every run after
-        # this one would rebuild the container again.
-        $runCall = @(Get-DockerCall -Root $root -Verb 'run')[0]
-        Assert-True ($runCall -match 'com\.ahkflowapp\.repository=') `
-            "The new container must carry the repository label. Got: $runCall"
+Invoke-TestCase 'A guarded removal refuses a container whose clone is unknown' {
+    # The same rule one level down, where the sweep and the worktree teardown both land. A matching
+    # project name is not ownership across clones, so a missing repository label has to refuse rather
+    # than fall through to 'docker rm --force'.
+    $root = New-SqlContainerFixture -InspectPlan @('healthy')
+    try {
+        Set-Content -LiteralPath (Join-Path (Join-Path $root 'stub') 'ps-lines.txt') -Encoding utf8 `
+            -Value 'ahkflowapp_probe_deadbeef-testsql|ahkflowapp_probe_deadbeef|running|'
+
+        $out = Invoke-InFixture -Root $root -Expression (
+            '$r = Remove-WorktreeTestSqlContainer -Name ''ahkflowapp_probe_deadbeef-testsql'' ' +
+            '-ExpectedProject ''ahkflowapp_probe_deadbeef'' -ExpectedRepository ''C:\dev	hisclone''; ' +
+            '"removed=$($r.Removed) skipped=$($r.Skipped) error=$($r.Error)"')
+
+        Assert-True ($out -match 'removed=False') "The removal must be refused. Got: $out"
+        Assert-True ($out -match 'skipped=True') "It must report itself as skipped. Got: $out"
+        Assert-True ($out -match 'does not say which clone') "The reason must name the missing label. Got: $out"
+        Assert-True ((Get-DockerCallCount -Root $root -Verb 'rm') -eq 0) `
+            "No docker rm may run. Got $((Get-DockerCallCount -Root $root -Verb 'rm'))."
     } finally { Remove-SqlContainerFixture -Root $root }
 }
 
@@ -1000,4 +1027,4 @@ if ($failures.Count -gt 0) {
     throw "Test SQL container lifecycle rules failed with $($failures.Count) problem(s). See the detail above."
 }
 
-Write-Host 'Test SQL container lifecycle rules passed. 37 cases.'
+Write-Host 'Test SQL container lifecycle rules passed. 38 cases.'
