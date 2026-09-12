@@ -92,7 +92,7 @@ function New-StaleFixture {
 
     # Not $folder: PowerShell matches variable names without case, so a loop over $folder would
     # overwrite the -Folder parameter and park every fixture in the wrong place.
-    foreach ($subfolder in @('backlog', 'backlog/done', 'backlog/blocked')) {
+    foreach ($subfolder in @('backlog', 'backlog/done', 'backlog/blocked', 'backlog/icebox')) {
         New-Item -ItemType Directory -Path (Join-Path $repo $subfolder) -Force | Out-Null
         Set-Content -LiteralPath (Join-Path $repo "$subfolder/.gitkeep") -Value '' -Encoding utf8
     }
@@ -210,6 +210,7 @@ $cases = @(
     @{ Name = 'Stage 3-plan is never a candidate'; Stage = '3-plan';    Filler = 9; Threshold = 3; Extra = @{};                            Expect = 0 }
     @{ Name = 'An unmerged stamp is in flight';    Stage = '8-review';  Filler = 9; Threshold = 3; Extra = @{ LeaveUnmerged = $true };     Expect = 0 }
     @{ Name = 'blocked/ is parked on purpose';     Stage = '8-review';  Filler = 9; Threshold = 3; Extra = @{ Folder = 'blocked' };        Expect = 0 }
+    @{ Name = 'icebox/ is parked on purpose';      Stage = '8-review';  Filler = 9; Threshold = 3; Extra = @{ Folder = 'icebox' };         Expect = 0 }
     @{ Name = 'A bulk edit does not reset it';     Stage = '8-review';  Filler = 9; Threshold = 3; Extra = @{ TouchWithoutStage = $true }; Expect = 1 }
     @{ Name = '9-ship in backlog/ fails at once';  Stage = '9-ship';    Filler = 0; Threshold = 3; Extra = @{};                            Expect = 1 }
 )

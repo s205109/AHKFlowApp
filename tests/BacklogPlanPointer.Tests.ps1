@@ -30,6 +30,7 @@ function New-TemporaryBacklogRoot {
     New-Item -ItemType Directory -Path $tempRoot -Force | Out-Null
     New-Item -ItemType Directory -Path (Join-Path $tempRoot 'done') -Force | Out-Null
     New-Item -ItemType Directory -Path (Join-Path $tempRoot 'blocked') -Force | Out-Null
+    New-Item -ItemType Directory -Path (Join-Path $tempRoot 'icebox') -Force | Out-Null
     return $tempRoot
 }
 
@@ -81,6 +82,7 @@ $cases = @(
     # missing or mis-typed Stage line skip the pointer check again.
     @{ Name = 'done/ with no Stage line is checked';  Stage = '';           Notes = @('- Plan: docs/superpowers/plans/a-plan-101.md'); Folder = 'done'; ShouldPass = $false }
     @{ Name = 'blocked/ is checked';                  Stage = '4-execute';  Notes = @();                    Folder = 'blocked'; ShouldPass = $false }
+    @{ Name = 'icebox/ is checked';                   Stage = '4-execute';  Notes = @();                    Folder = 'icebox';  ShouldPass = $false }
     @{ Name = 'One valid plan path passes';           Stage = '4-execute';  Notes = @($validPlan);          Folder = '';        ShouldPass = $true }
     @{ Name = 'Two valid plan paths pass';            Stage = '4-execute';  Notes = @($validPlan, $secondPlan); Folder = '';     ShouldPass = $true }
     @{ Name = 'none with a reason passes';            Stage = '4-execute';  Notes = @("- Plan: none $([char]0x2014) shipped without a plan"); Folder = ''; ShouldPass = $true }

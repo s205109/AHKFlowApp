@@ -1351,7 +1351,7 @@ function Get-BacklogItemLinesFromRef {
         [Parameter(Mandatory)][string] $ItemNumber
     )
 
-    $pattern = '^backlog/(done/|blocked/)?' + [regex]::Escape($ItemNumber) + '-[^/]*\.md$'
+    $pattern = '^backlog/(done/|blocked/|icebox/)?' + [regex]::Escape($ItemNumber) + '-[^/]*\.md$'
     $matched = @(@($Inventory.Paths) | Where-Object { $_ -match $pattern })
     if ($matched.Count -eq 0) {
         return [pscustomobject]@{ Status = 'absent'; Lines = @(); Detail = 'does not carry the item' }
@@ -1402,7 +1402,7 @@ function Get-BacklogItemLinesFromRefBySlug {
         [Parameter(Mandatory)][string] $Slug
     )
 
-    $pattern = '^backlog/(done/|blocked/)?(?<num>' + $WorktreeBacklogNumberPattern + ')-' + [regex]::Escape($Slug) + '\.md$'
+    $pattern = '^backlog/(done/|blocked/|icebox/)?(?<num>' + $WorktreeBacklogNumberPattern + ')-' + [regex]::Escape($Slug) + '\.md$'
     $matched = @(@($Inventory.Paths) | Where-Object { $_ -match $pattern })
     if ($matched.Count -eq 0) {
         return [pscustomobject]@{ Status = 'absent'; Lines = @(); Detail = "no backlog item carries the slug '$Slug'"; ItemNumber = '' }

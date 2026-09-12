@@ -26,6 +26,7 @@ function New-TemporaryBacklogRoot {
     New-Item -ItemType Directory -Path $tempRoot -Force | Out-Null
     New-Item -ItemType Directory -Path (Join-Path $tempRoot 'done') -Force | Out-Null
     New-Item -ItemType Directory -Path (Join-Path $tempRoot 'blocked') -Force | Out-Null
+    New-Item -ItemType Directory -Path (Join-Path $tempRoot 'icebox') -Force | Out-Null
     Copy-Item -LiteralPath $templatePath -Destination (Join-Path $tempRoot '000-backlog-item-template.md')
     return $tempRoot
 }
@@ -37,7 +38,7 @@ function Invoke-FixtureGit {
     return $out
 }
 
-# A git repository with backlog/, backlog/done/, and backlog/blocked/ folders and one committed
+# A git repository with backlog/ and every subfolder the folder list names, plus one committed
 # item on main. Returns the repo path. Callers add branches and worktrees on top.
 function New-GitBacklogFixture {
     param([string] $FirstItem = '100-first.md')
@@ -51,7 +52,7 @@ function New-GitBacklogFixture {
     Invoke-FixtureGit $repo @('config', 'user.email', 'test@example.com') | Out-Null
     Invoke-FixtureGit $repo @('config', 'user.name', 'Backlog Numbering Test') | Out-Null
 
-    foreach ($subfolder in @('backlog', 'backlog/done', 'backlog/blocked')) {
+    foreach ($subfolder in @('backlog', 'backlog/done', 'backlog/blocked', 'backlog/icebox')) {
         New-Item -ItemType Directory -Path (Join-Path $repo $subfolder) -Force | Out-Null
         Set-Content -LiteralPath (Join-Path $repo "$subfolder/.gitkeep") -Value '' -Encoding utf8
     }
@@ -270,6 +271,28 @@ try {
     if ($dupProblem) {
         Assert-True ($dupProblem -like '*058-open.md*') "Duplicate message should name 058-open.md: $dupProblem"
         Assert-True ($dupProblem -like '*blocked/058-blocked.md*') "Duplicate message should name blocked/058-blocked.md: $dupProblem"
+    }
+}
+finally {
+    Remove-Item -LiteralPath $tempRoot -Recurse -Force
+}
+
+# --- Case 10b: an iceboxed item in icebox/ still holds its number ---
+#
+# Backlog 140. An iceboxed item is possible work nobody judges worth doing. It is not finished,
+# so its number stays reserved exactly as a blocked item's does. The whole point of parking a
+# finding rather than deleting it is that the number keeps pointing at it.
+
+$tempRoot = New-TemporaryBacklogRoot
+try {
+    Set-Content -LiteralPath (Join-Path $tempRoot '059-open.md') -Value "# 059 - Open`n"
+    Set-Content -LiteralPath (Join-Path $tempRoot 'icebox/059-iced.md') -Value "# 059 - Iced`n"
+
+    $problems = @(Get-BacklogProblem -BacklogRoot $tempRoot)
+    $dupProblem = $problems | Where-Object { $_ -like "*Duplicate backlog number '059'*" }
+    Assert-True ($null -ne $dupProblem) "Expected a duplicate-059 problem across backlog/ and icebox/, got: $($problems -join ' | ')"
+    if ($dupProblem) {
+        Assert-True ($dupProblem -like '*icebox/059-iced.md*') "Duplicate message should name icebox/059-iced.md: $dupProblem"
     }
 }
 finally {
@@ -648,7 +671,7 @@ finally { Remove-GitFixture $repo }
 
 $corruptRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('backlog-num-corrupt-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
 try {
-    foreach ($subfolder in @('backlog', 'backlog/done', 'backlog/blocked')) {
+    foreach ($subfolder in @('backlog', 'backlog/done', 'backlog/blocked', 'backlog/icebox')) {
         New-Item -ItemType Directory -Path (Join-Path $corruptRoot $subfolder) -Force | Out-Null
     }
     Set-Content -LiteralPath (Join-Path $corruptRoot 'backlog/220-first.md') -Value "# 220 - First`n" -Encoding utf8

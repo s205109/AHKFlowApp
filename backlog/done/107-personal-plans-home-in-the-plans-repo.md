@@ -39,10 +39,10 @@ so that one private repository holds all of my planning work.
 
 - The rule now lives in two bullets, starting at (`AGENTS.md:160`, "Commit a project plan or spec to").
   Both link to `docs/development/workflow.md#stage-3-plan`, which now carries the narrative.
-- (`scripts/backlog.common.ps1:169`, "if ($Value -notmatch '^`docs/superpowers/plans/[^/`]+\.md`\.?$') { return $false }")
+- (`scripts/backlog.common.ps1:180`, "if ($Value -notmatch '^`docs/superpowers/plans/[^/`]+\.md`\.?$') { return $false }")
   requires a `- Plan:` pointer to match a single file directly inside
   `docs/superpowers/plans/`. A path with a subfolder fails.
-  (`tests/BacklogPlanPointer.Tests.ps1:92`, "A path with a subfolder fails") asserts that
+  (`tests/BacklogPlanPointer.Tests.ps1:94`, "A path with a subfolder fails") asserts that
   failure, and line 81 adds the `personal/` case. So a `personal/` subfolder cannot be
   referenced from a backlog item, which is the separation this item wanted.
 - The plans repository is `s205109/AHKFlowApp-plans`, and it is already private. Privacy was

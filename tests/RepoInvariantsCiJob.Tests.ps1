@@ -25,6 +25,9 @@ $expectedSuites = @(
     # an item claims to be finished, and the rule that refuses a ready pull request leaving such
     # an item open. They belong beside the other backlog checks.
     'AcceptanceBoxes.Tests.ps1'
+    # Backlog 140. A path pattern that forgets a backlog folder frees that folder's numbers in
+    # silence, so this belongs beside the numbering check it protects.
+    'BacklogFolderParity.Tests.ps1'
     'BacklogNumbering.Tests.ps1'
     'BacklogPlanPointer.Tests.ps1'
     'BacklogStaleOpen.Tests.ps1'

@@ -149,7 +149,7 @@ function Get-BranchShippedItem {
         $targetLines = Get-BacklogItemLinesFromRef -MainCheckout $RepoRoot -Inventory $target -ItemNumber $number
         if ($targetLines.Status -ne 'found') { continue }
 
-        $targetPattern = '^backlog/(done/|blocked/)?' + [regex]::Escape($number) + '-[^/]*\.md$'
+        $targetPattern = '^backlog/(done/|blocked/|icebox/)?' + [regex]::Escape($number) + '-[^/]*\.md$'
         $targetPaths = @(@($target.Paths) | Where-Object { $_ -match $targetPattern })
         if ($targetPaths.Count -ne 1) { continue }
 
@@ -166,7 +166,7 @@ function Get-BranchShippedItem {
         # A base that carries two files for one number is treated as 'not shipped in the base',
         # which judges the item here. That is the fail-closed reading, and the duplicate is already
         # reported by the backlog numbering check.
-        $pattern = '^backlog/(done/|blocked/)?' + [regex]::Escape($baseNumber) + '-[^/]*\.md$'
+        $pattern = '^backlog/(done/|blocked/|icebox/)?' + [regex]::Escape($baseNumber) + '-[^/]*\.md$'
         $basePaths = @(@($inventory.Paths) | Where-Object { $_ -match $pattern })
         $basePath = ''
         $baseStages = @()
