@@ -236,7 +236,7 @@ State the verdict either way. Naming an exemption is fine; saying nothing is not
 
 ## CI/CD
 
-Workflows live in `.github/workflows/` under self-describing names. `ci.yml` is the PR gate — build, test, format check, Bicep lint. `provision.yml` is Bicep-only provisioning (advanced path; initial setup always requires `deploy.ps1`). `release-cli.yml` fires on `v*` tags and publishes `ahkflow-win-x64.zip` as a GitHub Release asset.
+Workflows live in `.github/workflows/` under self-describing names. `ci.yml` is the PR gate — build, test, format check, Bicep lint. `shipping-pr-closes-item.yml` runs only `scripts/check-shipping-pr-closes-item.ps1`, including when a pull request is flipped to ready, and branch protection requires its job. `provision.yml` is Bicep-only provisioning (advanced path; initial setup always requires `deploy.ps1`). `release-cli.yml` fires on `v*` tags and publishes `ahkflow-win-x64.zip` as a GitHub Release asset.
 
 - **DEV** — local (`ASPNETCORE_ENVIRONMENT=Development`), LocalDB or Docker SQL, no Azure resources
 - **TEST** auto-deploys on push to `main`; **PROD** deploys manually via `workflow_dispatch`. Resource suffix `-test` / `-prod`
