@@ -208,3 +208,76 @@ function New-AhkFlowTestSummary {
         TrxPath = $TrxPath
     }
 }
+
+function Get-AhkFlowIntervalUnionMilliseconds {
+    <#
+      The length of the union of a set of intervals, clipped to a window, in milliseconds.
+
+      Backlog 140. Adding the lengths of intervals is wrong twice over in a suite that runs four
+      stacks at once: concurrent work counts several times, and a parent step counts again for
+      every child inside it. Merging ranges answers both, because the union of a parent and its
+      children is the parent.
+
+      Clipping first is what keeps the answer inside the window, so a residual computed as
+      'window minus union' can never go negative.
+
+      Every value must be UTC. Comparing a local time with a UTC time here would shift a whole
+      interval by the offset without any error.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)][AllowEmptyCollection()][object[]] $Interval,
+        [Parameter(Mandatory = $true)][datetime] $ClipStart,
+        [Parameter(Mandatory = $true)][datetime] $ClipEnd
+    )
+
+    if ($ClipEnd -lt $ClipStart) {
+        throw "The clip window ends before it starts: $ClipStart to $ClipEnd."
+    }
+
+    $clipped = @()
+    foreach ($item in $Interval) {
+        $start = [datetime]$item.Start
+        $end = [datetime]$item.End
+
+        if ($end -lt $start) {
+            throw "An interval ends before it starts: $start to $end."
+        }
+
+        if ($start -lt $ClipStart) { $start = $ClipStart }
+        if ($end -gt $ClipEnd) { $end = $ClipEnd }
+
+        # A zero-length result means the interval fell outside the window, or touched its edge.
+        if ($end -gt $start) {
+            $clipped += [pscustomobject]@{ Start = $start; End = $end }
+        }
+    }
+
+    if ($clipped.Count -eq 0) {
+        return 0.0
+    }
+
+    $ordered = @($clipped | Sort-Object -Property Start)
+    $total = 0.0
+    $mergeStart = $ordered[0].Start
+    $mergeEnd = $ordered[0].End
+
+    for ($i = 1; $i -lt $ordered.Count; $i++) {
+        $current = $ordered[$i]
+
+        # -le, not -lt: two intervals that meet exactly are one stretch of busy time.
+        if ($current.Start -le $mergeEnd) {
+            if ($current.End -gt $mergeEnd) {
+                $mergeEnd = $current.End
+            }
+        }
+        else {
+            $total += ($mergeEnd - $mergeStart).TotalMilliseconds
+            $mergeStart = $current.Start
+            $mergeEnd = $current.End
+        }
+    }
+
+    $total += ($mergeEnd - $mergeStart).TotalMilliseconds
+    return [math]::Round($total, 3)
+}

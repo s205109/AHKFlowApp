@@ -29,6 +29,9 @@ $expectedSuites = @(
     'BacklogPlanPointer.Tests.ps1'
     'BacklogStaleOpen.Tests.ps1'
     'CitationFreshness.Tests.ps1'
+    # Backlog 140. Pure arithmetic with no path, no git and no process, and the harness-overhead
+    # report rests on it. A Linux job proves it in under a second.
+    'IntervalUnion.Tests.ps1'
     # Backlog 133. It joins the invariants job because it is the only check that catches a test
     # reaching a target migration directly: that bypass still passes on a cold container, so the
     # C# suites stay green while the rule is broken.
