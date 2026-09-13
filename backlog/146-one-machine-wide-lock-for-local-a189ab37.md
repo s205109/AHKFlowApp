@@ -66,5 +66,7 @@ with the first, so that I do not have to remember to halve the worker count by h
   137, which records the same suites failing now and then under load in CI.
 - The trigger for this item was a laptop that stopped responding while the suites ran, most of
   all when two terminals ran them at once.
-- Spec: none — filed at intake.
+- Spec: `docs/superpowers/specs/2026-09-13-test-runs-share-a-lane-pool-design-146.md`. The design
+  divides through a Lane pool rather than a machine-wide lock; see
+  [`docs/adr/0018-test-runs-share-a-lane-pool.md`](../docs/adr/0018-test-runs-share-a-lane-pool.md).
 - Plan: none — filed at intake, not picked up yet.
