@@ -51,9 +51,6 @@ field (changes the record format the report reads).
 
 - 4-execute: complete. Every planned task and every recovery task above is committed.
 - 5-simplify: complete, see S1.
-- 6-verify: owed. Earlier evidence predates Simplify. Stage is set here.
-- 7-document: evidence exists but predates Simplify. Every acceptance box is ticked with its measurement.
-- 8-review: two rounds received. Round one took the failure edge to Execute; round two needed no code change.
-
-Simplify can change code, so Verify, Document and Review are owed again after it, as
-`docs/development/workflow.md` says for a review that returns to Execute.
+- 6-verify: complete after S1 and R6. Artifacts: `HostStartGateTests` 7 of 7, `TestTimingRecorderTests` 4 of 4, the 14 suites S1 touched. Gate: build and format green, PowerShell 67 of 67 after R6, coverage thresholds met (line 94.6 %, branch 82.8 %), `git diff --check main...HEAD` clean.
+- 7-document: complete. All five acceptance boxes re-checked against the branch after S1 and still true, because S1 changed no measurement or figure. Docs updated: AGENTS.md describes the shared folder pattern (`3eebb199`). `CONTEXT.md` needs no change, because no term moved.
+- 8-review: two rounds received. Round one took the failure edge to Execute; round two needed no code change. A third review is owed for S1 and R6. Stage is set here.
