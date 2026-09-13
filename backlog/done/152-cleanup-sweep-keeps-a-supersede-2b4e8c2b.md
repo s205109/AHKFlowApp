@@ -74,8 +74,15 @@ of the log cannot tell a real refusal from "there was nothing here".
 - [x] The sweep removes a merged worktree whose branch reflog holds a `reset:` that dropped a commit
       the base later received, in the shape `chore/wt-backlog-housekeeping` had
       (`scripts/worktree-git.common.ps1:504`, "function Test-StrandedWorkWasSuperseded {")
-- [x] The sweep keeps a merged worktree whose branch reflog holds a `reset:` that dropped a commit
+- [ ] The sweep keeps a merged worktree whose branch reflog holds a `reset:` that dropped a commit
       the base never received
+      — **only partly true.** The sweep keeps the worktree when no later commit on the branch
+      carries the dropped commit's subject line and author. When one does, the sweep removes the
+      worktree, even though the base never received the dropped commit. The redo test proves this
+      exception. Its replacement has different content, no branch contains the dropped commit, and
+      the test still requires removal
+      (`tests/WorktreeMergedCleanup.Tests.ps1:654`, "A reset the branch then redid under the same subject and author must not keep the worktree.").
+      This is the same accepted cost criterion 3 describes.
 - [ ] The sweep keeps a merged worktree whose dropped commit differs from what the base holds only in
       whitespace, in being a merge commit, or in author, message, signature, or empty-commit intent
       (`tests/WorktreeMergedCleanup.Tests.ps1:445`, "Content that differs only in whitespace must still count as discarded work.")
