@@ -57,6 +57,54 @@ What this suggests, not yet proven:
 
 The failed jobs were run again on the same commit, which is attempt 2 of the same run.
 
+## Findings
+
+Found on 2026-09-13 by reading CI job logs. The cause is Docker cleanup from another test project,
+which runs at the same time as the E2E project on the same runner.
+
+How it happens:
+
+1. The CI step `Test with coverage` in `.github/workflows/ci.yml` runs one `dotnet test` for the
+   whole solution. The test projects run in parallel on one runner.
+2. `AHKFlowApp.Infrastructure.Tests` gets its SQL container from `SharedSqlContainer`. That
+   container is process-scoped and is never disposed. The test process ends without deleting it.
+3. Ryuk, the Testcontainers cleanup container, removes it later. Its documented default
+   `RYUK_RECONNECTION_TIMEOUT` is `10s`: cleanup starts 10 seconds after the test process
+   disconnects.
+4. Removing a container removes a network interface on the runner. Chromium reports that as
+   `ERR_NETWORK_CHANGED` and cancels its requests in flight, including requests to `127.0.0.1`.
+5. An E2E page that is downloading framework files at that moment fails to boot. The reload in
+   `bootBlazor.js` can fall into the same cleanup, because Ryuk removes more than one container.
+
+The timing matches in every run that logged the error:
+
+| CI run | `Infrastructure.Tests` ended | Plus 10 s | E2E boot |
+|---|---|---|---|
+| 34406127602, 2026-09-09 | 21:22:22.2 | 21:22:32.2 | failed at 21:22:32.7 |
+| 34525483086, 2026-09-10 | 20:22:03.9 | 20:22:13.9 | failed at 20:22:15.8 |
+| 34714058897, 2026-09-12 | 19:29:59.9 | 19:30:09.9 | both started about 19:30:09.3, failed about 3 s later |
+
+`API.Tests` logs `Delete Docker container` for its own containers, at other moments, and no E2E
+boot was downloading files then. The failure needs a boot in flight at the exact moment of a
+removal, so it stays rare. Any test project that uses `SharedSqlContainer` can cause it.
+`Infrastructure.Tests` is the one that ended while E2E boots were running in these runs.
+
+How often: 3 of the 81 CI runs since 2026-09-09. A scan of every failed `build-test` job in the
+last 200 CI runs found no other `ERR_NETWORK_CHANGED`. Console capture only exists since backlog
+154, so older failures could not show the error.
+
+Backlog 148 (CI run 34200726352, 2026-09-08) fits the same timing: `Infrastructure.Tests` ended at
+07:47:41.9 and the WindowSnap test failed at 07:48:21.4 on a 30 second wait. That run captured no
+console output, so this is consistent, not proven.
+
+The browser does not give the app the network error. The app sees only
+`TypeError: Failed to fetch`. `ERR_NETWORK_CHANGED` appears only in the browser's own
+`Failed to load resource` console line. So `bootBlazor.js` cannot name the network change, but
+`FirstPageLoad` can, because it reads the console.
+
+The E2E project also uses a SQL container, in `E2ESqlServer`. That container goes away only when
+the E2E process ends, so it cannot break an E2E boot.
+
 ## Acceptance criteria
 
 - [ ] The item records the cause of the network change on the runner, with evidence, or records
