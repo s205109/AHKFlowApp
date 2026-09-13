@@ -17,6 +17,11 @@ time (see Findings). This item runs the E2E project on its own in CI, so no othe
 remove a container during an E2E boot. It also makes a first page load that still hits the error
 name the network change as the likely cause.
 
+The same CI step gave every test project one result file name, `test-results.trx`. Each project
+overwrote the file before it, so `Publish test results` read one file: the project that finished
+last. This item fixes that too, because the fix changes the same lines. On its own it would have
+been a trivial change.
+
 Difficulty is `moderate`: the cause is known, and the fix is one CI step, one test helper
 message, and their tests. No design question is left. This item was filed as 155 and renumbered
 to 156, because backlog 140 took 155 on `main` first.
@@ -119,6 +124,9 @@ the E2E process ends, so it cannot break an E2E boot.
       project runs while that step runs.
 - [ ] A PowerShell suite fails when `ci.yml` runs the E2E test project together with another
       test project again.
+- [ ] No `dotnet test` step in `build-test` sets `LogFileName`, so every test host writes its own
+      `.trx` file and `Publish test results` reads all of them. The same suite fails when a step
+      sets `LogFileName` again.
 - [ ] When a first page load fails and the browser reported `net::ERR_NETWORK_CHANGED`, the
       `FirstPageLoad` failure message names a network change on the runner as the likely cause.
       A failure without that error does not carry the sentence.
