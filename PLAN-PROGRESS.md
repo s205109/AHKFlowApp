@@ -30,11 +30,24 @@ Round two, no code change:
 - [x] R4 — workflow records not reconciled: Stage stale, plan unticked, this file absent — `-` — plan ticked 49 of 49, this file restored, Stage set to 5-simplify — no deferral
 - [x] R5 — parallel-startup explanation stated as fact — `5928a881` — targeted text check — no deferral
 
+## Simplify
+
+- [x] S1 — `/simplify` pass over the branch diff — `3eebb199` — 14 PowerShell suites green, `HostStartGateTests` 7 of 7, `TestTimingRecorderTests` 4 of 4, format clean — skipped findings listed below
+
+Fixed: one shared backlog folder pattern replaces six copies; one fixture-timing reader replaces
+two; the report uses the shared TRX lookup and a local command boundary; the gate tests share their
+timing setup; the recorder scans assemblies once; `+=` array growth removed from the new readers.
+
+Skipped: timing writes held inside the gate (changes what QueueWait measures); an `AsyncLocal`
+parent in place of `caller` (redesign); `test-fast.ps1 -ResultsRoot` (outside the diff); the TRX
+parsed twice and three `Measure-Object` passes (too small to matter); the derivable `finishedUtc`
+field (changes the record format the report reads).
+
 ## Stage state
 
 - 4-execute: complete. Every planned task and every recovery task above is committed.
-- 5-simplify: **not run**. `/simplify` has not been run on this branch's diff. Stage is set here.
-- 6-verify: evidence exists but predates Simplify. The five-step Gate passed after R1 to R3.
+- 5-simplify: complete, see S1.
+- 6-verify: owed. Earlier evidence predates Simplify. Stage is set here.
 - 7-document: evidence exists but predates Simplify. Every acceptance box is ticked with its measurement.
 - 8-review: two rounds received. Round one took the failure edge to Execute; round two needed no code change.
 

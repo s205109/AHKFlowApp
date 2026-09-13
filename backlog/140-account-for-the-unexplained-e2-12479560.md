@@ -6,7 +6,7 @@
 - **Type**: Tooling
 - **Interfaces**: none (measurement first)
 - **Difficulty**: complex
-- **Stage**: 5-simplify
+- **Stage**: 6-verify
 
 ## Summary
 
