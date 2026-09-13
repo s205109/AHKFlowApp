@@ -18,7 +18,7 @@ Set-StrictMode -Version Latest
 
 # Stage 3's exit condition is 'Plan committed', so 4-execute is the first stage whose records
 # can outlive their own work. The plan-pointer check uses the same index for the same reason
-# (`scripts/backlog.common.ps1:143`, "$script:BacklogPointerTriggerIndex = 4").
+# (`scripts/backlog.common.ps1:154`, "$script:BacklogPointerTriggerIndex = 4").
 $script:BacklogStaleTriggerIndex = 4
 
 # Measured on 2026-08-19 against main at 7433ca2f, by replaying every item in backlog/done/
@@ -116,11 +116,13 @@ function Get-BacklogStaleOpenProblem {
     foreach ($item in Get-BacklogItem -BacklogRoot $backlogRoot) {
         if ((Split-Path -Leaf $item.Path) -eq '000-backlog-item-template.md') { continue }
 
-        # A finished item and a parked item are both meant to sit still.
-        if ($item.Folder -in @('done', 'blocked')) { continue }
+        # A finished item and a parked item are both meant to sit still. Every subfolder holds
+        # one or the other, so the one list serves here too
+        # (`scripts/backlog.common.ps1:27`, "$script:BacklogItemSubfolder = @(").
+        if ($item.Folder -in $script:BacklogItemSubfolder) { continue }
 
         # A missing, repeated, or unknown Stage value belongs to the check that already owns
-        # those messages (`scripts/backlog.common.ps1:80`, "function Get-BacklogProblem {").
+        # those messages (`scripts/backlog.common.ps1:91`, "function Get-BacklogProblem {").
         if ($item.Stages.Count -ne 1) { continue }
         $stage = $item.Stages[0]
         $index = [array]::IndexOf($script:BacklogStageOrder, $stage)

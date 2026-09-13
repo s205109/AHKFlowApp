@@ -208,3 +208,220 @@ function New-AhkFlowTestSummary {
         TrxPath = $TrxPath
     }
 }
+
+function Get-AhkFlowIntervalUnionMilliseconds {
+    <#
+      The length of the union of a set of intervals, clipped to a window, in milliseconds.
+
+      Backlog 140. Adding the lengths of intervals is wrong twice over in a suite that runs four
+      stacks at once: concurrent work counts several times, and a parent step counts again for
+      every child inside it. Merging ranges answers both, because the union of a parent and its
+      children is the parent.
+
+      Clipping first is what keeps the answer inside the window, so a residual computed as
+      'window minus union' can never go negative.
+
+      Every value must be UTC. Comparing a local time with a UTC time here would shift a whole
+      interval by the offset without any error.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)][AllowEmptyCollection()][object[]] $Interval,
+        [Parameter(Mandatory = $true)][datetime] $ClipStart,
+        [Parameter(Mandatory = $true)][datetime] $ClipEnd
+    )
+
+    if ($ClipEnd -lt $ClipStart) {
+        throw "The clip window ends before it starts: $ClipStart to $ClipEnd."
+    }
+
+    $clipped = @(foreach ($item in $Interval) {
+        $start = [datetime]$item.Start
+        $end = [datetime]$item.End
+
+        if ($end -lt $start) {
+            throw "An interval ends before it starts: $start to $end."
+        }
+
+        if ($start -lt $ClipStart) { $start = $ClipStart }
+        if ($end -gt $ClipEnd) { $end = $ClipEnd }
+
+        # A zero-length result means the interval fell outside the window, or touched its edge.
+        if ($end -gt $start) {
+            [pscustomobject]@{ Start = $start; End = $end }
+        }
+    })
+
+    if ($clipped.Count -eq 0) {
+        return 0.0
+    }
+
+    $ordered = @($clipped | Sort-Object -Property Start)
+    $total = 0.0
+    $mergeStart = $ordered[0].Start
+    $mergeEnd = $ordered[0].End
+
+    for ($i = 1; $i -lt $ordered.Count; $i++) {
+        $current = $ordered[$i]
+
+        # -le, not -lt: two intervals that meet exactly are one stretch of busy time.
+        if ($current.Start -le $mergeEnd) {
+            if ($current.End -gt $mergeEnd) {
+                $mergeEnd = $current.End
+            }
+        }
+        else {
+            $total += ($mergeEnd - $mergeStart).TotalMilliseconds
+            $mergeStart = $current.Start
+            $mergeEnd = $current.End
+        }
+    }
+
+    $total += ($mergeEnd - $mergeStart).TotalMilliseconds
+    return [math]::Round($total, 3)
+}
+
+function Convert-TrxTimestamp {
+    <#
+      One TRX timestamp as a UTC [datetime].
+
+      TRX writes local time with an offset, and two machines in two zones write the same instant
+      differently. Everything downstream compares timestamps from the TRX with timestamps from the
+      fixture timing files, which are UTC, so the conversion happens once, here.
+    #>
+    param([string] $Timestamp)
+
+    if ([string]::IsNullOrWhiteSpace($Timestamp)) {
+        return $null
+    }
+
+    return [datetimeoffset]::Parse($Timestamp, [System.Globalization.CultureInfo]::InvariantCulture).UtcDateTime
+}
+
+function Get-AhkFlowTrxRunInterval {
+    <#
+      The run interval a TRX reports, as UTC start and end.
+
+      Backlog 140. This is not the test host's process lifetime. The values come from the logger:
+      the interval opens when the logger starts the run and closes when the run completes, so
+      process start, assembly loading before that point, and process exit after it all sit outside
+      it. The report names it the TRX run interval for exactly that reason.
+    #>
+    param([Parameter(Mandatory = $true)][string] $TrxPath)
+
+    [xml]$trx = Get-Content -LiteralPath $TrxPath -Raw
+    $times = $trx.GetElementsByTagName('Times') | Select-Object -First 1
+
+    if (-not $times) {
+        throw "No Times element in $TrxPath, so the run interval cannot be read."
+    }
+
+    $start = Convert-TrxTimestamp -Timestamp $times.start
+    $end = Convert-TrxTimestamp -Timestamp $times.finish
+
+    if ($null -eq $start -or $null -eq $end) {
+        throw "The Times element in $TrxPath has no start or no finish."
+    }
+
+    return [pscustomobject]@{ Start = $start; End = $end }
+}
+
+function Convert-TrxDuration {
+    param(
+        [string]$Duration
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Duration)) {
+        return 0.0
+    }
+
+    return [System.TimeSpan]::Parse($Duration, [System.Globalization.CultureInfo]::InvariantCulture).TotalMilliseconds
+}
+
+function Read-TrxResults {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$TrxPath,
+        [Parameter(Mandatory = $true)]
+        [string]$ProjectName
+    )
+
+    [xml]$trx = Get-Content -LiteralPath $TrxPath -Raw
+    $unitTests = $trx.GetElementsByTagName('UnitTest')
+    $unitTestResults = $trx.GetElementsByTagName('UnitTestResult')
+    $testClassesById = @{}
+
+    foreach ($unitTest in $unitTests) {
+        $testId = $unitTest.id
+        $testMethod = $unitTest.GetElementsByTagName('TestMethod') | Select-Object -First 1
+        if ($testId -and $testMethod) {
+            $testClassesById[$testId] = $testMethod.className
+        }
+    }
+
+    $results = @(foreach ($result in $unitTestResults) {
+        $className = $testClassesById[$result.testId]
+        if ([string]::IsNullOrWhiteSpace($className)) {
+            $className = '(unknown)'
+        }
+
+        [pscustomobject]@{
+            Project = $ProjectName
+            Class = $className
+            Test = $result.testName
+            Outcome = $result.outcome
+            DurationMilliseconds = [math]::Round((Convert-TrxDuration -Duration $result.duration), 3)
+            StartUtc = (Convert-TrxTimestamp -Timestamp $result.startTime)
+            EndUtc = (Convert-TrxTimestamp -Timestamp $result.endTime)
+        }
+    })
+
+    return $results
+}
+
+function Read-FixtureTimingEntries {
+    <#
+      Every record in the fixture-timing JSONL files under one folder.
+
+      One reader for both scripts that consume the files, so a field added to the recorder is read
+      in one place. A field that an older record does not carry comes back as $null, or as '' for
+      the caller, so a record older than the field never joins a named caller's row.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$FixtureTimingDirectory,
+        [string]$ProjectName = ''
+    )
+
+    if (-not (Test-Path -LiteralPath $FixtureTimingDirectory -PathType Container)) {
+        return @()
+    }
+
+    $timingFiles = Get-ChildItem -LiteralPath $FixtureTimingDirectory -Filter 'fixture-timings-*.jsonl' -ErrorAction SilentlyContinue
+    return @(foreach ($timingFile in $timingFiles) {
+        foreach ($line in Get-Content -LiteralPath $timingFile.FullName) {
+            if ([string]::IsNullOrWhiteSpace($line)) {
+                continue
+            }
+
+            $entry = $line | ConvertFrom-Json
+            $property = $entry.PSObject.Properties
+            $caller = $property['caller']
+            $started = $property['startedUtc']
+            $finished = $property['finishedUtc']
+
+            [pscustomobject]@{
+                Project = $ProjectName
+                TestAssembly = $entry.testAssembly
+                Component = $entry.component
+                Fixture = $entry.fixture
+                Operation = $entry.operation
+                Caller = if ($null -ne $caller -and $null -ne $caller.Value) { [string]$caller.Value } else { '' }
+                ElapsedMilliseconds = [math]::Round([double]$entry.elapsedMilliseconds, 3)
+                TimestampUtc = $entry.timestampUtc
+                StartUtc = if ($null -ne $started -and $null -ne $started.Value) { ([datetimeoffset]$started.Value).UtcDateTime } else { $null }
+                EndUtc = if ($null -ne $finished -and $null -ne $finished.Value) { ([datetimeoffset]$finished.Value).UtcDateTime } else { $null }
+            }
+        }
+    })
+}

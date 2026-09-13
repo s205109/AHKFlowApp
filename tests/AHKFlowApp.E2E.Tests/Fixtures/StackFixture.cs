@@ -9,6 +9,8 @@ namespace AHKFlowApp.E2E.Tests.Fixtures;
 
 public class StackFixture(string discriminator) : IAsyncLifetime
 {
+    private static readonly string FixtureName = typeof(StackFixture).FullName ?? nameof(StackFixture);
+
     public ApiFactory Api { get; } = new(discriminator);
     public SpaHost Spa { get; private set; } = default!;
     public IPlaywright Playwright { get; private set; } = default!;
@@ -16,7 +18,7 @@ public class StackFixture(string discriminator) : IAsyncLifetime
 
     public Task ResetDataAsync() => TestTimingRecorder.RecordAsync(
         nameof(StackFixture),
-        typeof(StackFixture).FullName ?? nameof(StackFixture),
+        FixtureName,
         nameof(ResetDataAsync),
         ResetDataCoreAsync);
 
@@ -41,7 +43,7 @@ public class StackFixture(string discriminator) : IAsyncLifetime
 
     public Task InitializeAsync() => TestTimingRecorder.RecordAsync(
         nameof(StackFixture),
-        typeof(StackFixture).FullName ?? nameof(StackFixture),
+        FixtureName,
         nameof(InitializeAsync),
         InitializeCoreAsync);
 
@@ -62,7 +64,8 @@ public class StackFixture(string discriminator) : IAsyncLifetime
 
     private async Task InitializeCoreAsync()
     {
-        await Api.StartAsync();
+        // Named, so the report can pick the four stack starts out of every host this gate starts.
+        await Api.StartAsync(nameof(StackFixture));
 
         if (!Directory.Exists(PublishedWwwroot))
         {
@@ -70,11 +73,27 @@ public class StackFixture(string discriminator) : IAsyncLifetime
         }
 
         HttpMessageInvoker apiClient = new(Api.Server.CreateHandler());
-        Spa = await SpaHost.StartAsync(PublishedWwwroot, apiClient, Api.Server.BaseAddress.ToString());
+        await TestTimingRecorder.RecordAsync(
+            nameof(StackFixture),
+            FixtureName,
+            "SpaHostStart",
+            async () => Spa = await SpaHost.StartAsync(PublishedWwwroot, apiClient, Api.Server.BaseAddress.ToString()));
 
-        await BrowserInstall.EnsureChromiumAsync();
-        Playwright = await Microsoft.Playwright.Playwright.CreateAsync();
-        Browser = await Playwright.Chromium.LaunchAsync(new() { Headless = true });
+        await TestTimingRecorder.RecordAsync(
+            nameof(StackFixture),
+            FixtureName,
+            "BrowserInstall",
+            BrowserInstall.EnsureChromiumAsync);
+
+        await TestTimingRecorder.RecordAsync(
+            nameof(StackFixture),
+            FixtureName,
+            "BrowserLaunch",
+            async () =>
+            {
+                Playwright = await Microsoft.Playwright.Playwright.CreateAsync();
+                Browser = await Playwright.Chromium.LaunchAsync(new() { Headless = true });
+            });
     }
 
     public async Task DisposeAsync()

@@ -23,6 +23,7 @@ $resultsRoot = Join-Path $repoRoot 'TestResults\measure-tests'
 $summaryPath = Join-Path $resultsRoot 'summary.json'
 $sharedSqlScript = Join-Path $PSScriptRoot 'test-sql-container.common.ps1'
 . $sharedSqlScript
+. (Join-Path $PSScriptRoot 'test-results.common.ps1')
 
 $sharedSqlTestProjects = @(
     'AHKFlowApp.API.Tests',
@@ -98,94 +99,6 @@ function Get-BuildArtifact {
     Get-ChildItem -LiteralPath $outputRoot -Recurse -Filter "$ProjectName.dll" -ErrorAction SilentlyContinue |
         Sort-Object FullName |
         Select-Object -First 1
-}
-
-function Convert-TrxDuration {
-    param(
-        [string]$Duration
-    )
-
-    if ([string]::IsNullOrWhiteSpace($Duration)) {
-        return 0.0
-    }
-
-    return [System.TimeSpan]::Parse($Duration, [System.Globalization.CultureInfo]::InvariantCulture).TotalMilliseconds
-}
-
-function Read-TrxResults {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$TrxPath,
-        [Parameter(Mandatory = $true)]
-        [string]$ProjectName
-    )
-
-    [xml]$trx = Get-Content -LiteralPath $TrxPath -Raw
-    $unitTests = $trx.GetElementsByTagName('UnitTest')
-    $unitTestResults = $trx.GetElementsByTagName('UnitTestResult')
-    $testClassesById = @{}
-
-    foreach ($unitTest in $unitTests) {
-        $testId = $unitTest.id
-        $testMethod = $unitTest.GetElementsByTagName('TestMethod') | Select-Object -First 1
-        if ($testId -and $testMethod) {
-            $testClassesById[$testId] = $testMethod.className
-        }
-    }
-
-    $results = @()
-    foreach ($result in $unitTestResults) {
-        $className = $testClassesById[$result.testId]
-        if ([string]::IsNullOrWhiteSpace($className)) {
-            $className = '(unknown)'
-        }
-
-        $results += [pscustomobject]@{
-            Project = $ProjectName
-            Class = $className
-            Test = $result.testName
-            Outcome = $result.outcome
-            DurationMilliseconds = [math]::Round((Convert-TrxDuration -Duration $result.duration), 3)
-        }
-    }
-
-    return $results
-}
-
-function Read-FixtureTimingEntries {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$FixtureTimingDirectory,
-        [Parameter(Mandatory = $true)]
-        [string]$ProjectName
-    )
-
-    if (-not (Test-Path -LiteralPath $FixtureTimingDirectory -PathType Container)) {
-        return @()
-    }
-
-    $entries = @()
-    $timingFiles = Get-ChildItem -LiteralPath $FixtureTimingDirectory -Filter 'fixture-timings-*.jsonl' -ErrorAction SilentlyContinue
-    foreach ($timingFile in $timingFiles) {
-        foreach ($line in Get-Content -LiteralPath $timingFile.FullName) {
-            if ([string]::IsNullOrWhiteSpace($line)) {
-                continue
-            }
-
-            $entry = $line | ConvertFrom-Json
-            $entries += [pscustomobject]@{
-                Project = $ProjectName
-                TestAssembly = $entry.testAssembly
-                Component = $entry.component
-                Fixture = $entry.fixture
-                Operation = $entry.operation
-                ElapsedMilliseconds = [math]::Round([double]$entry.elapsedMilliseconds, 3)
-                TimestampUtc = $entry.timestampUtc
-            }
-        }
-    }
-
-    return $entries
 }
 
 function Write-Ranking {

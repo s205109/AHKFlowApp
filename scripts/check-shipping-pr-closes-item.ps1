@@ -126,7 +126,7 @@ function Get-ShippingPrProblem {
     foreach ($record in $candidate) {
         $number = $record.Number
 
-        $targetPattern = '^backlog/(done/|blocked/)?' + [regex]::Escape($number) + '-[^/]*\.md$'
+        $targetPattern = '^backlog/' + $WorktreeBacklogSubfolderPattern + [regex]::Escape($number) + '-[^/]*\.md$'
         $targetPaths = @(@($target.Paths) | Where-Object { $_ -match $targetPattern })
 
         # No file, or two files claiming the number. The backlog numbering check owns both, and
@@ -154,7 +154,7 @@ function Get-ShippingPrProblem {
 
         $wasOpenInBase = $false
         if ($base.Status -eq 'ok') {
-            $basePattern = '^backlog/(done/|blocked/)?' + [regex]::Escape($record.BaseNumber) + '-[^/]*\.md$'
+            $basePattern = '^backlog/' + $WorktreeBacklogSubfolderPattern + [regex]::Escape($record.BaseNumber) + '-[^/]*\.md$'
             $basePaths = @(@($base.Paths) | Where-Object { $_ -match $basePattern })
             if ($basePaths.Count -eq 1) {
                 $wasOpenInBase = (($basePaths[0] -replace '\\', '/') -match $openPattern)

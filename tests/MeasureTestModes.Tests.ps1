@@ -245,6 +245,53 @@ Invoke-TestCase 'Timing mode calls the Mode once per run' {
     finally { Remove-HarnessFixture -Root $root }
 }
 
+Invoke-TestCase 'KeepBuildInRun leaves -NoBuild off the test-fast call' {
+    $root = New-HarnessFixture
+    try {
+        # -NoBuild here is the harness's own one-build-up-front switch. -KeepBuildInRun governs
+        # what each run is asked to do, and the two are deliberately independent.
+        $result = Invoke-Harness -Root $root -Arguments @('-Mode', 'Fast', '-Runs', '1', '-WarmUpRuns', '0', '-SettleSeconds', '0', '-NoBuild', '-KeepBuildInRun')
+        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
+
+        $calls = @(Get-Content -LiteralPath (Join-Path $root 'stub\testfast-calls.txt'))
+        Assert-True ($calls.Count -eq 1) "Expected 1 test-fast.ps1 call, got $($calls.Count)."
+        Assert-True (@($calls | Where-Object { $_ -match 'NoBuild=False' }).Count -eq 1) `
+            "-KeepBuildInRun must leave -NoBuild off the call. Calls: $($calls -join ' | ')"
+    }
+    finally { Remove-HarnessFixture -Root $root }
+}
+
+Invoke-TestCase 'Two measurements in one Mode keep both sessions' {
+    $root = New-HarnessFixture
+    try {
+        # Backlog 140 took two sessions back to back in one Mode, and the second invocation deleted
+        # the first one's artifacts. Each invocation writes its own session folder now, and never
+        # removes an earlier one. The stub runs finish within a second, so the two sessions also
+        # prove that two invocations in the same second do not collide.
+        $first = Invoke-Harness -Root $root -Arguments @('-Mode', 'Fast', '-Runs', '2', '-WarmUpRuns', '0', '-SettleSeconds', '0', '-NoBuild')
+        Assert-True ($first.ExitCode -eq 0) "Expected exit code 0 from the first session, got $($first.ExitCode). Output: $($first.Output)"
+        $second = Invoke-Harness -Root $root -Arguments @('-Mode', 'Fast', '-Runs', '1', '-WarmUpRuns', '0', '-SettleSeconds', '0', '-NoBuild')
+        Assert-True ($second.ExitCode -eq 0) "Expected exit code 0 from the second session, got $($second.ExitCode). Output: $($second.Output)"
+
+        $modeRoot = Join-Path $root 'TestResults\measure-test-modes\Fast'
+        $sessions = @(Get-ChildItem -LiteralPath $modeRoot -Directory -Filter 'session-*' -ErrorAction SilentlyContinue)
+        Assert-True ($sessions.Count -eq 2) "Expected 2 session folders after two invocations, got $($sessions.Count)."
+
+        if ($sessions.Count -eq 2) {
+            $runCounts = @($sessions | ForEach-Object { @(Get-ChildItem -LiteralPath $_.FullName -Directory -Filter 'run-*').Count } | Sort-Object)
+            Assert-True (($runCounts -join ',') -eq '1,2') "Expected one session with 2 counted runs and one with 1, got $($runCounts -join ',')."
+
+            foreach ($session in $sessions) {
+                foreach ($run in @(Get-ChildItem -LiteralPath $session.FullName -Directory -Filter 'run-*')) {
+                    $recorded = Join-Path $run.FullName 'run.json'
+                    Assert-True (Test-Path -LiteralPath $recorded) "Expected $recorded to hold the run's elapsed seconds."
+                }
+            }
+        }
+    }
+    finally { Remove-HarnessFixture -Root $root }
+}
+
 Invoke-TestCase 'Get-AhkFlowMedian is the middle sorted value, and the mean of the middle two when even' {
     # Fixed values and no wall clock at all. The case below proves the harness prints the median it
     # computed; this case proves the computation, and no amount of machine load can move it.

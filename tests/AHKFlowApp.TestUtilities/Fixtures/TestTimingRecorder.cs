@@ -10,11 +10,21 @@ public static class TestTimingRecorder
     private static readonly SemaphoreSlim WriteLock = new(1, 1);
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
+    // Scanning every loaded assembly costs real time in a host process, and the answer never
+    // changes once the test assembly is loaded, so it is found on the first record only.
+    private static readonly Lazy<string> TestAssemblyName = new(GetTestAssemblyName);
+
+    /// <param name="caller">
+    /// Who asked for the step, when the component is shared. A component such as the host start
+    /// gate serves stack fixtures and tests alike, and without this field a report cannot tell a
+    /// stack's own start from a test's. Leave it null for a step only one kind of caller runs.
+    /// </param>
     public static async Task RecordAsync(
         string component,
         string fixture,
         string operation,
-        Func<Task> action)
+        Func<Task> action,
+        string? caller = null)
     {
         if (!IsEnabled())
         {
@@ -22,18 +32,25 @@ public static class TestTimingRecorder
             return;
         }
 
+        DateTimeOffset startedUtc = DateTimeOffset.UtcNow;
         var stopwatch = Stopwatch.StartNew();
         await action();
         stopwatch.Stop();
 
+        // The stopwatch measures the length and the wall clock anchors it. Deriving the finish
+        // from the start plus the elapsed figure keeps the two consistent: a reader who subtracts
+        // the interval gets the elapsed figure back exactly, with no second clock reading to drift.
         TimingEntry entry = new(
             TimestampUtc: DateTimeOffset.UtcNow,
-            TestAssembly: GetTestAssemblyName(),
+            StartedUtc: startedUtc,
+            FinishedUtc: startedUtc.AddMilliseconds(stopwatch.Elapsed.TotalMilliseconds),
+            TestAssembly: TestAssemblyName.Value,
             ProcessId: Environment.ProcessId,
             Component: component,
             Fixture: fixture,
             Operation: operation,
-            ElapsedMilliseconds: stopwatch.Elapsed.TotalMilliseconds);
+            ElapsedMilliseconds: stopwatch.Elapsed.TotalMilliseconds,
+            Caller: caller);
 
         await WriteAsync(entry);
     }
@@ -86,10 +103,13 @@ public static class TestTimingRecorder
 
     private sealed record TimingEntry(
         DateTimeOffset TimestampUtc,
+        DateTimeOffset StartedUtc,
+        DateTimeOffset FinishedUtc,
         string TestAssembly,
         int ProcessId,
         string Component,
         string Fixture,
         string Operation,
-        double ElapsedMilliseconds);
+        double ElapsedMilliseconds,
+        string? Caller);
 }

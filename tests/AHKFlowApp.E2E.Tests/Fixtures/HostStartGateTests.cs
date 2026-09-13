@@ -1,3 +1,4 @@
+using System.Text.Json;
 using FluentAssertions;
 using Xunit;
 
@@ -13,10 +14,28 @@ namespace AHKFlowApp.E2E.Tests.Fixtures;
 /// confirm the gate in the real host and never stand in for the deterministic pair.
 /// </remarks>
 [Collection(ExclusiveTestCollection.Name)]
-public sealed class HostStartGateTests
+public sealed class HostStartGateTests : IDisposable
 {
+    private const string TimingEnabledEnvironmentVariable = "AHKFLOW_TEST_TIMING";
+    private const string TimingDirectoryEnvironmentVariable = "AHKFLOW_TEST_TIMING_DIR";
+
     private static readonly TimeSpan WaitLimit = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan SettleTime = TimeSpan.FromMilliseconds(250);
+
+    private readonly string _timingDirectory = Path.Combine(Path.GetTempPath(), $"ahkflow-gate-timing-{Guid.NewGuid():N}");
+    private readonly string? _previousTiming = Environment.GetEnvironmentVariable(TimingEnabledEnvironmentVariable);
+    private readonly string? _previousTimingDirectory = Environment.GetEnvironmentVariable(TimingDirectoryEnvironmentVariable);
+
+    public void Dispose()
+    {
+        Environment.SetEnvironmentVariable(TimingEnabledEnvironmentVariable, _previousTiming);
+        Environment.SetEnvironmentVariable(TimingDirectoryEnvironmentVariable, _previousTimingDirectory);
+
+        if (Directory.Exists(_timingDirectory))
+        {
+            Directory.Delete(_timingDirectory, recursive: true);
+        }
+    }
 
     [Fact]
     public async Task RunAsync_WhileOneCallbackIsRunning_HoldsTheNextCallerBack()
@@ -140,4 +159,116 @@ public sealed class HostStartGateTests
             }
         }
     }
+
+    [Fact]
+    public async Task RunAsync_WithFourCallersAtOnce_RecordsWaitingApartFromWork()
+    {
+        // Arrange
+        const int callers = 4;
+        var hold = TimeSpan.FromMilliseconds(300);
+        EnableTiming(_timingDirectory);
+
+        // Act: release all four at the same moment, so every caller but one has to queue.
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Task[] callersRunning = Enumerable.Range(0, callers)
+            .Select(_ => Task.Run(async () =>
+            {
+                await release.Task;
+                await HostStartGate.RunAsync(() => Task.Delay(hold));
+            }))
+            .ToArray();
+
+        release.SetResult();
+        await Task.WhenAll(callersRunning).WaitAsync(WaitLimit);
+
+        // Assert
+        List<JsonElement> entries = ReadGateEntries();
+
+        double[] waits = entries
+            .Where(entry => entry.GetProperty("operation").GetString() == HostStartGate.QueueWaitOperation)
+            .Select(entry => entry.GetProperty("elapsedMilliseconds").GetDouble())
+            .ToArray();
+        double[] work = entries
+            .Where(entry => entry.GetProperty("operation").GetString() == HostStartGate.GatedWorkOperation)
+            .Select(entry => entry.GetProperty("elapsedMilliseconds").GetDouble())
+            .ToArray();
+
+        waits.Should().HaveCount(callers, "every caller records its own wait");
+        work.Should().HaveCount(callers, "every caller records its own gated work");
+
+        work.Should().AllSatisfy(one => one.Should().BeLessThan(
+            hold.TotalMilliseconds * 2,
+            "gated work is one hold, so no caller may report the queued total"));
+
+        waits.Max().Should().BeGreaterThan(
+            hold.TotalMilliseconds * 2,
+            "the last caller waited for three holds, and that time is waiting rather than work");
+    }
+
+    [Fact]
+    public async Task RunAsync_WhenRecordingTheWaitFails_StillReleasesTheGate()
+    {
+        // Arrange: a file sits where the recorder expects a folder, so the recorder throws while
+        // it writes the wait, which is after the wait has already taken the permit.
+        string blocker = Path.Combine(Path.GetTempPath(), $"ahkflow-gate-blocker-{Guid.NewGuid():N}");
+        await File.WriteAllTextAsync(blocker, "a file where the recorder expects a folder");
+        EnableTiming(Path.Combine(blocker, "timing"));
+
+        try
+        {
+            // Act
+            Func<Task> recordingFails = () => HostStartGate.RunAsync(() => Task.CompletedTask);
+            await recordingFails.Should().ThrowAsync<IOException>();
+
+            // Assert: timing off, so the next caller cannot fail on the same write for its own reason.
+            Environment.SetEnvironmentVariable(TimingEnabledEnvironmentVariable, null);
+            bool ranAfterTheFailure = false;
+            await HostStartGate.RunAsync(() =>
+            {
+                ranAfterTheFailure = true;
+                return Task.CompletedTask;
+            }).WaitAsync(WaitLimit);
+
+            ranAfterTheFailure.Should().BeTrue(
+                "a timing record that fails to write must not leave the gate closed for every later host");
+        }
+        finally
+        {
+            File.Delete(blocker);
+        }
+    }
+
+    [Fact]
+    public async Task RunAsync_WithACaller_WritesTheCallerOnBothRecords()
+    {
+        // Arrange
+        string caller = $"caller-{Guid.NewGuid():N}";
+        EnableTiming(_timingDirectory);
+
+        // Act
+        await HostStartGate.RunAsync(() => Task.CompletedTask, caller).WaitAsync(WaitLimit);
+        await HostStartGate.RunAsync(() => Task.CompletedTask).WaitAsync(WaitLimit);
+
+        // Assert
+        string?[] callers = ReadGateEntries().Select(entry => entry.GetProperty("caller").GetString()).ToArray();
+
+        callers.Count(one => one == caller).Should().Be(
+            2, "the named caller owns both its wait and its gated work, so a report can pick out its starts");
+        callers.Count(one => one == HostStartGate.UnattributedCaller).Should().Be(
+            2, "a caller that names nobody is labelled, so it never mixes with a stack start");
+    }
+
+    private static void EnableTiming(string directory)
+    {
+        Environment.SetEnvironmentVariable(TimingEnabledEnvironmentVariable, "1");
+        Environment.SetEnvironmentVariable(TimingDirectoryEnvironmentVariable, directory);
+    }
+
+    private List<JsonElement> ReadGateEntries() => Directory
+        .GetFiles(_timingDirectory, "fixture-timings-*.jsonl")
+        .SelectMany(File.ReadAllLines)
+        .Where(line => !string.IsNullOrWhiteSpace(line))
+        .Select(line => JsonSerializer.Deserialize<JsonElement>(line))
+        .Where(entry => entry.GetProperty("component").GetString() == nameof(HostStartGate))
+        .ToList();
 }

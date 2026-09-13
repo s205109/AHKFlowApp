@@ -1351,7 +1351,7 @@ function Get-BacklogItemLinesFromRef {
         [Parameter(Mandatory)][string] $ItemNumber
     )
 
-    $pattern = '^backlog/(done/|blocked/)?' + [regex]::Escape($ItemNumber) + '-[^/]*\.md$'
+    $pattern = '^backlog/' + $WorktreeBacklogSubfolderPattern + [regex]::Escape($ItemNumber) + '-[^/]*\.md$'
     $matched = @(@($Inventory.Paths) | Where-Object { $_ -match $pattern })
     if ($matched.Count -eq 0) {
         return [pscustomobject]@{ Status = 'absent'; Lines = @(); Detail = 'does not carry the item' }
@@ -1371,6 +1371,12 @@ function Get-BacklogItemLinesFromRef {
 # letter: this repository ships suffixed items such as 022b, and tests/BacklogNumbering.Tests.ps1
 # pins that shape. A digits-only pattern would skip 022b in silence.
 $WorktreeBacklogNumberPattern = '[0-9]{3}[a-z]?'
+
+# The optional folder part of a backlog item path, for the checks that read git rather than the
+# working tree. It is the regex copy of $script:BacklogItemSubfolder in backlog.common.ps1, which
+# this file cannot dot-source because that file needs PowerShell 7. Every path pattern builds on
+# this one value, and tests/BacklogFolderParity.Tests.ps1 fails when it stops matching the list.
+$WorktreeBacklogSubfolderPattern = '(done/|blocked/|icebox/)?'
 
 # The slug half of a worktree directory name, or '' when the name has no 'wt-' prefix.
 # A worktree is named 'wt-' plus the title slug and a backlog file is the number plus the same
@@ -1402,7 +1408,7 @@ function Get-BacklogItemLinesFromRefBySlug {
         [Parameter(Mandatory)][string] $Slug
     )
 
-    $pattern = '^backlog/(done/|blocked/)?(?<num>' + $WorktreeBacklogNumberPattern + ')-' + [regex]::Escape($Slug) + '\.md$'
+    $pattern = '^backlog/' + $WorktreeBacklogSubfolderPattern + '(?<num>' + $WorktreeBacklogNumberPattern + ')-' + [regex]::Escape($Slug) + '\.md$'
     $matched = @(@($Inventory.Paths) | Where-Object { $_ -match $pattern })
     if ($matched.Count -eq 0) {
         return [pscustomobject]@{ Status = 'absent'; Lines = @(); Detail = "no backlog item carries the slug '$Slug'"; ItemNumber = '' }

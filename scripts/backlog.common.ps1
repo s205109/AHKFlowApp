@@ -12,17 +12,28 @@ Set-StrictMode -Version Latest
 # PowerShell 5.1 and this one requires 7.0, so it cannot dot-source this file. See backlog 080.
 . (Join-Path $PSScriptRoot 'slug.common.ps1')
 
+# Every folder under backlog/ that holds a real item, besides the root itself. This list is the
+# source of truth. Scanning a folder that is missing here makes its numbers stop counting as
+# taken, and then two files can end up sharing one number. See backlog 061.
+#
+#   done    finished work.
+#   blocked work that waits on something outside this repository.
+#   icebox  work that is possible today and nobody judges worth doing. A finding worth keeping,
+#           parked so it is neither lost nor mistaken for a queue item.
+#
+# Several checks read git rather than the working tree, so they cannot dot-source this file. They
+# share one copy of the list as a path pattern, $WorktreeBacklogSubfolderPattern in
+# worktree-git.common.ps1. tests/BacklogFolderParity.Tests.ps1 fails when the copy stops matching.
+$script:BacklogItemSubfolder = @('done', 'blocked', 'icebox')
+
 function Get-BacklogItem {
     param([Parameter(Mandatory)][string] $BacklogRoot)
 
     $root = (Resolve-Path -LiteralPath $BacklogRoot).Path
     $repoRoot = Split-Path -Parent $root
 
-    # Every folder that holds a real item must be scanned, or its number stops counting as taken
-    # and the duplicate check below goes blind to it. 'done' is finished work; 'blocked' is work
-    # blocked on something outside this repository. Both keep their numbers reserved.
     $files = @(Get-ChildItem -LiteralPath $root -Filter '*.md' -File)
-    foreach ($subfolder in @('done', 'blocked')) {
+    foreach ($subfolder in $script:BacklogItemSubfolder) {
         $subfolderPath = Join-Path $root $subfolder
         if (Test-Path -LiteralPath $subfolderPath) {
             $files += Get-ChildItem -LiteralPath $subfolderPath -Filter '*.md' -File
@@ -59,9 +70,9 @@ function Get-BacklogItem {
             Number       = $number
             Path         = $file.FullName
             RelativePath = $relativePath
-            # 'done', 'blocked', or the backlog root's own folder name. Read from the path rather
-            # than from RelativePath, which is cut against the backlog root's parent and so starts
-            # with a temp folder's name under a test root.
+            # One of $script:BacklogItemSubfolder, or the backlog root's own folder name. Read
+            # from the path rather than from RelativePath, which is cut against the backlog
+            # root's parent and so starts with a temp folder's name under a test root.
             Folder       = Split-Path -Leaf (Split-Path -Parent $file.FullName)
             HeadingKey   = $headingKey
             Stages       = $stages
@@ -88,7 +99,7 @@ function Get-BacklogProblem {
         $problems += "Bad backlog file name: $($item.RelativePath). Expected NNN-slug.md or NNNx-slug.md."
     }
 
-    # --- Duplicate key across backlog/, backlog/done/, and backlog/blocked/ ---
+    # --- Duplicate key across backlog/ and every folder in $script:BacklogItemSubfolder ---
     $byKey = $items | Where-Object { $null -ne $_.Key } | Group-Object -Property Key
     foreach ($group in $byKey | Where-Object { $_.Count -gt 1 }) {
         $names = ($group.Group | Select-Object -ExpandProperty RelativePath) -join ', '
@@ -355,9 +366,10 @@ function Get-BacklogNumbersFromGit {
             return $result
         }
 
-        # backlog/<NNN>-..., backlog/done/<NNN>-..., backlog/blocked/<NNN>-... — one segment deep,
-        # exactly the folders Get-BacklogItem scans.
-        $itemPathRegex = '^backlog/(done/|blocked/)?[^/]+\.md$'
+        # backlog/<NNN>-... and one segment deep in each subfolder, exactly the folders
+        # Get-BacklogItem scans. Built from the one list rather than written out, so a new folder
+        # cannot reach this line unlisted.
+        $itemPathRegex = '^backlog/((' + (($script:BacklogItemSubfolder | ForEach-Object { [regex]::Escape($_) }) -join '|') + ')/)?[^/]+\.md$'
         # The number is anchored to the start of the file name, so a name like
         # 'issue-30176-closes.md' is not read as 30176.
         $numberRegex = '^(?<num>\d{3})[a-z]?-'
@@ -403,7 +415,7 @@ function Get-BacklogNumbersFromGit {
         foreach ($line in $porcelain) {
             if ($line -notmatch '^worktree (.+)$') { continue }
             $treePath = $Matches[1]
-            foreach ($sub in @('backlog', 'backlog/done', 'backlog/blocked')) {
+            foreach ($sub in @('backlog') + ($script:BacklogItemSubfolder | ForEach-Object { "backlog/$_" })) {
                 $dir = Join-Path $treePath $sub
                 if (-not (Test-Path -LiteralPath $dir)) { continue }
                 foreach ($file in Get-ChildItem -LiteralPath $dir -Filter '*.md' -File) {

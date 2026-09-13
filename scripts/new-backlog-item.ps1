@@ -6,8 +6,9 @@
 .DESCRIPTION
     Never pick a backlog number by hand — two items have already ended up sharing one
     (see backlog 061). This script reads backlog/000-backlog-item-template.md, works out the
-    next free number across backlog/, backlog/done/, and backlog/blocked/, and writes the new
-    file. A finished or blocked item keeps its number reserved, so no folder frees a number.
+    next free number across backlog/ and every folder $script:BacklogItemSubfolder names, and
+    writes the new file. An item keeps its number reserved wherever it sits, whether it is
+    finished, blocked, or iceboxed, so no folder ever frees a number.
 
 .EXAMPLE
     pwsh ./scripts/new-backlog-item.ps1 -Title "Downloads page row stays disabled"

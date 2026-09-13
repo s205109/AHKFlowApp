@@ -37,11 +37,15 @@ public sealed class ApiFactory(string discriminator) : WebApplicationFactory<Pro
         SqlTestDatabase.CreateConnectionString(
             await E2ESqlServer.GetConnectionStringAsync(), discriminator);
 
-    public async Task StartAsync()
+    /// <param name="caller">
+    /// Who is starting this host, written onto the gate's timing records. A stack fixture names
+    /// itself; a test that starts a host of its own leaves the default.
+    /// </param>
+    public async Task StartAsync(string caller = HostStartGate.UnattributedCaller)
     {
         _connectionString = await ResolveConnectionStringAsync();
 
-        await HostStartGate.RunAsync(async () =>
+        await HostStartGate.RunAsync(caller: caller, start: async () =>
         {
             // Force the factory to build the host (triggers ConfigureWebHost).
             _ = Services;

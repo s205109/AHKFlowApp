@@ -25,10 +25,16 @@ $expectedSuites = @(
     # an item claims to be finished, and the rule that refuses a ready pull request leaving such
     # an item open. They belong beside the other backlog checks.
     'AcceptanceBoxes.Tests.ps1'
+    # Backlog 140. A path pattern that forgets a backlog folder frees that folder's numbers in
+    # silence, so this belongs beside the numbering check it protects.
+    'BacklogFolderParity.Tests.ps1'
     'BacklogNumbering.Tests.ps1'
     'BacklogPlanPointer.Tests.ps1'
     'BacklogStaleOpen.Tests.ps1'
     'CitationFreshness.Tests.ps1'
+    # Backlog 140. Pure arithmetic with no path, no git and no process, and the harness-overhead
+    # report rests on it. A Linux job proves it in under a second.
+    'IntervalUnion.Tests.ps1'
     # Backlog 133. It joins the invariants job because it is the only check that catches a test
     # reaching a target migration directly: that bypass still passes on a cold container, so the
     # C# suites stay green while the rule is broken.
@@ -42,6 +48,9 @@ $expectedSuites = @(
     # Backlog 127. This one is in the job so that every pull request proves the runner starts,
     # reads a manifest, and selects suites on Linux. It is the only member that is here for the
     # platform rather than for a repository invariant.
+    # Backlog 140. Same reason as IntervalUnion.Tests.ps1: it parses a fixed TRX this suite writes
+    # itself, so it needs no run, no container and no path of its own.
+    'TrxIntervals.Tests.ps1'
     'SuiteRunnerLinux.Tests.ps1'
 )
 
