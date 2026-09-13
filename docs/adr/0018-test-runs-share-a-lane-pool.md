@@ -73,9 +73,12 @@ stop. This follows ADR 0014, which also chose a held file over a clock.
   outlived a killed run. A measurement still needs a quiet machine.
 - A Suite's recorded duration leaves out its wait for a Lane. It still includes the slowdown from
   other work running at the same time.
-- A run inside a run takes no Lanes. Each script reads `AHKFLOW_TEST_LANES_HOLDER` once, at start.
-  An owner sets it for what it starts and restores it when it ends. The Suite runner passes the
-  decision to its Workers, because Workers share one process and so share its environment.
+- A run inside a run takes no Lanes. Each script that reserves Lanes reads
+  `AHKFLOW_TEST_LANES_HOLDER` once, at start. An owner sets it for what it starts and restores it
+  when it ends. The Suite runner passes the decision to its Workers, because Workers share one
+  process and so share its environment. A wrapper that only hands work to a reserving script, such
+  as `test-fast.ps1 -Mode PowerShell` or `-Mode Coverage`, never touches the variable. If it set it,
+  its own delegate would decide it is nested, and nothing would hold a Lane.
 - `AHKFLOW_TEST_LANES=off` skips the pool for a deliberate overlap. Nothing skips the checkout lock.
 - An explicit `-MaxParallel` sets one run's Worker count. It is never a capacity proposal.
 - A killed run's Lanes come back at once, but its child processes can keep running outside the pool.
