@@ -1,19 +1,25 @@
-# 155 - E2E boot dies on network change during framework downloads
+# 156 - E2E boot dies on network change during framework downloads
 
 ## Metadata
 
 - **Epic**: Test reliability
 - **Type**: Bug
 - **Interfaces**: E2E tests
-- **Difficulty**: to-be-determined
-- **Stage**: 0-intake
+- **Difficulty**: moderate
+- **Stage**: 1-pickup
 
 ## Summary
 
 In CI, two E2E tests on two different stacks failed within the same second. In both, the
 browser reported `net::ERR_NETWORK_CHANGED` while downloading framework files, and the Blazor
-app never started. This item finds out why, and makes a boot survive it or fail in a way that
-names the runner rather than the test.
+app never started. The cause is Docker cleanup from another test project that runs at the same
+time (see Findings). This item runs the E2E project on its own in CI, so no other project can
+remove a container during an E2E boot. It also makes a first page load that still hits the error
+name the network change as the likely cause.
+
+Difficulty is `moderate`: the cause is known, and the fix is one CI step, one test helper
+message, and their tests. No design question is left. This item was filed as 155 and renumbered
+to 156, because backlog 140 took 155 on `main` first.
 
 ## User story
 
@@ -109,10 +115,14 @@ the E2E process ends, so it cannot break an E2E boot.
 
 - [ ] The item records the cause of the network change on the runner, with evidence, or records
       that the cause could not be found and what was checked.
-- [ ] A boot that fails on `ERR_NETWORK_CHANGED` either recovers, or fails with a message that
-      names the network change as the likely cause.
-- [ ] A durable test shows the chosen behaviour when a framework download fails with a network
-      error.
+- [ ] The CI job `build-test` runs the E2E test project in a step of its own, and no other test
+      project runs while that step runs.
+- [ ] A PowerShell suite fails when `ci.yml` runs the E2E test project together with another
+      test project again.
+- [ ] When a first page load fails and the browser reported `net::ERR_NETWORK_CHANGED`, the
+      `FirstPageLoad` failure message names a network change on the runner as the likely cause.
+      A failure without that error does not carry the sentence.
+- [ ] A test in `FirstPageLoadDiagnosticsTests` proves the previous box in both directions.
 - [ ] `FirstPageLoad.TimeoutMs` still reads 30000, and no E2E test retries automatically.
 
 ## Out of scope
@@ -121,6 +131,10 @@ the E2E process ends, so it cannot break an E2E boot.
   signal.
 - Raising the 30 second budget. Both pages gave up after about 3 seconds, on the boot error
   screen, so a longer wait would not help.
+- Changing `bootBlazor.js`. The cause is in CI, not in the app. The script also cannot name the
+  cause, because the browser gives it only `TypeError: Failed to fetch`.
+- Disposing `SharedSqlContainer` inside the test process. A removal still changes the network,
+  only at a different moment, while E2E may still run beside it.
 
 ## Notes / dependencies
 
@@ -129,5 +143,5 @@ the E2E process ends, so it cannot break an E2E boot.
 - Related: backlog 148 found the first failed boot in CI, and
   `backlog/blocked/068-two-flaky-tests-fail-intermittently-in-full-suite-runs.md` holds the
   repository's reasoning on failures seen only once.
-- Spec: none — not designed yet
+- Spec: none — the cause is known from CI logs, and no design question is left
 - Plan: none — not planned yet
