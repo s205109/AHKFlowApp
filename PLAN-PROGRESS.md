@@ -43,6 +43,10 @@ parent in place of `caller` (redesign); `test-fast.ps1 -ResultsRoot` (outside th
 parsed twice and three `Measure-Object` passes (too small to matter); the derivable `finishedUtc`
 field (changes the record format the report reads).
 
+## Verify recovery
+
+- [x] R6 — Gate step 3 red after S1: `pwsh .\scripts\test-fast.ps1 -Mode PowerShell` failed 1 of 67, `CitationFreshness.Tests.ps1`: "backlog/done/130-fail-the-push-when-a-shipped-it-0c4f5d37.md:32 tier 2: (`scripts/worktree-git.common.ps1:1535`, ...) does not match". S1 added six lines above that function, which now sits at 1541. Citation moved to 1541 — commit below — PowerShell step re-run — no deferral <!-- citation-check:ignore quotes the stale citation from the failure output -->
+
 ## Stage state
 
 - 4-execute: complete. Every planned task and every recovery task above is committed.
