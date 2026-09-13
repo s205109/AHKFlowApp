@@ -242,13 +242,14 @@ PowerShell.
 _Avoid_: profile, preset, group, tier
 
 **Lane**:
-Room on one machine for one unit of test work, such as one Suite. A Lane belongs to the machine,
-not to a run, so runs from every checkout on that machine take their Lanes from the same Lane pool.
+Room for one unit of test work, such as one Suite. A Lane belongs to one user on one machine, not
+to a run, so runs from every checkout of that user take their Lanes from the same Lane pool.
 _Avoid_: slot, token, share, worker
 
 **Lane pool**:
-The fixed set of Lanes one machine offers to every test run on it. Two runs at the same time share
-it, so together they never do more work at once than the pool allows.
+The set of Lanes that every test run of one user on one machine takes from. Two runs at the same
+time share it, so together they never do more work at once than the pool allows. Its size changes
+only while no Lane is taken.
 _Avoid_: budget, semaphore, machine lock
 
 **Worker**:
