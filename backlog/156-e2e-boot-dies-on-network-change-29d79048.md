@@ -144,4 +144,4 @@ the E2E process ends, so it cannot break an E2E boot.
   `backlog/blocked/068-two-flaky-tests-fail-intermittently-in-full-suite-runs.md` holds the
   repository's reasoning on failures seen only once.
 - Spec: none — the cause is known from CI logs, and no design question is left
-- Plan: none — not planned yet
+- Plan: `docs/superpowers/plans/2026-09-13-e2e-step-runs-alone-plan-156.md`
