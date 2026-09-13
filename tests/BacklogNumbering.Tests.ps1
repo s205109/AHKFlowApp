@@ -24,9 +24,9 @@ $failures = @()
 function New-TemporaryBacklogRoot {
     $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) "backlog-numbering-tests-$([guid]::NewGuid())"
     New-Item -ItemType Directory -Path $tempRoot -Force | Out-Null
-    New-Item -ItemType Directory -Path (Join-Path $tempRoot 'done') -Force | Out-Null
-    New-Item -ItemType Directory -Path (Join-Path $tempRoot 'blocked') -Force | Out-Null
-    New-Item -ItemType Directory -Path (Join-Path $tempRoot 'icebox') -Force | Out-Null
+    foreach ($subfolder in $script:BacklogItemSubfolder) {
+        New-Item -ItemType Directory -Path (Join-Path $tempRoot $subfolder) -Force | Out-Null
+    }
     Copy-Item -LiteralPath $templatePath -Destination (Join-Path $tempRoot '000-backlog-item-template.md')
     return $tempRoot
 }
@@ -52,7 +52,7 @@ function New-GitBacklogFixture {
     Invoke-FixtureGit $repo @('config', 'user.email', 'test@example.com') | Out-Null
     Invoke-FixtureGit $repo @('config', 'user.name', 'Backlog Numbering Test') | Out-Null
 
-    foreach ($subfolder in @('backlog', 'backlog/done', 'backlog/blocked', 'backlog/icebox')) {
+    foreach ($subfolder in @('backlog') + @($script:BacklogItemSubfolder | ForEach-Object { "backlog/$_" })) {
         New-Item -ItemType Directory -Path (Join-Path $repo $subfolder) -Force | Out-Null
         Set-Content -LiteralPath (Join-Path $repo "$subfolder/.gitkeep") -Value '' -Encoding utf8
     }
@@ -671,7 +671,7 @@ finally { Remove-GitFixture $repo }
 
 $corruptRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('backlog-num-corrupt-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
 try {
-    foreach ($subfolder in @('backlog', 'backlog/done', 'backlog/blocked', 'backlog/icebox')) {
+    foreach ($subfolder in @('backlog') + @($script:BacklogItemSubfolder | ForEach-Object { "backlog/$_" })) {
         New-Item -ItemType Directory -Path (Join-Path $corruptRoot $subfolder) -Force | Out-Null
     }
     Set-Content -LiteralPath (Join-Path $corruptRoot 'backlog/220-first.md') -Value "# 220 - First`n" -Encoding utf8

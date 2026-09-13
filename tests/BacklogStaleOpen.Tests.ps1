@@ -92,7 +92,7 @@ function New-StaleFixture {
 
     # Not $folder: PowerShell matches variable names without case, so a loop over $folder would
     # overwrite the -Folder parameter and park every fixture in the wrong place.
-    foreach ($subfolder in @('backlog', 'backlog/done', 'backlog/blocked', 'backlog/icebox')) {
+    foreach ($subfolder in @('backlog') + @($script:BacklogItemSubfolder | ForEach-Object { "backlog/$_" })) {
         New-Item -ItemType Directory -Path (Join-Path $repo $subfolder) -Force | Out-Null
         Set-Content -LiteralPath (Join-Path $repo "$subfolder/.gitkeep") -Value '' -Encoding utf8
     }

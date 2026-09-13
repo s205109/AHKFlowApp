@@ -10,6 +10,10 @@ public static class TestTimingRecorder
     private static readonly SemaphoreSlim WriteLock = new(1, 1);
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
+    // Scanning every loaded assembly costs real time in a host process, and the answer never
+    // changes once the test assembly is loaded, so it is found on the first record only.
+    private static readonly Lazy<string> TestAssemblyName = new(GetTestAssemblyName);
+
     /// <param name="caller">
     /// Who asked for the step, when the component is shared. A component such as the host start
     /// gate serves stack fixtures and tests alike, and without this field a report cannot tell a
@@ -40,7 +44,7 @@ public static class TestTimingRecorder
             TimestampUtc: DateTimeOffset.UtcNow,
             StartedUtc: startedUtc,
             FinishedUtc: startedUtc.AddMilliseconds(stopwatch.Elapsed.TotalMilliseconds),
-            TestAssembly: GetTestAssemblyName(),
+            TestAssembly: TestAssemblyName.Value,
             ProcessId: Environment.ProcessId,
             Component: component,
             Fixture: fixture,

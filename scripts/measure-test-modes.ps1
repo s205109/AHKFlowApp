@@ -146,7 +146,6 @@ function Invoke-TimedRun {
 
     # Backlog 140. The recorder reads these two at the moment a step runs, so they are set around
     # the call and restored after it. Each run writes its own timing files, beside its own TRX.
-    New-Item -ItemType Directory -Path $RunDirectory -Force | Out-Null
     $timingDirectory = Join-Path $RunDirectory 'fixture-timing'
     New-Item -ItemType Directory -Path $timingDirectory -Force | Out-Null
     $previousTiming = $env:AHKFLOW_TEST_TIMING

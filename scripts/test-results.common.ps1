@@ -235,8 +235,7 @@ function Get-AhkFlowIntervalUnionMilliseconds {
         throw "The clip window ends before it starts: $ClipStart to $ClipEnd."
     }
 
-    $clipped = @()
-    foreach ($item in $Interval) {
+    $clipped = @(foreach ($item in $Interval) {
         $start = [datetime]$item.Start
         $end = [datetime]$item.End
 
@@ -249,9 +248,9 @@ function Get-AhkFlowIntervalUnionMilliseconds {
 
         # A zero-length result means the interval fell outside the window, or touched its edge.
         if ($end -gt $start) {
-            $clipped += [pscustomobject]@{ Start = $start; End = $end }
+            [pscustomobject]@{ Start = $start; End = $end }
         }
-    }
+    })
 
     if ($clipped.Count -eq 0) {
         return 0.0
@@ -360,14 +359,13 @@ function Read-TrxResults {
         }
     }
 
-    $results = @()
-    foreach ($result in $unitTestResults) {
+    $results = @(foreach ($result in $unitTestResults) {
         $className = $testClassesById[$result.testId]
         if ([string]::IsNullOrWhiteSpace($className)) {
             $className = '(unknown)'
         }
 
-        $results += [pscustomobject]@{
+        [pscustomobject]@{
             Project = $ProjectName
             Class = $className
             Test = $result.testName
@@ -376,7 +374,54 @@ function Read-TrxResults {
             StartUtc = (Convert-TrxTimestamp -Timestamp $result.startTime)
             EndUtc = (Convert-TrxTimestamp -Timestamp $result.endTime)
         }
-    }
+    })
 
     return $results
+}
+
+function Read-FixtureTimingEntries {
+    <#
+      Every record in the fixture-timing JSONL files under one folder.
+
+      One reader for both scripts that consume the files, so a field added to the recorder is read
+      in one place. A field that an older record does not carry comes back as $null, or as '' for
+      the caller, so a record older than the field never joins a named caller's row.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$FixtureTimingDirectory,
+        [string]$ProjectName = ''
+    )
+
+    if (-not (Test-Path -LiteralPath $FixtureTimingDirectory -PathType Container)) {
+        return @()
+    }
+
+    $timingFiles = Get-ChildItem -LiteralPath $FixtureTimingDirectory -Filter 'fixture-timings-*.jsonl' -ErrorAction SilentlyContinue
+    return @(foreach ($timingFile in $timingFiles) {
+        foreach ($line in Get-Content -LiteralPath $timingFile.FullName) {
+            if ([string]::IsNullOrWhiteSpace($line)) {
+                continue
+            }
+
+            $entry = $line | ConvertFrom-Json
+            $property = $entry.PSObject.Properties
+            $caller = $property['caller']
+            $started = $property['startedUtc']
+            $finished = $property['finishedUtc']
+
+            [pscustomobject]@{
+                Project = $ProjectName
+                TestAssembly = $entry.testAssembly
+                Component = $entry.component
+                Fixture = $entry.fixture
+                Operation = $entry.operation
+                Caller = if ($null -ne $caller -and $null -ne $caller.Value) { [string]$caller.Value } else { '' }
+                ElapsedMilliseconds = [math]::Round([double]$entry.elapsedMilliseconds, 3)
+                TimestampUtc = $entry.timestampUtc
+                StartUtc = if ($null -ne $started -and $null -ne $started.Value) { ([datetimeoffset]$started.Value).UtcDateTime } else { $null }
+                EndUtc = if ($null -ne $finished -and $null -ne $finished.Value) { ([datetimeoffset]$finished.Value).UtcDateTime } else { $null }
+            }
+        }
+    })
 }

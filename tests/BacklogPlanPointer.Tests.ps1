@@ -28,9 +28,9 @@ function Assert-True {
 function New-TemporaryBacklogRoot {
     $tempRoot = Join-Path ([System.IO.Path]::GetTempPath()) "backlog-pointer-tests-$([guid]::NewGuid())"
     New-Item -ItemType Directory -Path $tempRoot -Force | Out-Null
-    New-Item -ItemType Directory -Path (Join-Path $tempRoot 'done') -Force | Out-Null
-    New-Item -ItemType Directory -Path (Join-Path $tempRoot 'blocked') -Force | Out-Null
-    New-Item -ItemType Directory -Path (Join-Path $tempRoot 'icebox') -Force | Out-Null
+    foreach ($subfolder in $script:BacklogItemSubfolder) {
+        New-Item -ItemType Directory -Path (Join-Path $tempRoot $subfolder) -Force | Out-Null
+    }
     return $tempRoot
 }
 

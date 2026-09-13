@@ -101,42 +101,6 @@ function Get-BuildArtifact {
         Select-Object -First 1
 }
 
-function Read-FixtureTimingEntries {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$FixtureTimingDirectory,
-        [Parameter(Mandatory = $true)]
-        [string]$ProjectName
-    )
-
-    if (-not (Test-Path -LiteralPath $FixtureTimingDirectory -PathType Container)) {
-        return @()
-    }
-
-    $entries = @()
-    $timingFiles = Get-ChildItem -LiteralPath $FixtureTimingDirectory -Filter 'fixture-timings-*.jsonl' -ErrorAction SilentlyContinue
-    foreach ($timingFile in $timingFiles) {
-        foreach ($line in Get-Content -LiteralPath $timingFile.FullName) {
-            if ([string]::IsNullOrWhiteSpace($line)) {
-                continue
-            }
-
-            $entry = $line | ConvertFrom-Json
-            $entries += [pscustomobject]@{
-                Project = $ProjectName
-                TestAssembly = $entry.testAssembly
-                Component = $entry.component
-                Fixture = $entry.fixture
-                Operation = $entry.operation
-                ElapsedMilliseconds = [math]::Round([double]$entry.elapsedMilliseconds, 3)
-                TimestampUtc = $entry.timestampUtc
-            }
-        }
-    }
-
-    return $entries
-}
-
 function Write-Ranking {
     param(
         [string]$Title,

@@ -21,9 +21,9 @@ Set-StrictMode -Version Latest
 #   icebox  work that is possible today and nobody judges worth doing. A finding worth keeping,
 #           parked so it is neither lost nor mistaken for a queue item.
 #
-# Several checks read git rather than the working tree, so they cannot dot-source this file and
-# carry their own copy of the same list as a path pattern. tests/BacklogFolderParity.Tests.ps1
-# fails when any copy stops matching this one.
+# Several checks read git rather than the working tree, so they cannot dot-source this file. They
+# share one copy of the list as a path pattern, $WorktreeBacklogSubfolderPattern in
+# worktree-git.common.ps1. tests/BacklogFolderParity.Tests.ps1 fails when the copy stops matching.
 $script:BacklogItemSubfolder = @('done', 'blocked', 'icebox')
 
 function Get-BacklogItem {

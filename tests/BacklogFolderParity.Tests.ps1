@@ -1,10 +1,11 @@
 #Requires -Version 7.0
 
 # Backlog 140. One list says which folders under backlog/ hold a real item. Several checks read
-# git rather than the working tree, so they cannot dot-source that list and carry their own copy
-# of it as a path pattern. This suite fails when a copy stops matching the list.
+# git rather than the working tree, so they cannot dot-source that list. They share one copy of
+# it as a path pattern instead. This suite fails when that copy stops matching the list, or when a
+# script writes the folders into a pattern of its own again.
 #
-# The failure this stops is quiet and expensive. A folder that one copy does not know about still
+# The failure this stops is quiet and expensive. A folder that the copy does not know about still
 # holds items, and their numbers stop counting as taken, so two files can end up sharing one
 # number. That is backlog 061 all over again, and nothing would report it.
 #
@@ -18,6 +19,7 @@ $ErrorActionPreference = 'Stop'
 
 $repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 . (Join-Path $repoRoot 'scripts/backlog.common.ps1')
+. (Join-Path $repoRoot 'scripts/worktree-git.common.ps1')
 
 $failures = @()
 
@@ -29,47 +31,32 @@ if ($canonical.Count -lt 1) {
     $failures += 'canonical list : $script:BacklogItemSubfolder is empty, so there is nothing to compare against'
 }
 
-# Every file that writes the folder list out as a path pattern, with the pattern's shape. The
-# alternation must name exactly the canonical folders, in any order.
-$patternFile = @(
-    'scripts/check-shipped-plan-ticked.ps1'
-    'scripts/check-shipping-pr-closes-item.ps1'
-    'scripts/worktree-git.common.ps1'
-)
+# The shared copy must name exactly the canonical folders, in any order.
+$copyShape = [regex] '^\(([a-z|/]+)\)\?$'
+$copy = $copyShape.Match($WorktreeBacklogSubfolderPattern)
+if (-not $copy.Success) {
+    $failures += "`$WorktreeBacklogSubfolderPattern : '$WorktreeBacklogSubfolderPattern' is not the '(a/|b/)?' shape this suite reads"
+}
+else {
+    $folders = @($copy.Groups[1].Value -split '\|' | ForEach-Object { $_.TrimEnd('/') } | Where-Object { $_ })
+    $missing = @($canonical | Where-Object { $_ -notin $folders })
+    $extra = @($folders | Where-Object { $_ -notin $canonical })
 
-$patternRegex = [regex] "\^backlog/\(([a-z|/]+)\)\?"
-$sitesFound = 0
-
-foreach ($relative in $patternFile) {
-    $path = Join-Path $repoRoot $relative
-    if (-not (Test-Path -LiteralPath $path)) {
-        $failures += "$relative : missing, so its copy of the folder list cannot be checked"
-        continue
+    if ($missing.Count -gt 0) {
+        $failures += "`$WorktreeBacklogSubfolderPattern does not list $($missing -join ', '). Items in that folder would be invisible to the git checks."
     }
-
-    $matched = $patternRegex.Matches((Get-Content -LiteralPath $path -Raw))
-    if ($matched.Count -eq 0) {
-        $failures += "$relative : no '^backlog/(...)?' pattern found. If the file stopped naming folders, remove it from this suite's list on purpose."
-        continue
-    }
-
-    foreach ($one in $matched) {
-        $sitesFound++
-        $folders = @($one.Groups[1].Value -split '\|' | ForEach-Object { $_.TrimEnd('/') } | Where-Object { $_ })
-        $missing = @($canonical | Where-Object { $_ -notin $folders })
-        $extra = @($folders | Where-Object { $_ -notin $canonical })
-
-        if ($missing.Count -gt 0) {
-            $failures += "$relative : pattern '$($one.Value)' does not list $($missing -join ', '). Items in that folder would be invisible to this check."
-        }
-        if ($extra.Count -gt 0) {
-            $failures += "$relative : pattern '$($one.Value)' lists $($extra -join ', '), which is not in `$script:BacklogItemSubfolder."
-        }
+    if ($extra.Count -gt 0) {
+        $failures += "`$WorktreeBacklogSubfolderPattern lists $($extra -join ', '), which is not in `$script:BacklogItemSubfolder."
     }
 }
 
-if ($sitesFound -lt $patternFile.Count) {
-    $failures += "expected at least one pattern in each of the $($patternFile.Count) files, found $sitesFound in total"
+# No script writes the folders into a path pattern of its own. A private copy is the drift this
+# suite exists to stop, and only the shared value above is compared with the list.
+$privateCopy = [regex] "\^backlog/\([a-z]+/\|"
+foreach ($scriptFile in Get-ChildItem -LiteralPath (Join-Path $repoRoot 'scripts') -Filter '*.ps1' -File) {
+    if ($privateCopy.IsMatch((Get-Content -LiteralPath $scriptFile.FullName -Raw))) {
+        $failures += "scripts/$($scriptFile.Name) : writes the backlog folders into its own path pattern. Build it on `$WorktreeBacklogSubfolderPattern instead."
+    }
 }
 
 # The real repository agrees with the list: every subfolder that exists is one the list names.
@@ -86,4 +73,4 @@ if ($failures.Count -gt 0) {
     exit 1
 }
 
-Write-Host "BacklogFolderParity.Tests.ps1: $sitesFound pattern site(s) agree with $($canonical -join ', ')." -ForegroundColor Green
+Write-Host "BacklogFolderParity.Tests.ps1: the shared folder pattern agrees with $($canonical -join ', ')." -ForegroundColor Green

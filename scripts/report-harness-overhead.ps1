@@ -34,50 +34,35 @@ if (-not (Test-Path -LiteralPath $RunDirectory -PathType Container)) {
     throw "No run folder at $RunDirectory."
 }
 
-$trxFile = Get-ChildItem -LiteralPath $RunDirectory -Recurse -Filter '*.trx' |
-    Sort-Object LastWriteTimeUtc -Descending |
-    Select-Object -First 1
+$trxPath = Get-AhkFlowLatestTrxPath -ResultsDirectory $RunDirectory
 
-if (-not $trxFile) {
+if (-not $trxPath) {
     throw "No TRX under $RunDirectory, so there is no run to report on."
 }
 
-$runInterval = Get-AhkFlowTrxRunInterval -TrxPath $trxFile.FullName
-$testResults = @(Read-TrxResults -TrxPath $trxFile.FullName -ProjectName 'run')
+$trxName = Split-Path -Leaf $trxPath
+$runInterval = Get-AhkFlowTrxRunInterval -TrxPath $trxPath
+$testResults = @(Read-TrxResults -TrxPath $trxPath -ProjectName 'run')
 
 # The driver writes run.json beside the artifacts. Reading it here means the command boundary is
 # never a number somebody retyped.
+$commandBoundarySeconds = $null
 $runJsonPath = Join-Path $RunDirectory 'run.json'
-if (-not $PSBoundParameters.ContainsKey('CommandSeconds') -and (Test-Path -LiteralPath $runJsonPath)) {
-    $CommandSeconds = [double](Get-Content -LiteralPath $runJsonPath -Raw | ConvertFrom-Json).ElapsedSeconds
-    $PSBoundParameters['CommandSeconds'] = $CommandSeconds
+if ($PSBoundParameters.ContainsKey('CommandSeconds')) {
+    $commandBoundarySeconds = $CommandSeconds
+}
+elseif (Test-Path -LiteralPath $runJsonPath) {
+    $commandBoundarySeconds = [double](Get-Content -LiteralPath $runJsonPath -Raw | ConvertFrom-Json).ElapsedSeconds
 }
 
-$timingDirectory = Join-Path $RunDirectory 'fixture-timing'
-$fixtureEntries = @()
-if (Test-Path -LiteralPath $timingDirectory -PathType Container) {
-    foreach ($timingFile in Get-ChildItem -LiteralPath $timingDirectory -Filter 'fixture-timings-*.jsonl') {
-        foreach ($line in Get-Content -LiteralPath $timingFile.FullName) {
-            if ([string]::IsNullOrWhiteSpace($line)) { continue }
-            $entry = $line | ConvertFrom-Json
+# Backlog 140 review. A shared component such as the host start gate serves stack fixtures and
+# tests alike, so a figure that ignores the caller measures nobody. The reader gives an empty caller
+# to a record that carried none, and that record never joins a named caller's row.
+$fixtureEntries = @(Read-FixtureTimingEntries -FixtureTimingDirectory (Join-Path $RunDirectory 'fixture-timing'))
 
-            # Backlog 140 review. A shared component such as the host start gate serves stack
-            # fixtures and tests alike, so a figure that ignores the caller measures nobody. An
-            # empty caller means the record carried none: either a step only one kind of caller
-            # runs, or a record older than the field. It never joins a named caller's row.
-            $callerProperty = $entry.PSObject.Properties['caller']
-            $caller = if ($null -ne $callerProperty -and $null -ne $callerProperty.Value) { [string]$callerProperty.Value } else { '' }
-
-            $fixtureEntries += [pscustomobject]@{
-                Component = $entry.component
-                Operation = $entry.operation
-                Caller = $caller
-                StartUtc = ([datetimeoffset]$entry.startedUtc).UtcDateTime
-                EndUtc = ([datetimeoffset]$entry.finishedUtc).UtcDateTime
-                ElapsedMilliseconds = [double]$entry.elapsedMilliseconds
-            }
-        }
-    }
+$undated = @($fixtureEntries | Where-Object { $null -eq $_.StartUtc -or $null -eq $_.EndUtc })
+if ($undated.Count -gt 0) {
+    throw "$($undated.Count) fixture timing record(s) carry no startedUtc or finishedUtc, so they cannot be placed on the run interval."
 }
 
 $testIntervals = @($testResults | Where-Object { $null -ne $_.StartUtc -and $null -ne $_.EndUtc } |
@@ -111,20 +96,20 @@ $steps = @($fixtureEntries | Group-Object -Property Component, Operation, Caller
 })
 
 $report = [pscustomobject]@{
-    TrxPath = $trxFile.FullName
+    TrxPath = $trxPath
     RunIntervalMilliseconds = [math]::Round($runLength, 3)
     CoveredMilliseconds = $covered
     HarnessOverheadMilliseconds = [math]::Round($runLength - $covered, 3)
     TestCount = $testResults.Count
     Step = $steps
-    OutsideRunIntervalMilliseconds = if ($PSBoundParameters.ContainsKey('CommandSeconds')) {
-        [math]::Round(($CommandSeconds * 1000) - $runLength, 3)
+    OutsideRunIntervalMilliseconds = if ($null -ne $commandBoundarySeconds) {
+        [math]::Round(($commandBoundarySeconds * 1000) - $runLength, 3)
     }
     else { $null }
 }
 
 Write-Host ''
-Write-Host "=== Harness overhead, from $($trxFile.Name) ===" -ForegroundColor Cyan
+Write-Host "=== Harness overhead, from $trxName ===" -ForegroundColor Cyan
 Write-Host ("TRX run interval      : {0,10:N0} ms" -f $report.RunIntervalMilliseconds)
 Write-Host ("Covered by work       : {0,10:N0} ms  ({1} tests, {2} fixture records)" -f $report.CoveredMilliseconds, $report.TestCount, $fixtureEntries.Count)
 Write-Host ("Harness overhead      : {0,10:N0} ms" -f $report.HarnessOverheadMilliseconds) -ForegroundColor Yellow

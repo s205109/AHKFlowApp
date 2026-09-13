@@ -9,6 +9,8 @@ namespace AHKFlowApp.E2E.Tests.Fixtures;
 
 public class StackFixture(string discriminator) : IAsyncLifetime
 {
+    private static readonly string FixtureName = typeof(StackFixture).FullName ?? nameof(StackFixture);
+
     public ApiFactory Api { get; } = new(discriminator);
     public SpaHost Spa { get; private set; } = default!;
     public IPlaywright Playwright { get; private set; } = default!;
@@ -16,7 +18,7 @@ public class StackFixture(string discriminator) : IAsyncLifetime
 
     public Task ResetDataAsync() => TestTimingRecorder.RecordAsync(
         nameof(StackFixture),
-        typeof(StackFixture).FullName ?? nameof(StackFixture),
+        FixtureName,
         nameof(ResetDataAsync),
         ResetDataCoreAsync);
 
@@ -41,7 +43,7 @@ public class StackFixture(string discriminator) : IAsyncLifetime
 
     public Task InitializeAsync() => TestTimingRecorder.RecordAsync(
         nameof(StackFixture),
-        typeof(StackFixture).FullName ?? nameof(StackFixture),
+        FixtureName,
         nameof(InitializeAsync),
         InitializeCoreAsync);
 
@@ -73,19 +75,19 @@ public class StackFixture(string discriminator) : IAsyncLifetime
         HttpMessageInvoker apiClient = new(Api.Server.CreateHandler());
         await TestTimingRecorder.RecordAsync(
             nameof(StackFixture),
-            typeof(StackFixture).FullName ?? nameof(StackFixture),
+            FixtureName,
             "SpaHostStart",
             async () => Spa = await SpaHost.StartAsync(PublishedWwwroot, apiClient, Api.Server.BaseAddress.ToString()));
 
         await TestTimingRecorder.RecordAsync(
             nameof(StackFixture),
-            typeof(StackFixture).FullName ?? nameof(StackFixture),
+            FixtureName,
             "BrowserInstall",
             BrowserInstall.EnsureChromiumAsync);
 
         await TestTimingRecorder.RecordAsync(
             nameof(StackFixture),
-            typeof(StackFixture).FullName ?? nameof(StackFixture),
+            FixtureName,
             "BrowserLaunch",
             async () =>
             {
