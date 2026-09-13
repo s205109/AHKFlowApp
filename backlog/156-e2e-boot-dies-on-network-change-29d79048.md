@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: E2E tests
 - **Difficulty**: moderate
-- **Stage**: 1-pickup
+- **Stage**: 3-plan
 
 ## Summary
 
