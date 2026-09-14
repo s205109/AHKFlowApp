@@ -69,5 +69,6 @@ with the first, so that I do not have to remember to halve the worker count by h
 - Spec: `docs/superpowers/specs/2026-09-13-test-runs-share-a-lane-pool-design-146.md`. The design
   divides through a Lane pool rather than a machine-wide lock; see
   [`docs/adr/0018-test-runs-share-a-lane-pool.md`](../docs/adr/0018-test-runs-share-a-lane-pool.md).
-- Plan: `docs/superpowers/plans/2026-09-13-test-runs-share-a-lane-pool-plan-146.md`. Eight tasks.
-  Task 1 proves the file lock on Windows and Linux, and no later task starts until it passes.
+- Plan: `docs/superpowers/plans/2026-09-13-test-runs-share-a-lane-pool-plan-146.md`
+- The plan has eight tasks. Task 1 proves locking locally and on hosted Windows and Linux.
+  Task 2 is independent. Tasks 3-8 require the platform proof to pass.
