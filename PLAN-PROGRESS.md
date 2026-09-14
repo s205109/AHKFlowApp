@@ -30,3 +30,34 @@ Green (Step 7), `pwsh ./scripts/test-fast.ps1 -Mode E2E`:
 ```
 Passed!  - Failed:     0, Passed:    79, Skipped:     0, Total:    79, Duration: 1 m 36 s - AHKFlowApp.E2E.Tests.dll (net10.0)
 ```
+
+## Task 2 - Each test project writes its own result file
+
+Commit: `28dddee7` (`fix: 156 CI writes one trx per test project, not one shared file`)
+
+Red (Step 2), `pwsh ./tests/CiBuildTestSteps.Tests.ps1` on the pre-fix `ci.yml`:
+
+```
+A dotnet test step must not set LogFileName. Every test project then writes that one file, and
+each overwrites the one before. Pass --logger trx and let VSTest name each file.
+
+CiBuildTestSteps tests failed with 1 problem(s).
+```
+
+Green (Step 5), same command after the logger fix:
+
+```
+CiBuildTestSteps tests passed.
+```
+
+Green (Step 7), `pwsh ./scripts/run-powershell-suites.ps1 -Suite 'CiBuildTestSteps*'`:
+
+```
+[1/1 done] CiBuildTestSteps.Tests.ps1  0.4s  elapsed 0s
+CiBuildTestSteps tests passed.
+All 1 suite(s) passed.
+```
+
+Step 6 (each mutation case proven red): both `Test-MutationCase` lines were pointed at a wrong
+expected string, the suite failed with both mutations reported unmatched, then the file was
+restored and rerun green.
