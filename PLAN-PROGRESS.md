@@ -61,3 +61,36 @@ All 1 suite(s) passed.
 Step 6 (each mutation case proven red): both `Test-MutationCase` lines were pointed at a wrong
 expected string, the suite failed with both mutations reported unmatched, then the file was
 restored and rerun green.
+
+## Task 3 - CI runs the E2E project alone
+
+Commit: `384e79cc` (`fix: 156 CI runs E2E alone, before other test projects`)
+
+Red (Step 2), `pwsh ./tests/CiBuildTestSteps.Tests.ps1` on the Task 2 `ci.yml` (still one test
+step):
+
+```
+The build-test job must run dotnet test in two steps: the E2E project alone, then every other test
+project.
+
+CiBuildTestSteps tests failed with 1 problem(s).
+```
+
+Green (Step 4), same command after the split:
+
+```
+CiBuildTestSteps tests passed.
+```
+
+Green (Step 6), `pwsh ./scripts/run-powershell-suites.ps1 -Suite 'CiBuildTestSteps*'`:
+
+```
+[1/1 done] CiBuildTestSteps.Tests.ps1  0.6s  elapsed 1s
+CiBuildTestSteps tests passed.
+All 1 suite(s) passed.
+```
+
+Step 5 (every new mutation case proven red): all 16 `Test-MutationCase` expected strings and the
+comment case's `-eq 0` were corrupted at once. The suite then failed with 17 problems, one per
+corrupted assertion, each showing the real problem text next to the wrong expectation. The file
+was restored from a backup and rerun green.
