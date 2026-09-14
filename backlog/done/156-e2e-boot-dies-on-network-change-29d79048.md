@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: E2E tests
 - **Difficulty**: moderate
-- **Stage**: 7-document
+- **Stage**: 9-ship
 
 ## Summary
 
