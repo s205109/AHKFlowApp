@@ -127,7 +127,7 @@ $suites = @($selected | ForEach-Object { $byName[$_.Name] })
 $inActions = $env:GITHUB_ACTIONS -eq 'true'
 $envMaxParallel = $env:AHKFLOW_SUITE_MAX_PARALLEL
 
-# Backlog 145. Get-DefaultSuiteWorkerCount in powershell-suites.common.ps1 carries the measurement
+# Backlog 145. Get-DefaultSuiteWorkerCount in suite-worker-count.common.ps1 carries the measurement
 # behind the 75%, the reason a hosted runner takes every processor instead, and the reason an
 # unreadable core count falls back to the old rule.
 #

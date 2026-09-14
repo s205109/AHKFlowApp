@@ -241,6 +241,22 @@ One named list of Slices that `scripts/test-fast.ps1` runs: Fast, Integration, E
 PowerShell.
 _Avoid_: profile, preset, group, tier
 
+**Lane**:
+Room for one unit of test work, such as one Suite. A Lane belongs to one user on one machine, not
+to a run, so runs from every checkout of that user take their Lanes from the same Lane pool.
+_Avoid_: slot, token, share, worker
+
+**Lane pool**:
+The set of Lanes that every test run of one user on one machine takes from. Two runs at the same
+time share it, so together they never do more work at once than the pool allows. Its size changes
+only while no Lane is taken.
+_Avoid_: budget, semaphore, machine lock
+
+**Worker**:
+One of the places inside a single run of the Suite runner where a Suite can run. The worker count
+belongs to that run alone. A Worker still needs a free Lane before its Suite starts.
+_Avoid_: lane, thread, runspace, job
+
 **Collection**:
 The xUnit grouping that decides what may run at the same time. Two tests in one Collection never
 run at the same time. Sharing one fixture instance across test classes requires putting those

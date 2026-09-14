@@ -35,6 +35,8 @@ $expectedSuites = @(
     # Backlog 140. Pure arithmetic with no path, no git and no process, and the harness-overhead
     # report rests on it. A Linux job proves it in under a second.
     'IntervalUnion.Tests.ps1'
+    # Backlog 146 proves native lock behavior on the hosted Linux runtime before admission is wired.
+    'LaneFileLockPrimitive.Tests.ps1'
     # Backlog 133. It joins the invariants job because it is the only check that catches a test
     # reaching a target migration directly: that bypass still passes on a cold container, so the
     # C# suites stay green while the rule is broken.

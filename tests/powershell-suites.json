@@ -68,6 +68,8 @@
     { "name": "WorktreeRemoveHook.Tests.ps1", "jobs": ["suites"], "platform": ["windows"], "execution": "parallel", "baselineSeconds": 39.5 },
     { "name": "WorktreeSpawnPruneOptOut.Tests.ps1", "jobs": ["invariants", "suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": null },
     { "name": "WorktreeSweepRemoteBase.Tests.ps1", "jobs": ["suites"], "platform": ["windows"], "execution": "parallel", "baselineSeconds": 45.2 },
-    { "name": "WorktreeWatcherWindow.Tests.ps1", "jobs": ["suites"], "platform": ["windows"], "execution": "parallel", "baselineSeconds": 2.3 }
+    { "name": "WorktreeWatcherWindow.Tests.ps1", "jobs": ["suites"], "platform": ["windows"], "execution": "parallel", "baselineSeconds": 2.3 },
+    { "name": "LaneFileLockPrimitive.Tests.ps1", "jobs": ["invariants", "suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 3.7 },
+    { "name": "SuiteWorkerCount.Tests.ps1", "jobs": ["suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 1.4 }
   ]
 }

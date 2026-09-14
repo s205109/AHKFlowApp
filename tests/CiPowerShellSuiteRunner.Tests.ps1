@@ -365,7 +365,7 @@ Invoke-TestCase 'A run over the repository''s own tests folder saves its timings
         New-Item -ItemType Directory -Path (Join-Path $fakeRepo 'tests') -Force | Out-Null
         New-Item -ItemType Directory -Path (Join-Path $fakeRepo 'markers') -Force | Out-Null
 
-        foreach ($name in @('run-powershell-suites.ps1', 'progress.common.ps1', 'progress.parallel.ps1', 'powershell-suites.common.ps1')) {
+        foreach ($name in @('run-powershell-suites.ps1', 'progress.common.ps1', 'progress.parallel.ps1', 'powershell-suites.common.ps1', 'suite-worker-count.common.ps1')) {
             Copy-Item -LiteralPath (Join-Path $repoRoot "scripts/$name") -Destination (Join-Path $fakeRepo "scripts/$name")
         }
 
@@ -1535,7 +1535,7 @@ Invoke-TestCase 'A targeted run keeps the stored timings of every suite it did n
         New-Item -ItemType Directory -Path (Join-Path $fakeRepo 'tests') -Force | Out-Null
         New-Item -ItemType Directory -Path (Join-Path $fakeRepo 'markers') -Force | Out-Null
 
-        foreach ($name in @('run-powershell-suites.ps1', 'progress.common.ps1', 'progress.parallel.ps1', 'powershell-suites.common.ps1')) {
+        foreach ($name in @('run-powershell-suites.ps1', 'progress.common.ps1', 'progress.parallel.ps1', 'powershell-suites.common.ps1', 'suite-worker-count.common.ps1')) {
             Copy-Item -LiteralPath (Join-Path $repoRoot "scripts/$name") -Destination (Join-Path $fakeRepo "scripts/$name")
         }
 
@@ -1586,7 +1586,7 @@ Invoke-TestCase 'A stored entry whose suite file no longer exists is dropped' {
         New-Item -ItemType Directory -Path (Join-Path $fakeRepo 'markers') -Force | Out-Null
         New-Item -ItemType Directory -Path (Join-Path $fakeRepo 'TestResults/progress') -Force | Out-Null
 
-        foreach ($name in @('run-powershell-suites.ps1', 'progress.common.ps1', 'progress.parallel.ps1', 'powershell-suites.common.ps1')) {
+        foreach ($name in @('run-powershell-suites.ps1', 'progress.common.ps1', 'progress.parallel.ps1', 'powershell-suites.common.ps1', 'suite-worker-count.common.ps1')) {
             Copy-Item -LiteralPath (Join-Path $repoRoot "scripts/$name") -Destination (Join-Path $fakeRepo "scripts/$name")
         }
 
@@ -1624,7 +1624,7 @@ function New-StoringRepoFixture {
         foreach ($folder in @('scripts', 'tests', 'markers', 'TestResults/progress')) {
             New-Item -ItemType Directory -Path (Join-Path $repo $folder) -Force | Out-Null
         }
-        foreach ($name in @('run-powershell-suites.ps1', 'progress.common.ps1', 'progress.parallel.ps1', 'powershell-suites.common.ps1')) {
+        foreach ($name in @('run-powershell-suites.ps1', 'progress.common.ps1', 'progress.parallel.ps1', 'powershell-suites.common.ps1', 'suite-worker-count.common.ps1')) {
             Copy-Item -LiteralPath (Join-Path $repoRoot "scripts/$name") -Destination (Join-Path $repo "scripts/$name")
         }
 
@@ -1648,7 +1648,7 @@ function Save-ProgressTimings {
             # you which number a branch chose; it cannot tell you whether the run asked the machine
             # to get there. Only a count can, and only a count fails when the probe drifts back
             # above the precedence chain. The real module is untouched.
-            Add-Content -LiteralPath (Join-Path $repo 'scripts/powershell-suites.common.ps1') -Value @'
+            Add-Content -LiteralPath (Join-Path $repo 'scripts/suite-worker-count.common.ps1') -Value @'
 
 $global:AhkflowCoreProbeInner = ${function:Get-PhysicalCoreCount}
 function Get-PhysicalCoreCount {
