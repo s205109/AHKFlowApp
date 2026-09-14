@@ -7,7 +7,7 @@ Draft proof PR: https://github.com/s205109/AHKFlowApp/pull/415
 
 | Task | Status | Deliverable | Evidence / remaining work |
 |---|---|---|---|
-| 1 Native locking proof | Hosted proof pending | `61e60671` | Windows 7/5.1 and Docker Linux pass; hosted platforms remain required. |
+| 1 Native locking proof | Complete | `61e60671`, recovery `5e57459a` | Windows 7/5.1, Docker Linux, and hosted Windows/Linux pass; observations below. |
 | 2 Sizing extraction | Complete | `e27ae4ba` | Windows 7/5.1 and Docker Linux pass; exact rule and caller behavior retained. |
 | 3 Pool and harness | Gated | Pending | Task 1 and Task 2 must pass first. |
 | 4 Advisory records | Gated | Pending | Requires Task 3. |
@@ -120,3 +120,35 @@ Controller inspection confirmed the Windows-first branch, precise Linux branch, 
 This local adjudication closes the specific finding; final whole-branch review remains required.
 
 Task 1 hosted Windows proof remains pending. No Task 3 admission implementation has started.
+
+Corrective run: https://github.com/s205109/AHKFlowApp/actions/runs/34883904297
+Tested commit: b4e93b2a9bebb2291aa34af77a9be9b2e980f360.
+Repository invariants passed. Its primitive observations match the first hosted Linux table exactly.
+Linux OS: Ubuntu 24.04.5 LTS; LocalApplicationData: /home/runner/.local/share; temporary filesystem: ext4.
+Codex parity passed on the identical ubuntu-24.04 image version 20260907.300.1.
+Both jobs use /usr/bin/pwsh and resolve the suite host to /opt/microsoft/powershell/7/pwsh.
+The pinned image's software record lists PowerShell 7.6.5:
+https://github.com/actions/runner-images/blob/ubuntu24/20260907.300/images/ubuntu/Ubuntu2404-Readme.md
+Neither job installs or alters PowerShell. The matching immutable image and executable establish the same bundled runtime as the measured .NET 10.0.11 host.
+The Codex parity selection remains focused on parity. No duplicate primitive invocation was added there.
+Windows proof remains pending until its current suite job finishes and its observations are saved.
+
+## Task 1 completed hosted proof
+
+Corrective CI run 34883904297 passed every job at b4e93b2a9bebb2291aa34af77a9be9b2e980f360.
+Windows primitive passed in 8.2 seconds. SuiteWorkerCount also passed in hosted Windows (2.8 seconds).
+Windows image: win25-vs2026, version 20260907.229.1; OS: Microsoft Windows 10.0.26100; filesystem: NTFS.
+PowerShell host: 7.6.5 / .NET 10.0.11.
+Native legacy child: PowerShell 5.1.26100.33296 / .NET Framework 4.8.9337.0, same OS and filesystem.
+Each Windows Lane and entry contention case returned System.IO.IOException, -2147024864, 0x80070020.
+This includes separate-process and same-process cases on both hosts, and both runspace cases on PowerShell 7.
+Missing parent on both hosts: System.IO.DirectoryNotFoundException, -2147024893, 0x80070003.
+Generic injected I/O on both hosts: System.IO.IOException, -2146232800, 0x80131620.
+Access denied on both hosts: System.UnauthorizedAccessException, -2147024891, 0x80070005.
+Both hosts reopened both files after explicit release, stdin EOF, and forced kill.
+Both hosts printed successful child reaping and reader settlement. The 5.1 run explicitly skipped the runspace case.
+
+Task 1 is complete. Linux registration is now verified, not provisional.
+Observed supported contention pairs: Windows IOException/0x80070020; Linux IOException/0x0000000B.
+Unknown I/O values and missing-parent/access failures must remain errors.
+Task 3 may now begin. No readiness, full local Gate, or resource-responsiveness claim is made.
