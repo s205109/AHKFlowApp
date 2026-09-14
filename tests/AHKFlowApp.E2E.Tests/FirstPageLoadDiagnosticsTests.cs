@@ -35,6 +35,10 @@ public sealed class FirstPageLoadDiagnosticsTests(StackFixtureD fixture) : IAsyn
 
         // One load, one guarded reload. The same count BootFailureFlowTests asserts exactly.
         thrown.Message.Should().Contain("Documents loaded: 2");
+
+        // A 404 is not a network change, so the hint stays out. Backlog 156 proves the other
+        // direction in NetworkChangedBoot_Open_NamesTheNetworkChange.
+        thrown.Message.Should().NotContain(FirstPageLoad.NetworkChangedHint);
     }
 
     // The browser's own errors are the evidence backlog 148 went looking for and did not have.
@@ -67,6 +71,29 @@ public sealed class FirstPageLoadDiagnosticsTests(StackFixtureD fixture) : IAsyn
         // type name, so asserting the whole line as one string would be brittle.
         thrown.Message.Should().Contain("uncaught: ");
         thrown.Message.Should().Contain("E2E-UNCAUGHT-MARKER");
+    }
+
+    // Backlog 156. A network change on the runner fails the boot, and the message has to say so.
+    // Without it the reader debugs a test that did nothing wrong.
+    //
+    // The error is simulated through the console, not caused. Playwright cannot abort a request
+    // with a network-changed error: Route.AbortAsync accepts no such error code. The hint reads the
+    // console line, so a console line with the same text drives the same code.
+    [Fact]
+    public async Task NetworkChangedBoot_Open_NamesTheNetworkChange()
+    {
+        await using IBrowserContext ctx = await fixture.Browser.NewContextAsync();
+        await BootFault.Fail404OnAppAssemblyAsync(ctx);
+
+        // The line Chromium printed in CI run 34714058897, word for word.
+        await ctx.AddInitScriptAsync(
+            "console.error('Failed to load resource: net::ERR_NETWORK_CHANGED');");
+
+        Func<Task> open = () => FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/hotkeys");
+
+        TimeoutException thrown = (await open.Should().ThrowAsync<TimeoutException>()).Which;
+
+        thrown.Message.Should().Contain(FirstPageLoad.NetworkChangedHint);
     }
 
     // Failing fast matters as much as failing clearly. The boot error is terminal, so waiting the
