@@ -6,7 +6,7 @@
 - **Type**: Feature
 - **Interfaces**: none (test runner scripts)
 - **Difficulty**: complex
-- **Stage**: 3-plan
+- **Stage**: 4-execute
 
 ## Summary
 
