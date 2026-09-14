@@ -76,3 +76,28 @@ Cleanup now fails visibly if a child cannot be terminated/reaped or its readers 
 The final Windows rerun passed in 3.684 seconds; manifest baseline updated to 3.7 seconds.
 The final Docker rerun passed, including EOF and all-children-reaped-readers-settled outcomes.
 Focused re-review approved both fixes. Hosted proof is still pending.
+
+## Task 1 first hosted proof and recovery
+
+Run: https://github.com/s205109/AHKFlowApp/actions/runs/34882631260
+Tested commit: `569dbc6b115055cabcc9a5db035e577ed0be42be`.
+Hosted Linux primitive: PASS, 3.9 seconds. The surrounding invariants job failed on two record checks.
+Runner image: ubuntu-24.04 / ubuntu24, version 20260907.300.1.
+Host: PowerShell 7.6.5, .NET 10.0.11, ext4.
+All six process/same-process/runspace contention observations were System.IO.IOException, 11, 0x0000000B.
+Missing parent: System.IO.DirectoryNotFoundException, -2147024893, 0x80070003.
+Injected I/O: System.IO.IOException, -2146232800, 0x80131620.
+Access denied: System.UnauthorizedAccessException, -2147024891, 0x80070005.
+Explicit release, stdin EOF, and forced kill each reopened both files. Cleanup reaped all children and settled readers.
+Windows and Codex parity jobs were skipped because repository invariants failed. Task 1 remains pending.
+
+Recovery task: normalize this item's Plan bullet and preserve existing manifest citation positions.
+BacklogPlanPointer rejected the existing suffix `. Eight tasks.` after the path.
+CitationFreshness rejected two historical public citations because the inserted manifest row moved their targets.
+The correction puts new manifest entries at the end and puts explanatory plan text in its own bullet.
+Fresh BacklogPlanPointer run passed after correction. Full citation check is pending.
+
+Recovery validation: BacklogPlanPointer and RepoInvariantsCiJob pass. The public citation checker passes.
+Task 2 private citation repair passed both owned files with adoption checking from private base 45afd09c.
+Private citation commit: 6df8a53. Existing manifest citation positions are preserved by appending new entries.
+Recovery deliverable: `5e57459a` (Plan pointer and expected invariant set). Manifest placement correction accompanies Task 2 registration before the corrective proof push.
