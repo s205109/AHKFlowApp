@@ -8,7 +8,7 @@ Draft proof PR: https://github.com/s205109/AHKFlowApp/pull/415
 | Task | Status | Deliverable | Evidence / remaining work |
 |---|---|---|---|
 | 1 Native locking proof | Hosted proof pending | `61e60671` | Windows 7/5.1 and Docker Linux pass; hosted platforms remain required. |
-| 2 Sizing extraction | Pending | Pending | Independent of Task 1 under the revised plan. |
+| 2 Sizing extraction | Complete | `e27ae4ba` | Windows 7/5.1 and Docker Linux pass; exact rule and caller behavior retained. |
 | 3 Pool and harness | Gated | Pending | Task 1 and Task 2 must pass first. |
 | 4 Advisory records | Gated | Pending | Requires Task 3. |
 | 5 Suite admission | Gated | Pending | Requires Task 4. |
@@ -101,3 +101,22 @@ Recovery validation: BacklogPlanPointer and RepoInvariantsCiJob pass. The public
 Task 2 private citation repair passed both owned files with adoption checking from private base 45afd09c.
 Private citation commit: 6df8a53. Existing manifest citation positions are preserved by appending new entries.
 Recovery deliverable: `5e57459a` (Plan pointer and expected invariant set). Manifest placement correction accompanies Task 2 registration before the corrective proof push.
+
+## Task 2 evidence
+
+Deliverable: e27ae4ba. Private citation commit: 6df8a53.
+Red: new extraction suite failed because the shared helper did not exist.
+Green Windows runner results: SuiteWorkerCount 1.4s; CiPowerShellSuiteRunner 91.4s;
+SuiteRunnerLinux 9.5s; CodexParityCiJob 0.8s. All passed.
+RepoInvariantsCiJob passed after the Task 1 expected-list correction.
+Windows PowerShell 5.1 direct loading and physical-core dispatch passed.
+Docker Linux: PowerShell 7.6.6 / .NET 10.0.12; final SuiteWorkerCount suite passed.
+The Linux run explicitly skips the Windows PowerShell 5.1-only check.
+
+Review found slash-based detection incorrectly included macOS. The correction uses precise Linux detection and preserves unsupported-platform zero.
+The new regression failed before correction and passed afterward. The final Linux rerun also passed.
+The reviewer's scoped re-review was interrupted by an account usage limit.
+Controller inspection confirmed the Windows-first branch, precise Linux branch, and final zero fallback.
+This local adjudication closes the specific finding; final whole-branch review remains required.
+
+Task 1 hosted Windows proof remains pending. No Task 3 admission implementation has started.
