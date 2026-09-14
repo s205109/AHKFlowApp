@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: E2E tests
 - **Difficulty**: moderate
-- **Stage**: 3-plan
+- **Stage**: 7-document
 
 ## Summary
 
@@ -116,22 +116,36 @@ The browser does not give the app the network error. The app sees only
 The E2E project also uses a SQL container, in `E2ESqlServer`. That container goes away only when
 the E2E process ends, so it cannot break an E2E boot.
 
+### Verification: CI run after the fix
+
+CI run [34823560770](https://github.com/s205109/AHKFlowApp/actions/runs/34823560770) on PR #413,
+2026-09-14. `E2E tests with coverage` ran 08:39:18Z to 08:42:20Z (3m 2s, 79 tests, including
+`NetworkChangedBoot_Open_NamesTheNetworkChange`), before `Test with coverage` at 08:42:20Z to
+08:43:31Z (1m 11s). `Test with coverage`'s E2E assembly logged
+`No test matches the given testcase filter` and ran 0 tests. No
+`WARNING: Overwriting results file` line appears anywhere in the job log. `Publish test results`
+read 9 `.trx` files. `Enforce per-assembly coverage thresholds` passed for all five assemblies.
+
+Time cost: the two test steps together ran 4m 13s. Before this change, attempt 2 of CI run
+34714058897 spent 3m 42s in the single combined `Test with coverage` step. The split adds about 31
+seconds, mostly a second VSTest host startup.
+
 ## Acceptance criteria
 
-- [ ] The item records the cause of the network change on the runner, with evidence, or records
+- [x] The item records the cause of the network change on the runner, with evidence, or records
       that the cause could not be found and what was checked.
-- [ ] The CI job `build-test` runs the E2E test project in a step of its own, and no other test
-      project runs while that step runs.
-- [ ] A PowerShell suite fails when `ci.yml` runs the E2E test project together with another
-      test project again.
-- [ ] No `dotnet test` step in `build-test` sets `LogFileName`, so every test host writes its own
+- [x] The CI job `build-test` runs the E2E test project in a step of its own, and no other test
+      project runs while that step runs. Verified in CI run 34823560770.
+- [x] A PowerShell suite fails when `ci.yml` runs the E2E test project together with another
+      test project again. `tests/CiBuildTestSteps.Tests.ps1`, mutation cases proven red.
+- [x] No `dotnet test` step in `build-test` sets `LogFileName`, so every test host writes its own
       `.trx` file and `Publish test results` reads all of them. The same suite fails when a step
-      sets `LogFileName` again.
-- [ ] When a first page load fails and the browser reported `net::ERR_NETWORK_CHANGED`, the
+      sets `LogFileName` again. Verified: 9 `.trx` files read, no overwrite warnings.
+- [x] When a first page load fails and the browser reported `net::ERR_NETWORK_CHANGED`, the
       `FirstPageLoad` failure message names a network change on the runner as the likely cause.
       A failure without that error does not carry the sentence.
-- [ ] A test in `FirstPageLoadDiagnosticsTests` proves the previous box in both directions.
-- [ ] `FirstPageLoad.TimeoutMs` still reads 30000, and no E2E test retries automatically.
+- [x] A test in `FirstPageLoadDiagnosticsTests` proves the previous box in both directions.
+- [x] `FirstPageLoad.TimeoutMs` still reads 30000, and no E2E test retries automatically.
 
 ## Out of scope
 

@@ -94,3 +94,32 @@ Step 5 (every new mutation case proven red): all 16 `Test-MutationCase` expected
 comment case's `-eq 0` were corrupted at once. The suite then failed with 17 problems, one per
 corrupted assertion, each showing the real problem text next to the wrong expectation. The file
 was restored from a backup and rerun green.
+
+## CI verification
+
+A stale-citation fix was needed first: `28dddee7` and `384e79cc` shifted line numbers in
+`tests/powershell-suites.json` and `.github/workflows/ci.yml`, which broke three Tier 2 citations
+in already-shipped backlog items (`backlog/done/129-*`, `backlog/done/131-*`,
+`backlog/done/138-*`). Fixed in `4b4efd37`.
+
+CI run [34823560770](https://github.com/s205109/AHKFlowApp/actions/runs/34823560770) on PR #413,
+`build-test` job (`103910863841`), confirms every item in the plan's Verification checklist:
+
+- `E2E tests with coverage` ran 08:39:18Z-08:42:20Z (3m 2s, 79 tests), before `Test with coverage`
+  at 08:42:20Z-08:43:31Z (1m 11s).
+- The E2E step ran `NetworkChangedBoot_Open_NamesTheNetworkChange` (counted in its 79 tests, the
+  same total as the local `test-fast.ps1 -Mode E2E` run above).
+- `Test with coverage`'s E2E assembly logged
+  `No test matches the given testcase filter 'FullyQualifiedName!~AHKFlowApp.E2E.Tests.'` and ran
+  0 tests there.
+- No `WARNING: Overwriting results file` line appears anywhere in the job log.
+- `Publish test results` logged `Reading files TestResults/**/*.trx (9 files, 12.5 MiB)`: 1 from
+  the E2E step, 8 from the second step.
+- `Enforce per-assembly coverage thresholds` passed for all five assemblies (Domain, Application,
+  Infrastructure, API, UI.Blazor).
+- Both `repo-invariants` and `build-test` (and every other CI job) reported `success`.
+
+Time cost: the two test steps together ran 4m 13s (3m 2s + 1m 11s). Before this change, attempt 2
+of CI run 34714058897 spent 3m 42s in the single combined `Test with coverage` step. The split
+costs about 31 seconds of extra wall-clock time, mostly a second VSTest host startup, in exchange
+for the E2E step never sharing a runner process with a project that leaves a container for Ryuk.
