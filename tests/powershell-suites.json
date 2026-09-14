@@ -8,6 +8,7 @@
     { "name": "BacklogNumbering.Tests.ps1", "jobs": ["invariants", "suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 6.5 },
     { "name": "BacklogPlanPointer.Tests.ps1", "jobs": ["invariants", "suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 1.2 },
     { "name": "BacklogStaleOpen.Tests.ps1", "jobs": ["invariants", "suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 41.2 },
+    { "name": "CiBuildTestSteps.Tests.ps1", "jobs": ["suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": null },
     { "name": "CiPowerShellSuiteRunner.Tests.ps1", "jobs": ["suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 69.5 },
     { "name": "CitationFreshness.Tests.ps1", "jobs": ["invariants", "suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 78.8 },
     { "name": "CleanupEventLabels.Tests.ps1", "jobs": ["suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 0.4 },

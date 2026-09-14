@@ -69,11 +69,31 @@ jobs:
       - name: CLI hotstring --help smoke test
         if: steps.filter.outputs.code == 'true'
         run: dotnet run --project src/Tools/AHKFlowApp.CLI --no-build --configuration Release -- hotstring --help
-      - name: Test with coverage
+      # The E2E project runs alone, before every other test project. With one dotnet test call,
+      # all projects ran at once. Ryuk removed a SQL container another project left behind, 10
+      # seconds after that project exited. The removal changed the runner's network, and Chromium
+      # failed the downloads of an E2E page booting at that moment. Backlog 156.
+      #
+      # Both steps pass --logger trx with no LogFileName, so VSTest names each project's file
+      # itself. One fixed name made every project overwrite the file before it.
+      - name: E2E tests with coverage
+        id: e2e_tests
         if: steps.filter.outputs.code == 'true'
         run: >
+          dotnet test tests/AHKFlowApp.E2E.Tests/AHKFlowApp.E2E.Tests.csproj
+          --configuration Release --no-build --verbosity normal
+          --logger trx
+          --collect:"XPlat Code Coverage"
+          --results-directory TestResults
+          --settings coverlet.runsettings
+      # Runs when the E2E step failed too, so a red E2E run still reports every other test. The
+      # filter keeps the E2E tests out; their test host starts and runs no test.
+      - name: Test with coverage
+        if: ${{ !cancelled() && steps.filter.outputs.code == 'true' && (steps.e2e_tests.outcome == 'success' || steps.e2e_tests.outcome == 'failure') }}
+        run: >
           dotnet test --configuration Release --no-build --verbosity normal
-          --logger "trx;LogFileName=test-results.trx"
+          --filter "FullyQualifiedName!~AHKFlowApp.E2E.Tests."
+          --logger trx
           --collect:"XPlat Code Coverage"
           --results-directory TestResults
           --settings coverlet.runsettings

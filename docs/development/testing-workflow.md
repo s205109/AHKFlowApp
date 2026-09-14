@@ -63,8 +63,8 @@ check itself cannot decide, it says so and runs the slice.
 
 `ci.yml` reads the `code` patterns from that same file, so the two cannot drift apart. CI ignores
 `coverage-tooling`, and that is correct rather than a gap: CI never runs `run-coverage.ps1`. Its
-coverage step is a plain `dotnet test`. So on those eight paths this Gate is stricter than CI, and
-never looser.
+coverage steps are plain `dotnet test` calls. So on those eight paths this Gate is stricter than
+CI, and never looser.
 
 Then verify the change actually works — see **Verification After Implementation** in [`AGENTS.md`](../../AGENTS.md). A green gate proves nothing regressed; it does not prove the new behavior happened.
 
@@ -178,6 +178,13 @@ pwsh .\scripts\test-fast.ps1 -Mode E2E
 E2E mode runs `AHKFlowApp.E2E.Tests`. Use it for browser flows, Playwright-covered UI behavior, mobile viewport behavior, service-worker/PWA behavior, and changes to the E2E fixture or published Blazor output. The script prepares the same shared SQL Server container Integration mode uses, and leaves it running when the run ends. `-FreshSql` replaces it here too. The suite runs in four groups at once, and each group names its own database on that one server.
 
 A normal E2E run builds the project and its references. Every E2E run clears the Blazor publish folder, then publishes the app again before Playwright starts. That publish compiles and links the current source, so the browser always loads the code in your working tree. `-NoBuild` skips the solution build, but the Blazor publish still runs, so the app under test stays current. The flow classes in one group share that group's API, SPA host and browser, and each test resets mutable database rows before it starts.
+
+In CI, the E2E project runs in a step of its own, before every other test project. The other test
+projects run in the next step, with a filter that keeps the E2E tests out. Do not merge the two
+steps. A test project that uses Testcontainers leaves its containers for Ryuk, which removes them
+10 seconds after the project exits. On the Linux runner, that removal changed the network while an
+E2E page was booting, and the page failed with `net::ERR_NETWORK_CHANGED`. Backlog 156 has the
+evidence, and `tests/CiBuildTestSteps.Tests.ps1` fails when the steps are merged again.
 
 ### Adding a test class to the E2E suite
 
