@@ -10,8 +10,8 @@ Draft proof PR: https://github.com/s205109/AHKFlowApp/pull/415
 | 1 Native locking proof | Complete | `61e60671`, recovery `5e57459a` | Windows 7/5.1, Docker Linux, and hosted Windows/Linux pass; observations below. |
 | 2 Sizing extraction | Complete | `e27ae4ba` | Windows 7/5.1 and Docker Linux pass; exact rule and caller behavior retained. |
 | 3 Pool and harness | Complete | e4c0cab1 | Windows and Linux: all 23 cases passed; independent source review approved. |
-| 4 Advisory records | In progress | Pending | Implementing diagnostic and lifecycle cases. |
-| 5 Suite admission | Gated | Pending | Requires Task 4. |
+| 4 Advisory records | Complete | `707ac3e2`, fix `41b7b220` | Windows and Linux: all 34 cases passed; independent re-review approved all fixes. |
+| 5 Suite admission | In progress | Pending | Wiring owner lifecycle and per-Suite reservations into real runners. |
 | 6 .NET reservations | Gated | Pending | Requires pool lifecycle and wrapper proof. |
 | 7 Timing and soak | Gated | Pending | Requires pool lifecycle. |
 | 8 Documentation | Gated | Pending | Requires measured implementation contract. |
@@ -164,3 +164,22 @@ Windows PowerShell 5.1 loaded the production helper and returned proposal 6 and 
 Independent source review approved Task 3 with no blocking findings.
 The suite is registered for Windows and Linux with measured baseline 15.3 seconds.
 Task 4 remains in progress. Final Gate and whole-branch review remain pending.
+
+## Current Windows host refresh
+
+The current host is PowerShell 7.6.6 on .NET 10.0.12 and Microsoft Windows 10.0.26200.
+The Task 1 native primitive rerun passed under PowerShell 7 and Windows PowerShell 5.1.
+It reproduced every recorded contention code and completed all cleanup checks.
+The saved log is `task-1-current-windows.log` in this plan's ignored SDD workspace.
+
+## Task 4 verification
+
+Deliverable: `707ac3e2`; review fix: `41b7b220`.
+The initial review found a missing Linux share-retry observation, a lost diagnostic after an output failure,
+and unbounded cancellation cleanup in the new tests.
+The fix adds a failing-first output retry regression and bounded asynchronous teardown.
+Windows and Docker Linux then passed all 34 LanePool cases.
+Windows PowerShell 5.1 loaded the production module and resolved the owner lifecycle command.
+The complete Linux log includes entry, capacity, and share retry cases.
+The scoped re-review marked all three findings addressed and found no new important breakage.
+Task 5 may now integrate the runner. Final Gate and whole-branch review remain pending.
