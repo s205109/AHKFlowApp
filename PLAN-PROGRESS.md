@@ -9,8 +9,8 @@ Draft proof PR: https://github.com/s205109/AHKFlowApp/pull/415
 |---|---|---|---|
 | 1 Native locking proof | Complete | `61e60671`, recovery `5e57459a` | Windows 7/5.1, Docker Linux, and hosted Windows/Linux pass; observations below. |
 | 2 Sizing extraction | Complete | `e27ae4ba` | Windows 7/5.1 and Docker Linux pass; exact rule and caller behavior retained. |
-| 3 Pool and harness | Gated | Pending | Task 1 and Task 2 must pass first. |
-| 4 Advisory records | Gated | Pending | Requires Task 3. |
+| 3 Pool and harness | Complete | e4c0cab1 | Windows and Linux: all 23 cases passed; independent source review approved. |
+| 4 Advisory records | In progress | Pending | Implementing diagnostic and lifecycle cases. |
 | 5 Suite admission | Gated | Pending | Requires Task 4. |
 | 6 .NET reservations | Gated | Pending | Requires pool lifecycle and wrapper proof. |
 | 7 Timing and soak | Gated | Pending | Requires pool lifecycle. |
@@ -152,3 +152,15 @@ Task 1 is complete. Linux registration is now verified, not provisional.
 Observed supported contention pairs: Windows IOException/0x80070020; Linux IOException/0x0000000B.
 Unknown I/O values and missing-parent/access failures must remain errors.
 Task 3 may now begin. No readiness, full local Gate, or resource-responsiveness claim is made.
+
+
+## Task 3 verification
+
+Deliverable: e4c0cab1. Windows: all 23 cases passed in 15.3 seconds.
+Docker Linux: all 23 cases passed with the previously recorded SDK 10 image.
+The always-successful-open mutation failed both real contention cases, as required.
+Same-host runspace cancellation released entry and partial Lanes.
+Windows PowerShell 5.1 loaded the production helper and returned proposal 6 and Half(5) = 3.
+Independent source review approved Task 3 with no blocking findings.
+The suite is registered for Windows and Linux with measured baseline 15.3 seconds.
+Task 4 remains in progress. Final Gate and whole-branch review remain pending.
