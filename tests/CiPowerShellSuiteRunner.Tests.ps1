@@ -2149,10 +2149,27 @@ function New-LaneRunnerFixture {
     }
     # Each signal acknowledges a real acquisition retry in a distinct Worker.
     Add-Content -LiteralPath (Join-Path $root 'scripts/test-lanes.common.ps1') -Value @'
+$fixtureRegister = ${function:Register-AhkFlowLaneRun}
+function Register-AhkFlowLaneRun {
+    param($PoolRoot, $Mode, $Checkout)
+    $run = & $fixtureRegister -PoolRoot $PoolRoot -Mode $Mode -Checkout $Checkout
+    $run | Add-Member -NotePropertyName ParentIdentity -NotePropertyValue $run
+    $run | Add-Member -NotePropertyName ParentPrinted -NotePropertyValue $run.Printed
+    $run
+}
 function Wait-AhkFlowLaneRetry {
     param($Run)
-    $signal = Join-Path $PSScriptRoot ('../markers/wait-' + [Threading.Thread]::CurrentThread.ManagedThreadId)
-    [IO.File]::WriteAllText($signal, 'acquisition blocked')
+    if ($null -eq $Run) { throw 'The Worker retry lost its parent run.' }
+    if (-not [object]::ReferenceEquals($Run, $Run.ParentIdentity)) { throw 'The Worker retry cloned its parent run.' }
+    if (-not [object]::ReferenceEquals($Run.Printed, $Run.ParentPrinted)) { throw 'The Worker retry cloned its parent Printed dictionary.' }
+    $thread = [Threading.Thread]::CurrentThread.ManagedThreadId
+    $signal = Join-Path $PSScriptRoot ("../markers/wait-$thread")
+    if (-not [IO.File]::Exists($signal)) {
+        $winner = $Run.Printed.TryAdd('fixture-worker-race', $true)
+        $pending = Join-Path $PSScriptRoot ("../markers/pending-$thread")
+        [IO.File]::WriteAllText($pending, [string]$winner)
+        [IO.File]::Move($pending, $signal)
+    }
     Write-AhkFlowLaneSharingLine -Run $Run
     Start-Sleep -Milliseconds 50
 }
@@ -2223,10 +2240,13 @@ function Invoke-TwoRunnerLaneProof {
         Assert-True ((Get-RunLaneCount $pool) -eq 2) 'A must hold both Lane locks.'
         $childB = Start-LaneRunnerFixture $b $pool
         $null = Wait-LaneRunnerState $b 0 -Waiters 2 -Child $childB
+        $votes = @(Get-ChildItem (Join-Path $b.Root 'markers') -Filter 'wait-*' | ForEach-Object { Get-Content $_.FullName -Raw })
+        Assert-True ($votes.Count -eq 2 -and @($votes | Where-Object { $_ -eq 'True' }).Count -eq 1 -and @($votes | Where-Object { $_ -eq 'False' }).Count -eq 1) 'The two blocked Workers must produce one dictionary winner and one loser.'
         foreach ($item in $a.Items) { Publish-LaneSignal $item.ReleasePath }
         $null = Wait-LaneRunnerState $b 2 -Child $childB
         foreach ($item in $b.Items) { Publish-LaneSignal $item.ReleasePath }
         Assert-LaneRunnerCompleted -Fixtures @($a, $b) -Children @($childA, $childB) -Peak 2
+        Assert-True (([regex]::Matches($childB.Stdout.Result, 'Sharing the test Lane pool with:')).Count -eq 1) 'Runner B must print exactly one sharing line.'
     } finally {
         Stop-LaneChildProcess $childA
         Stop-LaneChildProcess $childB
@@ -2416,6 +2436,35 @@ Invoke-TestCase 'Lane stopped runner settles children before unregistering and r
             $prefix = 'Set-Content -LiteralPath ' + (ConvertTo-ScriptLiteral ($item.StartPath + '.pid')) + ' -Value $PID' + [Environment]::NewLine
             Set-Content -LiteralPath $item.Path -Value ($prefix + (Get-Content -LiteralPath $item.Path -Raw))
         }
+
+        Add-Content -LiteralPath (Join-Path $fixture.Root 'scripts/test-lanes.common.ps1') -Value @'
+function Assert-FixtureChildrenSettled {
+    param([string] $Operation)
+    foreach ($file in @(Get-ChildItem (Join-Path $PSScriptRoot '../tests') -Filter '*.start.pid')) {
+        $childId = [int](Get-Content $file.FullName)
+        $child = $null
+        try {
+            try { $child = [Diagnostics.Process]::GetProcessById($childId) } catch [ArgumentException] { continue }
+            if (-not $child.HasExited) {
+                Add-Content -LiteralPath (Join-Path $PSScriptRoot '../markers/cleanup-violation') -Value "$Operation while Suite PID $childId was alive."
+            }
+        } finally { if ($child) { $child.Dispose() } }
+    }
+    Add-Content -LiteralPath (Join-Path $PSScriptRoot '../markers/cleanup-observed') -Value $Operation
+}
+$fixtureUnregister = ${function:Unregister-AhkFlowLaneRun}
+function Unregister-AhkFlowLaneRun {
+    param($Run)
+    Assert-FixtureChildrenSettled -Operation unregister
+    & $fixtureUnregister -Run $Run
+}
+$fixtureExitOwnership = ${function:Exit-AhkFlowLaneOwnership}
+function Exit-AhkFlowLaneOwnership {
+    param($Previous)
+    Assert-FixtureChildrenSettled -Operation restore
+    & $fixtureExitOwnership -Previous $Previous
+}
+'@
         Use-LaneEnvironment -Value @{ AHKFLOW_TEST_LANES_ROOT = $pool.Root } -Body {
             $state.Runspace = [RunspaceFactory]::CreateRunspace()
             $state.Runspace.Open()
@@ -2431,6 +2480,10 @@ Invoke-TestCase 'Lane stopped runner settles children before unregistering and r
             $stopping = $state.Shell.BeginStop($null, $null)
             Assert-True ($stopping.AsyncWaitHandle.WaitOne(15000)) 'Runner cancellation did not settle.'
             $state.Shell.EndStop($stopping)
+            $violation = Join-Path $fixture.Root 'markers/cleanup-violation'
+            Assert-True (-not (Test-Path $violation)) "Ownership cleanup ran before children settled: $(if (Test-Path $violation) { Get-Content $violation -Raw })"
+            $observed = @(Get-Content (Join-Path $fixture.Root 'markers/cleanup-observed'))
+            Assert-True (($observed -join ',') -eq 'unregister,restore') 'The fixture must observe both parent cleanup operations.'
             foreach ($process in $suiteProcesses) { Assert-True ($process.WaitForExit(1000)) 'Cancellation released ownership before its child exited.' }
             Assert-True ((Get-RunLaneCount $pool) -eq 0) 'Cancellation must release every Lane.'
             Assert-True (@(Get-ChildItem (Join-Path $pool.Root 'runs') -File).Count -eq 0) 'Cancellation must unregister the run.'
@@ -2442,7 +2495,7 @@ Invoke-TestCase 'Lane stopped runner settles children before unregistering and r
         if ($state.Runspace) { $state.Runspace.Dispose() }
         foreach ($process in $suiteProcesses) {
             if (-not $process.HasExited) { $process.Kill($true) }
-            [void]$process.WaitForExit(5000)
+            Assert-True ($process.WaitForExit(5000)) "Suite PID $($process.Id) could not be reaped before fixture cleanup."
             $process.Dispose()
         }
         if ($fixture) { Remove-SuiteFixture $fixture.Root }
