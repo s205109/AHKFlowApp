@@ -375,5 +375,260 @@ Invoke-Case 'Always-successful open mutation fails the actual contention cases' 
     } finally { Stop-LaneChildProcess $child; Remove-PinnedLanePool $pool }
 }
 
+Invoke-Case 'Advisory records announce peers once and ignore incomplete or stale files' {
+    $pool = New-PinnedLanePool 2; $a = $null; $b = $null
+    try {
+        $a = Register-AhkFlowLaneRun $pool.Root Fast 'checkout A'
+        Assert-Equal 0 @(Get-AhkFlowOtherLaneRuns $pool.Root $a.Id).Count 'A lone run must have no peers.'
+        $lines = @(Write-AhkFlowLaneSharingLine $a 6>&1)
+        Assert-Equal 0 $lines.Count 'A lone run must print nothing.'
+        $b = Register-AhkFlowLaneRun $pool.Root Integration 'checkout B'
+        $peers = @(Get-AhkFlowOtherLaneRuns $pool.Root $a.Id)
+        Assert-Equal 1 $peers.Count 'Live sibling must be readable.'
+        Assert-Equal Integration $peers[0].Mode 'Peer mode differed.'
+        Assert-Equal $PID $peers[0].Pid 'Peer PID differed.'
+        Assert-Equal 'checkout B' $peers[0].Checkout 'Peer checkout differed.'
+        $lines = @(Write-AhkFlowLaneSharingLine $a 6>&1)
+        Assert-Equal 1 $lines.Count 'First peer scan must print once.'
+        Assert-Equal "Sharing the test Lane pool with: Integration run $PID in checkout B" ([string]$lines[0]) 'Sharing message differed.'
+        Assert-Equal 0 @(Write-AhkFlowLaneSharingLine $a 6>&1).Count 'Second scan must not print.'
+        $b.Stream.Dispose()
+        Assert-Equal 0 @(Get-AhkFlowOtherLaneRuns $pool.Root $a.Id).Count 'Free record lock must be ignored.'
+        $b.Stream = Open-AhkFlowLaneFile $b.LockPath
+        Set-Content $b.RecordPath '{incomplete'
+        Assert-Equal 0 @(Get-AhkFlowOtherLaneRuns $pool.Root $a.Id).Count 'Incomplete record must be ignored.'
+        Set-Content $b.RecordPath '{}'
+        Assert-Equal 0 @(Get-AhkFlowOtherLaneRuns $pool.Root $a.Id).Count 'Missing record fields must be ignored.'
+        Remove-Item $b.RecordPath
+        Assert-Equal 0 @(Get-AhkFlowOtherLaneRuns $pool.Root $a.Id).Count 'Disappeared record must be ignored.'
+    } finally { Unregister-AhkFlowLaneRun $b; Unregister-AhkFlowLaneRun $a; Remove-PinnedLanePool $pool }
+}
+
+Invoke-Case 'Concurrent Workers share one diagnostic decision' {
+    $pool = New-PinnedLanePool 2; $a = $null; $b = $null
+    $workers = [Collections.Generic.List[object]]::new()
+    $gate = [Threading.ManualResetEventSlim]::new($false)
+    try {
+        $a = Register-AhkFlowLaneRun $pool.Root Fast A
+        $b = Register-AhkFlowLaneRun $pool.Root Fast B
+        foreach ($index in 1..8) {
+            $ps = [PowerShell]::Create().AddScript({ param($Module, $Run, $Gate); . $Module; if (-not $Gate.Wait(10000)) { throw 'Worker gate timed out.' }; Write-AhkFlowLaneSharingLine $Run }).AddArgument($ModulePath).AddArgument($a).AddArgument($gate)
+            $workers.Add(@{ PowerShell = $ps; Async = $ps.BeginInvoke() })
+        }
+        $gate.Set()
+        $printed = 0
+        foreach ($worker in $workers) {
+            Assert-True ($worker.Async.AsyncWaitHandle.WaitOne(10000)) 'Worker did not finish.'
+            [void]$worker.PowerShell.EndInvoke($worker.Async)
+            Assert-Equal 0 $worker.PowerShell.Streams.Error.Count 'Worker failed.'
+            $printed += $worker.PowerShell.Streams.Information.Count
+        }
+        Assert-Equal 1 $printed 'Concurrent Workers must print exactly one line.'
+    } finally {
+        foreach ($worker in $workers) { $worker.PowerShell.Stop(); $worker.PowerShell.Dispose() }
+        $gate.Dispose(); Unregister-AhkFlowLaneRun $b; Unregister-AhkFlowLaneRun $a; Remove-PinnedLanePool $pool
+    }
+}
+
+Invoke-Case 'Registration publication failure releases its record handle' {
+    $pool = New-PinnedLanePool 1
+    try {
+        $script:publishingHandle = $null
+        $realOpen = ${function:Open-AhkFlowLaneFile}
+        function Open-AhkFlowLaneFile { param($Path); $script:publishingHandle = & $realOpen $Path; $script:publishingHandle }
+        function Set-Content {
+            Assert-True ($null -ne $script:publishingHandle) 'Registration must open its lock before publication.'
+            Assert-True ($null -eq (& $realOpen $script:publishingHandle.Name)) 'Record lock must remain held during publication.'
+            throw 'record publication failed'
+        }
+        $threw = $false
+        try { Register-AhkFlowLaneRun $pool.Root Fast A } catch { $threw = $_.Exception.Message -eq 'record publication failed' }
+        Assert-True $threw 'Publication failure must escape registration.'
+        Assert-True (-not $script:publishingHandle.CanRead) 'Failed publication must dispose its native record stream.'
+        Assert-Equal 0 @(Get-ChildItem (Join-Path $pool.Root runs) -File).Count 'Failed publication must remove its files.'
+    } finally { Remove-PinnedLanePool $pool }
+}
+
+Invoke-Case 'Owner lifecycle restores normal failed and nested marker state' {
+    $pool = New-PinnedLanePool 2
+    try {
+        Use-LaneEnvironment -Value @{ AHKFLOW_TEST_LANES_ROOT = $pool.Root } -Body {
+            function Get-AhkFlowLaneProposal { 2 }
+            foreach ($iteration in 1..2) {
+                $state = Enter-AhkFlowLaneRun Fast A Half
+                try {
+                    Assert-Equal owner $state.Role 'Fresh run must own its reservation.'
+                    Assert-Equal $PID $env:AHKFLOW_TEST_LANES_HOLDER 'Owner must publish its marker.'
+                    Assert-Equal 1 $state.Lanes.Streams.Count 'Half of two must acquire one Lane.'
+                    $nested = Enter-AhkFlowLaneRun Nested A Whole
+                    Assert-Equal nested $nested.Role 'Inherited run must be nested.'
+                    Exit-AhkFlowLaneRun $nested
+                    Assert-Equal $PID $env:AHKFLOW_TEST_LANES_HOLDER 'Nested exit must leave owner marker.'
+                } finally { Exit-AhkFlowLaneRun $state }
+                Assert-True ([string]::IsNullOrEmpty($env:AHKFLOW_TEST_LANES_HOLDER)) 'Normal exit must restore an absent marker.'
+                Assert-Equal 0 (Get-RunLaneCount $pool) 'Normal exit must release all Lanes.'
+                Assert-Equal 0 @(Get-ChildItem (Join-Path $pool.Root runs) -File).Count 'Normal exit must remove records.'
+            }
+            $realRegister = ${function:Register-AhkFlowLaneRun}
+            function Register-AhkFlowLaneRun { throw 'register failed' }
+            $threw = $false
+            try { Enter-AhkFlowLaneRun Fast A Half } catch { $threw = $_.Exception.Message -eq 'register failed' }
+            Assert-True $threw 'Registration failure must escape entry.'
+            Assert-True ([string]::IsNullOrEmpty($env:AHKFLOW_TEST_LANES_HOLDER)) 'Registration failure must restore the marker.'
+            Set-Item Function:\Register-AhkFlowLaneRun $realRegister
+            $realEnter = ${function:Enter-AhkFlowLanes}
+            function Enter-AhkFlowLanes { throw 'allocation failed' }
+            $threw = $false
+            try { Enter-AhkFlowLaneRun Fast A Half } catch { $threw = $_.Exception.Message -eq 'allocation failed' }
+            Assert-True $threw 'Allocation failure must escape entry.'
+            Assert-True ([string]::IsNullOrEmpty($env:AHKFLOW_TEST_LANES_HOLDER)) 'Allocation failure must restore the marker.'
+            Assert-Equal 0 @(Get-ChildItem (Join-Path $pool.Root runs) -File).Count 'Allocation failure must remove its record.'
+            Set-Item Function:\Enter-AhkFlowLanes $realEnter
+            $fresh = Enter-AhkFlowLaneRun Fast A Whole
+            try { Assert-Equal 2 $fresh.Lanes.Streams.Count 'The same host must acquire after failures.' } finally { Exit-AhkFlowLaneRun $fresh }
+        }
+        Use-LaneEnvironment -Value @{ AHKFLOW_TEST_LANES = 'off'; AHKFLOW_TEST_LANES_HOLDER = 'before' } -Body {
+            $state = Enter-AhkFlowLaneRun Fast A Half
+            Assert-Equal off $state.Role 'Opt-out must take precedence.'
+            Assert-True ($null -eq $state.Lanes -and $null -eq $state.Run) 'Opt-out must not reserve or register.'
+            Exit-AhkFlowLaneRun $state
+            Assert-Equal before $env:AHKFLOW_TEST_LANES_HOLDER 'Opt-out must not alter inherited marker.'
+        }
+    } finally { Remove-PinnedLanePool $pool }
+}
+
+Invoke-Case 'A killed advisory owner is no longer named' {
+    $pool = New-PinnedLanePool 1; $child = $null; $a = $null
+    try {
+        $a = Register-AhkFlowLaneRun $pool.Root Fast A
+        $module = $ModulePath.Replace("'", "''"); $root = $pool.Root.Replace("'", "''")
+        $common = (Join-Path $PSScriptRoot 'LanePool.Common.ps1').Replace("'", "''")
+        $ready = Join-Path $pool.Root ready; $release = Join-Path $pool.Root release
+        $code = ". '$module'; . '$common'; `$run=Register-AhkFlowLaneRun '$root' Killed B; Publish-LaneSignal '$ready' `$run.Id; Wait-LanePath '$release' 30 | Out-Null"
+        $child = Start-LaneChildProcess @('-NoProfile', '-EncodedCommand', (ConvertTo-LaneEncodedCommand $code))
+        [void](Wait-LanePath $ready 10 $child)
+        $peers = @(Get-AhkFlowOtherLaneRuns $pool.Root $a.Id)
+        Assert-Equal 1 $peers.Count 'Live child record must be visible.'
+        Assert-Equal $child.Process.Id $peers[0].Pid 'Child record must name its actual PID.'
+        Stop-LaneChildProcess $child
+        Assert-Equal 0 @(Get-AhkFlowOtherLaneRuns $pool.Root $a.Id).Count 'Killed owner must no longer be named.'
+        Assert-Equal 2 @(Get-ChildItem (Join-Path $pool.Root runs) -Filter '*.txt').Count 'Test must leave the killed owner record stale.'
+    } finally { Stop-LaneChildProcess $child; Unregister-AhkFlowLaneRun $a; Remove-PinnedLanePool $pool }
+}
+
+foreach ($waitKind in @('entry', 'capacity', 'share')) {
+    Invoke-Case "A late peer is announced during $waitKind retry before its Lane is released" {
+        $pool = New-PinnedLanePool 2
+        $a = $null; $c = $null; $cLanes = $null; $b = $null; $worker = $null
+        $retryGate = [Threading.ManualResetEventSlim]::new($false)
+        $atRetry = [Threading.ManualResetEventSlim]::new($false)
+        $lines = [Collections.Concurrent.ConcurrentQueue[string]]::new()
+        try {
+            $a = Register-AhkFlowLaneRun $pool.Root Fast A
+            Assert-Equal 0 @(Write-AhkFlowLaneSharingLine $a 6>&1).Count 'Initial A scan must see nobody.'
+            $c = Register-AhkFlowLaneRun $pool.Root Integration C
+            $cLanes = Enter-AhkFlowLanes $pool.Root One 2
+            if ($waitKind -eq 'entry') {
+                $signals = @{ Acquired = Join-Path $pool.Root 'b-acquired'; Release = Join-Path $pool.Root 'b-release'; FailedAttempt = Join-Path $pool.Root 'b-failed' }
+                $b = Start-LaneHolder $pool.Root $signals B Whole 2
+                [void](Wait-LanePath $signals.FailedAttempt 10 $b)
+                Assert-True (Test-AhkFlowLaneFileHeld (Join-Path $pool.Root entry.lock)) 'B must hold entry while C owns a Lane.'
+            } elseif ($waitKind -eq 'capacity') { Remove-Item (Join-Path $pool.Root capacity.txt) }
+            $code = {
+                param($Module, $Run, $Lines, $AtRetry, $RetryGate, $Share)
+                . $Module
+                function Write-Host { param($Object); $Lines.Enqueue([string]$Object) }
+                $realWait = ${function:Wait-AhkFlowLaneRetry}
+                function Wait-AhkFlowLaneRetry {
+                    param($Run)
+                    & $realWait -Run $Run
+                    $AtRetry.Set()
+                    if (-not $RetryGate.Wait(10000)) { throw 'Diagnostic retry gate timed out.' }
+                }
+                $lanes = $null
+                try { $lanes = Enter-AhkFlowLanes $Run.PoolRoot $Share 2 -Run $Run }
+                finally { Exit-AhkFlowLanes $lanes }
+            }
+            $share = if ($waitKind -eq 'share') { 'Whole' } else { 'One' }
+            $worker = [PowerShell]::Create().AddScript($code).AddArgument($ModulePath).AddArgument($a).AddArgument($lines).AddArgument($atRetry).AddArgument($retryGate).AddArgument($share)
+            $async = $worker.BeginInvoke()
+            Assert-True ($atRetry.Wait(10000)) 'A never reached its diagnostic retry.'
+            Assert-Equal 1 $lines.Count 'A must announce its late peer before C releases its Lane.'
+            Assert-Equal "Sharing the test Lane pool with: Integration run $PID in C" $lines.ToArray()[0] 'Late peer message differed.'
+            Assert-True (Test-AhkFlowLaneFileHeld $cLanes.Streams[0].Name) 'C must still own its Lane when A prints.'
+            if ($waitKind -eq 'capacity') {
+                Assert-True (-not (Test-AhkFlowLaneFileHeld (Join-Path $pool.Root entry.lock))) 'Missing-capacity retry must release entry.'
+                Set-Content (Join-Path $pool.Root capacity.txt) 2
+            }
+            Exit-AhkFlowLanes $cLanes; $cLanes = $null
+            if ($null -ne $b) {
+                [void](Wait-LanePath $signals.Acquired 10 $b)
+                Publish-LaneSignal $signals.Release
+                Assert-Equal 0 (Wait-LaneChildProcess $b 10).ExitCode 'Whole contender failed.'
+            }
+            $retryGate.Set()
+            Assert-True ($async.AsyncWaitHandle.WaitOne(10000)) 'A failed to acquire after release.'
+            [void]$worker.EndInvoke($async)
+            Assert-Equal 0 $worker.Streams.Error.Count 'Diagnostic worker failed.'
+            Assert-Equal 0 (Get-RunLaneCount $pool) 'Workers must release their reservations.'
+        } finally {
+            $retryGate.Set()
+            if ($null -ne $worker) { $worker.Stop(); $worker.Dispose() }
+            Stop-LaneChildProcess $b; Exit-AhkFlowLanes $cLanes
+            Unregister-AhkFlowLaneRun $c; Unregister-AhkFlowLaneRun $a
+            $retryGate.Dispose(); $atRetry.Dispose(); Remove-PinnedLanePool $pool
+        }
+    }
+}
+
+Invoke-Case 'Stopped owner entry restores its marker and acquires again in the surviving runspace' {
+    $pool = New-PinnedLanePool 2; $worker = $null; $blocker = $null
+    try {
+        Use-LaneEnvironment -Value @{ AHKFLOW_TEST_LANES_ROOT = $pool.Root; AHKFLOW_TEST_LANES_HOLDER = '  ' } -Body {
+            $blocker = Open-AhkFlowLaneFile (Join-Path $pool.Root lane-1.lock)
+            try {
+                $worker = [PowerShell]::Create().AddScript({ param($Module); . $Module; function Get-AhkFlowLaneProposal { 2 }; Enter-AhkFlowLaneRun Fast A Whole | Out-Null }).AddArgument($ModulePath)
+                $async = $worker.BeginInvoke()
+                $watch = [Diagnostics.Stopwatch]::StartNew()
+                while ($watch.Elapsed.TotalSeconds -lt 10 -and (Get-RunLaneCount $pool) -lt 2) { Start-Sleep -Milliseconds 20 }
+                Assert-Equal 2 (Get-RunLaneCount $pool) 'Owner must collect a partial share before cancellation.'
+                Assert-Equal $PID $env:AHKFLOW_TEST_LANES_HOLDER 'Waiting owner must publish its marker.'
+                Assert-Equal 1 @(Get-ChildItem (Join-Path $pool.Root runs) -Filter '*.txt').Count 'Waiting owner must have a record.'
+                $worker.Stop()
+                try { [void]$worker.EndInvoke($async) } catch [Management.Automation.PipelineStoppedException] { }
+                Assert-Equal '  ' $env:AHKFLOW_TEST_LANES_HOLDER 'Cancellation must restore the exact prior marker.'
+                Assert-Equal 0 @(Get-ChildItem (Join-Path $pool.Root runs) -File).Count 'Cancellation must remove its record and lock.'
+                Assert-Equal 1 (Get-RunLaneCount $pool) 'Cancellation must release its partial Lane.'
+                Assert-True (-not (Test-AhkFlowLaneFileHeld (Join-Path $pool.Root entry.lock))) 'Cancellation must release entry.'
+                $blocker.Dispose(); $blocker = $null
+                $worker.Commands.Clear()
+                [void]$worker.AddScript({ param($Module); . $Module; function Get-AhkFlowLaneProposal { 2 }; $state = Enter-AhkFlowLaneRun Fast A Whole; try { $state.Lanes.Streams.Count } finally { Exit-AhkFlowLaneRun $state } }).AddArgument($ModulePath)
+                $fresh = $worker.BeginInvoke()
+                Assert-True ($fresh.AsyncWaitHandle.WaitOne(10000)) 'Second reservation timed out in the surviving host.'
+                $result = $worker.EndInvoke($fresh)
+                Assert-Equal 2 $result[0] 'Surviving runspace must acquire the full share.'
+                Assert-Equal '  ' $env:AHKFLOW_TEST_LANES_HOLDER 'Second reservation must restore the prior marker.'
+            } finally {
+                if ($null -ne $worker) { $worker.Stop(); $worker.Dispose(); $worker = $null }
+                if ($null -ne $blocker) { $blocker.Dispose(); $blocker = $null }
+            }
+        }
+    } finally { Remove-PinnedLanePool $pool }
+}
+
+Invoke-Case 'Unreadable advisory records cannot abort a valid reservation' {
+    $pool = New-PinnedLanePool 2; $run = $null
+    try {
+        $run = Register-AhkFlowLaneRun $pool.Root Fast A
+        function Get-AhkFlowOtherLaneRuns { throw [IO.IOException]::new('advisory read failed') }
+        Write-AhkFlowLaneSharingLine $run
+        Wait-AhkFlowLaneRetry $run
+        $lanes = Enter-AhkFlowLanes $pool.Root Whole 2 -Run $run
+        try { Assert-Equal 2 $lanes.Streams.Count 'Advisory failure must not affect admission.' }
+        finally { Exit-AhkFlowLanes $lanes }
+        Assert-Equal 0 $run.Printed.Count 'A failed scan must allow a later diagnostic retry.'
+    } finally { Unregister-AhkFlowLaneRun $run; Remove-PinnedLanePool $pool }
+}
+
 if ($failures.Count -gt 0) { foreach ($failure in $failures) { Write-Host $failure -ForegroundColor Red }; exit 1 }
 Write-Host 'PASSED|LanePool'

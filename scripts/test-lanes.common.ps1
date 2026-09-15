@@ -114,7 +114,8 @@ function Enter-AhkFlowLanes {
     param(
         [Parameter(Mandatory = $true)][string] $PoolRoot,
         [Parameter(Mandatory = $true)][ValidateSet('One', 'Half', 'Whole')][string] $Share,
-        [Parameter(Mandatory = $true)][ValidateRange(1, [int]::MaxValue)][int] $Proposal
+        [Parameter(Mandatory = $true)][ValidateRange(1, [int]::MaxValue)][int] $Proposal,
+        [object] $Run
     )
     New-Item -ItemType Directory -Path $PoolRoot -Force -ErrorAction Stop | Out-Null
     $entry = $null
@@ -128,7 +129,7 @@ function Enter-AhkFlowLanes {
                 $capacity = Resolve-AhkFlowLaneCapacity -PoolRoot $PoolRoot -Proposal $Proposal
                 if ($capacity -lt 1) { $entry.Dispose(); $entry = $null }
             }
-            if ($capacity -lt 1) { Start-Sleep -Milliseconds 200 }
+            if ($capacity -lt 1) { Wait-AhkFlowLaneRetry -Run $Run }
         }
         $needed = Get-AhkFlowLaneShareCount -Share $Share -Capacity $capacity
         while ($lanes.Count -lt $needed) {
@@ -140,7 +141,7 @@ function Enter-AhkFlowLanes {
                 $stream = Open-AhkFlowLaneFile -Path $path
                 if ($null -ne $stream) { $lanes.Add($stream) }
             }
-            if ($lanes.Count -lt $needed) { Start-Sleep -Milliseconds 200 }
+            if ($lanes.Count -lt $needed) { Wait-AhkFlowLaneRetry -Run $Run }
         }
         $completed = $true
         return [pscustomobject]@{ PoolRoot = $PoolRoot; Capacity = $capacity; Streams = $lanes }
@@ -164,4 +165,120 @@ function Get-AhkFlowHeldLaneCount {
         if (Test-AhkFlowLaneFileHeld -Path $file.FullName) { $count++ }
     }
     return $count
+}
+
+function Register-AhkFlowLaneRun {
+    param(
+        [Parameter(Mandatory = $true)][string] $PoolRoot,
+        [Parameter(Mandatory = $true)][string] $Mode,
+        [Parameter(Mandatory = $true)][string] $Checkout
+    )
+    $directory = Join-Path $PoolRoot 'runs'
+    New-Item -ItemType Directory -Path $directory -Force -ErrorAction Stop | Out-Null
+    $id = [string]$PID + '-' + [guid]::NewGuid().ToString('N')
+    $run = [pscustomobject]@{
+        Id = $id; PoolRoot = $PoolRoot; Mode = $Mode; Checkout = $Checkout
+        LockPath = Join-Path $directory ($id + '.lock')
+        RecordPath = Join-Path $directory ($id + '.txt')
+        Stream = $null
+        Printed = New-Object 'System.Collections.Concurrent.ConcurrentDictionary[string,bool]'
+    }
+    $completed = $false
+    try {
+        $run.Stream = Open-AhkFlowLaneFile -Path $run.LockPath
+        if ($null -eq $run.Stream) { throw 'The test Lane run record is already locked.' }
+        $record = [pscustomobject]@{ Id = $id; Mode = $Mode; Pid = $PID; Checkout = $Checkout }
+        $record | ConvertTo-Json -Compress | Set-Content -LiteralPath $run.RecordPath -Encoding UTF8 -ErrorAction Stop
+        $completed = $true
+        return $run
+    } finally {
+        if (-not $completed) { Unregister-AhkFlowLaneRun -Run $run }
+    }
+}
+
+function Unregister-AhkFlowLaneRun {
+    param([object] $Run)
+    if ($null -eq $Run) { return }
+    try { if ($null -ne $Run.Stream) { $Run.Stream.Dispose() } }
+    finally {
+        # Records are advisory. Cleanup failures must not interrupt Lane or marker cleanup.
+        foreach ($path in @($Run.RecordPath, $Run.LockPath)) {
+            try { Remove-Item -LiteralPath $path -Force -ErrorAction Stop } catch { }
+        }
+    }
+}
+
+function Get-AhkFlowOtherLaneRuns {
+    param([Parameter(Mandatory = $true)][string] $PoolRoot, [string] $ExceptId)
+    $directory = Join-Path $PoolRoot 'runs'
+    try { $files = @(Get-ChildItem -LiteralPath $directory -Filter '*.txt' -File -ErrorAction Stop) }
+    catch { return }
+    foreach ($file in $files) {
+        if ($file.BaseName -eq $ExceptId) { continue }
+        try {
+            $record = Get-Content -LiteralPath $file.FullName -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+            if ($null -eq $record) { continue }
+            $complete = $true
+            foreach ($name in @('Id', 'Mode', 'Pid', 'Checkout')) {
+                if ($null -eq $record.PSObject.Properties[$name] -or [string]::IsNullOrWhiteSpace([string]$record.$name)) { $complete = $false; break }
+            }
+            if (-not $complete -or $record.Id -cne $file.BaseName) { continue }
+            $processId = 0
+            if (-not [int]::TryParse([string]$record.Pid, [ref]$processId) -or $processId -lt 1) { continue }
+            if (Test-AhkFlowLaneFileHeld -Path (Join-Path $directory ($file.BaseName + '.lock'))) { $record }
+        } catch { }
+    }
+}
+
+function Write-AhkFlowLaneSharingLine {
+    param([object] $Run)
+    if ($null -eq $Run) { return }
+    try {
+        if ($Run.Printed.ContainsKey('sharing')) { return }
+        $peers = @(Get-AhkFlowOtherLaneRuns -PoolRoot $Run.PoolRoot -ExceptId $Run.Id)
+        if ($peers.Count -eq 0) { return }
+        $descriptions = @($peers | ForEach-Object { "$($_.Mode) run $($_.Pid) in $($_.Checkout)" })
+        if ($Run.Printed.TryAdd('sharing', $true)) {
+            Write-Host ('Sharing the test Lane pool with: ' + ($descriptions -join '; '))
+        }
+    } catch { }
+}
+
+function Wait-AhkFlowLaneRetry {
+    param([object] $Run)
+    if ($null -ne $Run) { [void](Write-AhkFlowLaneSharingLine -Run $Run) }
+    Start-Sleep -Milliseconds 200
+}
+
+function Enter-AhkFlowLaneRun {
+    param(
+        [Parameter(Mandatory = $true)][string] $Mode,
+        [Parameter(Mandatory = $true)][string] $Checkout,
+        [Parameter(Mandatory = $true)][ValidateSet('Half', 'Whole')][string] $Share
+    )
+    $role = Get-AhkFlowLaneRole
+    $state = [pscustomobject]@{ Role = $role; PreviousHolder = $null; Run = $null; Lanes = $null }
+    if ($role -ne 'owner') { return $state }
+    $state.PreviousHolder = Enter-AhkFlowLaneOwnership
+    $completed = $false
+    try {
+        $root = Get-AhkFlowLanePoolRoot
+        $state.Run = Register-AhkFlowLaneRun -PoolRoot $root -Mode $Mode -Checkout $Checkout
+        Write-AhkFlowLaneSharingLine -Run $state.Run
+        $state.Lanes = Enter-AhkFlowLanes -PoolRoot $root -Share $Share -Proposal (Get-AhkFlowLaneProposal) -Run $state.Run
+        $completed = $true
+        return $state
+    } finally {
+        if (-not $completed) { Exit-AhkFlowLaneRun -State $state }
+    }
+}
+
+function Exit-AhkFlowLaneRun {
+    param([object] $State)
+    if ($null -eq $State -or $State.Role -ne 'owner') { return }
+    try { Exit-AhkFlowLanes -Handle $State.Lanes }
+    finally {
+        try { Unregister-AhkFlowLaneRun -Run $State.Run }
+        finally { Exit-AhkFlowLaneOwnership -Previous $State.PreviousHolder }
+    }
 }
