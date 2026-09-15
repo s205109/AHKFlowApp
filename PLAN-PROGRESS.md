@@ -11,8 +11,8 @@ Draft proof PR: https://github.com/s205109/AHKFlowApp/pull/415
 | 2 Sizing extraction | Complete | `e27ae4ba` | Windows 7/5.1 and Docker Linux pass; exact rule and caller behavior retained. |
 | 3 Pool and harness | Complete | e4c0cab1 | Windows and Linux: all 23 cases passed; independent source review approved. |
 | 4 Advisory records | Complete | `707ac3e2`, fix `41b7b220` | Windows and Linux: all 34 cases passed; independent re-review approved all fixes. |
-| 5 Suite admission | In progress | Pending | Wiring owner lifecycle and per-Suite reservations into real runners. |
-| 6 .NET reservations | Gated | Pending | Requires pool lifecycle and wrapper proof. |
+| 5 Suite admission | Complete | `1b57d01e`, test fix `369434c9` | Four requested groups pass; real two-checkout cap and four mutations proved. |
+| 6 .NET reservations | In progress | Pending | Adding Half reservations to Fast and Coverage entry points. |
 | 7 Timing and soak | Gated | Pending | Requires pool lifecycle. |
 | 8 Documentation | Gated | Pending | Requires measured implementation contract. |
 
@@ -183,3 +183,17 @@ Windows PowerShell 5.1 loaded the production module and resolved the owner lifec
 The complete Linux log includes entry, capacity, and share retry cases.
 The scoped re-review marked all three findings addressed and found no new important breakage.
 Task 5 may now integrate the runner. Final Gate and whole-branch review remain pending.
+
+## Task 5 verification
+
+Deliverable: `1b57d01e`; review fix: `369434c9`.
+One runner with four Workers held exactly two Lanes in a capacity-two pool.
+With Lane admission off, the same fixture reached a peak of four.
+Two copied checkouts and two real runners shared one pool and reached a combined peak of two.
+Both blocked Workers acknowledged real acquisition waits before the first runner released its Suites.
+The unchanged cap proof rejected an acquisition-bypass mutation.
+Null and cloned Worker run-state mutations also failed, as did silent sharing and early cleanup mutations.
+The final Windows run passed 103 runner cases, 34 LanePool cases, 9 Linux-runner fixture cases,
+and 5 wrapper cases. It includes registration failure, cancellation ordering, and bounded child reaping.
+Independent re-review marked all four findings addressed and approved Task 5.
+Task 6 may now reserve Half for .NET routes. Final Gate and Linux portable-suite runs remain pending.
