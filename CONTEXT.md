@@ -225,6 +225,12 @@ _Avoid_: guard, gate, validator, linter
 The five steps that must all pass before a pull request is marked ready: build, format, PowerShell suites, coverage, and `git diff --check`.
 _Avoid_: check, guard, pipeline, CI
 
+**Code change**:
+A changed file that `.github/code-paths-filter.yml` does not exclude. A branch with no Code change
+skips the .NET build and tests in CI, and before a push. The local checks still run when the branch
+changes a script they use.
+_Avoid_: config-only change, short route, short gate, local gate
+
 **Suite**:
 One `tests/*.Tests.ps1` file. The runner starts each Suite as its own process and runs several at
 once, so one Suite's failure cannot stop another. `tests/powershell-suites.json` lists every Suite.
