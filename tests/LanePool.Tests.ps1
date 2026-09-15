@@ -20,6 +20,19 @@ function Assert-Equal($Expected, $Actual, [string] $Message) {
     if ([string]$Expected -cne [string]$Actual) { throw "$Message (expected '$Expected', got '$Actual')" }
 }
 function Assert-True([bool] $Condition, [string] $Message) { if (-not $Condition) { throw $Message } }
+function Stop-LanePowerShell {
+    param(
+        [Parameter(Mandatory = $true)][PowerShell] $PowerShell,
+        [Parameter(Mandatory = $true)][string] $Context,
+        [ValidateRange(1, 60)][int] $TimeoutSeconds = 10
+    )
+    if ($PowerShell.InvocationStateInfo.State -ne [Management.Automation.PSInvocationState]::Running) { return }
+    $stopping = $PowerShell.BeginStop($null, $null)
+    if (-not $stopping.AsyncWaitHandle.WaitOne($TimeoutSeconds * 1000)) {
+        throw "$Context did not stop within $TimeoutSeconds seconds."
+    }
+    $PowerShell.EndStop($stopping)
+}
 
 Invoke-Case 'Role precedence and validation' {
     Use-LaneEnvironment -Value @{ AHKFLOW_TEST_LANES = ' OFF '; AHKFLOW_TEST_LANES_HOLDER = '42' } -Body {
@@ -404,6 +417,30 @@ Invoke-Case 'Advisory records announce peers once and ignore incomplete or stale
     } finally { Unregister-AhkFlowLaneRun $b; Unregister-AhkFlowLaneRun $a; Remove-PinnedLanePool $pool }
 }
 
+Invoke-Case 'A failed sharing write retries on the next wait' {
+    $pool = New-PinnedLanePool 2; $a = $null; $b = $null
+    try {
+        $a = Register-AhkFlowLaneRun $pool.Root Fast A
+        $b = Register-AhkFlowLaneRun $pool.Root Integration B
+        $script:sharingWriteAttempts = 0
+        $lines = [Collections.Generic.List[string]]::new()
+        function Write-Host {
+            param([object] $Object)
+            $script:sharingWriteAttempts++
+            if ($script:sharingWriteAttempts -eq 1) { throw 'injected sharing output failure' }
+            $lines.Add([string]$Object)
+        }
+        Wait-AhkFlowLaneRetry $a
+        Assert-Equal 0 $lines.Count 'A failed output write must not emit a line.'
+        Wait-AhkFlowLaneRetry $a
+        Assert-Equal 1 $lines.Count 'The next retry must emit the sharing line.'
+        Assert-Equal "Sharing the test Lane pool with: Integration run $PID in B" $lines[0] 'Retried sharing message differed.'
+        Assert-Equal 2 $script:sharingWriteAttempts 'A successful retry must keep the once-only decision.'
+        Wait-AhkFlowLaneRetry $a
+        Assert-Equal 2 $script:sharingWriteAttempts 'A successful sharing line must not print again.'
+    } finally { Unregister-AhkFlowLaneRun $b; Unregister-AhkFlowLaneRun $a; Remove-PinnedLanePool $pool }
+}
+
 Invoke-Case 'Concurrent Workers share one diagnostic decision' {
     $pool = New-PinnedLanePool 2; $a = $null; $b = $null
     $workers = [Collections.Generic.List[object]]::new()
@@ -425,7 +462,7 @@ Invoke-Case 'Concurrent Workers share one diagnostic decision' {
         }
         Assert-Equal 1 $printed 'Concurrent Workers must print exactly one line.'
     } finally {
-        foreach ($worker in $workers) { $worker.PowerShell.Stop(); $worker.PowerShell.Dispose() }
+        foreach ($worker in $workers) { Stop-LanePowerShell -PowerShell $worker.PowerShell -Context 'Concurrent worker teardown'; $worker.PowerShell.Dispose() }
         $gate.Dispose(); Unregister-AhkFlowLaneRun $b; Unregister-AhkFlowLaneRun $a; Remove-PinnedLanePool $pool
     }
 }
@@ -573,7 +610,7 @@ foreach ($waitKind in @('entry', 'capacity', 'share')) {
             Assert-Equal 0 (Get-RunLaneCount $pool) 'Workers must release their reservations.'
         } finally {
             $retryGate.Set()
-            if ($null -ne $worker) { $worker.Stop(); $worker.Dispose() }
+            if ($null -ne $worker) { Stop-LanePowerShell -PowerShell $worker -Context 'Late-peer retry teardown'; $worker.Dispose() }
             Stop-LaneChildProcess $b; Exit-AhkFlowLanes $cLanes
             Unregister-AhkFlowLaneRun $c; Unregister-AhkFlowLaneRun $a
             $retryGate.Dispose(); $atRetry.Dispose(); Remove-PinnedLanePool $pool
@@ -594,7 +631,7 @@ Invoke-Case 'Stopped owner entry restores its marker and acquires again in the s
                 Assert-Equal 2 (Get-RunLaneCount $pool) 'Owner must collect a partial share before cancellation.'
                 Assert-Equal $PID $env:AHKFLOW_TEST_LANES_HOLDER 'Waiting owner must publish its marker.'
                 Assert-Equal 1 @(Get-ChildItem (Join-Path $pool.Root runs) -Filter '*.txt').Count 'Waiting owner must have a record.'
-                $worker.Stop()
+                Stop-LanePowerShell -PowerShell $worker -Context 'Owner cancellation'
                 try { [void]$worker.EndInvoke($async) } catch [Management.Automation.PipelineStoppedException] { }
                 Assert-Equal '  ' $env:AHKFLOW_TEST_LANES_HOLDER 'Cancellation must restore the exact prior marker.'
                 Assert-Equal 0 @(Get-ChildItem (Join-Path $pool.Root runs) -File).Count 'Cancellation must remove its record and lock.'
@@ -609,7 +646,7 @@ Invoke-Case 'Stopped owner entry restores its marker and acquires again in the s
                 Assert-Equal 2 $result[0] 'Surviving runspace must acquire the full share.'
                 Assert-Equal '  ' $env:AHKFLOW_TEST_LANES_HOLDER 'Second reservation must restore the prior marker.'
             } finally {
-                if ($null -ne $worker) { $worker.Stop(); $worker.Dispose(); $worker = $null }
+                if ($null -ne $worker) { Stop-LanePowerShell -PowerShell $worker -Context 'Owner cancellation teardown'; $worker.Dispose(); $worker = $null }
                 if ($null -ne $blocker) { $blocker.Dispose(); $blocker = $null }
             }
         }

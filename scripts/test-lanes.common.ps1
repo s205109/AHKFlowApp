@@ -239,7 +239,12 @@ function Write-AhkFlowLaneSharingLine {
         if ($peers.Count -eq 0) { return }
         $descriptions = @($peers | ForEach-Object { "$($_.Mode) run $($_.Pid) in $($_.Checkout)" })
         if ($Run.Printed.TryAdd('sharing', $true)) {
-            Write-Host ('Sharing the test Lane pool with: ' + ($descriptions -join '; '))
+            try {
+                Write-Host ('Sharing the test Lane pool with: ' + ($descriptions -join '; '))
+            } catch {
+                $removed = $false
+                [void]$Run.Printed.TryRemove('sharing', [ref]$removed)
+            }
         }
     } catch { }
 }
