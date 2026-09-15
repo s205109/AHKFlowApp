@@ -118,12 +118,21 @@ function Invoke-Wrapper {
 
         # The host that runs the wrapper. Empty means this suite's own host, which is pwsh.
         # The Windows PowerShell case below passes powershell.exe instead.
-        [string] $HostExe
+        [string] $HostExe,
+        [hashtable] $EnvVar = @{}
     )
 
     if ([string]::IsNullOrWhiteSpace($HostExe)) { $HostExe = $script:HostExe }
 
     $summaryPath = Join-Path ([System.IO.Path]::GetTempPath()) ('ahkflow-testfast-mode-summary-' + [guid]::NewGuid().ToString('N') + '.md')
+    $previousLane = @{}
+    foreach ($name in @('AHKFLOW_TEST_LANES', 'AHKFLOW_TEST_LANES_ROOT', 'AHKFLOW_TEST_LANES_HOLDER')) {
+        $previousLane[$name] = [Environment]::GetEnvironmentVariable($name)
+        if ($EnvVar.ContainsKey($name)) { [Environment]::SetEnvironmentVariable($name, $EnvVar[$name]) }
+    }
+    if ([string]::IsNullOrWhiteSpace($env:AHKFLOW_TEST_LANES_ROOT) -and [string]::IsNullOrWhiteSpace($env:AHKFLOW_TEST_LANES_HOLDER)) {
+        $env:AHKFLOW_TEST_LANES_HOLDER = [string]$PID
+    }
     $previousSummary = $env:GITHUB_STEP_SUMMARY
     $previousGuard = $env:AHKFLOW_TESTFAST_MODE_TEST
     $env:GITHUB_STEP_SUMMARY = $summaryPath
@@ -135,6 +144,7 @@ function Invoke-Wrapper {
         $exitCode = $LASTEXITCODE
     }
     finally {
+        foreach ($name in $previousLane.Keys) { [Environment]::SetEnvironmentVariable($name, $previousLane[$name]) }
         $env:GITHUB_STEP_SUMMARY = $previousSummary
         $env:AHKFLOW_TESTFAST_MODE_TEST = $previousGuard
         Remove-Item -LiteralPath $summaryPath -Force -ErrorAction SilentlyContinue
@@ -239,6 +249,30 @@ if ($script:WindowsPowerShell) {
 else {
     Write-Host '  SKIP  Windows PowerShell 5.1 case: powershell.exe is not on this machine.' -ForegroundColor Yellow
 }
+
+Invoke-TestCase 'PowerShell wrapper forwards all Lane settings and restores fixture environment' {
+    . (Join-Path $repoRoot 'scripts/test-lanes.common.ps1')
+    . (Join-Path $repoRoot 'tests/LanePool.Common.ps1')
+    $pool = New-PinnedLanePool 2
+    $root = New-SuiteFixture
+    try {
+        Set-Content -LiteralPath (Join-Path $root 'one.Tests.ps1') -Value 'Write-Host "inherited=$env:AHKFLOW_TEST_LANES_HOLDER"'
+        Set-FixtureManifest $root
+        $before = @{}
+        foreach ($name in @('AHKFLOW_TEST_LANES', 'AHKFLOW_TEST_LANES_ROOT', 'AHKFLOW_TEST_LANES_HOLDER')) { $before[$name] = [Environment]::GetEnvironmentVariable($name) }
+        foreach ($role in @('owner', 'nested', 'off')) {
+            $values = @{ AHKFLOW_TEST_LANES_ROOT = $pool.Root; AHKFLOW_TEST_LANES_HOLDER = ''; AHKFLOW_TEST_LANES = '' }
+            if ($role -eq 'nested') { $values.AHKFLOW_TEST_LANES_HOLDER = '12345' }
+            if ($role -eq 'off') { $values.AHKFLOW_TEST_LANES = 'off' }
+            $result = Invoke-Wrapper -SuiteRoot $root -EnvVar $values
+            Assert-True ($result.ExitCode -eq 0) $result.Output
+            $expected = switch ($role) { owner { 'Lanes: shared pool; one per Suite' }; nested { 'inherited=12345' }; off { 'Lanes: off; AHKFLOW_TEST_LANES=off' } }
+            Assert-True ($result.Output.Contains($expected)) "Missing $role status. $($result.Output)"
+            foreach ($name in $before.Keys) { Assert-True ([Environment]::GetEnvironmentVariable($name) -ceq $before[$name]) "Fixture leaked $name." }
+        }
+    } finally { Remove-SuiteFixture $root; Remove-PinnedLanePool $pool }
+}
+
 
 Write-Host ''
 if ($script:Failures.Count -gt 0) {

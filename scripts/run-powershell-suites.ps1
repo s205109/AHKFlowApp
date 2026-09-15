@@ -61,6 +61,7 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 
 . "$PSScriptRoot\progress.common.ps1"
 . "$PSScriptRoot\powershell-suites.common.ps1"
+. "$PSScriptRoot\test-lanes.common.ps1"
 . "$PSScriptRoot\progress.parallel.ps1"
 
 if ([string]::IsNullOrWhiteSpace($SuiteRoot)) {
@@ -109,6 +110,7 @@ try {
     # parameter so a test can ask about the other platform, which is a question, not a run.
     $runPlatform = Get-CurrentSuitePlatform
     $selected = @(Select-SuiteEntry -Entry $entries -Pattern $Suite -Job $Job -Platform $runPlatform)
+    $laneRole = Get-AhkFlowLaneRole
 } catch {
     # Stop before any child starts. A manifest or selection we cannot trust means the coverage this
     # run reports would be a guess.
@@ -126,6 +128,7 @@ $suites = @($selected | ForEach-Object { $byName[$_.Name] })
 # overridden. A blank or whitespace variable is no value, so it falls through to the default.
 $inActions = $env:GITHUB_ACTIONS -eq 'true'
 $envMaxParallel = $env:AHKFLOW_SUITE_MAX_PARALLEL
+$hasPhysicalCoreCount = $false
 
 # Backlog 145. Get-DefaultSuiteWorkerCount in suite-worker-count.common.ps1 carries the measurement
 # behind the 75%, the reason a hosted runner takes every processor instead, and the reason an
@@ -153,14 +156,23 @@ if ($PSBoundParameters.ContainsKey('MaxParallel')) {
     $workerCount = Get-DefaultSuiteWorkerCount -PhysicalCoreCount 0 -AllProcessors
     $workerSource = "GitHub Actions: all $([Environment]::ProcessorCount) logical processors"
 } else {
-    # The only branch that asks the machine anything. An override has already won above, and inside
-    # Actions the answer would be thrown away, so a CIM query in either case costs time and changes
-    # nothing. Backlog 145 review, finding 3.
+    # Adaptive Worker sizing queries hardware here. Owners reuse this result for their Lane proposal.
+    # Overrides skip this query; only an owner still needs a proposal below.
     $physicalCoreCount = Get-PhysicalCoreCount
+    $hasPhysicalCoreCount = $true
     $logicalProcessorCount = [Environment]::ProcessorCount
 
     $workerCount = Get-DefaultSuiteWorkerCount -PhysicalCoreCount $physicalCoreCount -LogicalProcessorCount $logicalProcessorCount
     $workerSource = 'default: ' + (Get-DefaultSuiteWorkerReason -PhysicalCoreCount $physicalCoreCount -LogicalProcessorCount $logicalProcessorCount)
+}
+
+$laneProposal = 0
+if ($laneRole -eq 'owner') {
+    $laneProposal = if ($hasPhysicalCoreCount) {
+        Get-AhkFlowLaneProposal -PhysicalCoreCount $physicalCoreCount
+    } else {
+        Get-AhkFlowLaneProposal
+    }
 }
 
 # The suites are written for the host that runs this script, so run them under the same one.
@@ -230,37 +242,91 @@ foreach ($file in $suites) { $byPath[$file.Name] = $file.FullName }
 
 # Exclusive suites first, one at a time. Nothing else may run while one of them does, so putting
 # them first leaves the pool's longest-first order intact afterwards.
-foreach ($item in ($schedule | Where-Object { $_.Execution -eq 'exclusive' })) {
-    Show-SuiteResult (Invoke-SuiteChild -Path $byPath[$item.Name] -Name $item.Name -HostExe $hostExe)
+$laneRun = $null
+$previousHolder = $null
+try {
+    if ($laneRole -eq 'owner') {
+        $previousHolder = Enter-AhkFlowLaneOwnership
+        $laneRun = Register-AhkFlowLaneRun -PoolRoot (Get-AhkFlowLanePoolRoot) -Mode PowerShell -Checkout $repoRoot
+        Write-AhkFlowLaneSharingLine -Run $laneRun
+        Write-Host 'Lanes: shared pool; one per Suite'
+    } elseif ($laneRole -eq 'nested') {
+        Write-Host "Lanes: nested; holder $env:AHKFLOW_TEST_LANES_HOLDER"
+    } else {
+        Write-Host 'Lanes: off; AHKFLOW_TEST_LANES=off'
+    }
+
+    foreach ($item in ($schedule | Where-Object { $_.Execution -eq 'exclusive' })) {
+        $lanes = $null
+        try {
+            if ($laneRun) {
+                $lanes = Enter-AhkFlowLanes -PoolRoot $laneRun.PoolRoot -Share One -Proposal $laneProposal -Run $laneRun
+            }
+            Show-SuiteResult (Invoke-SuiteChild -Path $byPath[$item.Name] -Name $item.Name -HostExe $hostExe)
+        } catch {
+            Show-SuiteResult ([pscustomobject]@{ Name = $item.Name; ExitCode = 1; Seconds = 0; Output = "Could not run the suite: $($_.Exception.Message)" })
+        } finally {
+            Exit-AhkFlowLanes -Handle $lanes
+        }
+    }
+
+    $shared = @($schedule | Where-Object { $_.Execution -ne 'exclusive' } |
+            ForEach-Object { [pscustomobject]@{ Name = $_.Name; Path = $byPath[$_.Name] } })
+
+    $commonModule = Join-Path $PSScriptRoot 'powershell-suites.common.ps1'
+    $laneModule = Join-Path $PSScriptRoot 'test-lanes.common.ps1'
+
+    if ($shared.Count -gt 0) {
+        # Longest first. Starting the slowest suite last would leave it running alone at the end, which
+        # is exactly the shape that makes a parallel run no faster than a sequential one.
+        #
+        # Results reach this pipeline as each child exits, so the parent-side ForEach-Object below
+        # prints one whole block at a time.
+        $shared | ForEach-Object -ThrottleLimit $workerCount -Parallel {
+            # Load the module inside this runspace, so Invoke-SuiteChild is defined here. Do not pass
+            # the parent's scriptblock instead: Microsoft documents that "Scriptblock invocation always
+            # attempts to run in its home runspace, regardless of where it's actually invoked", so a
+            # scriptblock made in the parent would run back in the parent - serialising the whole run,
+            # which is the one failure this task exists to prevent. See
+            # https://learn.microsoft.com/powershell/module/microsoft.powershell.core/foreach-object?view=powershell-7.6
+            . $using:commonModule
+            . $using:laneModule
+            $laneRun = $using:laneRun
+            $laneProposal = $using:laneProposal
+            $ErrorActionPreference = 'Stop'
+
+            # Fresh runspace: opt out again so a non-zero suite exit code is data, not a throw.
+            $PSNativeCommandUseErrorActionPreference = $false
+
+            # Name, ExitCode, Seconds and Output are exactly what Show-SuiteResult reads, so the
+            # child's own object is what this runspace emits.
+            $item = $_
+            $lanes = $null
+            try {
+                if ($laneRun) {
+                    $lanes = Enter-AhkFlowLanes -PoolRoot $laneRun.PoolRoot -Share One -Proposal $laneProposal -Run $laneRun
+                }
+                Invoke-SuiteChild -Path $item.Path -Name $item.Name -HostExe $using:hostExe
+            } catch {
+                [pscustomobject]@{ Name = $item.Name; ExitCode = 1; Seconds = 0; Output = "Could not run the suite: $($_.Exception.Message)" }
+            } finally {
+                Exit-AhkFlowLanes -Handle $lanes
+            }
+        } | ForEach-Object { Show-SuiteResult $_ }
+    }
+} finally {
+    if ($laneRole -eq 'owner') {
+        try { Unregister-AhkFlowLaneRun -Run $laneRun }
+        finally { Exit-AhkFlowLaneOwnership -Previous $previousHolder }
+    }
 }
 
-$shared = @($schedule | Where-Object { $_.Execution -ne 'exclusive' } |
-        ForEach-Object { [pscustomobject]@{ Name = $_.Name; Path = $byPath[$_.Name] } })
-
-$commonModule = Join-Path $PSScriptRoot 'powershell-suites.common.ps1'
-
-if ($shared.Count -gt 0) {
-    # Longest first. Starting the slowest suite last would leave it running alone at the end, which
-    # is exactly the shape that makes a parallel run no faster than a sequential one.
-    #
-    # Results reach this pipeline as each child exits, so the parent-side ForEach-Object below
-    # prints one whole block at a time.
-    $shared | ForEach-Object -ThrottleLimit $workerCount -Parallel {
-        # Load the module inside this runspace, so Invoke-SuiteChild is defined here. Do not pass
-        # the parent's scriptblock instead: Microsoft documents that "Scriptblock invocation always
-        # attempts to run in its home runspace, regardless of where it's actually invoked", so a
-        # scriptblock made in the parent would run back in the parent - serialising the whole run,
-        # which is the one failure this task exists to prevent. See
-        # https://learn.microsoft.com/powershell/module/microsoft.powershell.core/foreach-object?view=powershell-7.6
-        . $using:commonModule
-
-        # Fresh runspace: opt out again so a non-zero suite exit code is data, not a throw.
-        $PSNativeCommandUseErrorActionPreference = $false
-
-        # Name, ExitCode, Seconds and Output are exactly what Show-SuiteResult reads, so the
-        # child's own object is what this runspace emits.
-        Invoke-SuiteChild -Path $_.Path -Name $_.Name -HostExe $using:hostExe
-    } | ForEach-Object { Show-SuiteResult $_ }
+# A Worker that emitted no result did not prove its selected Suite passed.
+$completedNames = @($results | ForEach-Object { $_.Name })
+foreach ($item in $selected) {
+    if ($item.Name -notin $completedNames) {
+        Show-SuiteResult ([pscustomobject]@{ Name = $item.Name; ExitCode = 1; Seconds = 0; Output = 'The Suite Worker returned no result.' })
+    }
 }
 
 # Once, after every suite has settled. A save per suite would break the case that reads this

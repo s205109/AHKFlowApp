@@ -105,7 +105,7 @@ function Add-LaneIntervalSuite {
     $suitePath = Join-Path (Split-Path $StartPath -Parent) "$Tag.Tests.ps1"
     $common = $PSCommandPath.Replace("'", "''")
     $start = $StartPath.Replace("'", "''"); $release = $ReleasePath.Replace("'", "''"); $finish = $FinishPath.Replace("'", "''")
-    Set-Content -LiteralPath $suitePath -Value ". '$common'; Publish-LaneSignal '$start' ([Diagnostics.Stopwatch]::GetTimestamp()); Wait-LanePath '$release' 30 | Out-Null; Publish-LaneSignal '$finish' ([Diagnostics.Stopwatch]::GetTimestamp())"
+    Set-Content -LiteralPath $suitePath -Value ". '$common'; Set-Content -LiteralPath '$start.holder' -Value `$env:AHKFLOW_TEST_LANES_HOLDER; Publish-LaneSignal '$start' ([Diagnostics.Stopwatch]::GetTimestamp()); Wait-LanePath '$release' 30 | Out-Null; Publish-LaneSignal '$finish' ([Diagnostics.Stopwatch]::GetTimestamp())"
     [void]$Suite.Add([pscustomobject]@{ Tag = $Tag; Path = $suitePath; StartPath = $StartPath; ReleasePath = $ReleasePath; FinishPath = $FinishPath })
 }
 
