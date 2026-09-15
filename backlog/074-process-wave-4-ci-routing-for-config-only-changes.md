@@ -6,7 +6,7 @@
 - **Type**: Process / CI
 - **Interfaces**: none (CI workflows, local gate)
 - **Difficulty**: complex
-- **Stage**: 1-pickup
+- **Stage**: 2-design
 - **Depends on**: 078-ci-config-only-route
 
 ## Summary
