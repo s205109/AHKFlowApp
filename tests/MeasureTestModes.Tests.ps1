@@ -34,6 +34,8 @@ $hostExe = [System.Diagnostics.Process]::GetCurrentProcess().Path
 # which is the only way to test the arithmetic with no wall clock in the assertion. It defines
 # functions and nothing else, so dot-sourcing it here has no side effect.
 . (Join-Path $repoRoot 'scripts\test-results.common.ps1')
+. (Join-Path $repoRoot 'scripts\test-lanes.common.ps1')
+. (Join-Path $PSScriptRoot 'LanePool.Common.ps1')
 
 $script:Failures = New-Object System.Collections.Generic.List[string]
 
@@ -64,15 +66,42 @@ function New-HarnessFixture {
     # empty folder is enough: the dotnet stub never reads it.
     New-Item -ItemType Directory -Path (Join-Path $root 'tests\FakeProject') -Force | Out-Null
 
-    # Three real files, copied. The harness under test, the lock helper - the two lock cases test
-    # that behaviour - and the TRX reader the zero-test guard goes through. All three are pure
-    # PowerShell that dot-sources nothing.
+    # Copy the real harness, checkout lock, TRX reader, and Lane helpers.
     Copy-Item -LiteralPath (Join-Path $repoRoot 'scripts\measure-test-modes.ps1') `
         -Destination (Join-Path $root 'scripts\measure-test-modes.ps1')
     Copy-Item -LiteralPath (Join-Path $repoRoot 'scripts\test-run-lock.common.ps1') `
         -Destination (Join-Path $root 'scripts\test-run-lock.common.ps1')
     Copy-Item -LiteralPath (Join-Path $repoRoot 'scripts\test-results.common.ps1') `
         -Destination (Join-Path $root 'scripts\test-results.common.ps1')
+    foreach ($helper in @('test-lanes.common.ps1', 'suite-worker-count.common.ps1')) {
+        Copy-Item (Join-Path $repoRoot "scripts/$helper") (Join-Path $root "scripts/$helper")
+    }
+    Copy-Item (Join-Path $PSScriptRoot 'LanePool.Common.ps1') (Join-Path $root 'scripts/LanePool.Common.ps1')
+    # Observe real failed admission before allowing the next attempt.
+    Add-Content (Join-Path $root 'scripts/test-lanes.common.ps1') @'
+function Wait-AhkFlowLaneRetry {
+    param($Run)
+    . (Join-Path $PSScriptRoot 'LanePool.Common.ps1')
+    $stub = Join-Path (Split-Path $PSScriptRoot -Parent) 'stub'
+    Publish-LaneSignal (Join-Path $stub 'waiting')
+    Wait-LanePath (Join-Path $stub 'retry') 30 | Out-Null
+}
+'@
+    Set-Content (Join-Path $root 'scripts/lane-observation.ps1') @'
+param([string]$Label)
+. (Join-Path $PSScriptRoot 'test-lanes.common.ps1')
+. (Join-Path $PSScriptRoot 'LanePool.Common.ps1')
+$stub = Join-Path (Split-Path $PSScriptRoot -Parent) 'stub'
+if (-not [string]::IsNullOrWhiteSpace($env:AHKFLOW_TEST_LANES_ROOT)) {
+    $held = (Get-AhkFlowHeldLaneCount $env:AHKFLOW_TEST_LANES_ROOT) - 1
+    $line = "$Label held=$held holder=$env:AHKFLOW_TEST_LANES_HOLDER"
+    Add-Content (Join-Path $stub 'lanes.txt') $line
+    if (Test-Path (Join-Path $stub 'gated')) {
+        Publish-LaneSignal (Join-Path $stub "$Label.ready") $line
+        Wait-LanePath (Join-Path $stub "$Label.release") 30 | Out-Null
+    }
+}
+'@
 
     Set-Content -LiteralPath (Join-Path $root 'scripts\test-sql-container.common.ps1') -Encoding utf8 -Value @'
 # Fake. tests/MeasureTestModes.Tests.ps1 covers the harness's orchestration, not the container
@@ -114,12 +143,15 @@ Add-Content -LiteralPath (Join-Path $stubFolder 'signals.txt') `
     -Value ("{0} owner={1} conn={2}" -f $args[0], $owner, $env:AHKFLOW_TEST_SQL_CONNECTION_STRING)
 
 if ($args[0] -eq 'build') {
+    & (Join-Path $repoRoot 'scripts/lane-observation.ps1') 'build'
+    if (Test-Path (Join-Path $stubFolder 'fail-build')) { exit 1 }
     Write-Output 'stub dotnet build'
     exit 0
 }
 
 # Which test run is this? The soak cases name a run number in a marker file.
 $run = @(Get-Content -LiteralPath $callsPath | Where-Object { $_ -like 'test *' }).Count
+& (Join-Path $repoRoot 'scripts/lane-observation.ps1') "soak-$run"
 
 $resultsDirectory = $null
 $logFileName = 'stub.trx'
@@ -175,6 +207,14 @@ Add-Content -LiteralPath $callsPath -Value "Mode=$Mode NoBuild=$NoBuild"
 $owner = Test-Path -LiteralPath (Join-Path $repoRoot '.test-run.lock.owner')
 Add-Content -LiteralPath (Join-Path $stubFolder 'signals.txt') -Value "test-fast owner=$owner"
 
+# Gated Lane cases also exercise the delegated checkout reacquisition.
+$delegateLock = $null
+try {
+if (Test-Path (Join-Path $stubFolder 'gated')) {
+    . (Join-Path $PSScriptRoot 'test-run-lock.common.ps1')
+    $delegateLock = Enter-AhkFlowTestRunLock -RepoRoot $repoRoot -Mode $Mode
+}
+
 # Runs of different lengths, so the reported-median case sees a median and a mean that differ.
 # 1st longest, 3rd middle. Sorted they are 0.10 / 0.30 / 0.90 s: median 0.30 s, mean 0.43 s.
 #
@@ -183,6 +223,8 @@ Add-Content -LiteralPath (Join-Path $stubFolder 'signals.txt') -Value "test-fast
 # a fixed 0.05 s margin, which a slow run could close by accident. The fixed-value case above
 # owns that comparison now, where the numbers are constants and nothing can move them.
 $run = @(Get-Content -LiteralPath $callsPath).Count
+& (Join-Path $repoRoot 'scripts/lane-observation.ps1') "fast-$run"
+if (Test-Path (Join-Path $stubFolder 'fail-fast')) { throw 'Forced timed invocation failure.' }
 
 # The sleeps this fixture uses, in milliseconds, one per run. A case writes 'sleeps.txt' to
 # choose them, which is how the warm-up cases get a slow head and a flat tail. The fallback is
@@ -196,6 +238,9 @@ else {
 }
 $sleep = $sleeps[($run - 1) % $sleeps.Count]
 Start-Sleep -Milliseconds $sleep
+} finally {
+    if ($null -ne $delegateLock) { Exit-AhkFlowTestRunLock -Handle $delegateLock }
+}
 '@
 
     return $root
@@ -218,6 +263,9 @@ function Invoke-Harness {
     # .ps1 by its bare name and passes arguments as an array, so the ';' inside the --logger
     # value survives; a .cmd shim would split it.
     $previousPath = $env:PATH
+    $previousHolder = $env:AHKFLOW_TEST_LANES_HOLDER
+    if ([string]::IsNullOrWhiteSpace($env:AHKFLOW_TEST_LANES_ROOT) -and
+        [string]::IsNullOrWhiteSpace($previousHolder)) { $env:AHKFLOW_TEST_LANES_HOLDER = "$PID" }
     $env:PATH = (Join-Path $Root 'stub') + [System.IO.Path]::PathSeparator + $previousPath
     try {
         $output = & $hostExe -NoProfile -File (Join-Path $Root 'scripts\measure-test-modes.ps1') @Arguments 2>&1 | Out-String
@@ -225,6 +273,7 @@ function Invoke-Harness {
     }
     finally {
         $env:PATH = $previousPath
+        $env:AHKFLOW_TEST_LANES_HOLDER = $previousHolder
     }
 }
 
@@ -652,6 +701,8 @@ Invoke-TestCase 'The connection-string variable is restored in the process that 
         # whatever the harness does - the child's environment was never the parent's.
         $previousPath = $env:PATH
         $previousConn = $env:AHKFLOW_TEST_SQL_CONNECTION_STRING
+        $previousHolder = $env:AHKFLOW_TEST_LANES_HOLDER
+        $env:AHKFLOW_TEST_LANES_HOLDER = "$PID"
         $env:PATH = (Join-Path $root 'stub') + [System.IO.Path]::PathSeparator + $previousPath
         $env:AHKFLOW_TEST_SQL_CONNECTION_STRING = 'sentinel-value'
         try {
@@ -668,6 +719,7 @@ Invoke-TestCase 'The connection-string variable is restored in the process that 
         finally {
             $env:PATH = $previousPath
             $env:AHKFLOW_TEST_SQL_CONNECTION_STRING = $previousConn
+            $env:AHKFLOW_TEST_LANES_HOLDER = $previousHolder
         }
     }
     finally { Remove-HarnessFixture -Root $root }
@@ -708,6 +760,136 @@ Invoke-TestCase 'Soak mode holds the lock for every repetition' {
             "Soak mode calls dotnet test directly, so it holds the lock throughout. Signals: $($signals -join ' | ')"
     }
     finally { Remove-HarnessFixture -Root $root }
+}
+
+foreach ($scenario in @(
+    @{ Name = 'Timing'; Arguments = @('-Runs', '2', '-WarmUpRuns', '1', '-SettleSeconds', '0'); Calls = @('build', 'fast-1', 'fast-2', 'fast-3'); Held = 4 },
+    @{ Name = 'Soak'; Arguments = @('-Soak', 'tests/FakeProject', '-Runs', '3'); Calls = @('build', 'soak-1', 'soak-2', 'soak-3'); Held = 2 }
+)) {
+    Invoke-TestCase "$($scenario.Name) waits before work and holds its share across every call" {
+        $root = New-HarnessFixture
+        $pool = New-PinnedLanePool 4
+        $child = $null; $blocker = $null
+        try {
+            Use-LaneEnvironment -Value @{ AHKFLOW_TEST_LANES_ROOT = $pool.Root } -Body {
+                $previousPath = $env:PATH
+                try {
+                    $env:PATH = (Join-Path $root 'stub') + [IO.Path]::PathSeparator + $previousPath
+                    Set-Content (Join-Path $root 'stub/gated') 'yes'
+                    Set-Content (Join-Path $root 'stub/sleeps.txt') '0'
+                    # Leave only lane 0 free so both shares collect it then wait.
+                    $blocker = @(1..3 | ForEach-Object { Open-AhkFlowLaneFile (Join-Path $pool.Root "lane-$_.lock") })
+                    $child = Start-LaneChildProcess (@('-NoProfile', '-File', (Join-Path $root 'scripts/measure-test-modes.ps1')) + $scenario.Arguments)
+                    [void](Wait-LanePath (Join-Path $root 'stub/waiting') 10 $child)
+                    Assert-True (-not (Test-Path (Join-Path $root 'stub/signals.txt'))) 'No build or timed work may start before admission.'
+                    Assert-True (-not (Test-Path (Join-Path $root 'TestResults/measure-test-modes'))) 'Measurement artifacts must start after admission.'
+                    $blocker.Dispose(); $blocker = $null
+                    Publish-LaneSignal (Join-Path $root 'stub/retry')
+                    foreach ($call in $scenario.Calls) {
+                        $line = Wait-LanePath (Join-Path $root "stub/$call.ready") 10 $child
+                        Assert-True ($line.Trim() -eq "$call held=$($scenario.Held) holder=$($child.Process.Id)") "Unexpected Lane observation: $line"
+                        Assert-True ((Get-RunLaneCount $pool) -eq $scenario.Held) 'Reservation must remain live while the call is gated.'
+                        Assert-True (Test-AhkFlowLaneFileHeld (Join-Path $root '.test-run.lock')) 'Build, delegated Fast, and soak must each hold the checkout lock.'
+                        Publish-LaneSignal (Join-Path $root "stub/$call.release")
+                    }
+                    $result = Wait-LaneChildProcess $child 10
+                    Assert-True ($result.ExitCode -eq 0) "Harness failed: $($result.Error)"
+                    Assert-True ((Get-RunLaneCount $pool) -eq 0) 'Completion must release every Lane.'
+                } finally {
+                    Stop-LaneChildProcess $child; $child = $null
+                    if ($null -ne $blocker) { $blocker.Dispose(); $blocker = $null }
+                    $env:PATH = $previousPath
+                }
+            }
+        } finally { Stop-LaneChildProcess $child; if ($null -ne $blocker) { $blocker.Dispose() }; Remove-PinnedLanePool $pool; Remove-HarnessFixture $root }
+    }
+}
+
+foreach ($soak in @($false, $true)) {
+    Invoke-TestCase "Nested harness preserves its marker without adding Lanes (soak=$soak)" {
+        $root = New-HarnessFixture; $pool = New-PinnedLanePool 4; $held = $null
+        try {
+            $held = Enter-AhkFlowLanes $pool.Root Half 4
+            Use-LaneEnvironment -Value @{ AHKFLOW_TEST_LANES_ROOT = $pool.Root; AHKFLOW_TEST_LANES_HOLDER = 'inherited-owner' } -Body {
+                $arguments = if ($soak) { @{ Soak = 'tests/FakeProject'; Runs = 2 } } else { @{ Runs = 2; WarmUpRuns = 1; SettleSeconds = 0 } }
+                $previousPath = $env:PATH
+                try {
+                    $env:PATH = (Join-Path $root 'stub') + [IO.Path]::PathSeparator + $previousPath
+                    & (Join-Path $root 'scripts/measure-test-modes.ps1') @arguments | Out-Null
+                    Assert-True ($env:AHKFLOW_TEST_LANES_HOLDER -eq 'inherited-owner') 'Nested exit must preserve the marker in its own host.'
+                } finally { $env:PATH = $previousPath }
+                $lines = @(Get-Content (Join-Path $root 'stub/lanes.txt'))
+                Assert-True ($lines.Count -eq $(if ($soak) { 3 } else { 4 })) 'Observe build and every delegated call.'
+                foreach ($line in $lines) { Assert-True ($line -match 'held=2 holder=inherited-owner$') "Nested reservation changed: $line" }
+                Assert-True ((Get-RunLaneCount $pool) -eq 2) 'Nested completion must preserve the parent reservation.'
+            }
+        } finally { Exit-AhkFlowLanes $held; Remove-PinnedLanePool $pool; Remove-HarnessFixture $root }
+    }
+}
+
+foreach ($failure in @('fail-build', 'fail-fast', 'fail-run.txt', 'none')) {
+    Invoke-TestCase "Same-host $failure restores its marker and releases its Lanes and checkout" {
+        $root = New-HarnessFixture; $pool = New-PinnedLanePool 4
+        try {
+            Use-LaneEnvironment -Value @{ AHKFLOW_TEST_LANES_ROOT = $pool.Root; AHKFLOW_TEST_LANES_HOLDER = '  ' } -Body {
+                $previousPath = $env:PATH
+                try {
+                    $env:PATH = (Join-Path $root 'stub') + [IO.Path]::PathSeparator + $previousPath
+                    if ($failure -ne 'none') { Set-Content (Join-Path $root "stub/$failure") '1' }
+                    Set-Content (Join-Path $root 'stub/sleeps.txt') '0'
+                    $arguments = if ($failure -eq 'fail-run.txt') { @{ Soak = 'tests/FakeProject'; Runs = 2 } } else { @{ Runs = 1; WarmUpRuns = 0; SettleSeconds = 0 } }
+                    $threw = $false
+                    try { & (Join-Path $root 'scripts/measure-test-modes.ps1') @arguments | Out-Null } catch { $threw = $true }
+                    Assert-True ($threw -eq ($failure -ne 'none')) 'Expected invocation outcome differed.'
+                    $lines = @(Get-Content (Join-Path $root 'stub/lanes.txt'))
+                    $expected = if ($failure -eq 'fail-run.txt') { 2 } else { 4 }
+                    foreach ($line in $lines) { Assert-True ($line -match "held=$expected holder=$PID$") "Reservation missing before failure: $line" }
+                    Assert-True ($env:AHKFLOW_TEST_LANES_HOLDER -eq '  ') 'Restore the exact previous marker in the same host.'
+                    Assert-True ((Get-RunLaneCount $pool) -eq 0) 'Release Lanes after invocation.'
+                    Assert-True (@(Get-ChildItem (Join-Path $pool.Root 'runs') -File).Count -eq 0) 'Completion must remove its advisory record.'
+                    Assert-True (-not (Test-AhkFlowLaneFileHeld (Join-Path $root '.test-run.lock'))) 'Release checkout after invocation.'
+                    $fresh = Enter-AhkFlowLaneRun Fresh $root Whole
+                    try { Assert-True ($fresh.Lanes.Streams.Count -eq 4) 'Same host must acquire again.' } finally { Exit-AhkFlowLaneRun $fresh }
+                } finally { $env:PATH = $previousPath }
+            }
+        } finally { Remove-PinnedLanePool $pool; Remove-HarnessFixture $root }
+    }
+}
+
+Invoke-TestCase 'Cancelled admission cleans up in a surviving runspace before any work starts' {
+    $root = New-HarnessFixture; $pool = New-PinnedLanePool 4; $blocker = $null; $worker = $null
+    try {
+        Use-LaneEnvironment -Value @{ AHKFLOW_TEST_LANES_ROOT = $pool.Root; AHKFLOW_TEST_LANES_HOLDER = '  ' } -Body {
+            try {
+                $blocker = Open-AhkFlowLaneFile (Join-Path $pool.Root 'lane-1.lock')
+                $worker = [PowerShell]::Create().AddScript({ param($Root); & (Join-Path $Root 'scripts/measure-test-modes.ps1') -Runs 1 -NoBuild -WarmUpRuns 0 -SettleSeconds 0 }).AddArgument($root)
+                $async = $worker.BeginInvoke()
+                [void](Wait-LanePath (Join-Path $root 'stub/waiting') 10)
+                Assert-True ((Get-RunLaneCount $pool) -eq 4) 'Cancellation must interrupt three acquired Lanes plus the blocker.'
+                Assert-True (-not (Test-Path (Join-Path $root 'stub/signals.txt'))) 'Admission must precede timed calls.'
+                $stop = $worker.BeginStop($null, $null)
+                Assert-True ($stop.AsyncWaitHandle.WaitOne(10000)) 'Cancellation must settle.'
+                $worker.EndStop($stop)
+                try { [void]$worker.EndInvoke($async) } catch [Management.Automation.PipelineStoppedException] { }
+                Assert-True ($env:AHKFLOW_TEST_LANES_HOLDER -eq '  ') 'Cancelled entry must restore its marker.'
+                Assert-True ((Get-RunLaneCount $pool) -eq 1) 'Cancellation must release the partial share.'
+                Assert-True (@(Get-ChildItem (Join-Path $pool.Root 'runs') -File).Count -eq 0) 'Cancellation must remove its advisory record.'
+                Assert-True (-not (Test-AhkFlowLaneFileHeld (Join-Path $pool.Root 'entry.lock'))) 'Cancellation must release admission lock.'
+                Assert-True (-not (Test-AhkFlowLaneFileHeld (Join-Path $root '.test-run.lock'))) 'Cancellation must leave checkout available.'
+                $blocker.Dispose(); $blocker = $null
+                $worker.Commands.Clear()
+                [void]$worker.AddScript({ param($Module, $Root); . $Module; $state = Enter-AhkFlowLaneRun Fresh $Root Whole; try { $state.Lanes.Streams.Count } finally { Exit-AhkFlowLaneRun $state } }).AddArgument((Join-Path $repoRoot 'scripts/test-lanes.common.ps1')).AddArgument($root)
+                $fresh = $worker.BeginInvoke()
+                Assert-True ($fresh.AsyncWaitHandle.WaitOne(10000)) 'Surviving runspace must acquire again.'
+                $result = $worker.EndInvoke($fresh)
+                Assert-True ($result[0] -eq 4) 'Surviving runspace must acquire Whole.'
+                Assert-True ($env:AHKFLOW_TEST_LANES_HOLDER -eq '  ') 'Fresh invocation must restore marker.'
+            } finally {
+                if ($null -ne $worker) { $worker.Stop(); $worker.Dispose(); $worker = $null }
+                if ($null -ne $blocker) { $blocker.Dispose(); $blocker = $null }
+            }
+        }
+    } finally { Remove-PinnedLanePool $pool; Remove-HarnessFixture $root }
 }
 
 if ($script:Failures.Count -gt 0) {
