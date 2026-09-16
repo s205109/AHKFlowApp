@@ -345,6 +345,38 @@ Invoke-TestCase 'The coverage tooling list is exactly the eleven files the slice
         "The coverage tooling list does not match what the entry points dot-source. Derived: $($derivedSet -join ', ')"
 }
 
+Invoke-TestCase 'The docs describing coverage-tooling state the same count as the file' {
+    # backlog 152's review found the count drifted to "seven" and "eight" in these two files
+    # while the YAML above already held eleven entries. Nothing had caught it, because the test
+    # above checks the actual set, never the prose describing it. This closes that gap: change
+    # the count above and one of the two files below without updating the other, and this fails.
+    $path = Get-AhkFlowCodePathFilterPath -RepoRoot $repoRoot
+    $tooling = @(Read-AhkFlowCoverageToolingPath -FilterPath $path)
+
+    # Spelled out, because both docs spell it out. Add an entry here before trusting this test if
+    # the list ever grows past what this maps - an unmapped count must fail loudly, not silently
+    # skip the check below.
+    $numberWord = @{
+        6 = 'six'; 7 = 'seven'; 8 = 'eight'; 9 = 'nine'; 10 = 'ten'
+        11 = 'eleven'; 12 = 'twelve'; 13 = 'thirteen'; 14 = 'fourteen'; 15 = 'fifteen'
+    }
+    Assert-True ($numberWord.ContainsKey($tooling.Count)) `
+        "No spelled-out word mapped for $($tooling.Count) coverage-tooling entries. Add one to `$numberWord in this test."
+    $word = $numberWord[$tooling.Count]
+
+    $filterModule = Get-Content -LiteralPath (Join-Path $repoRoot 'scripts\code-change-filter.common.ps1') -Raw
+    Assert-True ($filterModule -match "coverage-tooling key names $word scripts") `
+        "scripts/code-change-filter.common.ps1 must say '$word scripts', to match the $($tooling.Count) entries in .github/code-paths-filter.yml."
+    Assert-True ($filterModule -match "stricter than CI on $word paths") `
+        "scripts/code-change-filter.common.ps1 must say 'stricter than CI on $word paths'."
+
+    $testingWorkflow = Get-Content -LiteralPath (Join-Path $repoRoot 'docs\development\testing-workflow.md') -Raw
+    Assert-True ($testingWorkflow -match "lists $word scripts under") `
+        "docs/development/testing-workflow.md must say 'lists $word scripts under coverage-tooling'."
+    Assert-True ($testingWorkflow -match "those $word paths this Gate is stricter than") `
+        "docs/development/testing-workflow.md must say 'those $word paths this Gate is stricter than'."
+}
+
 # A throwaway script holding the dot-source lines a case wants Get-DotSourcedScriptName to read.
 # It never runs; only its text is parsed.
 function New-DotSourceFixture {
