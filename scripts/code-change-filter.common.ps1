@@ -16,10 +16,10 @@
   dorny/paths-filter. One file, two readers, applying the same exclusions to the same diff.
 
   The answer is CoverageRequired, not CodeChanged, and the difference is real. The file's
-  coverage-tooling key names seven scripts the local coverage run executes. Changing one of
+  coverage-tooling key names eleven scripts the local coverage run executes. Changing one of
   them compiles nothing and still requires the slice, because the slice is the only local
   check that runs them. CI does not read that key and does not need to: it never runs those
-  scripts. So this module can be stricter than CI on seven paths, and never looser anywhere.
+  scripts. So this module can be stricter than CI on eleven paths, and never looser anywhere.
 
   The list is a deny-list. A changed path that matches no pattern requires coverage and the
   slice runs. A pattern nobody wrote costs a few minutes; an allow-list with a hole would cost

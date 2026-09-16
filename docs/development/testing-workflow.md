@@ -54,7 +54,7 @@ Renames count as two paths. Moving `src/Foo.cs` to `docs/Foo.md` still runs the 
 build lost a file. Matching is case-sensitive: `scripts/Thing.PS1` is not `scripts/Thing.ps1`, and
 `README.MD` is not `README.md`. Only lowercase `.md` is excluded.
 
-The same file lists eight scripts under `coverage-tooling`. Changing one of those runs the slice
+The same file lists eleven scripts under `coverage-tooling`. Changing one of those runs the slice
 even though the patterns above exclude it, because the coverage step is the only local check that
 runs `run-coverage.ps1` and what it loads.
 
@@ -64,7 +64,7 @@ check itself cannot decide, it says so and runs the slice.
 
 `ci.yml` reads the `code` patterns from that same file, so the two cannot drift apart. CI ignores
 `coverage-tooling`, and that is correct rather than a gap: CI never runs `run-coverage.ps1`. Its
-coverage steps are plain `dotnet test` calls. So on those eight paths this Gate is stricter than
+coverage steps are plain `dotnet test` calls. So on those eleven paths this Gate is stricter than
 CI, and never looser.
 
 Then verify the change actually works — see **Verification After Implementation** in [`AGENTS.md`](../../AGENTS.md). A green gate proves nothing regressed; it does not prove the new behavior happened.
@@ -372,13 +372,14 @@ request.
 pwsh .\scripts\test-fast.ps1 -Mode Coverage
 ```
 
-Coverage mode delegates to `scripts/run-coverage.ps1`. Run it before you mark a PR ready; CI enforces the same coverage + threshold gate on every pull request with at least one changed path that `.github/code-paths-filter.yml` does not exclude. The pre-push hook itself only runs quick checks (incremental build + fast slice, see `scripts/pre-push-quick-checks.ps1`), not this full coverage path. The local coverage script prepares the same shared SQL container Integration mode uses, and leaves it running when the run ends, for the SQL-backed suites. `-FreshSql` is not available in Coverage mode. Coverage mode skips itself when the branch changed no compiled file — see the Gate section above for the condition and the `-Force` switch. `run-coverage.ps1` makes no such check: calling it directly always runs the full slice.
+Coverage mode delegates to `scripts/run-coverage.ps1`. Run it before you mark a PR ready; CI enforces the same coverage + threshold gate on every pull request with at least one changed path that `.github/code-paths-filter.yml` does not exclude. The pre-push hook itself only runs quick checks (an incremental build + the fast slice, and only when the branch changed a path `.github/code-paths-filter.yml` does not exclude — see `scripts/pre-push-quick-checks.ps1`), not this full coverage path. The local coverage script prepares the same shared SQL container Integration mode uses, and leaves it running when the run ends, for the SQL-backed suites. `-FreshSql` is not available in Coverage mode. Coverage mode skips itself when the branch changed no compiled file — see the Gate section above for the condition and the `-Force` switch. `run-coverage.ps1` makes no such check: calling it directly always runs the full slice.
 
 ### One test run at a time
 
 `test-fast.ps1` and `run-coverage.ps1` share one exclusive lock file, `.test-run.lock`, at the
 repository root. The second of those two scripts to start fails immediately and names the
-first run's mode and process id. This includes the pre-push hook, which runs the Fast slice.
+first run's mode and process id. This includes the pre-push hook, when it runs the Fast slice —
+it skips the slice, and takes no lock, on a branch with no Code change.
 
 The lock only covers those two scripts. A `dotnet test` or `dotnet build` you type yourself,
 and a build started from an IDE, take no lock and can still collide with a run in progress.
