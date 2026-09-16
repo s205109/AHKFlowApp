@@ -223,6 +223,14 @@ try {
     # timeout, on every push - even though a Code change makes the build run regardless of which
     # base was used. Reusing $mergeBase can only see the same changed paths as origin/main would,
     # or more on a stacked branch, so it can only turn a skip into a build, never the other way.
+    #
+    # The answer read here is CoverageRequired, which is deliberately not the raw 'code' filter
+    # result. Get-AhkFlowCoverageDecision sets it for every coverage-tooling path in
+    # .github/code-paths-filter.yml, even though the 'code' patterns exclude those paths. So on
+    # those eleven scripts this hook builds and runs the fast slice while CI skips its .NET steps.
+    # That is the intended direction: one decision, stricter here than CI, never looser. Pinned by
+    # 'A coverage-tooling change still builds and runs the fast tests' in
+    # tests/PrePushQuickChecks.Tests.ps1.
     $decision = $null
     try {
         $decision = Get-AhkFlowCoverageDecision -RepoRoot $repoRoot -BaseRef ([string] $mergeBase).Trim()
@@ -236,7 +244,7 @@ try {
         Write-AhkFlowCoverageSkipReport -Decision $decision `
             -Headline 'Build and fast tests skipped' `
             -Detail 'Every changed file matched an exclusion, so the .NET checks cannot fail on this branch.' `
-            -Hint 'The Gate runs the build and the tests before a pull request goes ready.'
+            -Hint 'They run again as soon as this branch changes a path the filter does not exclude. CI skips its .NET steps on this branch too.'
     }
     else {
         Write-Step "Building solution ($Configuration)"

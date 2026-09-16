@@ -152,6 +152,12 @@ Invoke-TestCase 'A branch with no Code change skips the build and the fast tests
             "The skip must be reported. Output: $($result.Output)"
         Assert-True ($result.Output -match 'tests/powershell-suites\.json\s+excluded by tests/\*\.json') `
             "The report must name each file and the pattern that excluded it. Output: $($result.Output)"
+        # CI skips its .NET steps on this branch too, so a hint that points at the Gate would send
+        # the reader to a check that also skips. The hint must say what makes the checks run again.
+        Assert-True ($result.Output -match 'run again as soon as this branch changes a path the filter does not exclude') `
+            "The hint must say what makes the checks run again, not point at a gate that also skips. Output: $($result.Output)"
+        Assert-True ($result.Output -notmatch 'before a pull request goes ready') `
+            "The hint must not promise the Gate runs the build on this branch. Output: $($result.Output)"
     }
     finally { Remove-Fixture -Root $root }
 }
@@ -180,8 +186,29 @@ Invoke-TestCase 'A decision that cannot be made builds and runs the fast tests' 
 
         $result = Invoke-QuickChecks -Root $root
         Assert-True $result.BuildRan "A broken decision must fall back to building. Output: $($result.Output)"
+        Assert-True $result.FastRan "A broken decision must fall back to the fast slice too. Output: $($result.Output)"
         Assert-True ($result.Output -match 'code-paths-filter') `
             "It must name what it could not read. Output: $($result.Output)"
+    }
+    finally { Remove-Fixture -Root $root }
+}
+
+Invoke-TestCase 'A coverage-tooling change still builds and runs the fast tests' {
+    # scripts/run-coverage.ps1 is a .ps1 under scripts/, so the 'code' patterns exclude it, and
+    # CI skips its .NET steps for such a branch. The shared decision still sets CoverageRequired,
+    # because the coverage slice is the only local check that runs that script. The hook reads
+    # that one decision, so it is stricter than CI on these eleven paths, and never looser. This
+    # case pins that exception, which a check against the raw 'code' exclusions would break.
+    $root = New-HookFixture
+    try {
+        Add-FixtureFile -Root $root -RelativePath 'scripts/run-coverage.ps1' -Content '# changed'
+        Save-Fixture -Root $root -Message 'coverage tooling only'
+
+        $result = Invoke-QuickChecks -Root $root
+        Assert-True $result.BuildRan "The build must run for a coverage-tooling change. Output: $($result.Output)"
+        Assert-True $result.FastRan "The fast slice must run for a coverage-tooling change. Output: $($result.Output)"
+        Assert-True ($result.Output -notmatch 'Build and fast tests skipped') `
+            "It must not report a skip. Output: $($result.Output)"
     }
     finally { Remove-Fixture -Root $root }
 }
@@ -193,8 +220,19 @@ Invoke-TestCase 'The hook script reads the shared filter module and holds no sec
         'pre-push-quick-checks.ps1 must dot-source the shared filter module.'
     Assert-True ($text -match 'Get-AhkFlowCoverageDecision') `
         'It must ask the shared decision, not judge the diff itself.'
-    Assert-True ($text -notmatch "'!\*\*/\*\.md'") `
-        'It must not keep a second copy of the patterns. One source of truth, or the push and CI can disagree.'
+
+    # The whole pattern set, read from the filter file itself, not one hand-written spelling. A
+    # second list written with double quotes, or holding only the newly added patterns, would pass
+    # a single literal check and still let the push and CI disagree.
+    . (Join-Path $repoRoot 'scripts/code-change-filter.common.ps1')
+    $filterPath = Get-AhkFlowCodePathFilterPath -RepoRoot $repoRoot
+    $patterns = Read-AhkFlowCodePathExclusion -FilterPath $filterPath
+    Assert-True ($patterns.Count -gt 0) 'The filter file must list at least one code exclusion.'
+
+    foreach ($pattern in $patterns) {
+        Assert-True (-not $text.Contains($pattern)) `
+            "It must not keep a second copy of the patterns. One source of truth, or the push and CI can disagree. Found '$pattern' in pre-push-quick-checks.ps1."
+    }
 }
 
 Invoke-TestCase 'The push reuses the merge base it already computed and never calls gh for a base ref' {

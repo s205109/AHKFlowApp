@@ -1,6 +1,6 @@
 # Local testing workflow
 
-Use the fastest test slice that still covers the code you changed. The pre-push hook runs an incremental build plus the fast slice automatically; run the full coverage gate yourself before you mark a PR **ready** (CI enforces it on every PR with at least one changed path that `.github/code-paths-filter.yml` does not exclude).
+Use the fastest test slice that still covers the code you changed. The pre-push hook runs an incremental build plus the fast slice automatically, and skips both when the branch changed no path outside `.github/code-paths-filter.yml`; run the full coverage gate yourself before you mark a PR **ready** (CI enforces it on every PR with at least one changed path that `.github/code-paths-filter.yml` does not exclude).
 
 This file is the single source for which tests to run and when. Other docs link here rather than restating commands.
 
@@ -86,6 +86,11 @@ pre-push hook is a faster subset (incremental build + fast slice,
 
 On a branch with no Code change the hook skips both and prints the same report the coverage slice
 prints. The record checks always run.
+
+The hook reads the same decision the coverage slice reads, so the `coverage-tooling` exception
+applies to it too. A branch that changed only one of those eleven scripts still builds and runs
+the fast slice locally, while CI skips its .NET steps. That is the intended direction: the hook is
+stricter than CI on those paths, and never looser.
 
 ## Fast inner loop
 
@@ -372,7 +377,7 @@ request.
 pwsh .\scripts\test-fast.ps1 -Mode Coverage
 ```
 
-Coverage mode delegates to `scripts/run-coverage.ps1`. Run it before you mark a PR ready; CI enforces the same coverage + threshold gate on every pull request with at least one changed path that `.github/code-paths-filter.yml` does not exclude. The pre-push hook itself only runs quick checks (an incremental build + the fast slice, and only when the branch changed a path `.github/code-paths-filter.yml` does not exclude — see `scripts/pre-push-quick-checks.ps1`), not this full coverage path. The local coverage script prepares the same shared SQL container Integration mode uses, and leaves it running when the run ends, for the SQL-backed suites. `-FreshSql` is not available in Coverage mode. Coverage mode skips itself when the branch changed no compiled file — see the Gate section above for the condition and the `-Force` switch. `run-coverage.ps1` makes no such check: calling it directly always runs the full slice.
+Coverage mode delegates to `scripts/run-coverage.ps1`. Run it before you mark a PR ready; CI enforces the same coverage + threshold gate on every pull request with at least one changed path that `.github/code-paths-filter.yml` does not exclude. The pre-push hook itself only runs quick checks (an incremental build + the fast slice, and only when the branch changed a path `.github/code-paths-filter.yml` does not exclude, or one of the eleven scripts under its `coverage-tooling` key — see `scripts/pre-push-quick-checks.ps1`), not this full coverage path. The local coverage script prepares the same shared SQL container Integration mode uses, and leaves it running when the run ends, for the SQL-backed suites. `-FreshSql` is not available in Coverage mode. Coverage mode skips itself when the branch changed no compiled file — see the Gate section above for the condition and the `-Force` switch. `run-coverage.ps1` makes no such check: calling it directly always runs the full slice.
 
 ### One test run at a time
 
