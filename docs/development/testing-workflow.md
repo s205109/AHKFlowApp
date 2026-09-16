@@ -40,8 +40,9 @@ git diff --check "$(gh pr view --json baseRefName -q .baseRefName)...HEAD"
 **The coverage slice skips itself when it cannot measure anything.** Run the same command either
 way. `-Mode Coverage` compares your branch against its base and skips when **every** changed file
 matches one of the patterns in [`.github/code-paths-filter.yml`](../../.github/code-paths-filter.yml):
-lowercase `.md` anywhere, anything under `docs/` or `.claude/`, any `.ps1` under `scripts/`, and
-any `.ps1` directly in `tests/`. One file outside that list and the slice runs in full.
+lowercase `.md` anywhere, anything under `docs/`, `.claude/`, `.githooks/`, `.agents/`,
+`.github/skills/`, `plugins/` or `.codex/`, any `.ps1` under `scripts/`, any `.ps1` or `.json`
+directly in `tests/`, and any `.toml` file. One file outside that list and the slice runs in full.
 
 The list is a deny-list, so read it that way round: the slice runs for any path nobody excluded,
 not only for a path the build compiles. A `.cs` file and a `.csproj` run it, and so do

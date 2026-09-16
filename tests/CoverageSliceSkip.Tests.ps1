@@ -94,6 +94,34 @@ Invoke-TestCase 'Each supported pattern shape matches the right paths' {
     }
 }
 
+Invoke-TestCase 'The seven tooling exclusions match the paths they were written for' {
+    $exclusion = Read-AhkFlowCodePathExclusion -FilterPath (Get-AhkFlowCodePathFilterPath -RepoRoot $repoRoot)
+
+    # One row per new entry. The pattern is asserted, not only the fact of a match, so a future
+    # widening of one entry cannot silently take over another entry's job.
+    $expected = @{
+        'tests/powershell-suites.json'                 = 'tests/*.json'
+        '.githooks/pre-push'                           = '.githooks/**'
+        '.githooks/pre-push.ps1'                       = '.githooks/**'
+        '.agents/mp-grilling/agents/openai.yaml'       = '.agents/**'
+        '.github/skills/dck-ef-core'                   = '.github/skills/**'
+        'plugins/ahkflowapp/.codex-plugin/plugin.json' = 'plugins/**'
+        '.codex/hooks.json'                            = '.codex/**'
+        '.pr_agent.toml'                               = '**/*.toml'
+    }
+
+    foreach ($path in $expected.Keys) {
+        $match = Get-AhkFlowPathExclusionMatch -Path $path -Exclusion $exclusion
+        Assert-True ($match -ceq $expected[$path]) `
+            "'$path' must be excluded by '$($expected[$path])'. Got '$match'."
+    }
+
+    # One level only. A .json file inside a compiled test project is a build input.
+    $match = Get-AhkFlowPathExclusionMatch -Path 'tests/AHKFlowApp.E2E.Tests/xunit.runner.json' -Exclusion $exclusion
+    Assert-True ($null -eq $match) `
+        "A .json file inside a test project must count as code. Pattern '$match' excluded it."
+}
+
 Invoke-TestCase 'Under .github, only a lowercase .md file is excluded' {
     # The list carries no '.github/**' pattern, so every file there counts as code - except one
     # ending in lowercase '.md', which '**/*.md' excludes wherever it sits. That split is
@@ -529,6 +557,36 @@ Invoke-TestCase 'A branch of docs, backlog, and PowerShell changes is not a code
         $decision = Get-AhkFlowCoverageDecision -RepoRoot $root -BaseRef 'main'
         Assert-True (-not $decision.CoverageRequired) "Expected no code change. Changed: $($decision.ChangedPath -join ', ')"
         Assert-True ($decision.ChangedPath.Count -eq 5) "Expected 5 changed paths, got $($decision.ChangedPath.Count)."
+    }
+    finally { Remove-Fixture -Root $root }
+}
+
+Invoke-TestCase 'A branch of only tooling files is not a code change' {
+    $root = New-DiffFixture
+    try {
+        Add-FixtureFile -Root $root -RelativePath 'tests/powershell-suites.json'
+        Add-FixtureFile -Root $root -RelativePath '.githooks/pre-push.ps1'
+        Add-FixtureFile -Root $root -RelativePath '.agents/mp-grilling/agents/openai.yaml'
+        Add-FixtureFile -Root $root -RelativePath 'plugins/ahkflowapp/.codex-plugin/plugin.json'
+        Add-FixtureFile -Root $root -RelativePath '.codex/hooks.json'
+        Add-FixtureFile -Root $root -RelativePath '.pr_agent.toml'
+        Save-Fixture -Root $root -Message 'tooling only'
+
+        $decision = Get-AhkFlowCoverageDecision -RepoRoot $root -BaseRef 'main'
+        Assert-True (-not $decision.CoverageRequired) `
+            "Expected no code change. Changed: $($decision.ChangedPath -join ', ')"
+    }
+    finally { Remove-Fixture -Root $root }
+}
+
+Invoke-TestCase 'A workflow change is still a code change' {
+    $root = New-DiffFixture
+    try {
+        Add-FixtureFile -Root $root -RelativePath '.github/workflows/ci.yml'
+        Save-Fixture -Root $root -Message 'workflow only'
+
+        $decision = Get-AhkFlowCoverageDecision -RepoRoot $root -BaseRef 'main'
+        Assert-True $decision.CoverageRequired 'A change to the pipeline must run the pipeline.'
     }
     finally { Remove-Fixture -Root $root }
 }
