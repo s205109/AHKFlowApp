@@ -103,9 +103,25 @@ foreach ($iteration in 1..$(if ($p.Repeat) { 2 } else { 1 })) {
             }
             $result = Wait-LaneChildProcess $handles.Child 15
             Assert-True ($result.ExitCode -eq 0) ($result.Output + $result.Error)
-            foreach ($line in Get-Content (Join-Path $Root 'stub/lane-audit.jsonl')) {
-                $audit = $line | ConvertFrom-Json
+            $audits = @(Get-Content (Join-Path $Root 'stub/lane-audit.jsonl') | ForEach-Object { $_ | ConvertFrom-Json })
+            foreach ($audit in $audits) {
                 Assert-True ($audit.Count -eq 2 -and $audit.Holder -ceq $expected) "Every phase must retain Half and its holder: $($audit.Command)."
+            }
+            if ($ScriptName -eq 'run-coverage.ps1' -or ($Arguments.ContainsKey('Mode') -and $Arguments.Mode -eq 'Coverage')) {
+                $thresholdCommand = 'python ' + (Join-Path $Root 'scripts/ci/check-coverage-thresholds.py')
+                $phases = [ordered]@{
+                    restore = '^dotnet restore(?: |$)'
+                    build = '^dotnet build(?: |$)'
+                    report = '^reportgenerator(?: |$)'
+                    footer = '^' + [regex]::Escape($thresholdCommand + ' --github-summary-footer') + '$'
+                    threshold = '^' + [regex]::Escape($thresholdCommand) + '$'
+                }
+                foreach ($phase in $phases.Keys) {
+                    $rows = @($audits | Where-Object { $_.Command -match $phases[$phase] })
+                    Assert-True ($rows.Count -eq 1) "Coverage must execute the $phase phase exactly once; found $($rows.Count) audit rows."
+                }
+                $tests = @($audits | Where-Object { $_.Command -match '^dotnet test(?: |$)' })
+                Assert-True ($tests.Count -eq $Calls) "Coverage must execute all $Calls project test phases; found $($tests.Count) audit rows."
             }
             $after = Wait-LanePath (Join-Path $Root "stub/after-$(if ($Repeat) { 2 } else { 1 })") 2 $handles.Child
             $expectedAfter = if ($Nested) { 'holder=existing-holder' } else { 'holder=  ' }
