@@ -1,5 +1,11 @@
 # 067 - Make the powershell-suites CI check required and runnable from test-fast
 
+<!-- citation-check:ignore-file -->
+<!-- This item shipped, so its code citations are a record of the tree as it was, not a claim
+     about the tree as it is. Backlog 152's review found two had already gone stale from a
+     later branch's edits to scripts/pre-push-quick-checks.ps1; freezing stops that from
+     recurring on every future edit to that file. -->
+
 ## Metadata
 
 - **Epic**: Agent tooling
