@@ -217,9 +217,15 @@ try {
     #
     # A decision that cannot be made is never a skip. That is the rule test-fast.ps1 follows in
     # Coverage mode.
+    #
+    # -BaseRef reuses the merge base already resolved above. Without it, Resolve-AhkFlowGateBaseRef
+    # (scripts/code-change-filter.common.ps1) makes its own 'gh pr view' network call, with no
+    # timeout, on every push - even though a Code change makes the build run regardless of which
+    # base was used. Reusing $mergeBase can only see the same changed paths as origin/main would,
+    # or more on a stacked branch, so it can only turn a skip into a build, never the other way.
     $decision = $null
     try {
-        $decision = Get-AhkFlowCoverageDecision -RepoRoot $repoRoot
+        $decision = Get-AhkFlowCoverageDecision -RepoRoot $repoRoot -BaseRef ([string] $mergeBase).Trim()
     }
     catch {
         Write-Warn 'Cannot decide whether this branch changed code, so the build and the fast tests will run.'

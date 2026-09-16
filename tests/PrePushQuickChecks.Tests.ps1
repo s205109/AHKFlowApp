@@ -197,6 +197,37 @@ Invoke-TestCase 'The hook script reads the shared filter module and holds no sec
         'It must not keep a second copy of the patterns. One source of truth, or the push and CI can disagree.'
 }
 
+Invoke-TestCase 'The push reuses the merge base it already computed and never calls gh for a base ref' {
+    $root = New-HookFixture
+    try {
+        & git -C $root remote add origin 'https://example.invalid/fake.git' *> $null
+
+        Add-FixtureFile -Root $root -RelativePath 'src/Backend/AHKFlowApp.Domain/Hotstring.cs'
+        Save-Fixture -Root $root -Message 'one cs file'
+
+        $bin = New-FakeDotnet -Root $root
+        $ghMarker = Join-Path $root 'gh-called.marker'
+        Set-Content -LiteralPath (Join-Path $bin 'gh.cmd') -Encoding ascii -Value @"
+@echo off
+echo called > "$ghMarker"
+exit /b 1
+"@
+
+        $previousPath = $env:PATH
+        $env:PATH = "$bin;$previousPath"
+        try {
+            $output = & $script:HostExe -NoProfile -File (Join-Path $root 'scripts/pre-push-quick-checks.ps1') 2>&1 | Out-String
+            $code = $LASTEXITCODE
+        }
+        finally { $env:PATH = $previousPath }
+
+        Assert-True ($code -eq 0) "Expected exit code 0, got $code. Output: $output"
+        Assert-True (-not (Test-Path -LiteralPath $ghMarker)) `
+            "The push must not call gh when it already knows the merge base. Output: $output"
+    }
+    finally { Remove-Fixture -Root $root }
+}
+
 Write-Host ''
 if ($script:Failures.Count -gt 0) {
     Write-Host "FAILED: $($script:Failures.Count) test(s)" -ForegroundColor Red
