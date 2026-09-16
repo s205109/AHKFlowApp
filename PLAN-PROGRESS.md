@@ -13,8 +13,8 @@ Draft proof PR: https://github.com/s205109/AHKFlowApp/pull/415
 | 4 Advisory records | Complete | `707ac3e2`, fix `41b7b220` | Windows and Linux: all 34 cases passed; independent re-review approved all fixes. |
 | 5 Suite admission | Complete | `1b57d01e`, test fix `369434c9` | Four requested groups pass; real two-checkout cap and four mutations proved. |
 | 6 .NET reservations | Complete | `bb282e1c`, test fix `55926ca2` | Seven Windows groups pass; gated Fast and Coverage routes hold Half. |
-| 7 Timing and soak | In progress | Pending | Adding Whole and Half reservations around measurement sessions. |
-| 8 Documentation | Gated | Pending | Requires measured implementation contract. |
+| 7 Timing and soak | Complete | `72806457`, test fix `d966f0e7` | Whole timing and Half soak pass; handoff continuity mutation fails. |
+| 8 Documentation | In progress | Pending | Describing the verified reservation contract and repairing owned citations. |
 
 ## Decisions
 
@@ -211,3 +211,17 @@ Review then found that recorded Coverage phases were checked without requiring t
 The fix requires each phase, and deleting the threshold call now fails direct and delegated route tests.
 CoverageRunnerProgress passed 15 cases and TestFastDotnetProgress passed 13 after the fix.
 Independent re-review closed the finding. Full Gate and Linux portable-suite runs remain pending.
+
+## Task 7 verification
+
+Deliverable: `72806457`; review fix: `d966f0e7`.
+Timing holds Whole across build, warm-up, counted calls, and its checkout-lock handoff.
+Soak holds Half across build and all three repetitions. Nested sessions add no Lanes.
+Forced contention starts no measured call before admission.
+Build, invocation, and cancellation failures release records and handles in a surviving host.
+The final Windows runs passed 34 MeasureTestModes cases and 34 LanePool cases.
+Changing timing Whole to Half failed five cases.
+Review found the first test did not observe continuity at the exact checkout handoff.
+A new gate and competing Lane acquirer now cover that interval.
+A temporary exit/re-enter mutation fails while the parent hands checkout to Fast.
+Independent re-review closed the finding. Full Gate, portable Linux runs, and two-checkout measurements remain pending.
