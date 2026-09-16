@@ -103,6 +103,22 @@ if (-not [string]::IsNullOrWhiteSpace($env:AHKFLOW_TEST_LANES_ROOT)) {
 }
 '@
 
+    # Pause the copied harness at the parent-to-delegate boundary. Production has no test gate.
+    Set-Content (Join-Path $root 'scripts/checkout-handoff.ps1') @'
+. (Join-Path $PSScriptRoot 'LanePool.Common.ps1')
+$stub = Join-Path (Split-Path $PSScriptRoot -Parent) 'stub'
+if (Test-Path (Join-Path $stub 'handoff-enabled')) {
+    Publish-LaneSignal (Join-Path $stub 'handoff.ready') $env:AHKFLOW_TEST_LANES_HOLDER
+    Wait-LanePath (Join-Path $stub 'handoff.release') 30 | Out-Null
+}
+'@
+    $harnessPath = Join-Path $root 'scripts/measure-test-modes.ps1'
+    $harness = Get-Content -LiteralPath $harnessPath -Raw
+    $handoffPoint = '    # Timing mode, with the lock released above.'
+    Assert-True ($harness.Contains($handoffPoint)) 'Fixture must find the checkout handoff boundary.'
+    $handoffGate = '    & (Join-Path $PSScriptRoot ''checkout-handoff.ps1'')'
+    Set-Content -LiteralPath $harnessPath -Value ($harness.Replace($handoffPoint, "$handoffGate`n$handoffPoint"))
+
     Set-Content -LiteralPath (Join-Path $root 'scripts\test-sql-container.common.ps1') -Encoding utf8 -Value @'
 # Fake. tests/MeasureTestModes.Tests.ps1 covers the harness's orchestration, not the container
 # helper, and the real helper shells out to Docker. Each call appends one line, so a case can
@@ -803,6 +819,60 @@ foreach ($scenario in @(
             }
         } finally { Stop-LaneChildProcess $child; if ($null -ne $blocker) { $blocker.Dispose() }; Remove-PinnedLanePool $pool; Remove-HarnessFixture $root }
     }
+}
+
+Invoke-TestCase 'Whole blocks a competing acquirer through the parent checkout handoff' {
+    $root = New-HarnessFixture; $pool = New-PinnedLanePool 4
+    $child = $null; $contender = $null
+    try {
+        Use-LaneEnvironment -Value @{ AHKFLOW_TEST_LANES_ROOT = $pool.Root } -Body {
+            $previousPath = $env:PATH
+            try {
+                $env:PATH = (Join-Path $root 'stub') + [IO.Path]::PathSeparator + $previousPath
+                foreach ($marker in @('gated', 'handoff-enabled')) { Set-Content (Join-Path $root "stub/$marker") 'yes' }
+                Set-Content (Join-Path $root 'stub/sleeps.txt') '0'
+                $child = Start-LaneChildProcess @('-NoProfile', '-File', (Join-Path $root 'scripts/measure-test-modes.ps1'), '-Runs', '1', '-WarmUpRuns', '0', '-SettleSeconds', '0')
+                [void](Wait-LanePath (Join-Path $root 'stub/build.ready') 10 $child)
+                Assert-True ((Get-RunLaneCount $pool) -eq 4) 'Build must hold Whole before the handoff.'
+                Publish-LaneSignal (Join-Path $root 'stub/build.release')
+                $holder = Wait-LanePath (Join-Path $root 'stub/handoff.ready') 10 $child
+                Assert-True (-not (Test-AhkFlowLaneFileHeld (Join-Path $root '.test-run.lock'))) 'Parent must release checkout before the handoff gate.'
+
+                $signals = @{
+                    Acquired = Join-Path $pool.Root 'contender-acquired'
+                    Release = Join-Path $pool.Root 'contender-release'
+                    FailedAttempt = Join-Path $pool.Root 'contender-blocked'
+                }
+                $contender = Start-LaneHolder $pool.Root $signals Contender One 4
+                $deadline = [Diagnostics.Stopwatch]::StartNew()
+                while (-not (Test-Path "$($signals.FailedAttempt).done") -and -not (Test-Path "$($signals.Acquired).done")) {
+                    Assert-True (-not $contender.Process.HasExited) 'Contender exited before attempting admission.'
+                    Assert-True ($deadline.Elapsed.TotalSeconds -lt 10) 'Contender must acknowledge admission within its deadline.'
+                    Start-Sleep -Milliseconds 20
+                }
+                Assert-True (-not (Test-Path "$($signals.Acquired).done")) 'Competing acquirer entered while the parent was handing checkout to Fast.'
+                [void](Wait-LanePath $signals.FailedAttempt 10 $contender)
+                Assert-True ($holder.Trim() -eq "$($child.Process.Id)") 'Handoff must retain the parent marker.'
+                Assert-True ((Get-RunLaneCount $pool) -eq 4) 'Whole must remain held while the contender waits at the handoff.'
+
+                Publish-LaneSignal (Join-Path $root 'stub/handoff.release')
+                [void](Wait-LanePath (Join-Path $root 'stub/fast-1.ready') 10 $child)
+                Assert-True (Test-AhkFlowLaneFileHeld (Join-Path $root '.test-run.lock')) 'Fast must reacquire checkout while the contender waits.'
+                Assert-True ((Get-RunLaneCount $pool) -eq 4) 'Fast must inherit the same Whole reservation.'
+                Assert-True (-not (Test-Path "$($signals.Acquired).done")) 'Contender must stay blocked until the timing session finishes.'
+                Publish-LaneSignal (Join-Path $root 'stub/fast-1.release')
+                Assert-True ((Wait-LaneChildProcess $child 10).ExitCode -eq 0) 'Timing harness must complete normally.'
+                [void](Wait-LanePath $signals.Acquired 10 $contender)
+                Publish-LaneSignal $signals.Release
+                Assert-True ((Wait-LaneChildProcess $contender 10).ExitCode -eq 0) 'Contender must acquire after the outer reservation ends.'
+                Assert-True ((Get-RunLaneCount $pool) -eq 0) 'Both children must release their Lanes.'
+            } finally {
+                Stop-LaneChildProcess $child; $child = $null
+                Stop-LaneChildProcess $contender; $contender = $null
+                $env:PATH = $previousPath
+            }
+        }
+    } finally { Stop-LaneChildProcess $child; Stop-LaneChildProcess $contender; Remove-PinnedLanePool $pool; Remove-HarnessFixture $root }
 }
 
 foreach ($soak in @($false, $true)) {
