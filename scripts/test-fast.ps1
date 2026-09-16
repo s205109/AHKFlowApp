@@ -52,6 +52,7 @@ $sharedSqlScript = Join-Path $PSScriptRoot 'test-sql-container.common.ps1'
 . $sharedSqlScript
 . "$PSScriptRoot\Common.ps1"
 . "$PSScriptRoot\test-run-lock.common.ps1"
+. "$PSScriptRoot\test-lanes.common.ps1"
 . "$PSScriptRoot\code-change-filter.common.ps1"
 . "$PSScriptRoot\progress.common.ps1"
 . "$PSScriptRoot\test-results.common.ps1"
@@ -324,6 +325,7 @@ function Invoke-TestRun {
 
 $sharedSqlContainer = $null
 $testRunLock = $null
+$laneRun = $null
 $previousSharedSqlConnectionString = $env:AHKFLOW_TEST_SQL_CONNECTION_STRING
 
 Push-Location $repoRoot
@@ -392,6 +394,7 @@ try {
     }
 
     $testRunLock = Enter-AhkFlowTestRunLock -RepoRoot $repoRoot -Mode $Mode
+    $laneRun = Enter-AhkFlowLaneRun -Mode $Mode -Checkout $repoRoot -Share Half
 
     if ($Mode -eq 'Integration' -or $Mode -eq 'E2E') {
         Write-Step 'Preparing shared SQL test container'
@@ -466,6 +469,7 @@ finally {
     # verification the next run cannot repair, and cleanup when the worktree goes away.
     $env:AHKFLOW_TEST_SQL_CONNECTION_STRING = $previousSharedSqlConnectionString
 
+    Exit-AhkFlowLaneRun -State $laneRun
     Exit-AhkFlowTestRunLock -Handle $testRunLock
     Pop-Location
 }

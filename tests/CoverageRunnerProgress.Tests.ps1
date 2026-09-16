@@ -87,6 +87,8 @@ function New-CoverageFixture {
             'worktree-docker.common.ps1'
             'worktree-git.common.ps1'
             'test-run-lock.common.ps1'
+            'test-lanes.common.ps1'
+            'suite-worker-count.common.ps1'
             'coverage-inputs.common.ps1'
             'code-change-filter.common.ps1'
             'progress.common.ps1'
@@ -293,6 +295,10 @@ function Invoke-InFixture {
         [string[]] $Argument = @()
     )
 
+    $previousHolder = $env:AHKFLOW_TEST_LANES_HOLDER
+    if ([string]::IsNullOrWhiteSpace($env:AHKFLOW_TEST_LANES_ROOT) -and [string]::IsNullOrWhiteSpace($env:AHKFLOW_TEST_LANES_HOLDER)) {
+        $env:AHKFLOW_TEST_LANES_HOLDER = [string]$PID
+    }
     $previousPath = $env:PATH
     $env:PATH = (Join-Path $Root 'stub') + [System.IO.Path]::PathSeparator + $previousPath
     try {
@@ -302,6 +308,7 @@ function Invoke-InFixture {
     }
     finally {
         $env:PATH = $previousPath
+        $env:AHKFLOW_TEST_LANES_HOLDER = $previousHolder
     }
 }
 
@@ -571,6 +578,28 @@ Invoke-TestCase 'A solution with no coverage project fails before it restores' {
             "The run must fail before it builds. Calls: $($calls -join ' | ')"
     }
     finally { Remove-CoverageFixture -Root $root }
+}
+
+
+. (Join-Path $PSScriptRoot 'DotnetLane.Common.ps1')
+foreach ($route in @('direct', 'delegated')) {
+    foreach ($nested in @($false, $true)) {
+        Invoke-TestCase "Coverage Lane route: $route nested=$nested" {
+            $root = New-CoverageFixture
+            try {
+                $name = if ($route -eq 'direct') { 'run-coverage.ps1' } else { 'test-fast.ps1' }
+                $arguments = if ($route -eq 'direct') { @{} } else { @{ Mode = 'Coverage'; Force = $true } }
+                Test-DotnetLaneRoute -Root $root -ScriptName $name -Arguments $arguments -Calls 2 -Nested:$nested
+            } finally { Remove-CoverageFixture $root }
+        }
+    }
+}
+
+
+Invoke-TestCase 'Cancellation releases Lane and checkout ownership in a surviving host' {
+    $root = New-CoverageFixture
+    try { Test-DotnetLaneCancellation -Root $root -ScriptName 'run-coverage.ps1' }
+    finally { Remove-CoverageFixture $root }
 }
 
 if ($script:Failures.Count -gt 0) {

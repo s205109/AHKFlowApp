@@ -250,6 +250,41 @@ else {
     Write-Host '  SKIP  Windows PowerShell 5.1 case: powershell.exe is not on this machine.' -ForegroundColor Yellow
 }
 
+Invoke-TestCase 'PowerShell wrapper delegates per-Suite admission and preserves an existing holder' {
+    . (Join-Path $repoRoot 'scripts/test-lanes.common.ps1')
+    . (Join-Path $repoRoot 'tests/LanePool.Common.ps1')
+    foreach ($nested in @($false, $true)) {
+        $root = New-SuiteFixture
+        $pool = New-PinnedLanePool 4
+        $handles = @{ Child = $null; Held = $null }
+        $start = Join-Path $root ready
+        $release = Join-Path $root release
+        try {
+            $suites = [Collections.ArrayList]::new()
+            Add-LaneIntervalSuite $suites One $start $release (Join-Path $root finish)
+            Set-FixtureManifest $root
+            Use-LaneEnvironment -Value @{ AHKFLOW_TEST_LANES_ROOT = $pool.Root; AHKFLOW_TEST_LANES_HOLDER = $(if ($nested) { 'existing-holder' } else { '' }) } -Body {
+                if ($nested) { $handles.Held = Enter-AhkFlowLanes -PoolRoot $pool.Root -Share Half -Proposal 4 }
+                $handles.Child = Start-LaneChildProcess @('-NoProfile', '-File', $script:WrapperPath, '-Mode', 'PowerShell', '-SuiteRoot', $root)
+                [void](Wait-LanePath $start 15 $handles.Child)
+                Assert-True ((Get-RunLaneCount $pool) -eq $(if ($nested) { 2 } else { 1 })) 'The wrapper must add no Half reservation.'
+                $marker = (Get-Content "$start.holder" -Raw).Trim()
+                if ($nested) { Assert-True ($marker -ceq 'existing-holder') 'The wrapper must preserve the existing holder.' }
+                else { Assert-True ($marker -match '^\d+$' -and $marker -ne [string]$handles.Child.Process.Id) 'The delegated runner must own the marker.' }
+                Publish-LaneSignal $release
+                $result = Wait-LaneChildProcess $handles.Child 15
+                Assert-True ($result.ExitCode -eq 0) ($result.Output + $result.Error)
+            }
+        } finally {
+            Publish-LaneSignal $release
+            Stop-LaneChildProcess $handles.Child
+            Exit-AhkFlowLanes $handles.Held
+            Remove-PinnedLanePool $pool
+            Remove-SuiteFixture $root
+        }
+    }
+}
+
 Invoke-TestCase 'PowerShell wrapper forwards all Lane settings and restores fixture environment' {
     . (Join-Path $repoRoot 'scripts/test-lanes.common.ps1')
     . (Join-Path $repoRoot 'tests/LanePool.Common.ps1')

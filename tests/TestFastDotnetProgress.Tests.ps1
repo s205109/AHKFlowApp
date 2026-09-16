@@ -73,6 +73,8 @@ function New-WrapperFixture {
             'worktree-docker.common.ps1'
             'worktree-git.common.ps1'
             'test-run-lock.common.ps1'
+            'test-lanes.common.ps1'
+            'suite-worker-count.common.ps1'
             'code-change-filter.common.ps1'
             'progress.common.ps1'
             'test-results.common.ps1'
@@ -179,6 +181,10 @@ function Remove-WrapperFixture {
 function Invoke-FastMode {
     param([Parameter(Mandatory)][string] $Root)
 
+    $previousHolder = $env:AHKFLOW_TEST_LANES_HOLDER
+    if ([string]::IsNullOrWhiteSpace($env:AHKFLOW_TEST_LANES_ROOT) -and [string]::IsNullOrWhiteSpace($env:AHKFLOW_TEST_LANES_HOLDER)) {
+        $env:AHKFLOW_TEST_LANES_HOLDER = [string]$PID
+    }
     $previousPath = $env:PATH
     $env:PATH = (Join-Path $Root 'stub') + [System.IO.Path]::PathSeparator + $previousPath
     try {
@@ -187,6 +193,7 @@ function Invoke-FastMode {
     }
     finally {
         $env:PATH = $previousPath
+        $env:AHKFLOW_TEST_LANES_HOLDER = $previousHolder
     }
 }
 
@@ -229,6 +236,10 @@ Invoke-TestCase 'Fast mode passes all five assemblies to one dotnet call' {
 Invoke-TestCase 'Fast mode without -NoBuild builds the solution before it runs any test' {
     $root = New-WrapperFixture
     try {
+        $previousHolder = $env:AHKFLOW_TEST_LANES_HOLDER
+        if ([string]::IsNullOrWhiteSpace($env:AHKFLOW_TEST_LANES_ROOT) -and [string]::IsNullOrWhiteSpace($env:AHKFLOW_TEST_LANES_HOLDER)) {
+            $env:AHKFLOW_TEST_LANES_HOLDER = [string]$PID
+        }
         $previousPath = $env:PATH
         $env:PATH = (Join-Path $root 'stub') + [System.IO.Path]::PathSeparator + $previousPath
         $output = $null
@@ -236,7 +247,7 @@ Invoke-TestCase 'Fast mode without -NoBuild builds the solution before it runs a
             $output = & $hostExe -NoProfile -File (Join-Path $root 'scripts\test-fast.ps1') -Mode Fast 2>&1
             $exitCode = $LASTEXITCODE
         }
-        finally { $env:PATH = $previousPath }
+        finally { $env:PATH = $previousPath; $env:AHKFLOW_TEST_LANES_HOLDER = $previousHolder }
 
         # Discarding the exit code with Out-Null was the earlier shape of this case, and it made
         # the whole thing advisory: the script could fail outright and the call count would still
@@ -362,6 +373,21 @@ Invoke-TestCase 'Fast mode stops when one assembly in the combined run discovers
             "The failure must name the empty assembly. Output: $($result.Output)"
     }
     finally { Remove-WrapperFixture -Root $root }
+}
+
+. (Join-Path $PSScriptRoot 'DotnetLane.Common.ps1')
+foreach ($scenario in @('owner', 'nested', 'repeat')) {
+    Invoke-TestCase "Fast Lane route: $scenario" {
+        $root = New-WrapperFixture
+        try { Test-DotnetLaneRoute -Root $root -ScriptName 'test-fast.ps1' -Arguments @{ Mode = 'Fast' } -Nested:($scenario -eq 'nested') -Repeat:($scenario -eq 'repeat') }
+        finally { Remove-WrapperFixture $root }
+    }
+}
+
+Invoke-TestCase 'Cancellation releases Lane and checkout ownership in a surviving host' {
+    $root = New-WrapperFixture
+    try { Test-DotnetLaneCancellation -Root $root -ScriptName 'test-fast.ps1' }
+    finally { Remove-WrapperFixture $root }
 }
 
 if ($script:Failures.Count -gt 0) {

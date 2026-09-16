@@ -60,6 +60,8 @@ coverage-tooling:
   - 'scripts/Common.ps1'
   - 'scripts/coverage-inputs.common.ps1'
   - 'scripts/test-run-lock.common.ps1'
+  - 'scripts/test-lanes.common.ps1'
+  - 'scripts/suite-worker-count.common.ps1'
   - 'scripts/test-sql-container.common.ps1'
   - 'scripts/code-change-filter.common.ps1'
   - 'scripts/progress.common.ps1'

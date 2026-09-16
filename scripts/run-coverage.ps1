@@ -30,12 +30,15 @@ $sharedSqlScript = Join-Path $PSScriptRoot 'test-sql-container.common.ps1'
 . $sharedSqlScript
 . "$PSScriptRoot\Common.ps1"
 . "$PSScriptRoot\test-run-lock.common.ps1"
+. "$PSScriptRoot\test-lanes.common.ps1"
 . "$PSScriptRoot\coverage-inputs.common.ps1"
 . "$PSScriptRoot\progress.common.ps1"
 
+$laneRun = $null
 $testRunLock = Enter-AhkFlowTestRunLock -RepoRoot $repoRoot -Mode 'Coverage'
 Push-Location $repoRoot
 try {
+    $laneRun = Enter-AhkFlowLaneRun -Mode 'Coverage' -Checkout $repoRoot -Share Half
     if (-not (Get-Command reportgenerator -ErrorAction SilentlyContinue)) {
         throw "reportgenerator command not found. Install it with: dotnet tool install -g dotnet-reportgenerator-globaltool"
     }
@@ -172,5 +175,6 @@ Make sure no other test run is active, then run this script again.
 }
 finally {
     Pop-Location
+    Exit-AhkFlowLaneRun -State $laneRun
     Exit-AhkFlowTestRunLock -Handle $testRunLock
 }
