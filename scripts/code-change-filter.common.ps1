@@ -285,17 +285,24 @@ function Get-AhkFlowCoverageDecision {
 }
 
 function Write-AhkFlowCoverageSkipReport {
-    param([Parameter(Mandatory = $true)][object]$Decision)
+    param(
+        [Parameter(Mandatory = $true)][object]$Decision,
+        # The push skips the build and the fast tests, not the coverage slice. Same report, same
+        # evidence, different words. Defaults keep every existing caller unchanged.
+        [string]$Headline = 'Coverage slice skipped',
+        [string]$Detail = 'Every changed file matched an exclusion, so a coverage run would measure nothing new.',
+        [string]$Hint = 'Run the slice anyway with: -Force'
+    )
 
     Write-Host ''
-    Write-Host '==> Coverage slice skipped' -ForegroundColor Cyan
-    Write-Host "    Every changed file matched an exclusion, so a coverage run would measure nothing new."
+    Write-Host "==> $Headline" -ForegroundColor Cyan
+    Write-Host "    $Detail"
     Write-Host "    Base ref      : $($Decision.BaseRef)"
     Write-Host "    Changed files : $($Decision.ChangedPath.Count)"
     foreach ($path in $Decision.ChangedPath) {
         Write-Host ("      {0,-60} excluded by {1}" -f $path, $Decision.ExclusionByPath[$path])
     }
     Write-Host "    Patterns      : $($Decision.FilterPath) - ci.yml reads the same file."
-    Write-Host '    Run the slice anyway with: -Force'
+    Write-Host "    $Hint"
     Write-Host ''
 }

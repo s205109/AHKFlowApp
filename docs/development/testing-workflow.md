@@ -84,6 +84,9 @@ the .NET side of such a branch, which makes this local gate matter more there, n
 pre-push hook is a faster subset (incremental build + fast slice,
 `scripts/pre-push-quick-checks.ps1`), not this gate.
 
+On a branch with no Code change the hook skips both and prints the same report the coverage slice
+prints. The record checks always run.
+
 ## Fast inner loop
 
 ```bash
