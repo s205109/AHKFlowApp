@@ -6,7 +6,7 @@
 - **Type**: Process / CI
 - **Interfaces**: none (CI workflows, pre-push hook)
 - **Difficulty**: complex
-- **Stage**: 3-plan
+- **Stage**: 9-ship
 - **Depends on**: 078-ci-config-only-route
 
 ## Summary
@@ -24,13 +24,13 @@ the .NET build cannot see.
 
 ## Acceptance criteria
 
-- [ ] The 074 spec replaces the 078 spec. It extends the shared path filter instead of building
+- [x] The 074 spec replaces the 078 spec. It extends the shared path filter instead of building
       a new router. This item ships that design.
-- [ ] CI and the pre-push hook both skip the .NET build and tests when every changed path
+- [x] CI and the pre-push hook both skip the .NET build and tests when every changed path
       matches an exclusion.
-- [ ] Fixture tests prove each new exclusion, and prove both the skip and the run path of the
+- [x] Fixture tests prove each new exclusion, and prove both the skip and the run path of the
       pre-push hook.
-- [ ] A Check fails when `ci.yml` or the pre-push hook stops reading
+- [x] A Check fails when `ci.yml` or the pre-push hook stops reading
       `.github/code-paths-filter.yml`.
 
 ## Out of scope
@@ -62,5 +62,10 @@ the .NET build cannot see.
   - Criterion 3 said "the route". No router exists in this design.
   - Criterion 4 compared two allowlists. There is one filter file, so the Check proves that
     both callers read it.
+- Criterion 2's CI half was proven on 2026-09-16 by replaying picomatch 2.3.1 with `dot: true`,
+  which is the matcher `dorny/paths-filter` v4.0.1 uses, against the committed filter file. It
+  agreed with the PowerShell matcher on all thirteen paths. CI itself cannot prove the skip on
+  this branch, because the branch changes `.github/code-paths-filter.yml`, which counts as code.
+  Backlog 119 recorded the same limit.
 - Target: fewer runner minutes and less pre-push time on branches with no Code change. That is
   a direction, not a percentage: backlog 072 has no established baseline yet.
