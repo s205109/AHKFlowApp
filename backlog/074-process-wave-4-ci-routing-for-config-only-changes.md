@@ -6,7 +6,7 @@
 - **Type**: Process / CI
 - **Interfaces**: none (CI workflows, pre-push hook)
 - **Difficulty**: complex
-- **Stage**: 2-design
+- **Stage**: 3-plan
 - **Depends on**: 078-ci-config-only-route
 
 ## Summary
@@ -45,6 +45,7 @@ the .NET build cannot see.
 
 - Spec: `docs/superpowers/specs/2026-09-15-ci-config-only-route-design-074.md` (private plans
   repo). It replaces `docs/superpowers/specs/2026-08-14-ci-config-only-route-design.md`.
+- Plan: `docs/superpowers/plans/2026-09-16-ci-config-only-route-plan-074.md`
 - Spec carrier for the replaced design: `backlog/done/078-ci-config-only-route.md`, closed
   2026-08-14.
 - Parent spec: `docs/superpowers/specs/2026-08-10-development-process-design-071.md`
