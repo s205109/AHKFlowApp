@@ -12,8 +12,8 @@ Draft proof PR: https://github.com/s205109/AHKFlowApp/pull/415
 | 3 Pool and harness | Complete | e4c0cab1 | Windows and Linux: all 23 cases passed; independent source review approved. |
 | 4 Advisory records | Complete | `707ac3e2`, fix `41b7b220` | Windows and Linux: all 34 cases passed; independent re-review approved all fixes. |
 | 5 Suite admission | Complete | `1b57d01e`, test fix `369434c9` | Four requested groups pass; real two-checkout cap and four mutations proved. |
-| 6 .NET reservations | In progress | Pending | Adding Half reservations to Fast and Coverage entry points. |
-| 7 Timing and soak | Gated | Pending | Requires pool lifecycle. |
+| 6 .NET reservations | Complete | `bb282e1c`, test fix `55926ca2` | Seven Windows groups pass; gated Fast and Coverage routes hold Half. |
+| 7 Timing and soak | In progress | Pending | Adding Whole and Half reservations around measurement sessions. |
 | 8 Documentation | Gated | Pending | Requires measured implementation contract. |
 
 ## Decisions
@@ -197,3 +197,17 @@ The final Windows run passed 103 runner cases, 34 LanePool cases, 9 Linux-runner
 and 5 wrapper cases. It includes registration failure, cancellation ordering, and bounded child reaping.
 Independent re-review marked all four findings addressed and approved Task 5.
 Task 6 may now reserve Half for .NET routes. Final Gate and Linux portable-suite runs remain pending.
+
+## Task 6 verification
+
+Deliverable: `bb282e1c`; review fix: `55926ca2`.
+Fast, direct Coverage, and delegated Coverage each hold exactly two of four Lanes during gated work.
+Nested wrappers preserve their marker and add no reservation. A real checkout-lock contender remains refused.
+Two Fast calls in one surviving host each reserve Half and restore the exact marker between calls.
+Cancellation after a real failed Lane open releases both checkout and Lane handles; a fresh reservation then succeeds.
+The coverage-tooling filter names both new helpers, with thirteen exact entries and recursive graph checks.
+Seven requested Windows suites passed 115 cases. Four cleanup mutations failed.
+Review then found that recorded Coverage phases were checked without requiring the threshold phase.
+The fix requires each phase, and deleting the threshold call now fails direct and delegated route tests.
+CoverageRunnerProgress passed 15 cases and TestFastDotnetProgress passed 13 after the fix.
+Independent re-review closed the finding. Full Gate and Linux portable-suite runs remain pending.
