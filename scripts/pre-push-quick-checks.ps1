@@ -1,11 +1,21 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-  Fast fail-fast pre-push checks: incremental build + container-free unit tests.
+  Fast fail-fast pre-push checks: the record checks, plus an incremental build and container-free
+  unit tests when the branch changed code.
 .DESCRIPTION
-  Called by .githooks/pre-push.ps1. CI runs the full coverage + format gate on every PR with a
-  changed path that .github/code-paths-filter.yml does not exclude, so this script deliberately
-  skips coverage collection and testcontainers to stay fast.
+  Called by .githooks/pre-push.ps1. The record checks always run: they read files and git history
+  only, and they cost seconds.
+
+  The .NET checks run only on a Code change. This script asks
+  scripts/code-change-filter.common.ps1 for the same decision the Gate's coverage step reads. When
+  every changed path matches an exclusion in .github/code-paths-filter.yml, the build and the fast
+  test slice cannot fail, so both are skipped and the reason is printed. A decision that cannot be
+  made is never a skip: the checks run.
+
+  CI runs the full coverage + format gate on every PR with a changed path that
+  .github/code-paths-filter.yml does not exclude, so this script deliberately skips coverage
+  collection and testcontainers to stay fast.
 #>
 [CmdletBinding()]
 param(
@@ -30,6 +40,7 @@ $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 . "$PSScriptRoot\Common.ps1"
+. "$PSScriptRoot\code-change-filter.common.ps1"
 
 $skipHint = "CI runs the full coverage + format gate on this PR when a changed path is not excluded by .github/code-paths-filter.yml. Skip locally with: SKIP_PUSH_HOOK=1 git push  (or: git push --no-verify)"
 
@@ -200,24 +211,61 @@ try {
         Write-Success 'Every shipped plan carries a ticked step.'
     }
 
-    Write-Step "Building solution ($Configuration)"
-    & dotnet build --configuration $Configuration
-    if ($LASTEXITCODE -ne 0) {
-        throw "Build failed. $skipHint"
-    }
-    Write-Success 'Build succeeded.'
-
-    Write-Step 'Running fast test slice'
+    # The build and the fast slice can only fail on a Code change. With none, they cost about forty
+    # seconds and prove nothing. The answer comes from the same module the Gate's coverage step
+    # reads, so the push and the Gate never disagree about one branch.
+    #
+    # A decision that cannot be made is never a skip. That is the rule test-fast.ps1 follows in
+    # Coverage mode.
+    #
+    # -BaseRef reuses the merge base already resolved above. Without it, Resolve-AhkFlowGateBaseRef
+    # (scripts/code-change-filter.common.ps1) makes its own 'gh pr view' network call, with no
+    # timeout, on every push - even though a Code change makes the build run regardless of which
+    # base was used. Reusing $mergeBase can only see the same changed paths as origin/main would,
+    # or more on a stacked branch, so it can only turn a skip into a build, never the other way.
+    #
+    # The answer read here is CoverageRequired, which is deliberately not the raw 'code' filter
+    # result. Get-AhkFlowCoverageDecision sets it for every coverage-tooling path in
+    # .github/code-paths-filter.yml, even though the 'code' patterns exclude those paths. So on
+    # those eleven scripts this hook builds and runs the fast slice while CI skips its .NET steps.
+    # That is the intended direction: one decision, stricter here than CI, never looser. Pinned by
+    # 'A coverage-tooling change still builds and runs the fast tests' in
+    # tests/PrePushQuickChecks.Tests.ps1.
+    $decision = $null
     try {
-        & (Join-Path $PSScriptRoot 'test-fast.ps1') -Mode Fast -Configuration $Configuration -NoBuild
-        if ($LASTEXITCODE -ne 0) {
-            throw "Fast test slice failed."
-        }
+        $decision = Get-AhkFlowCoverageDecision -RepoRoot $repoRoot -BaseRef ([string] $mergeBase).Trim()
     }
     catch {
-        throw "Fast test slice failed. $skipHint"
+        Write-Warn 'Cannot decide whether this branch changed code, so the build and the fast tests will run.'
+        Write-Warn $_.Exception.Message
     }
-    Write-Success 'Fast test slice passed.'
+
+    if ($decision -and -not $decision.CoverageRequired) {
+        Write-AhkFlowCoverageSkipReport -Decision $decision `
+            -Headline 'Build and fast tests skipped' `
+            -Detail 'Every changed file matched an exclusion, so the .NET checks cannot fail on this branch.' `
+            -Hint 'They run again as soon as this branch changes a path the filter does not exclude. CI skips its .NET steps on this branch too.'
+    }
+    else {
+        Write-Step "Building solution ($Configuration)"
+        & dotnet build --configuration $Configuration
+        if ($LASTEXITCODE -ne 0) {
+            throw "Build failed. $skipHint"
+        }
+        Write-Success 'Build succeeded.'
+
+        Write-Step 'Running fast test slice'
+        try {
+            & (Join-Path $PSScriptRoot 'test-fast.ps1') -Mode Fast -Configuration $Configuration -NoBuild
+            if ($LASTEXITCODE -ne 0) {
+                throw "Fast test slice failed."
+            }
+        }
+        catch {
+            throw "Fast test slice failed. $skipHint"
+        }
+        Write-Success 'Fast test slice passed.'
+    }
 }
 finally {
     Pop-Location

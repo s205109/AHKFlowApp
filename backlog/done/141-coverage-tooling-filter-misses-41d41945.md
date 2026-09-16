@@ -22,9 +22,9 @@ coverage slice, so that a defect in one of them cannot reach a pull request unno
 ## Background
 
 The patterns above `coverage-tooling` exclude every `.ps1` file under `scripts/`
-(`.github/code-paths-filter.yml:33`, "- '!scripts/*.ps1'"). The `coverage-tooling` key is the
+(`.github/code-paths-filter.yml:49`, "- '!scripts/*.ps1'"). The `coverage-tooling` key is the
 exception list that pulls the coverage run's own scripts back in
-(`.github/code-paths-filter.yml:57`, "coverage-tooling:"). Its comment said the list was the entry
+(`.github/code-paths-filter.yml:80`, "coverage-tooling:"). Its comment said the list was the entry
 points plus everything `run-coverage.ps1` dot-sources. The fix rewrote that comment, so the line
 number moved from 47 to 55.
 
