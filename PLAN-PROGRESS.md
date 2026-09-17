@@ -252,3 +252,30 @@ shape, the revised worktree paragraph replaced its old sentence, and three targe
 
 Task 8 is complete. The five-step Gate, the full Windows PowerShell suite set, the three portable
 Linux suites, and the two-checkout measurement trials all remain pending.
+
+## Whole-suite and portable-suite verification
+
+Branch head at the time of these runs: `1678a4a6`.
+
+Windows, every registered suite. Command:
+`pwsh -NoProfile -File scripts/run-powershell-suites.ps1`.
+Result: all 70 suites passed, exit 0, 3 minutes 54 seconds elapsed with 6 Workers.
+The run printed `Lanes: shared pool; one per Suite`, so the owner path ran for real.
+No suite reported a failure, and no suite was dropped for its platform on this host.
+
+Docker Linux, the three portable suites. Image `mcr.microsoft.com/dotnet/sdk:10.0`,
+digest `sha256:2fa828c68761b1b8c23d7662dc134421b9d3b59fe1425fdbc80804e390cdb24d`.
+Host inside the container: PowerShell 7.6.6, .NET 10.0.12, Ubuntu 24.04.5 LTS,
+LocalApplicationData `/root/.local/share`. The checkout was mounted read-only at `/proof`.
+
+| Suite | Result |
+|---|---|
+| `LaneFileLockPrimitive.Tests.ps1` | PASS, exit 0; every contention case reported IOException 11 / 0x0000000B |
+| `SuiteWorkerCount.Tests.ps1` | PASS, exit 0; the 5.1 load check skipped, as expected off Windows |
+| `LanePool.Tests.ps1` | PASS, exit 0; all 34 cases |
+
+The primitive suite again separated contention from missing parent (DirectoryNotFoundException
+0x80070003), injected I/O (IOException 0x80131620), and access denied (UnauthorizedAccessException
+0x80070005). Explicit release, stdin EOF, and forced kill all freed both files.
+
+The five-step Gate and the two-checkout measurement trials remain pending.
