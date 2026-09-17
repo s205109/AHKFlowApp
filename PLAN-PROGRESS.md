@@ -279,3 +279,26 @@ The primitive suite again separated contention from missing parent (DirectoryNot
 0x80070005). Explicit release, stdin EOF, and forced kill all freed both files.
 
 The five-step Gate and the two-checkout measurement trials remain pending.
+
+## Five-step Gate
+
+Branch head at the time of this run: `bdc2b31e`. Base `main`, confirmed from pull request 415.
+
+| Step | Command | Result |
+|---|---|---|
+| 1 build | `dotnet build AHKFlowApp.slnx --configuration Release` | PASS in 22.2 s |
+| 2 format | `dotnet format AHKFlowApp.slnx --verify-no-changes` | PASS in 36.5 s |
+| 3 PowerShell | `pwsh -NoProfile -File ./scripts/test-fast.ps1 -Mode PowerShell` | PASS in 215.5 s |
+| 4 Coverage | `pwsh -NoProfile -File ./scripts/test-fast.ps1 -Mode Coverage` | PASS in 203.1 s |
+| 5 whitespace | `git diff --check main...HEAD` | PASS |
+
+The coverage slice ran in full rather than skipping itself. That is correct: the branch touches
+`scripts/test-fast.ps1` and `scripts/run-coverage.ps1`, which sit on the `coverage-tooling` list
+that overrides the path exclusions. It reported all per-assembly thresholds met, with line coverage
+94.6 percent and branch coverage 82.8 percent. No assembly was reported as incomplete input.
+
+Step 3 printed `Lanes: shared pool; one per Suite` and all 70 suites passed through the wrapper
+route. Step 4 printed no `Lanes:` status line, which matches the documented contract: only the
+PowerShell suite runner prints that status, while the Coverage route reserves Half silently.
+
+The two-checkout measurement trials are the only ledger item still open.
