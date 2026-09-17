@@ -30,21 +30,10 @@ Read both. Pick one. Write the choice and the reason into this item and into the
 
 ### Approach A - the pull request map
 
-Each item records, for every pull request the work will open, the tasks it ships and the
-acceptance criteria it closes. A Check proves the record exists and is complete. A person
-reads the record and decides whether to split.
-
-- **What it gives you.** A fan-out number. "One criterion needs seven tasks" is a signal a
-  reader can act on before Execute starts.
-- **What it costs.** A new document format, a new Check, and a rule in three files. The
-  record has to stay correct while the plan changes.
-- **Where the record must live.** In the backlog item, not the plan. A backlog item is public,
-  so a hosted CI run can read it. A plan lives in `docs/superpowers/`, a private repository
-  that CI never clones. Putting the record in the plan forces the Check to be local only.
-- **The weakness a review found.** A map makes a large batch visible. It does not make the
-  batch smaller. Splitting stays a human decision that nobody is required to take. Item 146
-  would have produced a map reading "one criterion, seven tasks", and the work would still
-  have run for four days.
+**Design deleted this branch.** Approach A is deferred, not rejected. Its description and the
+reason it lost are kept in
+[`docs/adr/0019-a-plan-declares-its-split-and-its-extension.md`](../docs/adr/0019-a-plan-declares-its-split-and-its-extension.md),
+under "Considered options". Nothing here needs it, and a future item can pick it up.
 
 ### Approach B - a size budget at Plan
 
@@ -61,8 +50,8 @@ sessions, the item is split into stacked items before Execute starts. A cheap Ch
   tasks or eight light ones.
 - **Why the threshold is worth setting anyway.** The repository already treats four or more
   independent tasks as the point where a `complex` item goes to subagent-driven execution
-  (`docs/development/workflow.md:423`, "subagent-driven when `complex` plus four or more
-  independent tasks"). That rule adds agents. It does not reduce work.
+  (`docs/development/workflow.md:423`, "plus four or more independent tasks"). That rule adds
+  agents. It does not reduce work.
 - **The weakness.** Nobody has read real task counts across several items yet. Setting the
   threshold at three is a guess until somebody does.
 
@@ -119,13 +108,13 @@ list, and writes into this item which branch it deleted.
       `workflow.md` section, in the same form the rule lines around it use.
 - [ ] A PowerShell suite reports a problem when the record the chosen approach requires is
       missing, for an item that needs one and stands at Stage `4-execute` or later.
-- [ ] **Approach A only.** The same suite reports a problem when the record omits a task the
-      plan defines, and when it omits an acceptance criterion the item defines.
-- [ ] **Approach B only.** The same suite reports a problem when a `complex` item at Stage
-      `4-execute` or later carries a plan with more tasks than the threshold, and when the
-      plan carries no session estimate.
-- [ ] The same suite reports no problem for an item whose Difficulty does not need the record,
-      and for an item that has not reached the stage that writes it.
+- [ ] The same suite reports a problem when a plan carries no session estimate, and when it
+      carries no line naming the task at which the user story closes.
+- [ ] The same suite reports a problem when a plan meets the split trigger and carries no split
+      verdict. The trigger is an estimate over two sessions, or fifteen or more test-run
+      commands in the plan.
+- [ ] The same suite reports no problem for an item whose plan pointer reads `- Plan: none`,
+      and for an item that has not reached the stage that writes the record.
 - [ ] The suite is listed in `tests/powershell-suites.json`, with a measured baseline and a
       platform array backed by a recorded run.
 - [ ] The plan for this item states its own estimate in work sessions, and that estimate is two
@@ -177,5 +166,7 @@ list, and writes into this item which branch it deleted.
   share one limit", and a .NET run is a local test run, so every task maps to it and no cell is
   empty. What the record gives a reader is the fan-out number: one criterion, seven tasks. The
   number is the signal, and a person reads it.
-- Spec: none yet - Design writes it, after the choice above is made.
+- Spec: `docs/superpowers/specs/2026-09-17-plan-size-record-design-157.md`
+- Design deleted the Approach A branch. The choice, the measurements behind it, and the three
+  new glossary terms are in the spec. The rejected alternatives are in ADR 0019.
 - Plan: none - filed at Intake. The Plan stage writes the path here.
