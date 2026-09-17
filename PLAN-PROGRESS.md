@@ -376,3 +376,21 @@ Fix `977a706c` sets all six places to thirteen. `CoverageSliceSkip.Tests.ps1` an
 
 The earlier Gate on `52812b8f` no longer stands as evidence. Main brought in real code changes,
 and the merged tree failed where the pre-merge tree passed.
+
+## CI on the merged head
+
+Run `35227805333` on `977a706c`. Every check passes: `build-test`, `Test Results`,
+`repo-invariants`, `powershell-suites`, `codex-skills-hash-parity`, `bicep-lint`, and
+`shipping-pr-closes-item`.
+
+The last acceptance criterion is now ticked, and not merely because the job went green.
+Three jobs each printed `Lanes: shared pool; one per Suite`, so each one owned the pool on its
+own fresh runner: `repo-invariants` on Linux with 4 Workers, `powershell-suites` on Windows with
+4 Workers, and `codex-skills-hash-parity` on Linux with 1 Worker capped to its single suite.
+
+No job printed a sharing line. Searching the whole run log for `Sharing the test Lane pool`
+returns zero matches. That is what "never waits" looks like: a fresh runner holds no Lanes, so
+no job had a peer to wait for.
+
+All seven acceptance criteria are ticked. The two-checkout measurement trials stay open, and the
+responsiveness claim stays unproven.

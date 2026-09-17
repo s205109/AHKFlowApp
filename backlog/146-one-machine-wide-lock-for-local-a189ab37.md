@@ -36,7 +36,7 @@ with the first, so that I do not have to remember to halve the worker count by h
       the other run's mode, process id, and checkout.
 - [x] A lock left behind by a killed run does not block or shrink the next run. The existing
       lock already promises this, and the machine-wide one keeps the promise.
-- [ ] A CI job takes the lock on a fresh runner and never waits.
+- [x] A CI job takes the lock on a fresh runner and never waits.
 - [x] A developer can opt out for a deliberate overlap, and the opt-out is documented in
       `docs/development/testing-workflow.md`.
 
