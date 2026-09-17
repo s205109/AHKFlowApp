@@ -14,7 +14,7 @@ Draft proof PR: https://github.com/s205109/AHKFlowApp/pull/415
 | 5 Suite admission | Complete | `1b57d01e`, test fix `369434c9` | Four requested groups pass; real two-checkout cap and four mutations proved. |
 | 6 .NET reservations | Complete | `bb282e1c`, test fix `55926ca2` | Seven Windows groups pass; gated Fast and Coverage routes hold Half. |
 | 7 Timing and soak | Complete | `72806457`, test fix `d966f0e7` | Whole timing and Half soak pass; handoff continuity mutation fails. |
-| 8 Documentation | In progress | Pending | Describing the verified reservation contract and repairing owned citations. |
+| 8 Documentation | Complete | docs commit below, private `09626be` | Guide and README describe the budget; all owned and shifted citations pass. |
 
 ## Decisions
 
@@ -225,3 +225,30 @@ Review found the first test did not observe continuity at the exact checkout han
 A new gate and competing Lane acquirer now cover that interval.
 A temporary exit/re-enter mutation fails while the parent hands checkout to Fast.
 Independent re-review closed the finding. Full Gate, portable Linux runs, and two-checkout measurements remain pending.
+
+## Task 8 verification
+
+Private deliverable: `09626be` in `docs/superpowers`.
+`docs/development/testing-workflow.md` now separates the checkout lock from the shared Lane budget.
+It carries the share table, the even and odd Half rule, the per-user pool location, the nested and
+wrapper marker rules, the fixed `Lanes:` status lines, the one sharing line, the genuine-contention
+wait rule, the storage-failure rule, and the `AHKFLOW_TEST_LANES` opt-out.
+It states that a reservation does not limit internal threads, MSBuild nodes, or memory.
+`scripts/README.md` carries the runner's required Suite sentence.
+The spec's scope list now names memory and says a reservation is a budget, not a resource equivalence.
+
+GateWording passed 21 cases. ProcessAnchors passed 10 cases. CitationFreshness passed.
+The repository-wide run first reported 19 stale citations, all caused by this branch's own line shifts
+in `scripts/test-fast.ps1`, `scripts/run-coverage.ps1`, `tests/CoverageRunnerProgress.Tests.ps1`, and
+`tests/CiPowerShellSuiteRunner.Tests.ps1`. Every one was retargeted to the line that still holds its
+quoted text, across `backlog/146`, `backlog/done/119`, `backlog/done/124`, `backlog/done/126`, and
+`backlog/done/141`. No quoted text was changed to make a citation pass.
+
+The targeted private checks ran from this worktree against private base `ba030fc7`.
+Both owned paths returned "every citation checks out". `git -C docs/superpowers diff --check` was clean.
+Six plan and spec citations needed judgment rather than a line shift, and were corrected by hand:
+the coverage-tooling count moved from eleven to thirteen, the parallel `Invoke-SuiteChild` call changed
+shape, the revised worktree paragraph replaced its old sentence, and three targets were ambiguous.
+
+Task 8 is complete. The five-step Gate, the full Windows PowerShell suite set, the three portable
+Linux suites, and the two-checkout measurement trials all remain pending.
