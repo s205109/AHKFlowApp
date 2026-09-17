@@ -64,7 +64,7 @@ check itself cannot decide, it says so and runs the slice.
 
 `ci.yml` reads the `code` patterns from that same file, so the two cannot drift apart. CI ignores
 `coverage-tooling`, and that is correct rather than a gap: CI never runs `run-coverage.ps1`. Its
-coverage steps are plain `dotnet test` calls. So on those eleven paths this Gate is stricter than
+coverage steps are plain `dotnet test` calls. So on those thirteen paths this Gate is stricter than
 CI, and never looser.
 
 Then verify the change actually works — see **Verification After Implementation** in [`AGENTS.md`](../../AGENTS.md). A green gate proves nothing regressed; it does not prove the new behavior happened.

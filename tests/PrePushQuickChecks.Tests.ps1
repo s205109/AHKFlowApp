@@ -197,7 +197,7 @@ Invoke-TestCase 'A coverage-tooling change still builds and runs the fast tests'
     # scripts/run-coverage.ps1 is a .ps1 under scripts/, so the 'code' patterns exclude it, and
     # CI skips its .NET steps for such a branch. The shared decision still sets CoverageRequired,
     # because the coverage slice is the only local check that runs that script. The hook reads
-    # that one decision, so it is stricter than CI on these eleven paths, and never looser. This
+    # that one decision, so it is stricter than CI on these thirteen paths, and never looser. This
     # case pins that exception, which a check against the raw 'code' exclusions would break.
     $root = New-HookFixture
     try {
