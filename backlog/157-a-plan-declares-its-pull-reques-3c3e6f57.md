@@ -6,7 +6,7 @@
 - **Type**: Process / CI
 - **Interfaces**: none (workflow documents, a new Check)
 - **Difficulty**: complex
-- **Stage**: 0-intake
+- **Stage**: 2-design
 
 ## Summary
 
@@ -70,6 +70,40 @@ sessions, the item is split into stacked items before Execute starts. A cheap Ch
 
 Take Approach B now and leave Approach A for later. The two do not conflict. If you do both
 at once, this item becomes the shape it is trying to prevent.
+
+## The choice made at pickup
+
+**Chosen: Approach B, a size budget at Plan. Approach A is deferred, not rejected.** This is
+the third option the section above describes: take B now, leave A for later.
+
+**Why.** A limit beats a report. Both reviews of the first version of this item said so, and
+the 146 evidence agrees. A map of that item would have read "one criterion, seven tasks", and
+the work would still have run for four days.
+
+**What pickup measured.** The section above says the threshold of three is a guess "until
+somebody does" read real task counts. Pickup read them, across all 209 committed plans in
+`docs/superpowers/plans/`:
+
+- Plans write `### Task N:`, not `## Task`. The Check that Approach B describes counts the
+  wrong heading level. It would read zero tasks for most plans and pass them all.
+- 168 of the 209 plans carry numbered tasks. The median is 6 tasks, p75 is 8, and p85 is 10.
+- A threshold of three would report a problem for 145 of those 168 plans, and for 18 of the
+  30 newest. A Check that fails the middle of the population is noise, not a limit.
+- Task count is a weak measure of size. Across the last 15 shipped items, task count matches
+  the item's commit volume at r = 0.40. Plan length does a little better at r = 0.50.
+- The two extremes prove the point the section above makes. Item 146 carries 8 tasks in 699
+  lines. Item 156 carries 3 tasks in 1254 lines. A three-task threshold would stop 146 and
+  wave 156 through, even though 156 is the larger plan by volume.
+
+**What Design must settle.** The direction is right. The mechanism in the section above is
+not. Design carries these three questions into the spec:
+
+1. The session estimate names the pain directly, because the pain is the cost of a cold
+   start. Design decides whether the estimate, not the task count, is what the Check requires.
+2. If the task count stays, it is a second and cheap trigger only, and its threshold comes
+   from the measured distribution above rather than from a guess.
+3. The Check counts `### Task N:` with a pattern that ignores heading level, so it reads the
+   plans this repository actually writes.
 
 ## Acceptance criteria
 
