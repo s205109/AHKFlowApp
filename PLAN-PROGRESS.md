@@ -332,3 +332,47 @@ The plan separates the two on purpose. Its measurement section asks for two disp
 of one commit against a pinned capacity-six pool, a baseline and a two-run trial each repeated
 once, with temporary interval instrumentation and a CPU and working-set sampler. Those trials
 have not run. The responsiveness claim stays open, and the pull request says so.
+
+## Merge with main, and the Gate re-run it forced
+
+Main moved 33 commits past this branch's base, and pull request 415 reported `CONFLICTING`.
+The merge is `47274a08`. One file conflicted: `docs/development/testing-workflow.md`, in the
+"One test run at a time" paragraph. Both sides rewrote it and each added a real fact. The
+resolution keeps both: our naming of the .NET modes and the Coverage delegation, and main's
+rule that the pre-push hook skips the Fast slice and takes no lock on a branch with no Code change.
+
+The merge moved 11 more cited lines. Seven repaired mechanically. Four were ambiguous, all in
+`.github/workflows/ci.yml`, where `shell: pwsh` and `runs-on: ubuntu-latest` appear in several
+jobs. Each was matched to the job its sentence describes: the Windows suite job at 160, and the
+Codex parity job at 167 and 174. Private deliverable `0b44f19`. All citation checks pass again.
+
+### A real defect the Gate re-run caught
+
+The first Gate on the merged tree FAILED. `CoverageSliceSkip.Tests.ps1` reported:
+`scripts/code-change-filter.common.ps1 must say 'thirteen scripts', to match the 13 entries in
+.github/code-paths-filter.yml.` CI failed the identical assertion, 1 of 72 suites.
+
+Main raised the coverage-tooling list from eight entries to eleven. This branch adds two Lane
+modules, so the merged list holds thirteen. The prose describing that count still said eleven.
+The first repair looked only inside `docs/development/testing-workflow.md` and fixed three
+sentences there. The count is stated in six places across four files, and the test pins four
+exact phrases, two of them in `scripts/code-change-filter.common.ps1`, which that repair never read.
+
+That test exists because the same drift happened before: its own comment records backlog 152's
+review finding the count at "seven" and "eight" while the list already held eleven.
+
+Fix `977a706c` sets all six places to thirteen. `CoverageSliceSkip.Tests.ps1` and
+`PrePushQuickChecks.Tests.ps1` both pass.
+
+### Gate on the merged tree, head `977a706c`
+
+| Step | Result |
+|---|---|
+| 1 build | PASS in 4.7 s |
+| 2 format | PASS in 43.9 s |
+| 3 PowerShell | PASS in 256.9 s, all 72 suites |
+| 4 Coverage | PASS in 193.0 s, thresholds met, line 94.6 percent, branch 82.8 percent |
+| 5 whitespace | PASS |
+
+The earlier Gate on `52812b8f` no longer stands as evidence. Main brought in real code changes,
+and the merged tree failed where the pre-merge tree passed.
