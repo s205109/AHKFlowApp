@@ -97,6 +97,7 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 . "$PSScriptRoot\test-sql-container.common.ps1"
 . "$PSScriptRoot\test-run-lock.common.ps1"
 . "$PSScriptRoot\test-results.common.ps1"
+. "$PSScriptRoot\test-lanes.common.ps1"
 
 # A failing 'dotnet test' must be counted, not thrown. PowerShell turns a non-zero exit code from
 # a native command into a terminating error while $ErrorActionPreference is 'Stop' and this
@@ -213,11 +214,17 @@ function Get-BuildCompletedAtUtc {
     return $newest.LastWriteTimeUtc
 }
 
+$laneState = $null
 Push-Location $repoRoot
 try {
     if ($isSoak -and -not (Test-Path -LiteralPath $Soak -PathType Container)) {
         throw "Test project folder not found: $Soak"
     }
+
+    # Reserve before build and timing. Keep this share across warm-ups and checkout releases.
+    $laneShare = if ($isSoak) { 'Half' } else { 'Whole' }
+    $laneMode = if ($isSoak) { "Soak:$Soak" } else { "Measure:$Mode" }
+    $laneState = Enter-AhkFlowLaneRun -Mode $laneMode -Checkout $repoRoot -Share $laneShare
 
     # The lock covers the build, not only the runs. A build that overlaps another session's
     # coverage instrumentation measures the overlap rather than the test suite, and the first
@@ -433,5 +440,6 @@ try {
     }
 }
 finally {
+    Exit-AhkFlowLaneRun -State $laneState
     Pop-Location
 }

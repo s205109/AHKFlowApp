@@ -227,7 +227,7 @@ try {
     # The answer read here is CoverageRequired, which is deliberately not the raw 'code' filter
     # result. Get-AhkFlowCoverageDecision sets it for every coverage-tooling path in
     # .github/code-paths-filter.yml, even though the 'code' patterns exclude those paths. So on
-    # those eleven scripts this hook builds and runs the fast slice while CI skips its .NET steps.
+    # those thirteen scripts this hook builds and runs the fast slice while CI skips its .NET steps.
     # That is the intended direction: one decision, stricter here than CI, never looser. Pinned by
     # 'A coverage-tooling change still builds and runs the fast tests' in
     # tests/PrePushQuickChecks.Tests.ps1.

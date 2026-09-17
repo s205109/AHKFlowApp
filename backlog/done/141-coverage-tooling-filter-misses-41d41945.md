@@ -29,7 +29,7 @@ points plus everything `run-coverage.ps1` dot-sources. The fix rewrote that comm
 number moved from 47 to 55.
 
 `scripts/test-fast.ps1` is one of those entry points, and it dot-sources
-`scripts/test-results.common.ps1` (`scripts/test-fast.ps1:57`, "$PSScriptRoot\test-results.common.ps1").
+`scripts/test-results.common.ps1` (`scripts/test-fast.ps1:58`, "$PSScriptRoot\test-results.common.ps1").
 That module is on no list, so editing it reads as a documentation change.
 
 Backlog 123 added the progress module and backlog 128 added the test-results module, and neither
