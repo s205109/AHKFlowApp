@@ -26,6 +26,22 @@
 #
 # scripts/ci/check-coverage-thresholds.py is not excluded. It is .py, so changing the coverage
 # gate still re-runs the coverage gate.
+#
+# tests/*.json is one level only, like tests/*.ps1 above it. tests/powershell-suites.json is the
+# suite manifest, which no .NET project reads. A .json file inside tests/AHKFlowApp.*.Tests/ is a
+# build input and still counts as code.
+#
+# .githooks, .agents, .github/skills, plugins and .codex are excluded by folder, not by file kind.
+# They hold git hooks, agent skills, skill links, the Codex plugin, and Codex hooks. None of it
+# reaches a .NET build. A compiled file placed in one of those folders would skip the .NET checks,
+# which is the price of a matcher with four shapes - see the 074 spec, section 4.1.
+#
+# **/*.toml matches .pr_agent.toml, the only TOML file in the repository. The powershell-suites job
+# checks that file itself, in tests/PrAgentConfiguration.Tests.ps1.
+#
+# .github/workflows/** is deliberately absent. ci.yml defines the .NET steps, so a workflow change
+# must run them. The filter cannot keep ci.yml as code while excluding its neighbours, so every
+# workflow file stays code. Same for .github/code-paths-filter.yml itself.
 code:
   - '!**/*.md'
   - '!docs/**'
@@ -33,6 +49,13 @@ code:
   - '!scripts/*.ps1'
   - '!scripts/**/*.ps1'
   - '!tests/*.ps1'
+  - '!tests/*.json'
+  - '!.githooks/**'
+  - '!.agents/**'
+  - '!.github/skills/**'
+  - '!plugins/**'
+  - '!.codex/**'
+  - '!**/*.toml'
 
 # Scripts the local coverage run itself executes. The Gate treats a change to any of these as a
 # code change even though the patterns above exclude it, because a defect in one of them makes
@@ -60,6 +83,8 @@ coverage-tooling:
   - 'scripts/Common.ps1'
   - 'scripts/coverage-inputs.common.ps1'
   - 'scripts/test-run-lock.common.ps1'
+  - 'scripts/test-lanes.common.ps1'
+  - 'scripts/suite-worker-count.common.ps1'
   - 'scripts/test-sql-container.common.ps1'
   - 'scripts/code-change-filter.common.ps1'
   - 'scripts/progress.common.ps1'

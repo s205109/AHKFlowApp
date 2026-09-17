@@ -225,6 +225,12 @@ _Avoid_: guard, gate, validator, linter
 The five steps that must all pass before a pull request is marked ready: build, format, PowerShell suites, coverage, and `git diff --check`.
 _Avoid_: check, guard, pipeline, CI
 
+**Code change**:
+A changed file that `.github/code-paths-filter.yml` does not exclude. A branch with no Code change
+skips the .NET build and tests in CI, and before a push. The local checks still run when the branch
+changes a script they use.
+_Avoid_: config-only change, short route, short gate, local gate
+
 **Suite**:
 One `tests/*.Tests.ps1` file. The runner starts each Suite as its own process and runs several at
 once, so one Suite's failure cannot stop another. `tests/powershell-suites.json` lists every Suite.
@@ -240,6 +246,22 @@ _Avoid_: suite, project, run, pass
 One named list of Slices that `scripts/test-fast.ps1` runs: Fast, Integration, E2E, Coverage, or
 PowerShell.
 _Avoid_: profile, preset, group, tier
+
+**Lane**:
+Room for one unit of test work, such as one Suite. A Lane belongs to one user on one machine, not
+to a run, so runs from every checkout of that user take their Lanes from the same Lane pool.
+_Avoid_: slot, token, share, worker
+
+**Lane pool**:
+The set of Lanes that every test run of one user on one machine takes from. Two runs at the same
+time share it, so together they never do more work at once than the pool allows. Its size changes
+only while no Lane is taken.
+_Avoid_: budget, semaphore, machine lock
+
+**Worker**:
+One of the places inside a single run of the Suite runner where a Suite can run. The worker count
+belongs to that run alone. A Worker still needs a free Lane before its Suite starts.
+_Avoid_: lane, thread, runspace, job
 
 **Collection**:
 The xUnit grouping that decides what may run at the same time. Two tests in one Collection never

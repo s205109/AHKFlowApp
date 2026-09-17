@@ -101,6 +101,10 @@ function Invoke-Runner {
     param([string] $SuiteRoot, [string[]] $ExtraArgument = @())
 
     $summaryPath = Join-Path ([System.IO.Path]::GetTempPath()) ('ahkflow-runnerlinux-summary-' + [guid]::NewGuid().ToString('N') + '.md')
+    $previousHolder = $env:AHKFLOW_TEST_LANES_HOLDER
+    if ([string]::IsNullOrWhiteSpace($env:AHKFLOW_TEST_LANES_ROOT) -and [string]::IsNullOrWhiteSpace($previousHolder)) {
+        $env:AHKFLOW_TEST_LANES_HOLDER = [string]$PID
+    }
     $previousSummary = $env:GITHUB_STEP_SUMMARY
     $env:GITHUB_STEP_SUMMARY = $summaryPath
 
@@ -115,6 +119,7 @@ function Invoke-Runner {
             ''
         }
     } finally {
+        $env:AHKFLOW_TEST_LANES_HOLDER = $previousHolder
         $env:GITHUB_STEP_SUMMARY = $previousSummary
         Remove-Item -LiteralPath $summaryPath -Force -ErrorAction SilentlyContinue
     }

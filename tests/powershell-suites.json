@@ -29,6 +29,7 @@
     { "name": "PrAgentConfiguration.Tests.ps1", "jobs": ["suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": null },
     { "name": "PreCommitAntiPatternHook.Tests.ps1", "jobs": ["suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 2.3 },
     { "name": "PrePushHook.Tests.ps1", "jobs": ["suites"], "platform": ["windows"], "execution": "parallel", "baselineSeconds": 9.9 },
+    { "name": "PrePushQuickChecks.Tests.ps1", "jobs": ["suites"], "platform": ["windows"], "execution": "parallel", "baselineSeconds": 9.7 },
     { "name": "ProcessAnchors.Tests.ps1", "jobs": ["suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 5.5 },
     { "name": "ProcessFriction.Tests.ps1", "jobs": ["suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 1.2 },
     { "name": "ProcessParity.Tests.ps1", "jobs": ["suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 13.2 },
@@ -68,6 +69,9 @@
     { "name": "WorktreeRemoveHook.Tests.ps1", "jobs": ["suites"], "platform": ["windows"], "execution": "parallel", "baselineSeconds": 39.5 },
     { "name": "WorktreeSpawnPruneOptOut.Tests.ps1", "jobs": ["invariants", "suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": null },
     { "name": "WorktreeSweepRemoteBase.Tests.ps1", "jobs": ["suites"], "platform": ["windows"], "execution": "parallel", "baselineSeconds": 45.2 },
-    { "name": "WorktreeWatcherWindow.Tests.ps1", "jobs": ["suites"], "platform": ["windows"], "execution": "parallel", "baselineSeconds": 2.3 }
+    { "name": "WorktreeWatcherWindow.Tests.ps1", "jobs": ["suites"], "platform": ["windows"], "execution": "parallel", "baselineSeconds": 2.3 },
+    { "name": "LaneFileLockPrimitive.Tests.ps1", "jobs": ["invariants", "suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 3.7 },
+    { "name": "SuiteWorkerCount.Tests.ps1", "jobs": ["suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 1.4 },
+    { "name": "LanePool.Tests.ps1", "jobs": ["suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 15.3 }
   ]
 }

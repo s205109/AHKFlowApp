@@ -1,5 +1,11 @@
 # 067 - Make the powershell-suites CI check required and runnable from test-fast
 
+<!-- citation-check:ignore-file -->
+<!-- This item shipped, so its code citations are a record of the tree as it was, not a claim
+     about the tree as it is. Backlog 152's review found two had already gone stale from a
+     later branch's edits to scripts/pre-push-quick-checks.ps1; freezing stops that from
+     recurring on every future edit to that file. -->
+
 ## Metadata
 
 - **Epic**: Agent tooling
@@ -25,7 +31,10 @@ gh api repos/s205109/AHKFlowApp/branches/main/protection --jq '.required_status_
 The `Protect main` ruleset (id `14590314`) defines no `required_status_checks` rule at all, so the
 classic protection above is the whole picture.
 
-On the local side, `scripts/pre-push-quick-checks.ps1:23-40` runs a build and the `Fast` test slice.
+On the local side, `scripts/pre-push-quick-checks.ps1` runs a build
+(`scripts/pre-push-quick-checks.ps1:243`, "        & dotnet build --configuration $Configuration")
+and the `Fast` test slice
+(`scripts/pre-push-quick-checks.ps1:251`, "            & (Join-Path $PSScriptRoot 'test-fast.ps1') -Mode Fast -Configuration $Configuration -NoBuild").
 `scripts/test-fast.ps1:12-13` offers `Fast`, `Integration`, `E2E`, and `Coverage`. None of them
 touch `tests/*.Tests.ps1`.
 
@@ -49,8 +58,9 @@ gh api repos/s205109/AHKFlowApp/branches/main/protection/required_status_checks 
 ## Out of scope
 
 - **Wiring the suites into `scripts/pre-push-quick-checks.ps1`.** The full run took 3m 2s on
-  2026-08-08, and two suites are 54s and 60s of that. `scripts/pre-push-quick-checks.ps1:5-7` says
-  it deliberately skips slow work to stay fast. Running only a subset there would rebuild the blind
+  2026-08-08, and two suites are 54s and 60s of that.
+  (`scripts/pre-push-quick-checks.ps1:17`, "  .github/code-paths-filter.yml does not exclude, so this script deliberately skips coverage")
+  says it deliberately skips slow work to stay fast. Running only a subset there would rebuild the blind
   spot that backlog 066 closed.
 - The content of any individual suite.
 

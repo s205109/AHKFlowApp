@@ -1,6 +1,6 @@
 # Local testing workflow
 
-Use the fastest test slice that still covers the code you changed. The pre-push hook runs an incremental build plus the fast slice automatically; run the full coverage gate yourself before you mark a PR **ready** (CI enforces it on every PR with at least one changed path that `.github/code-paths-filter.yml` does not exclude).
+Use the fastest test slice that still covers the code you changed. The pre-push hook runs an incremental build plus the fast slice automatically, and skips both when the branch changed no path outside `.github/code-paths-filter.yml`; run the full coverage gate yourself before you mark a PR **ready** (CI enforces it on every PR with at least one changed path that `.github/code-paths-filter.yml` does not exclude).
 
 This file is the single source for which tests to run and when. Other docs link here rather than restating commands.
 
@@ -40,8 +40,9 @@ git diff --check "$(gh pr view --json baseRefName -q .baseRefName)...HEAD"
 **The coverage slice skips itself when it cannot measure anything.** Run the same command either
 way. `-Mode Coverage` compares your branch against its base and skips when **every** changed file
 matches one of the patterns in [`.github/code-paths-filter.yml`](../../.github/code-paths-filter.yml):
-lowercase `.md` anywhere, anything under `docs/` or `.claude/`, any `.ps1` under `scripts/`, and
-any `.ps1` directly in `tests/`. One file outside that list and the slice runs in full.
+lowercase `.md` anywhere, anything under `docs/`, `.claude/`, `.githooks/`, `.agents/`,
+`.github/skills/`, `plugins/` or `.codex/`, any `.ps1` under `scripts/`, any `.ps1` or `.json`
+directly in `tests/`, and any `.toml` file. One file outside that list and the slice runs in full.
 
 The list is a deny-list, so read it that way round: the slice runs for any path nobody excluded,
 not only for a path the build compiles. A `.cs` file and a `.csproj` run it, and so do
@@ -53,7 +54,7 @@ Renames count as two paths. Moving `src/Foo.cs` to `docs/Foo.md` still runs the 
 build lost a file. Matching is case-sensitive: `scripts/Thing.PS1` is not `scripts/Thing.ps1`, and
 `README.MD` is not `README.md`. Only lowercase `.md` is excluded.
 
-The same file lists eight scripts under `coverage-tooling`. Changing one of those runs the slice
+The same file lists thirteen scripts under `coverage-tooling`. Changing one of those runs the slice
 even though the patterns above exclude it, because the coverage step is the only local check that
 runs `run-coverage.ps1` and what it loads.
 
@@ -63,7 +64,7 @@ check itself cannot decide, it says so and runs the slice.
 
 `ci.yml` reads the `code` patterns from that same file, so the two cannot drift apart. CI ignores
 `coverage-tooling`, and that is correct rather than a gap: CI never runs `run-coverage.ps1`. Its
-coverage steps are plain `dotnet test` calls. So on those eight paths this Gate is stricter than
+coverage steps are plain `dotnet test` calls. So on those thirteen paths this Gate is stricter than
 CI, and never looser.
 
 Then verify the change actually works — see **Verification After Implementation** in [`AGENTS.md`](../../AGENTS.md). A green gate proves nothing regressed; it does not prove the new behavior happened.
@@ -82,6 +83,14 @@ runs on every pull request. And the `powershell-suites`, `codex-skills-hash-pari
 the .NET side of such a branch, which makes this local gate matter more there, not less. The
 pre-push hook is a faster subset (incremental build + fast slice,
 `scripts/pre-push-quick-checks.ps1`), not this gate.
+
+On a branch with no Code change the hook skips both and prints the same report the coverage slice
+prints. The record checks always run.
+
+The hook reads the same decision the coverage slice reads, so the `coverage-tooling` exception
+applies to it too. A branch that changed only one of those thirteen scripts still builds and runs
+the fast slice locally, while CI skips its .NET steps. That is the intended direction: the hook is
+stricter than CI on those paths, and never looser.
 
 ## Fast inner loop
 
@@ -368,13 +377,16 @@ request.
 pwsh .\scripts\test-fast.ps1 -Mode Coverage
 ```
 
-Coverage mode delegates to `scripts/run-coverage.ps1`. Run it before you mark a PR ready; CI enforces the same coverage + threshold gate on every pull request with at least one changed path that `.github/code-paths-filter.yml` does not exclude. The pre-push hook itself only runs quick checks (incremental build + fast slice, see `scripts/pre-push-quick-checks.ps1`), not this full coverage path. The local coverage script prepares the same shared SQL container Integration mode uses, and leaves it running when the run ends, for the SQL-backed suites. `-FreshSql` is not available in Coverage mode. Coverage mode skips itself when the branch changed no compiled file — see the Gate section above for the condition and the `-Force` switch. `run-coverage.ps1` makes no such check: calling it directly always runs the full slice.
+Coverage mode delegates to `scripts/run-coverage.ps1`. Run it before you mark a PR ready; CI enforces the same coverage + threshold gate on every pull request with at least one changed path that `.github/code-paths-filter.yml` does not exclude. The pre-push hook itself only runs quick checks (an incremental build + the fast slice, and only when the branch changed a path `.github/code-paths-filter.yml` does not exclude, or one of the thirteen scripts under its `coverage-tooling` key — see `scripts/pre-push-quick-checks.ps1`), not this full coverage path. The local coverage script prepares the same shared SQL container Integration mode uses, and leaves it running when the run ends, for the SQL-backed suites. `-FreshSql` is not available in Coverage mode. Coverage mode skips itself when the branch changed no compiled file — see the Gate section above for the condition and the `-Force` switch. `run-coverage.ps1` makes no such check: calling it directly always runs the full slice.
 
 ### One test run at a time
 
-`test-fast.ps1` and `run-coverage.ps1` share one exclusive lock file, `.test-run.lock`, at the
-repository root. The second of those two scripts to start fails immediately and names the
-first run's mode and process id. This includes the pre-push hook, which runs the Fast slice.
+The .NET modes of `test-fast.ps1` (Fast, Integration, and E2E) and `run-coverage.ps1` share one
+exclusive lock file, `.test-run.lock`, at the repository root. `test-fast.ps1 -Mode Coverage`
+delegates to `run-coverage.ps1`, so it uses that same lock. The second run to start fails
+immediately and names the first run's mode and process id. This includes the pre-push hook, when
+it runs the Fast slice. The hook skips that slice, and takes no lock, on a branch with no Code
+change.
 
 The lock only covers those two scripts. A `dotnet test` or `dotnet build` you type yourself,
 and a build started from an IDE, take no lock and can still collide with a run in progress.
@@ -391,8 +403,70 @@ coverage files each test project produced against the projects the solution name
 to report when any are missing. The threshold gate reports a missing assembly under
 `Coverage input incomplete`, not as a threshold failure.
 
-Different worktrees do not collide. Each has its own repository root, its own `bin` folders, and
-its own lock file.
+Different worktrees still do not collide in checkout-local files. Each has its own repository
+root, `bin` folders, results folder, and `.test-run.lock`. That lock protects only one checkout.
+It does not reserve machine capacity, and it does not prevent a run from another checkout.
+
+### Shared per-user test Lane pool
+
+The supported local runners also reserve test Lanes from one pool for the current user. The
+normal pool is under `%LOCALAPPDATA%\AHKFlowApp\test-lanes`. It is shared by that user's
+checkouts, so it limits the registered runners together even when their checkout-local locks are
+different. The pool is a reservation budget. It is separate from the checkout lock above.
+
+`test-fast.ps1` uses a Half reservation for Fast, Integration, and E2E. `run-coverage.ps1` also
+uses Half. The PowerShell suite runner reserves one Lane for each Suite while that Suite runs.
+The three share types mean the following, where `C` is the pool capacity.
+
+| Share | Lanes held | Even example: `C = 6` | Odd example: `C = 5` |
+|---|---:|---:|---:|
+| One | 1 | 1 | 1 |
+| Half | `ceil(C / 2)` | 3 | 3 |
+| Whole | `C` | 6 | 5 |
+
+Half rounds up. Two Half reservations can therefore run together at capacity six, but capacity
+five gives each reservation three Lanes. The second Half reservation waits until enough Lanes are
+free. A Whole reservation waits until it can hold every Lane.
+
+The PowerShell runner prints this owner status exactly once when it owns the pool:
+
+```
+Lanes: shared pool; one per Suite
+```
+
+An owner sets `AHKFLOW_TEST_LANES_HOLDER` to its process id before it starts children. Nested
+commands inherit that marker and do not reserve more Lanes. On every exit, the owner restores the
+exact earlier marker value, or removes the marker when it was absent. The `test-fast.ps1 -Mode
+PowerShell` and Coverage wrappers only pass this environment through to their owning runner. They
+do not read, set, or restore the marker themselves. A nested PowerShell runner reports
+`Lanes: nested; holder <PID>`; an opted-out runner reports `Lanes: off; AHKFLOW_TEST_LANES=off`.
+
+Each owner registers an advisory run record with its mode, process id, and checkout. When another
+registered owner is present, a runner can print one line such as:
+
+```
+Sharing the test Lane pool with: Fast run 18244 in C:\checkout
+```
+
+The line prints at most once. It can name several peers, separated by semicolons. A named peer may
+be waiting for Lanes, so the line does not mean that every named run currently owns a Lane.
+
+The runner waits only after confirmed file-lock contention, or while Lanes are held and the pool
+has no valid recorded capacity. It retries through one 200 ms wait path. A missing, malformed, or
+unreadable capacity record while Lanes are held is a reason to wait: choosing a new capacity then
+would change the budget under active owners. Other storage failures, such as an unavailable pool
+folder or an I/O error that is not confirmed contention, fail the run and preserve their error.
+
+Set `AHKFLOW_TEST_LANES=off` to opt out of the shared reservation. Unset, empty, or whitespace
+means Lanes stay enabled. The runner trims the setting and compares `off` without case sensitivity.
+Any other nonblank value fails before work starts. Opting out does not remove the checkout-local
+`.test-run.lock`. `AHKFLOW_TEST_LANES_ROOT` selects a temporary Lane-pool root for test fixtures
+only. Do not use it for ordinary local runs, because it bypasses the shared per-user budget.
+
+Lanes limit reservations by participating runners. They do not limit a .NET process's internal
+threads, MSBuild nodes, or memory use. Direct `dotnet test`, IDE builds, unmanaged commands, work
+under another account, opted-out work, and children that survive after a killed owner are outside
+this budget. Do not infer that two arbitrary .NET runs use the resources of one run.
 
 If a run is killed, Windows releases the lock automatically. Never delete `.test-run.lock` to
 recover. Only a live run blocks you, and the file stays on disk between runs by design. A

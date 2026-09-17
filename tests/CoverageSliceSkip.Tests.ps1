@@ -94,6 +94,34 @@ Invoke-TestCase 'Each supported pattern shape matches the right paths' {
     }
 }
 
+Invoke-TestCase 'The seven tooling exclusions match the paths they were written for' {
+    $exclusion = Read-AhkFlowCodePathExclusion -FilterPath (Get-AhkFlowCodePathFilterPath -RepoRoot $repoRoot)
+
+    # One row per new entry. The pattern is asserted, not only the fact of a match, so a future
+    # widening of one entry cannot silently take over another entry's job.
+    $expected = @{
+        'tests/powershell-suites.json'                 = 'tests/*.json'
+        '.githooks/pre-push'                           = '.githooks/**'
+        '.githooks/pre-push.ps1'                       = '.githooks/**'
+        '.agents/mp-grilling/agents/openai.yaml'       = '.agents/**'
+        '.github/skills/dck-ef-core'                   = '.github/skills/**'
+        'plugins/ahkflowapp/.codex-plugin/plugin.json' = 'plugins/**'
+        '.codex/hooks.json'                            = '.codex/**'
+        '.pr_agent.toml'                               = '**/*.toml'
+    }
+
+    foreach ($path in $expected.Keys) {
+        $match = Get-AhkFlowPathExclusionMatch -Path $path -Exclusion $exclusion
+        Assert-True ($match -ceq $expected[$path]) `
+            "'$path' must be excluded by '$($expected[$path])'. Got '$match'."
+    }
+
+    # One level only. A .json file inside a compiled test project is a build input.
+    $match = Get-AhkFlowPathExclusionMatch -Path 'tests/AHKFlowApp.E2E.Tests/xunit.runner.json' -Exclusion $exclusion
+    Assert-True ($null -eq $match) `
+        "A .json file inside a test project must count as code. Pattern '$match' excluded it."
+}
+
 Invoke-TestCase 'Under .github, only a lowercase .md file is excluded' {
     # The list carries no '.github/**' pattern, so every file there counts as code - except one
     # ending in lowercase '.md', which '**/*.md' excludes wherever it sits. That split is
@@ -156,9 +184,10 @@ Invoke-TestCase 'Matching is case-sensitive, the way the action matches' {
 # with no word said. That is the same silent miss the hand-kept list had, moved one level down.
 # The parser finds a dot-source wherever it sits, and ignores one inside a comment or a string.
 #
-# Two target shapes appear in these scripts, and both are read:
+# Three target shapes appear in these scripts, and all are read:
 #
 #   . "$PSScriptRoot\name.ps1"
+#   . (Join-Path $PSScriptRoot 'name.ps1')
 #   $variable = Join-Path $PSScriptRoot 'name.ps1'    ... later ...    . $variable
 #
 # Any other target throws, naming the file and the line. An unreadable target must be loud.
@@ -194,6 +223,14 @@ function Get-DotSourcedScriptName {
         # . "$PSScriptRoot\name.ps1" - an expandable string, because it holds a variable.
         if ($target -is [System.Management.Automation.Language.ExpandableStringExpressionAst] -and
             $target.Value -match '^\$PSScriptRoot[\\/](?<name>[^\\/]+\.ps1)$') {
+            $names.Add($Matches.name)
+            continue
+        }
+
+        # Only the literal Join-Path expression is supported. Additional commands,
+        # a different root, or a computed filename remain unsupported.
+        if ($target -is [System.Management.Automation.Language.ParenExpressionAst] -and
+            $target.Extent.Text -match '^\(Join-Path\s+\$PSScriptRoot\s+''(?<name>[^''\\/]+\.ps1)''\)$') {
             $names.Add($Matches.name)
             continue
         }
@@ -256,9 +293,9 @@ function Get-JoinPathAssignedName {
     return $found
 }
 
-Invoke-TestCase 'The coverage tooling list is exactly the eleven files the slice runs' {
+Invoke-TestCase 'The coverage tooling list is exactly the thirteen files the slice runs' {
     # The exact set, not a couple of spot checks. Asserting only that two entries are present,
-    # and that whatever entries remain exist on disk, lets any of the other nine be deleted
+    # and that whatever entries remain exist on disk, lets any of the other eleven be deleted
     # from the YAML with the suite still green - and a deleted entry silently stops protecting
     # that file.
     $path = Get-AhkFlowCodePathFilterPath -RepoRoot $repoRoot
@@ -273,12 +310,14 @@ Invoke-TestCase 'The coverage tooling list is exactly the eleven files the slice
         'scripts/test-fast.ps1'
         'scripts/test-results.common.ps1'
         'scripts/test-run-lock.common.ps1'
+        'scripts/test-lanes.common.ps1'
+        'scripts/suite-worker-count.common.ps1'
         'scripts/test-sql-container.common.ps1'
         'scripts/worktree-docker.common.ps1'
         'scripts/worktree-git.common.ps1'
     ) | Sort-Object
 
-    Assert-True ($tooling.Count -eq 11) "Expected 11 coverage-tooling entries, got $($tooling.Count): $($tooling -join ', ')"
+    Assert-True ($tooling.Count -eq 13) "Expected 13 coverage-tooling entries, got $($tooling.Count): $($tooling -join ', ')"
     Assert-True (($tooling -join '|') -ceq ($expected -join '|')) `
         "Coverage tooling list does not match. Got: $($tooling -join ', ')"
 
@@ -317,6 +356,38 @@ Invoke-TestCase 'The coverage tooling list is exactly the eleven files the slice
         "The coverage tooling list does not match what the entry points dot-source. Derived: $($derivedSet -join ', ')"
 }
 
+Invoke-TestCase 'The docs describing coverage-tooling state the same count as the file' {
+    # backlog 152's review found the count drifted to "seven" and "eight" in these two files
+    # while the YAML above already held eleven entries. Nothing had caught it, because the test
+    # above checks the actual set, never the prose describing it. This closes that gap: change
+    # the count above and one of the two files below without updating the other, and this fails.
+    $path = Get-AhkFlowCodePathFilterPath -RepoRoot $repoRoot
+    $tooling = @(Read-AhkFlowCoverageToolingPath -FilterPath $path)
+
+    # Spelled out, because both docs spell it out. Add an entry here before trusting this test if
+    # the list ever grows past what this maps - an unmapped count must fail loudly, not silently
+    # skip the check below.
+    $numberWord = @{
+        6 = 'six'; 7 = 'seven'; 8 = 'eight'; 9 = 'nine'; 10 = 'ten'
+        11 = 'eleven'; 12 = 'twelve'; 13 = 'thirteen'; 14 = 'fourteen'; 15 = 'fifteen'
+    }
+    Assert-True ($numberWord.ContainsKey($tooling.Count)) `
+        "No spelled-out word mapped for $($tooling.Count) coverage-tooling entries. Add one to `$numberWord in this test."
+    $word = $numberWord[$tooling.Count]
+
+    $filterModule = Get-Content -LiteralPath (Join-Path $repoRoot 'scripts\code-change-filter.common.ps1') -Raw
+    Assert-True ($filterModule -match "coverage-tooling key names $word scripts") `
+        "scripts/code-change-filter.common.ps1 must say '$word scripts', to match the $($tooling.Count) entries in .github/code-paths-filter.yml."
+    Assert-True ($filterModule -match "stricter than CI on $word paths") `
+        "scripts/code-change-filter.common.ps1 must say 'stricter than CI on $word paths'."
+
+    $testingWorkflow = Get-Content -LiteralPath (Join-Path $repoRoot 'docs\development\testing-workflow.md') -Raw
+    Assert-True ($testingWorkflow -match "lists $word scripts under") `
+        "docs/development/testing-workflow.md must say 'lists $word scripts under coverage-tooling'."
+    Assert-True ($testingWorkflow -match "those $word paths this Gate is stricter than") `
+        "docs/development/testing-workflow.md must say 'those $word paths this Gate is stricter than'."
+}
+
 # A throwaway script holding the dot-source lines a case wants Get-DotSourcedScriptName to read.
 # It never runs; only its text is parsed.
 function New-DotSourceFixture {
@@ -333,7 +404,7 @@ Invoke-TestCase 'A dot-source target the reader cannot parse is rejected, never 
     # which is the same silent failure the hand-kept list had.
     $path = New-DotSourceFixture -Line @(
         '. "$PSScriptRoot\Common.ps1"'
-        '. (Join-Path $PSScriptRoot ''slug.common.ps1'')'
+        '. (Join-Path $PSScriptRoot $computedName)'
     )
 
     try {
@@ -350,6 +421,21 @@ Invoke-TestCase 'A dot-source target the reader cannot parse is rejected, never 
         Assert-True $threw 'An unreadable dot-source target must throw. Skipping it derives an incomplete set.'
     }
     finally { Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue }
+}
+
+Invoke-TestCase 'Join-Path targets reject other roots paths and extra commands' {
+    foreach ($line in @(
+        '. (Join-Path $otherRoot ''extra.ps1'')'
+        '. (Join-Path $PSScriptRoot ''sub/extra.ps1'')'
+        '. (Join-Path $PSScriptRoot ''extra.ps1''; Get-Item another.ps1)'
+    )) {
+        $path = New-DotSourceFixture -Line @($line)
+        try {
+            $threw = $false
+            try { Get-DotSourcedScriptName $path | Out-Null } catch { $threw = $true }
+            Assert-True $threw "The unsupported target must fail: $line"
+        } finally { Remove-Item -LiteralPath $path -Force }
+    }
 }
 
 Invoke-TestCase 'A dot-sourced variable with no resolvable assignment is rejected' {
@@ -376,21 +462,22 @@ Invoke-TestCase 'A dot-sourced variable with no resolvable assignment is rejecte
     finally { Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue }
 }
 
-Invoke-TestCase 'Both dot-source shapes are read, and only dot-source lines are read' {
+Invoke-TestCase 'All three dot-source shapes are read, and only dot-source lines are read' {
     # The positive side of the two cases above. Without it, a reader that threw on everything
     # would also pass them.
     $path = New-DotSourceFixture -Line @(
         '$sharedSqlScript = Join-Path $PSScriptRoot ''test-sql-container.common.ps1'''
         '. $sharedSqlScript'
         '. "$PSScriptRoot\Common.ps1"'
+        '. (Join-Path $PSScriptRoot ''suite-worker-count.common.ps1'')'
         '# . "$PSScriptRoot\not-loaded.common.ps1"'
         '$path = Join-Path $PSScriptRoot ''also-not-loaded.ps1'''
     )
 
     try {
         $names = @(Get-DotSourcedScriptName -Path $path)
-        Assert-True (($names -join '|') -ceq 'test-sql-container.common.ps1|Common.ps1') `
-            "Expected both shapes and nothing else. Got: $($names -join ', ')"
+        Assert-True (($names -join '|') -ceq 'test-sql-container.common.ps1|Common.ps1|suite-worker-count.common.ps1') `
+            "Expected all three shapes and nothing else. Got: $($names -join ', ')"
     }
     finally { Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue }
 }
@@ -529,6 +616,36 @@ Invoke-TestCase 'A branch of docs, backlog, and PowerShell changes is not a code
         $decision = Get-AhkFlowCoverageDecision -RepoRoot $root -BaseRef 'main'
         Assert-True (-not $decision.CoverageRequired) "Expected no code change. Changed: $($decision.ChangedPath -join ', ')"
         Assert-True ($decision.ChangedPath.Count -eq 5) "Expected 5 changed paths, got $($decision.ChangedPath.Count)."
+    }
+    finally { Remove-Fixture -Root $root }
+}
+
+Invoke-TestCase 'A branch of only tooling files is not a code change' {
+    $root = New-DiffFixture
+    try {
+        Add-FixtureFile -Root $root -RelativePath 'tests/powershell-suites.json'
+        Add-FixtureFile -Root $root -RelativePath '.githooks/pre-push.ps1'
+        Add-FixtureFile -Root $root -RelativePath '.agents/mp-grilling/agents/openai.yaml'
+        Add-FixtureFile -Root $root -RelativePath 'plugins/ahkflowapp/.codex-plugin/plugin.json'
+        Add-FixtureFile -Root $root -RelativePath '.codex/hooks.json'
+        Add-FixtureFile -Root $root -RelativePath '.pr_agent.toml'
+        Save-Fixture -Root $root -Message 'tooling only'
+
+        $decision = Get-AhkFlowCoverageDecision -RepoRoot $root -BaseRef 'main'
+        Assert-True (-not $decision.CoverageRequired) `
+            "Expected no code change. Changed: $($decision.ChangedPath -join ', ')"
+    }
+    finally { Remove-Fixture -Root $root }
+}
+
+Invoke-TestCase 'A workflow change is still a code change' {
+    $root = New-DiffFixture
+    try {
+        Add-FixtureFile -Root $root -RelativePath '.github/workflows/ci.yml'
+        Save-Fixture -Root $root -Message 'workflow only'
+
+        $decision = Get-AhkFlowCoverageDecision -RepoRoot $root -BaseRef 'main'
+        Assert-True $decision.CoverageRequired 'A change to the pipeline must run the pipeline.'
     }
     finally { Remove-Fixture -Root $root }
 }
@@ -810,6 +927,8 @@ function New-WrapperFixture {
                     'worktree-docker.common.ps1'
                     'worktree-git.common.ps1'
                     'test-run-lock.common.ps1'
+                    'test-lanes.common.ps1'
+                    'suite-worker-count.common.ps1'
                     'coverage-inputs.common.ps1'
                     'code-change-filter.common.ps1'
                     'progress.common.ps1'
@@ -822,6 +941,7 @@ function New-WrapperFixture {
 [CmdletBinding()]
 param([string]$Configuration = 'Release', [switch]$SkipThresholdCheck)
 Set-Content -LiteralPath (Join-Path (Split-Path -Parent $PSScriptRoot) 'coverage-ran.marker') -Value $Configuration
+Set-Content -LiteralPath (Join-Path (Split-Path -Parent $PSScriptRoot) 'coverage-holder.marker') -Value ('holder=' + $env:AHKFLOW_TEST_LANES_HOLDER)
 exit 0
 '@
         })
@@ -841,6 +961,24 @@ function Invoke-CoverageMode {
         ExitCode = $LASTEXITCODE
         Output   = $output
         SliceRan = (Test-Path -LiteralPath (Join-Path $Root 'coverage-ran.marker'))
+    }
+}
+
+Invoke-TestCase 'Coverage wrapper leaves admission and marker ownership to its delegate' {
+    . (Join-Path $repoRoot 'scripts/test-lanes.common.ps1')
+    . (Join-Path $repoRoot 'tests/LanePool.Common.ps1')
+    foreach ($marker in @('  ', 'existing-holder')) {
+        $root = New-WrapperFixture
+        $pool = New-PinnedLanePool 4
+        try {
+            Use-LaneEnvironment -Value @{ AHKFLOW_TEST_LANES_ROOT = $pool.Root; AHKFLOW_TEST_LANES_HOLDER = $marker } -Body {
+                $result = Invoke-CoverageMode -Root $root -ExtraArgument @('-Force')
+                Assert-True ($result.ExitCode -eq 0) $result.Output
+                $actual = (Get-Content (Join-Path $root 'coverage-holder.marker') -Raw).TrimEnd("`r", "`n")
+                Assert-True ($actual -ceq ('holder=' + $marker)) 'The delegate must receive the unchanged holder.'
+                Assert-True ((Get-RunLaneCount $pool) -eq 0) 'The wrapper must not reserve any Lanes.'
+            }
+        } finally { Remove-PinnedLanePool $pool; Remove-Fixture $root }
     }
 }
 

@@ -238,6 +238,10 @@ function Invoke-RunnerProcess {
     param([Parameter(Mandatory)][string[]] $ArgumentList)
 
     $summaryPath = Join-Path ([System.IO.Path]::GetTempPath()) ('ahkflow-suiterunner-summary-' + [guid]::NewGuid().ToString('N') + '.md')
+    $previousHolder = $env:AHKFLOW_TEST_LANES_HOLDER
+    if ([string]::IsNullOrWhiteSpace($env:AHKFLOW_TEST_LANES_ROOT) -and [string]::IsNullOrWhiteSpace($previousHolder)) {
+        $env:AHKFLOW_TEST_LANES_HOLDER = [string]$PID
+    }
     $previousSummary = $env:GITHUB_STEP_SUMMARY
     $env:GITHUB_STEP_SUMMARY = $summaryPath
 
@@ -251,6 +255,7 @@ function Invoke-RunnerProcess {
             ''
         }
     } finally {
+        $env:AHKFLOW_TEST_LANES_HOLDER = $previousHolder
         $env:GITHUB_STEP_SUMMARY = $previousSummary
         Remove-Item -LiteralPath $summaryPath -Force -ErrorAction SilentlyContinue
     }
@@ -365,7 +370,7 @@ Invoke-TestCase 'A run over the repository''s own tests folder saves its timings
         New-Item -ItemType Directory -Path (Join-Path $fakeRepo 'tests') -Force | Out-Null
         New-Item -ItemType Directory -Path (Join-Path $fakeRepo 'markers') -Force | Out-Null
 
-        foreach ($name in @('run-powershell-suites.ps1', 'progress.common.ps1', 'progress.parallel.ps1', 'powershell-suites.common.ps1')) {
+        foreach ($name in @('run-powershell-suites.ps1', 'progress.common.ps1', 'progress.parallel.ps1', 'powershell-suites.common.ps1', 'suite-worker-count.common.ps1', 'test-lanes.common.ps1')) {
             Copy-Item -LiteralPath (Join-Path $repoRoot "scripts/$name") -Destination (Join-Path $fakeRepo "scripts/$name")
         }
 
@@ -1535,7 +1540,7 @@ Invoke-TestCase 'A targeted run keeps the stored timings of every suite it did n
         New-Item -ItemType Directory -Path (Join-Path $fakeRepo 'tests') -Force | Out-Null
         New-Item -ItemType Directory -Path (Join-Path $fakeRepo 'markers') -Force | Out-Null
 
-        foreach ($name in @('run-powershell-suites.ps1', 'progress.common.ps1', 'progress.parallel.ps1', 'powershell-suites.common.ps1')) {
+        foreach ($name in @('run-powershell-suites.ps1', 'progress.common.ps1', 'progress.parallel.ps1', 'powershell-suites.common.ps1', 'suite-worker-count.common.ps1', 'test-lanes.common.ps1')) {
             Copy-Item -LiteralPath (Join-Path $repoRoot "scripts/$name") -Destination (Join-Path $fakeRepo "scripts/$name")
         }
 
@@ -1586,7 +1591,7 @@ Invoke-TestCase 'A stored entry whose suite file no longer exists is dropped' {
         New-Item -ItemType Directory -Path (Join-Path $fakeRepo 'markers') -Force | Out-Null
         New-Item -ItemType Directory -Path (Join-Path $fakeRepo 'TestResults/progress') -Force | Out-Null
 
-        foreach ($name in @('run-powershell-suites.ps1', 'progress.common.ps1', 'progress.parallel.ps1', 'powershell-suites.common.ps1')) {
+        foreach ($name in @('run-powershell-suites.ps1', 'progress.common.ps1', 'progress.parallel.ps1', 'powershell-suites.common.ps1', 'suite-worker-count.common.ps1', 'test-lanes.common.ps1')) {
             Copy-Item -LiteralPath (Join-Path $repoRoot "scripts/$name") -Destination (Join-Path $fakeRepo "scripts/$name")
         }
 
@@ -1624,7 +1629,7 @@ function New-StoringRepoFixture {
         foreach ($folder in @('scripts', 'tests', 'markers', 'TestResults/progress')) {
             New-Item -ItemType Directory -Path (Join-Path $repo $folder) -Force | Out-Null
         }
-        foreach ($name in @('run-powershell-suites.ps1', 'progress.common.ps1', 'progress.parallel.ps1', 'powershell-suites.common.ps1')) {
+        foreach ($name in @('run-powershell-suites.ps1', 'progress.common.ps1', 'progress.parallel.ps1', 'powershell-suites.common.ps1', 'suite-worker-count.common.ps1', 'test-lanes.common.ps1')) {
             Copy-Item -LiteralPath (Join-Path $repoRoot "scripts/$name") -Destination (Join-Path $repo "scripts/$name")
         }
 
@@ -1648,7 +1653,7 @@ function Save-ProgressTimings {
             # you which number a branch chose; it cannot tell you whether the run asked the machine
             # to get there. Only a count can, and only a count fails when the probe drifts back
             # above the precedence chain. The real module is untouched.
-            Add-Content -LiteralPath (Join-Path $repo 'scripts/powershell-suites.common.ps1') -Value @'
+            Add-Content -LiteralPath (Join-Path $repo 'scripts/suite-worker-count.common.ps1') -Value @'
 
 $global:AhkflowCoreProbeInner = ${function:Get-PhysicalCoreCount}
 function Get-PhysicalCoreCount {
@@ -2129,6 +2134,398 @@ Invoke-TestCase 'An explicit -MaxParallel is named on the Workers line' {
         Remove-SuiteFixture -Root $root
     }
 }
+
+# Task 5 Lane runner integration cases. All pools and runner copies are temporary.
+. (Join-Path $repoRoot 'scripts/test-lanes.common.ps1')
+. (Join-Path $repoRoot 'tests/LanePool.Common.ps1')
+
+function New-LaneRunnerFixture {
+    param([int] $Count = 2, [switch] $Bypass)
+    $root = New-StoringRepoFixture -Suite @(1..$Count | ForEach-Object { "suite-$_.Tests.ps1" })
+    $items = [Collections.Generic.List[object]]::new()
+    foreach ($i in 1..$Count) {
+        $base = Join-Path $root "tests/suite-$i"
+        Add-LaneIntervalSuite -Suite $items -Tag "suite-$i" -StartPath "$base.start" -ReleasePath "$base.release" -FinishPath "$base.finish"
+    }
+    # Each signal acknowledges a real acquisition retry in a distinct Worker.
+    Add-Content -LiteralPath (Join-Path $root 'scripts/test-lanes.common.ps1') -Value @'
+$fixtureRegister = ${function:Register-AhkFlowLaneRun}
+function Register-AhkFlowLaneRun {
+    param($PoolRoot, $Mode, $Checkout)
+    $run = & $fixtureRegister -PoolRoot $PoolRoot -Mode $Mode -Checkout $Checkout
+    $run | Add-Member -NotePropertyName ParentIdentity -NotePropertyValue $run
+    $run | Add-Member -NotePropertyName ParentPrinted -NotePropertyValue $run.Printed
+    $run
+}
+function Wait-AhkFlowLaneRetry {
+    param($Run)
+    if ($null -eq $Run) { throw 'The Worker retry lost its parent run.' }
+    if (-not [object]::ReferenceEquals($Run, $Run.ParentIdentity)) { throw 'The Worker retry cloned its parent run.' }
+    if (-not [object]::ReferenceEquals($Run.Printed, $Run.ParentPrinted)) { throw 'The Worker retry cloned its parent Printed dictionary.' }
+    $thread = [Threading.Thread]::CurrentThread.ManagedThreadId
+    $signal = Join-Path $PSScriptRoot ("../markers/wait-$thread")
+    if (-not [IO.File]::Exists($signal)) {
+        $winner = $Run.Printed.TryAdd('fixture-worker-race', $true)
+        $pending = Join-Path $PSScriptRoot ("../markers/pending-$thread")
+        [IO.File]::WriteAllText($pending, [string]$winner)
+        [IO.File]::Move($pending, $signal)
+    }
+    Write-AhkFlowLaneSharingLine -Run $Run
+    Start-Sleep -Milliseconds 50
+}
+'@
+    if ($Bypass) {
+        Add-Content -LiteralPath (Join-Path $root 'scripts/test-lanes.common.ps1') -Value 'function Enter-AhkFlowLanes { param($PoolRoot, $Share, $Proposal, $Run); return $null }'
+    }
+    [pscustomobject]@{ Root = $root; Items = $items }
+}
+
+function Start-LaneRunnerFixture {
+    param($Fixture, $Pool, [int] $Workers = 2, [switch] $Off)
+    Use-LaneEnvironment -Value @{ AHKFLOW_TEST_LANES_ROOT = $Pool.Root; AHKFLOW_TEST_LANES = $(if ($Off) { 'off' } else { '' }) } -Body {
+        $driver = ConvertTo-ScriptLiteral (Join-Path $Fixture.Root 'scripts/run-powershell-suites.ps1')
+        $summary = ConvertTo-ScriptLiteral (Join-Path $Fixture.Root 'summary.md')
+        $command = '$env:GITHUB_STEP_SUMMARY=' + $summary + '; & ' + $driver + " -MaxParallel $Workers; exit " + '$LASTEXITCODE'
+        Start-LaneChildProcess -ArgumentList @('-NoProfile', '-EncodedCommand', (ConvertTo-LaneEncodedCommand $command))
+    }
+}
+
+function Wait-LaneRunnerState {
+    param($Fixture, [int] $Starts, [int] $Waiters = 0, $Child)
+    $watch = [Diagnostics.Stopwatch]::StartNew()
+    while ($watch.Elapsed.TotalSeconds -lt 20) {
+        $started = @($Fixture.Items | Where-Object { Test-Path -LiteralPath "$($_.StartPath).done" })
+        $waits = @(Get-ChildItem -LiteralPath (Join-Path $Fixture.Root 'markers') -Filter 'wait-*')
+        if ($started.Count -gt $Starts) { throw "Admission cap violated: expected $Starts starts, got $($started.Count)." }
+        if ($started.Count -eq $Starts -and $waits.Count -ge $Waiters) { return ,$started }
+        if ($Child.Process.HasExited) { throw "Runner exited before controlled state: $($Child.Stdout.Result) $($Child.Stderr.Result)" }
+        Start-Sleep -Milliseconds 50
+    }
+    throw "Runner never acknowledged $Starts starts and $Waiters acquisition waits."
+}
+
+function Assert-LaneRunnerCompleted {
+    param([object[]] $Fixtures, [object[]] $Children, [int] $Peak, [switch] $Off)
+    $intervals = foreach ($fixture in $Fixtures) {
+        foreach ($item in $fixture.Items) {
+            [pscustomobject]@{ Start = [long](Wait-LanePath $item.StartPath 20); End = [long](Wait-LanePath $item.FinishPath 20) }
+        }
+    }
+    Assert-True ((Get-LanePeakOverlap -Intervals @($intervals)) -eq $Peak) "Expected combined peak $Peak."
+    $holders = @()
+    foreach ($fixture in $Fixtures) {
+        $markers = @($fixture.Items | ForEach-Object { [string](Get-Content -LiteralPath "$($_.StartPath).holder" -Raw) } | ForEach-Object { $_.Trim() } | Sort-Object -Unique)
+        Assert-True ($markers.Count -eq 1) 'Each runner must propagate one marker to every Suite.'
+        if (-not $Off) { Assert-True ($markers[0] -match '^\d+$') 'Owner marker must be a PID.' }
+        $holders += $markers
+    }
+    if ($Fixtures.Count -eq 2) { Assert-True ($holders[0] -ne $holders[1]) 'Independent runners need different holder markers.' }
+    foreach ($child in $Children) {
+        $result = Wait-LaneChildProcess $child 20
+        Assert-True ($result.ExitCode -eq 0) "Runner failed: $($result.Output) $($result.Error)"
+        if (-not $Off) { Assert-True ($result.Output -match '(?m)^Lanes: shared pool; one per Suite\s*$') 'Owner status must not claim a proposed capacity.' }
+        Assert-True (([regex]::Matches($result.Output, 'Sharing the test Lane pool with:')).Count -le 1) 'Workers must share the once-only diagnostic dictionary.'
+    }
+}
+
+function Invoke-TwoRunnerLaneProof {
+    param([switch] $Bypass)
+    $pool = New-PinnedLanePool 2
+    $a = $null; $b = $null; $childA = $null; $childB = $null
+    try {
+        $a = New-LaneRunnerFixture
+        $b = New-LaneRunnerFixture -Bypass:$Bypass
+        $childA = Start-LaneRunnerFixture $a $pool
+        $null = Wait-LaneRunnerState $a 2 -Child $childA
+        Assert-True ((Get-RunLaneCount $pool) -eq 2) 'A must hold both Lane locks.'
+        $childB = Start-LaneRunnerFixture $b $pool
+        $null = Wait-LaneRunnerState $b 0 -Waiters 2 -Child $childB
+        $votes = @(Get-ChildItem (Join-Path $b.Root 'markers') -Filter 'wait-*' | ForEach-Object { Get-Content $_.FullName -Raw })
+        Assert-True ($votes.Count -eq 2 -and @($votes | Where-Object { $_ -eq 'True' }).Count -eq 1 -and @($votes | Where-Object { $_ -eq 'False' }).Count -eq 1) 'The two blocked Workers must produce one dictionary winner and one loser.'
+        foreach ($item in $a.Items) { Publish-LaneSignal $item.ReleasePath }
+        $null = Wait-LaneRunnerState $b 2 -Child $childB
+        foreach ($item in $b.Items) { Publish-LaneSignal $item.ReleasePath }
+        Assert-LaneRunnerCompleted -Fixtures @($a, $b) -Children @($childA, $childB) -Peak 2
+        Assert-True (([regex]::Matches($childB.Stdout.Result, 'Sharing the test Lane pool with:')).Count -eq 1) 'Runner B must print exactly one sharing line.'
+    } finally {
+        Stop-LaneChildProcess $childA
+        Stop-LaneChildProcess $childB
+        foreach ($fixture in @($a, $b)) { if ($fixture) { Remove-SuiteFixture $fixture.Root } }
+        Remove-PinnedLanePool $pool
+    }
+}
+
+Invoke-TestCase 'Lane one runner admits exactly two of four Workers; off admits all four' {
+    foreach ($off in @($false, $true)) {
+        $pool = New-PinnedLanePool 2; $fixture = $null; $child = $null
+        try {
+            $fixture = New-LaneRunnerFixture -Count 4
+            $child = Start-LaneRunnerFixture $fixture $pool -Workers 4 -Off:$off
+            $expected = if ($off) { 4 } else { 2 }
+            $waiters = if ($off) { 0 } else { 2 }
+            $started = Wait-LaneRunnerState $fixture $expected -Waiters $waiters -Child $child
+            Assert-True ((Get-RunLaneCount $pool) -eq $(if ($off) { 0 } else { 2 })) 'Lane locks must match admission.'
+            foreach ($item in $started) { Publish-LaneSignal $item.ReleasePath }
+            foreach ($item in $fixture.Items) { Wait-LanePath $item.StartPath 20 -Child $child | Out-Null; Publish-LaneSignal $item.ReleasePath }
+            Assert-LaneRunnerCompleted -Fixtures @($fixture) -Children @($child) -Peak $expected -Off:$off
+        } finally {
+            Stop-LaneChildProcess $child
+            if ($fixture) { Remove-SuiteFixture $fixture.Root }
+            Remove-PinnedLanePool $pool
+        }
+    }
+}
+Invoke-TestCase 'Lane two checkout runners enforce one combined cap' { Invoke-TwoRunnerLaneProof }
+Invoke-TestCase 'Lane unchanged two-checkout proof rejects acquisition bypass' {
+    $failure = $null
+    try { Invoke-TwoRunnerLaneProof -Bypass } catch { $failure = $_.Exception.Message }
+    Assert-True ($failure -match 'Admission cap violated|never acknowledged') "Expected the bypass to fail admission proof, got: $failure"
+    Write-Host "  MUTATION REJECTED: $failure"
+}
+Invoke-TestCase 'Lane owner hardware query is once with adaptive sizing or explicit Workers' {
+    $pool = New-PinnedLanePool 2
+    $repo = New-StoringRepoFixture -Suite @('one.Tests.ps1') -CountCoreProbes
+    try {
+        foreach ($explicit in @($false, $true)) {
+            $probes = Join-Path $repo 'markers/coreprobes'
+            Remove-Item -LiteralPath $probes -Force -ErrorAction SilentlyContinue
+            $argsForRun = @{ Repo = $repo; EnvVar = @{ AHKFLOW_TEST_LANES_ROOT = $pool.Root; AHKFLOW_TEST_LANES_HOLDER = ''; AHKFLOW_TEST_LANES = ''; GITHUB_ACTIONS = ''; AHKFLOW_SUITE_MAX_PARALLEL = '' } }
+            if ($explicit) { $argsForRun.MaxParallel = 2 }
+            $result = Invoke-DriverAt @argsForRun
+            Assert-True ($result.ExitCode -eq 0) $result.Output
+            $calls = @(if (Test-Path $probes) { Get-Content $probes }).Count
+            Assert-True ($calls -eq 1) "Owner needs exactly one hardware query, got $calls (explicit=$explicit)."
+        }
+    } finally { Remove-SuiteFixture $repo; Remove-PinnedLanePool $pool }
+}
+Invoke-TestCase 'Lane nested and off preserve incoming marker and never open pool files' {
+    $repo = New-StoringRepoFixture -Suite @('one.Tests.ps1') -Body @{ 'one.Tests.ps1' = @('Write-Host "inherited=$env:AHKFLOW_TEST_LANES_HOLDER"') } -CountCoreProbes
+    $pool = New-PinnedLanePool 2
+    try {
+        Add-Content -LiteralPath (Join-Path $repo 'scripts/test-lanes.common.ps1') -Value 'function Open-AhkFlowLaneFile { throw "Unexpected pool open" }'
+        foreach ($role in @('nested', 'off')) {
+            $result = Invoke-DriverAt -Repo $repo -MaxParallel 2 -EnvVar @{ AHKFLOW_TEST_LANES_ROOT = $pool.Root; AHKFLOW_TEST_LANES_HOLDER = '12345'; AHKFLOW_TEST_LANES = $(if ($role -eq 'off') { 'off' } else { '' }) }
+            Assert-True ($result.ExitCode -eq 0) $result.Output
+            Assert-True ($result.Output -match 'inherited=12345') 'Incoming marker must be preserved.'
+            Assert-True ($result.Output -match $(if ($role -eq 'off') { 'Lanes:.*AHKFLOW_TEST_LANES=off' } else { 'Lanes:.*12345' })) "Missing $role status. $($result.Output)"
+        }
+        Assert-True (-not (Test-Path (Join-Path $repo 'markers/coreprobes'))) 'Nested/off explicit Workers must not query hardware.'
+    } finally { Remove-SuiteFixture $repo; Remove-PinnedLanePool $pool }
+}
+Invoke-TestCase 'Lane invalid opt-out fails before any Suite starts' {
+    $repo = New-StoringRepoFixture -Suite @('one.Tests.ps1')
+    $pool = New-PinnedLanePool 2
+    try {
+        $result = Invoke-DriverAt -Repo $repo -MaxParallel 1 -EnvVar @{ AHKFLOW_TEST_LANES_ROOT = $pool.Root; AHKFLOW_TEST_LANES_HOLDER = ''; AHKFLOW_TEST_LANES = 'false' }
+        Assert-True ($result.ExitCode -ne 0) 'Invalid opt-out must fail.'
+        Assert-True (-not (Test-Path (Join-Path $repo 'markers/one.Tests.ps1'))) 'Invalid opt-out started a Suite.'
+    } finally { Remove-SuiteFixture $repo; Remove-PinnedLanePool $pool }
+}
+Invoke-TestCase 'Lane acquisition failures produce named failures in exclusive and parallel execution' {
+    foreach ($execution in @('exclusive', 'parallel')) {
+        $pool = New-PinnedLanePool 2
+        $repo = New-StoringRepoFixture -Suite @('one.Tests.ps1', 'two.Tests.ps1')
+        try {
+            $manifestPath = Join-Path $repo 'tests/powershell-suites.json'
+            $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
+            foreach ($entry in $manifest.suites) { $entry.execution = $execution; $entry | Add-Member -NotePropertyName reason -NotePropertyValue 'Controlled exclusive acquisition fixture.' }
+            $manifest | ConvertTo-Json -Depth 6 | Set-Content $manifestPath
+            Add-Content -LiteralPath (Join-Path $repo 'scripts/test-lanes.common.ps1') -Value 'function Enter-AhkFlowLanes { param($PoolRoot, $Share, $Proposal, $Run); throw "injected acquisition failure" }'
+            $result = Invoke-DriverAt -Repo $repo -MaxParallel 2 -EnvVar @{ AHKFLOW_TEST_LANES_ROOT = $pool.Root; AHKFLOW_TEST_LANES_HOLDER = ''; AHKFLOW_TEST_LANES = '' }
+            Assert-True ($result.ExitCode -ne 0) "Acquisition failure must fail $execution runner."
+            foreach ($name in @('one.Tests.ps1', 'two.Tests.ps1')) { Assert-True ($result.Output -match "FAILED: $([regex]::Escape($name))") "Missing named failure for $name. $($result.Output)" }
+            Assert-True ($result.Output -notmatch 'All \d+ suite\(s\) passed') 'Missing results cannot summarize as success.'
+            Assert-True ($result.Output -match 'injected acquisition failure') 'Acquisition error must be visible.'
+        } finally { Remove-SuiteFixture $repo; Remove-PinnedLanePool $pool }
+    }
+}
+Invoke-TestCase 'Lane missing Worker results cannot produce a passing summary' {
+    $pool = New-PinnedLanePool 2
+    $repo = New-StoringRepoFixture -Suite @('one.Tests.ps1', 'two.Tests.ps1')
+    try {
+        Add-Content -LiteralPath (Join-Path $repo 'scripts/powershell-suites.common.ps1') -Value 'function Invoke-SuiteChild { param($Path, $Name, $HostExe) }'
+        $result = Invoke-DriverAt -Repo $repo -MaxParallel 2 -EnvVar @{ AHKFLOW_TEST_LANES_ROOT = $pool.Root; AHKFLOW_TEST_LANES_HOLDER = ''; AHKFLOW_TEST_LANES = '' }
+        Assert-True ($result.ExitCode -ne 0) "Missing Worker results must fail the run. $($result.Output)"
+        foreach ($name in @('one.Tests.ps1', 'two.Tests.ps1')) { Assert-True ($result.Output.Contains("FAILED: $name")) "Missing failure for $name." }
+        Assert-True ($result.Output -notmatch 'All \d+ suite\(s\) passed') 'Missing work was summarized as success.'
+    } finally { Remove-SuiteFixture $repo; Remove-PinnedLanePool $pool }
+}
+Invoke-TestCase 'Lane acquisition uses changed capacity and excludes admission wait from Suite timing' {
+    $pool = New-PinnedLanePool 2
+    $repo = New-StoringRepoFixture -Suite @('one.Tests.ps1')
+    $runner = $null; $holder = $null
+    try {
+        $pool.Pin.Dispose(); $pool.Pin = $null
+        $common = ConvertTo-ScriptLiteral (Join-Path $repoRoot 'tests/LanePool.Common.ps1')
+        Add-Content -LiteralPath (Join-Path $repo 'scripts/test-lanes.common.ps1') -Value ('. ' + $common)
+        Add-Content -LiteralPath (Join-Path $repo 'scripts/test-lanes.common.ps1') -Value @'
+$realEnter = ${function:Enter-AhkFlowLanes}
+function Enter-AhkFlowLanes {
+    param($PoolRoot, $Share, $Proposal, $Run)
+    Publish-LaneSignal (Join-Path $PSScriptRoot '../markers/before') ([string]$Proposal)
+    Wait-LanePath (Join-Path $PSScriptRoot '../markers/resume') 20 | Out-Null
+    $handle = & $realEnter -PoolRoot $PoolRoot -Share $Share -Proposal $Proposal -Run $Run
+    Publish-LaneSignal (Join-Path $PSScriptRoot '../markers/capacity') ([string]$handle.Capacity)
+    $handle
+}
+'@
+        $runner = Start-LaneRunnerFixture ([pscustomobject]@{ Root = $repo }) $pool -Workers 1
+        $proposal = [int](Wait-LanePath (Join-Path $repo 'markers/before') 20 -Child $runner)
+        $capacity = if ($proposal -eq 3) { 4 } else { 3 }
+        $signals = @{ Acquired = Join-Path $pool.Root 'acquired'; Release = Join-Path $pool.Root 'release' }
+        $watch = [Diagnostics.Stopwatch]::StartNew()
+        $holder = Start-LaneHolder -PoolRoot $pool.Root -Signals $signals -Tag changed -Share One -Proposal $capacity
+        Wait-LanePath $signals.Acquired 20 -Child $holder | Out-Null
+        # Intentional measured admission time, not an overlap assertion.
+        Start-Sleep -Milliseconds 1500
+        Publish-LaneSignal (Join-Path $repo 'markers/resume')
+        Assert-True (([int](Wait-LanePath (Join-Path $repo 'markers/capacity') 20 -Child $runner)) -eq $capacity) 'Handle must use the capacity recorded after startup.'
+        $result = Wait-LaneChildProcess $runner 20
+        $watch.Stop()
+        Assert-True ($result.ExitCode -eq 0) "$($result.Output) $($result.Error)"
+        Assert-True ($result.Output -match '(?m)^Lanes: shared pool; one per Suite\s*$') 'Startup must not claim the discarded proposal.'
+        $timing = Get-Content (Join-Path $repo 'TestResults/progress/run-powershell-suites.json') -Raw | ConvertFrom-Json
+        Assert-True (($watch.Elapsed.TotalSeconds - $timing.'one.Tests.ps1') -gt 1.3) 'Suite duration includes admission wait.'
+        Publish-LaneSignal $signals.Release
+        $holderResult = Wait-LaneChildProcess $holder 20
+        Assert-True ($holderResult.ExitCode -eq 0) $holderResult.Error
+    } finally {
+        Stop-LaneChildProcess $runner
+        Stop-LaneChildProcess $holder
+        Remove-SuiteFixture $repo
+        Remove-PinnedLanePool $pool
+    }
+}
+Invoke-TestCase 'Lane exclusive Suites acquire One and release it before the next Suite' {
+    $pool = New-PinnedLanePool 2
+    $fixture = $null; $child = $null
+    try {
+        $fixture = New-LaneRunnerFixture
+        $manifestPath = Join-Path $fixture.Root 'tests/powershell-suites.json'
+        $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
+        foreach ($entry in $manifest.suites) {
+            $entry.execution = 'exclusive'
+            $entry | Add-Member -NotePropertyName reason -NotePropertyValue 'Controlled exclusive Lane fixture.'
+        }
+        $manifest | ConvertTo-Json -Depth 6 | Set-Content $manifestPath
+        $child = Start-LaneRunnerFixture $fixture $pool
+        $started = Wait-LaneRunnerState $fixture 1 -Child $child
+        Assert-True ((Get-RunLaneCount $pool) -eq 1) 'An exclusive Suite needs exactly One Lane.'
+        Publish-LaneSignal $started[0].ReleasePath
+        $other = @($fixture.Items | Where-Object { $_.Tag -ne $started[0].Tag })[0]
+        Wait-LanePath $other.StartPath 20 -Child $child | Out-Null
+        Assert-True ((Get-RunLaneCount $pool) -eq 1) 'The first Lane must be released before the next Suite.'
+        Publish-LaneSignal $other.ReleasePath
+        Assert-LaneRunnerCompleted -Fixtures @($fixture) -Children @($child) -Peak 1
+        Assert-True ((Get-RunLaneCount $pool) -eq 0) 'Runner completion must release its Lanes.'
+        Assert-True (@(Get-ChildItem (Join-Path $pool.Root 'runs') -File).Count -eq 0) 'Runner completion must unregister.'
+    } finally {
+        Stop-LaneChildProcess $child
+        if ($fixture) { Remove-SuiteFixture $fixture.Root }
+        Remove-PinnedLanePool $pool
+    }
+}
+Invoke-TestCase 'Lane stopped runner settles children before unregistering and restores its marker' {
+    $pool = New-PinnedLanePool 2
+    $fixture = $null
+    $state = [pscustomobject]@{ Shell = $null; Runspace = $null }
+    $suiteProcesses = [Collections.Generic.List[object]]::new()
+    try {
+        $fixture = New-LaneRunnerFixture
+        foreach ($item in $fixture.Items) {
+            $prefix = 'Set-Content -LiteralPath ' + (ConvertTo-ScriptLiteral ($item.StartPath + '.pid')) + ' -Value $PID' + [Environment]::NewLine
+            Set-Content -LiteralPath $item.Path -Value ($prefix + (Get-Content -LiteralPath $item.Path -Raw))
+        }
+
+        Add-Content -LiteralPath (Join-Path $fixture.Root 'scripts/test-lanes.common.ps1') -Value @'
+function Assert-FixtureChildrenSettled {
+    param([string] $Operation)
+    foreach ($file in @(Get-ChildItem (Join-Path $PSScriptRoot '../tests') -Filter '*.start.pid')) {
+        $childId = [int](Get-Content $file.FullName)
+        $child = $null
+        try {
+            try { $child = [Diagnostics.Process]::GetProcessById($childId) } catch [ArgumentException] { continue }
+            if (-not $child.HasExited) {
+                Add-Content -LiteralPath (Join-Path $PSScriptRoot '../markers/cleanup-violation') -Value "$Operation while Suite PID $childId was alive."
+            }
+        } finally { if ($child) { $child.Dispose() } }
+    }
+    Add-Content -LiteralPath (Join-Path $PSScriptRoot '../markers/cleanup-observed') -Value $Operation
+}
+$fixtureUnregister = ${function:Unregister-AhkFlowLaneRun}
+function Unregister-AhkFlowLaneRun {
+    param($Run)
+    Assert-FixtureChildrenSettled -Operation unregister
+    & $fixtureUnregister -Run $Run
+}
+$fixtureExitOwnership = ${function:Exit-AhkFlowLaneOwnership}
+function Exit-AhkFlowLaneOwnership {
+    param($Previous)
+    Assert-FixtureChildrenSettled -Operation restore
+    & $fixtureExitOwnership -Previous $Previous
+}
+'@
+        Use-LaneEnvironment -Value @{ AHKFLOW_TEST_LANES_ROOT = $pool.Root } -Body {
+            $state.Runspace = [RunspaceFactory]::CreateRunspace()
+            $state.Runspace.Open()
+            $state.Shell = [PowerShell]::Create()
+            $state.Shell.Runspace = $state.Runspace
+            [void]$state.Shell.AddCommand((Join-Path $fixture.Root 'scripts/run-powershell-suites.ps1')).AddParameter('MaxParallel', '2')
+            $pending = $state.Shell.BeginInvoke()
+            foreach ($item in $fixture.Items) {
+                Wait-LanePath $item.StartPath 20 | Out-Null
+                $suiteProcesses.Add([Diagnostics.Process]::GetProcessById([int](Get-Content -LiteralPath ($item.StartPath + '.pid'))))
+            }
+            Assert-True ((Get-RunLaneCount $pool) -eq 2) 'Both Suites must hold Lanes before cancellation.'
+            $stopping = $state.Shell.BeginStop($null, $null)
+            Assert-True ($stopping.AsyncWaitHandle.WaitOne(15000)) 'Runner cancellation did not settle.'
+            $state.Shell.EndStop($stopping)
+            $violation = Join-Path $fixture.Root 'markers/cleanup-violation'
+            Assert-True (-not (Test-Path $violation)) "Ownership cleanup ran before children settled: $(if (Test-Path $violation) { Get-Content $violation -Raw })"
+            $observed = @(Get-Content (Join-Path $fixture.Root 'markers/cleanup-observed'))
+            Assert-True (($observed -join ',') -eq 'unregister,restore') 'The fixture must observe both parent cleanup operations.'
+            foreach ($process in $suiteProcesses) { Assert-True ($process.WaitForExit(1000)) 'Cancellation released ownership before its child exited.' }
+            Assert-True ((Get-RunLaneCount $pool) -eq 0) 'Cancellation must release every Lane.'
+            Assert-True (@(Get-ChildItem (Join-Path $pool.Root 'runs') -File).Count -eq 0) 'Cancellation must unregister the run.'
+            Assert-True ([string]::IsNullOrWhiteSpace($env:AHKFLOW_TEST_LANES_HOLDER)) 'Cancellation must restore the incoming blank marker.'
+        }
+    } finally {
+        if ($fixture) { foreach ($item in $fixture.Items) { Publish-LaneSignal $item.ReleasePath } }
+        if ($state.Shell) { $state.Shell.Dispose() }
+        if ($state.Runspace) { $state.Runspace.Dispose() }
+        foreach ($process in $suiteProcesses) {
+            if (-not $process.HasExited) { $process.Kill($true) }
+            Assert-True ($process.WaitForExit(5000)) "Suite PID $($process.Id) could not be reaped before fixture cleanup."
+            $process.Dispose()
+        }
+        if ($fixture) { Remove-SuiteFixture $fixture.Root }
+        Remove-PinnedLanePool $pool
+    }
+}
+Invoke-TestCase 'Lane registration failure returns nonzero and restores the owner marker' {
+    $pool = New-PinnedLanePool 2
+    $repo = New-StoringRepoFixture -Suite @('one.Tests.ps1')
+    try {
+        $invalidRoot = Join-Path $pool.Root 'not-a-directory'
+        Set-Content -LiteralPath $invalidRoot -Value occupied
+        Add-Content -LiteralPath (Join-Path $repo 'scripts/test-lanes.common.ps1') -Value @'
+$realExitOwnership = ${function:Exit-AhkFlowLaneOwnership}
+function Exit-AhkFlowLaneOwnership {
+    param($Previous)
+    & $realExitOwnership -Previous $Previous
+    Set-Content -LiteralPath (Join-Path $PSScriptRoot '../markers/restored') -Value ([string]$env:AHKFLOW_TEST_LANES_HOLDER)
+}
+'@
+        $result = Invoke-DriverAt -Repo $repo -MaxParallel 1 -EnvVar @{ AHKFLOW_TEST_LANES_ROOT = $invalidRoot; AHKFLOW_TEST_LANES_HOLDER = ''; AHKFLOW_TEST_LANES = '' }
+        Assert-True ($result.ExitCode -ne 0) "Registration failure must fail the runner. $($result.Output)"
+        Assert-True (-not (Test-Path (Join-Path $repo 'markers/one.Tests.ps1'))) 'Registration failure started a Suite.'
+        $restored = Join-Path $repo 'markers/restored'
+        Assert-True (Test-Path $restored) 'Registration failure did not restore the marker.'
+        Assert-True ([string]::IsNullOrWhiteSpace((Get-Content $restored -Raw))) 'Registration failure left an owner marker.'
+    } finally { Remove-SuiteFixture $repo; Remove-PinnedLanePool $pool }
+}
+# End Task 5 Lane runner integration cases.
+
 
 Write-Host ''
 if ($script:Failures.Count -gt 0) {
