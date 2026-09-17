@@ -2,7 +2,7 @@
 
 Plan: `docs/superpowers/plans/2026-09-13-test-runs-share-a-lane-pool-plan-146.md`
 
-Stage: 4-execute. Starting commit: `108072baa5ff097c33cc1bc7d044134d24fd6ba7`.
+Stage: 7-document. Starting commit: `108072baa5ff097c33cc1bc7d044134d24fd6ba7`.
 Draft proof PR: https://github.com/s205109/AHKFlowApp/pull/415
 
 | Task | Status | Deliverable | Evidence / remaining work |
@@ -302,3 +302,33 @@ route. Step 4 printed no `Lanes:` status line, which matches the documented cont
 PowerShell suite runner prints that status, while the Coverage route reserves Half silently.
 
 The two-checkout measurement trials are the only ledger item still open.
+
+## Document
+
+Branch head `52812b8f` is pushed. The remote was still at `b4e93b2a`, so this push carried
+every commit from Task 3 onward as well as this session's work.
+
+Six of the seven acceptance criteria are ticked, each against durable tests rather than a
+one-off observation:
+
+| Criterion | Evidence |
+|---|---|
+| Different checkouts share one limit | Task 5: two copied checkouts, two real runners, one capacity-two pool, combined peak of two; the acquisition-bypass mutation fails |
+| `-Mode PowerShell` takes part | Task 5 and Task 6; Gate step 3 printed `Lanes: shared pool; one per Suite` through the wrapper route |
+| The design records the chosen shape and why | `docs/adr/0018-test-runs-share-a-lane-pool.md` and the backlog 146 spec |
+| A smaller share says so and names the peer | Task 4, 34 cases: `Sharing the test Lane pool with: Fast run 18244 in C:\checkout` names mode, process id, and checkout, prints at most once, and announces late peers |
+| A killed run does not block or shrink the next | Task 1 forced kill, Task 3 killed partial collector, Task 4 killed advisory owner |
+| A documented opt-out exists | `AHKFLOW_TEST_LANES=off` in `docs/development/testing-workflow.md`; Task 5 shows the opted-out fixture peaking at four |
+
+The CI criterion stays unticked until a run on this head reports.
+
+### The claim this item does not prove
+
+The trigger for backlog 146 was a laptop that stopped responding while the suites ran. Every
+proof above is admission correctness: the cap holds, and a mutation that bypasses acquisition
+fails. That is not the same claim as the machine staying usable under load.
+
+The plan separates the two on purpose. Its measurement section asks for two disposable checkouts
+of one commit against a pinned capacity-six pool, a baseline and a two-run trial each repeated
+once, with temporary interval instrumentation and a CPU and working-set sampler. Those trials
+have not run. The responsiveness claim stays open, and the pull request says so.

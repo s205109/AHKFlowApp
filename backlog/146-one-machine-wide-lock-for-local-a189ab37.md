@@ -6,7 +6,7 @@
 - **Type**: Feature
 - **Interfaces**: none (test runner scripts)
 - **Difficulty**: complex
-- **Stage**: 4-execute
+- **Stage**: 7-document
 
 ## Summary
 
@@ -21,23 +21,23 @@ with the first, so that I do not have to remember to halve the worker count by h
 
 ## Acceptance criteria
 
-- [ ] Two local test runs started from different checkouts of this repository share one limit.
+- [x] Two local test runs started from different checkouts of this repository share one limit.
       The lock file today sits in each checkout's own root
       (`scripts/test-fast.ps1:49`, "$repoRoot = Split-Path -Parent $PSScriptRoot"), so two
       worktrees hold two different locks and neither waits.
-- [ ] `-Mode PowerShell` takes part. It returns today before the lock is taken: the mode block
+- [x] `-Mode PowerShell` takes part. It returns today before the lock is taken: the mode block
       starts at (`scripts/test-fast.ps1:361`, "    if ($Mode -eq 'PowerShell') {") and the lock
       is taken after it at
       (`scripts/test-fast.ps1:396`, "    $testRunLock = Enter-AhkFlowTestRunLock -RepoRoot $repoRoot -Mode $Mode").
-- [ ] The design records which of two shapes it chose, and why: refuse the second run, or let
+- [x] The design records which of two shapes it chose, and why: refuse the second run, or let
       both run and divide one worker budget between them. The measurement below supports
       dividing, because two runs at 4 workers each both passed and neither waited.
-- [ ] A run that is made to wait, or is given a smaller share, says so in one line, and names
+- [x] A run that is made to wait, or is given a smaller share, says so in one line, and names
       the other run's mode, process id, and checkout.
-- [ ] A lock left behind by a killed run does not block or shrink the next run. The existing
+- [x] A lock left behind by a killed run does not block or shrink the next run. The existing
       lock already promises this, and the machine-wide one keeps the promise.
 - [ ] A CI job takes the lock on a fresh runner and never waits.
-- [ ] A developer can opt out for a deliberate overlap, and the opt-out is documented in
+- [x] A developer can opt out for a deliberate overlap, and the opt-out is documented in
       `docs/development/testing-workflow.md`.
 
 ## Out of scope
@@ -70,5 +70,12 @@ with the first, so that I do not have to remember to halve the worker count by h
   divides through a Lane pool rather than a machine-wide lock; see
   [`docs/adr/0018-test-runs-share-a-lane-pool.md`](../docs/adr/0018-test-runs-share-a-lane-pool.md).
 - Plan: `docs/superpowers/plans/2026-09-13-test-runs-share-a-lane-pool-plan-146.md`
+- **The responsiveness claim is not verified.** The trigger for this item was a laptop that
+  stopped responding while the suites ran. The Lane pool proves a shared cap, and tests prove it:
+  two real runners in two checkouts reached a combined peak of two Lanes in a capacity-two pool,
+  and an acquisition-bypass mutation fails that proof. That is admission correctness. It is not
+  the same claim as the machine staying usable. The plan asks for two-checkout measurement trials
+  with a CPU and working-set sampler, and those trials have not run. Nobody should read a green
+  test suite as evidence that the laptop now stays responsive.
 - The plan has eight tasks. Task 1 proves locking locally and on hosted Windows and Linux.
   Task 2 is independent. Tasks 3-8 require the platform proof to pass.
