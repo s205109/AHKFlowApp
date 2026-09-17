@@ -6,7 +6,7 @@
 - **Type**: Feature
 - **Interfaces**: none (test runner scripts)
 - **Difficulty**: complex
-- **Stage**: 7-document
+- **Stage**: 9-ship
 
 ## Summary
 
@@ -68,7 +68,7 @@ with the first, so that I do not have to remember to halve the worker count by h
   all when two terminals ran them at once.
 - Spec: `docs/superpowers/specs/2026-09-13-test-runs-share-a-lane-pool-design-146.md`. The design
   divides through a Lane pool rather than a machine-wide lock; see
-  [`docs/adr/0018-test-runs-share-a-lane-pool.md`](../docs/adr/0018-test-runs-share-a-lane-pool.md).
+  [`docs/adr/0018-test-runs-share-a-lane-pool.md`](../../docs/adr/0018-test-runs-share-a-lane-pool.md).
 - Plan: `docs/superpowers/plans/2026-09-13-test-runs-share-a-lane-pool-plan-146.md`
 - **The responsiveness claim is not verified.** The trigger for this item was a laptop that
   stopped responding while the suites ran. The Lane pool proves a shared cap, and tests prove it:
