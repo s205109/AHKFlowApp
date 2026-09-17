@@ -6,7 +6,7 @@
 - **Type**: Fix
 - **Interfaces**: CLI
 - **Difficulty**: moderate
-- **Stage**: 4-execute
+- **Stage**: 9-ship
 
 ## Summary
 
@@ -71,22 +71,41 @@ of the log cannot tell a real refusal from "there was nothing here".
 
 ## Acceptance criteria
 
-- [ ] The sweep removes a merged worktree whose branch reflog holds a `reset:` that dropped a commit
+- [x] The sweep removes a merged worktree whose branch reflog holds a `reset:` that dropped a commit
       the base later received, in the shape `chore/wt-backlog-housekeeping` had
       (`scripts/worktree-git.common.ps1:504`, "function Test-StrandedWorkWasSuperseded {")
 - [ ] The sweep keeps a merged worktree whose branch reflog holds a `reset:` that dropped a commit
       the base never received
+      — **only partly true.** The sweep keeps the worktree when no later commit on the branch
+      carries the dropped commit's subject line and author. When one does, the sweep removes the
+      worktree, even though the base never received the dropped commit. The redo test proves this
+      exception. Its replacement has different content, no branch contains the dropped commit, and
+      the test still requires removal
+      (`tests/WorktreeMergedCleanup.Tests.ps1:654`, "A reset the branch then redid under the same subject and author must not keep the worktree.").
+      This is the same accepted cost criterion 3 describes.
 - [ ] The sweep keeps a merged worktree whose dropped commit differs from what the base holds only in
       whitespace, in being a merge commit, or in author, message, signature, or empty-commit intent
       (`tests/WorktreeMergedCleanup.Tests.ps1:445`, "Content that differs only in whitespace must still count as discarded work.")
-- [ ] Every worktree the sweep declines to remove has exactly one line in `worktree-removal.log`
+      — **only partly true.** The sweep keeps the worktree when no later commit on the branch
+      carries the dropped commit's subject line and author. The whitespace and discarded-merge
+      fixtures prove that. So do the tests for a different subject
+      (`tests/WorktreeMergedCleanup.Tests.ps1:708`, "A later commit with a different subject must not clear a reset.")
+      and for a different author
+      (`tests/WorktreeMergedCleanup.Tests.ps1:749`, "A worktree whose redo carries another author must never be eligible.").
+      When a later commit on the branch does carry the same subject line and author, the sweep
+      removes the worktree. A difference in whitespace, message body, signature, empty-commit
+      intent, or merge shape does not stop that. Pull request #410 chose this on purpose, and the
+      rule's comment records it as the accepted cost
+      (`scripts/worktree-git.common.ps1:494`, "The cost, stated plainly.").
+      No test covers commit signing.
+- [x] Every worktree the sweep declines to remove has exactly one line in `worktree-removal.log`
       saying why, including a merged-check refusal
       (`scripts/cleanup-merged-worktrees.ps1:146`, "$mergedVerdict = Get-BranchMergedVerdict")
-- [ ] A worktree the sweep keeps because `git status` failed has a line in `worktree-removal.log`
+- [x] A worktree the sweep keeps because `git status` failed has a line in `worktree-removal.log`
       saying so (`scripts/cleanup-merged-worktrees.ps1:185`, "git -C $wtFull status --porcelain")
-- [ ] The log line for a merged-check refusal names which of the five signals refused
+- [x] The log line for a merged-check refusal names which of the five signals refused
       (`scripts/worktree-git.common.ps1:1060`, "function Get-BranchMergedVerdict {")
-- [ ] `remove-worktree-local-dev.ps1` run on a folder that no longer exists writes an outcome line
+- [x] `remove-worktree-local-dev.ps1` run on a folder that no longer exists writes an outcome line
       that does not start with `Kept:`, because it kept nothing
       (`scripts/remove-worktree-local-dev.ps1:817`, "Nothing to remove: the worktree folder does not exist.")
 

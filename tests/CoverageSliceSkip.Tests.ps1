@@ -94,6 +94,34 @@ Invoke-TestCase 'Each supported pattern shape matches the right paths' {
     }
 }
 
+Invoke-TestCase 'The seven tooling exclusions match the paths they were written for' {
+    $exclusion = Read-AhkFlowCodePathExclusion -FilterPath (Get-AhkFlowCodePathFilterPath -RepoRoot $repoRoot)
+
+    # One row per new entry. The pattern is asserted, not only the fact of a match, so a future
+    # widening of one entry cannot silently take over another entry's job.
+    $expected = @{
+        'tests/powershell-suites.json'                 = 'tests/*.json'
+        '.githooks/pre-push'                           = '.githooks/**'
+        '.githooks/pre-push.ps1'                       = '.githooks/**'
+        '.agents/mp-grilling/agents/openai.yaml'       = '.agents/**'
+        '.github/skills/dck-ef-core'                   = '.github/skills/**'
+        'plugins/ahkflowapp/.codex-plugin/plugin.json' = 'plugins/**'
+        '.codex/hooks.json'                            = '.codex/**'
+        '.pr_agent.toml'                               = '**/*.toml'
+    }
+
+    foreach ($path in $expected.Keys) {
+        $match = Get-AhkFlowPathExclusionMatch -Path $path -Exclusion $exclusion
+        Assert-True ($match -ceq $expected[$path]) `
+            "'$path' must be excluded by '$($expected[$path])'. Got '$match'."
+    }
+
+    # One level only. A .json file inside a compiled test project is a build input.
+    $match = Get-AhkFlowPathExclusionMatch -Path 'tests/AHKFlowApp.E2E.Tests/xunit.runner.json' -Exclusion $exclusion
+    Assert-True ($null -eq $match) `
+        "A .json file inside a test project must count as code. Pattern '$match' excluded it."
+}
+
 Invoke-TestCase 'Under .github, only a lowercase .md file is excluded' {
     # The list carries no '.github/**' pattern, so every file there counts as code - except one
     # ending in lowercase '.md', which '**/*.md' excludes wherever it sits. That split is
@@ -328,6 +356,38 @@ Invoke-TestCase 'The coverage tooling list is exactly the thirteen files the sli
         "The coverage tooling list does not match what the entry points dot-source. Derived: $($derivedSet -join ', ')"
 }
 
+Invoke-TestCase 'The docs describing coverage-tooling state the same count as the file' {
+    # backlog 152's review found the count drifted to "seven" and "eight" in these two files
+    # while the YAML above already held eleven entries. Nothing had caught it, because the test
+    # above checks the actual set, never the prose describing it. This closes that gap: change
+    # the count above and one of the two files below without updating the other, and this fails.
+    $path = Get-AhkFlowCodePathFilterPath -RepoRoot $repoRoot
+    $tooling = @(Read-AhkFlowCoverageToolingPath -FilterPath $path)
+
+    # Spelled out, because both docs spell it out. Add an entry here before trusting this test if
+    # the list ever grows past what this maps - an unmapped count must fail loudly, not silently
+    # skip the check below.
+    $numberWord = @{
+        6 = 'six'; 7 = 'seven'; 8 = 'eight'; 9 = 'nine'; 10 = 'ten'
+        11 = 'eleven'; 12 = 'twelve'; 13 = 'thirteen'; 14 = 'fourteen'; 15 = 'fifteen'
+    }
+    Assert-True ($numberWord.ContainsKey($tooling.Count)) `
+        "No spelled-out word mapped for $($tooling.Count) coverage-tooling entries. Add one to `$numberWord in this test."
+    $word = $numberWord[$tooling.Count]
+
+    $filterModule = Get-Content -LiteralPath (Join-Path $repoRoot 'scripts\code-change-filter.common.ps1') -Raw
+    Assert-True ($filterModule -match "coverage-tooling key names $word scripts") `
+        "scripts/code-change-filter.common.ps1 must say '$word scripts', to match the $($tooling.Count) entries in .github/code-paths-filter.yml."
+    Assert-True ($filterModule -match "stricter than CI on $word paths") `
+        "scripts/code-change-filter.common.ps1 must say 'stricter than CI on $word paths'."
+
+    $testingWorkflow = Get-Content -LiteralPath (Join-Path $repoRoot 'docs\development\testing-workflow.md') -Raw
+    Assert-True ($testingWorkflow -match "lists $word scripts under") `
+        "docs/development/testing-workflow.md must say 'lists $word scripts under coverage-tooling'."
+    Assert-True ($testingWorkflow -match "those $word paths this Gate is stricter than") `
+        "docs/development/testing-workflow.md must say 'those $word paths this Gate is stricter than'."
+}
+
 # A throwaway script holding the dot-source lines a case wants Get-DotSourcedScriptName to read.
 # It never runs; only its text is parsed.
 function New-DotSourceFixture {
@@ -556,6 +616,36 @@ Invoke-TestCase 'A branch of docs, backlog, and PowerShell changes is not a code
         $decision = Get-AhkFlowCoverageDecision -RepoRoot $root -BaseRef 'main'
         Assert-True (-not $decision.CoverageRequired) "Expected no code change. Changed: $($decision.ChangedPath -join ', ')"
         Assert-True ($decision.ChangedPath.Count -eq 5) "Expected 5 changed paths, got $($decision.ChangedPath.Count)."
+    }
+    finally { Remove-Fixture -Root $root }
+}
+
+Invoke-TestCase 'A branch of only tooling files is not a code change' {
+    $root = New-DiffFixture
+    try {
+        Add-FixtureFile -Root $root -RelativePath 'tests/powershell-suites.json'
+        Add-FixtureFile -Root $root -RelativePath '.githooks/pre-push.ps1'
+        Add-FixtureFile -Root $root -RelativePath '.agents/mp-grilling/agents/openai.yaml'
+        Add-FixtureFile -Root $root -RelativePath 'plugins/ahkflowapp/.codex-plugin/plugin.json'
+        Add-FixtureFile -Root $root -RelativePath '.codex/hooks.json'
+        Add-FixtureFile -Root $root -RelativePath '.pr_agent.toml'
+        Save-Fixture -Root $root -Message 'tooling only'
+
+        $decision = Get-AhkFlowCoverageDecision -RepoRoot $root -BaseRef 'main'
+        Assert-True (-not $decision.CoverageRequired) `
+            "Expected no code change. Changed: $($decision.ChangedPath -join ', ')"
+    }
+    finally { Remove-Fixture -Root $root }
+}
+
+Invoke-TestCase 'A workflow change is still a code change' {
+    $root = New-DiffFixture
+    try {
+        Add-FixtureFile -Root $root -RelativePath '.github/workflows/ci.yml'
+        Save-Fixture -Root $root -Message 'workflow only'
+
+        $decision = Get-AhkFlowCoverageDecision -RepoRoot $root -BaseRef 'main'
+        Assert-True $decision.CoverageRequired 'A change to the pipeline must run the pipeline.'
     }
     finally { Remove-Fixture -Root $root }
 }

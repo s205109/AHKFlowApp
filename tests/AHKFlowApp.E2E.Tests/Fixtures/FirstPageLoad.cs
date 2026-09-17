@@ -30,6 +30,27 @@ public static class FirstPageLoad
     public const int TimeoutMs = 30_000;
 
     /// <summary>
+    /// The net error Chromium logs when the machine's network changed while requests were in
+    /// flight. The failed downloads include requests to 127.0.0.1.
+    ///
+    /// Only the browser's own console line carries this text. The app's code sees a failed
+    /// download as "TypeError: Failed to fetch" and nothing more. So this class can name the cause
+    /// and wwwroot/js/bootBlazor.js cannot.
+    /// </summary>
+    internal const string NetworkChangedError = "net::ERR_NETWORK_CHANGED";
+
+    /// <summary>
+    /// The sentence a failed first page load adds when the browser reported
+    /// <see cref="NetworkChangedError"/>. Backlog 156 traced every such failure in CI to a Docker
+    /// container that another test process left for Ryuk to remove.
+    /// </summary>
+    internal const string NetworkChangedHint =
+        "The browser reported net::ERR_NETWORK_CHANGED. The network of the machine changed during the boot. "
+        + "Chromium then failed the downloads in flight, even from 127.0.0.1. "
+        + "The likely cause is the machine, not the app or this test. "
+        + "In CI this happened when another test process removed a Docker container. See backlog 156.";
+
+    /// <summary>
     /// The boot error screen, written by wwwroot/js/bootBlazor.js. It renders only after the one
     /// allowed retry is spent, so it is terminal: nothing can follow it, and waiting longer after
     /// it appears can never help.
@@ -200,6 +221,14 @@ public static class FirstPageLoad
         report.AppendLine($"Documents loaded: {watch.Documents}. More than one means bootBlazor.js reloaded the page after a failed boot.");
 
         IReadOnlyList<string> errors = watch.Errors;
+
+        // Before the error list, because it changes what the list means. Every failed download in
+        // it is one event on the machine, and the test is not the thing to fix.
+        if (errors.Any(error => error.Contains(NetworkChangedError, StringComparison.Ordinal)))
+        {
+            report.AppendLine(NetworkChangedHint);
+        }
+
         if (errors.Count == 0)
         {
             report.AppendLine("The browser reported no console errors and no uncaught page errors.");
