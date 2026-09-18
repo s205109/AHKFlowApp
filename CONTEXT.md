@@ -194,7 +194,7 @@ The `## Split` section a Plan carries near its top. It holds three fields: the e
 _Avoid_: size record, budget, sizing, plan header
 
 **Split trigger**:
-The condition that makes a split evaluation mandatory: an estimate of more than two sessions, or a Plan carrying fifteen or more test-run commands. Meeting it never forces a split. It forces a written verdict, which may be that no split is possible.
+The condition that makes a split evaluation mandatory: an estimate of more than two sessions, or a Plan with fifteen or more lines that name a test-run command. Meeting it never forces a split. It forces a written verdict, which may be that no split is possible.
 _Avoid_: limit, cap, gate, quota, budget
 
 **Extension**:

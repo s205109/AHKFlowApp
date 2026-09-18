@@ -79,7 +79,8 @@ somebody does" read real task counts. Pickup read them, across all 209 committed
 - A threshold of three would report a problem for 145 of those 168 plans, and for 18 of the
   30 newest. A Check that fails the middle of the population is noise, not a limit.
 - Task count is a weak measure of size. Across the last 15 shipped items, task count matches
-  the item's commit volume at r = 0.40. Plan length does a little better at r = 0.50.
+  the number of commits that touched the item's own file at r = 0.40. Plan length does a little
+  better at r = 0.50. That proxy is rough and the sample is small.
 - The two extremes prove the point the section above makes. Item 146 carries 8 tasks in 699
   lines. Item 156 carries 3 tasks in 1254 lines. A three-task threshold would stop 146 and
   wave 156 through, even though 156 is the larger plan by volume.
@@ -93,6 +94,10 @@ not. Design carries these three questions into the spec:
    from the measured distribution above rather than from a guess.
 3. The Check counts `### Task N:` with a pattern that ignores heading level, so it reads the
    plans this repository actually writes.
+
+Design settled all three. The estimate is the required record. The task count is gone
+entirely, because no threshold separates 146 from healthy work. A count of the plan lines that
+name a test-run command replaced it. The spec gives the numbers.
 
 ## Acceptance criteria
 
@@ -111,8 +116,8 @@ list, and writes into this item which branch it deleted.
 - [ ] The same suite reports a problem when a plan carries no session estimate, and when it
       carries no line naming the task at which the user story closes.
 - [ ] The same suite reports a problem when a plan meets the split trigger and carries no split
-      verdict. The trigger is an estimate over two sessions, or fifteen or more test-run
-      commands in the plan.
+      verdict. The trigger is an estimate over two sessions, or fifteen or more plan lines that
+      name a test-run command.
 - [ ] The same suite reports no problem for an item whose plan pointer reads `- Plan: none`,
       and for an item that has not reached the stage that writes the record.
 - [ ] The suite is listed in `tests/powershell-suites.json`, with a measured baseline and a
@@ -160,13 +165,15 @@ list, and writes into this item which branch it deleted.
   apply it, because nothing made the size visible at Plan.
 - **Shape to copy.** `tests/BacklogPlanPointer.Tests.ps1` proves a `- Plan:` bullet exists and
   never judges the plan behind it. The new suite proves the record exists and is complete, and
-  never judges the split.
+  never judges the split. Design found a closer model: `scripts/check-shipped-plan-ticked.ps1`
+  opens the plan at pre-push, and `tests/ShippedPlanTicked.Tests.ps1` proves its rule on
+  fixtures. The new check must open the plan too, so it copies that pair. See the spec.
 - **A limit Approach A accepts.** The Check cannot fail backlog item 146 on its own. Criterion 1
   of that item reads "Two local test runs started from different checkouts of this repository
   share one limit", and a .NET run is a local test run, so every task maps to it and no cell is
   empty. What the record gives a reader is the fan-out number: one criterion, seven tasks. The
   number is the signal, and a person reads it.
-- Spec: `docs/superpowers/specs/2026-09-17-plan-size-record-design-157.md`
+- Spec: `docs/superpowers/specs/2026-09-17-plan-split-record-design-157.md`
 - Design deleted the Approach A branch. The choice, the measurements behind it, and the three
   new glossary terms are in the spec. The rejected alternatives are in ADR 0019.
 - Plan: none - filed at Intake. The Plan stage writes the path here.
