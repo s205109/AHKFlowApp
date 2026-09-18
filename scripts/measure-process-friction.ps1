@@ -121,6 +121,10 @@ $script:CleanupOutcomePatterns = @(
     '^force override: AHKFLOW_WORKTREE_FORCE_REMOVE set'
 )
 
+# Metric 2 counts every command line that names a directory. The compliant form
+# `git -C <absolute path> status` counts as well, so this metric cannot measure the
+# Directory-bound command rule that backlog 075 wrote into CONTEXT.md.
+#
 # Metric 2 is a syntax rule, not a word list: a command line inside a shell fence that names a
 # directory. Two filters keep prose out. The line must START with a command, because
 # 'Records the `git -C docs/superpowers` form' is a sentence, not a command. And a here-string

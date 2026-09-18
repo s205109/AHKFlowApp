@@ -970,7 +970,15 @@ its remaining changes and closes normally.
 - A pull request body may use a closing keyword for a GitHub issue. It must never use a
   bare `#N` for a backlog number — GitHub would link that to an unrelated issue or pull
   request.
-- A pull request title carries its backlog number in words, such as `(backlog 071)`.
+- <a id="pull-request-title-and-sessions"></a>A pull request title carries its backlog number in words, such as `(backlog 071)`.
+- A pull request description carries a `Sessions:` line. Under it goes one bullet per agent
+  session that pushed to the branch: `- <session id> (<agent>, <stage at its first push>)`. A
+  session adds its bullet once, at its first push, and never edits it, so a later push costs
+  nothing. The list lets a reader find the transcript behind a decision. The Pickup session is
+  rarely the one that made it.
+- In Claude Code the session id is `CLAUDE_CODE_SESSION_ID`. When that is empty, use the
+  transcript file name without `.jsonl`. An agent with no session id writes `none`. A pull
+  request that no agent pushed to carries no `Sessions:` line.
 - Specs live in `docs/superpowers/specs/`. Plans live in `docs/superpowers/plans/`. That
   folder is a separate private repository, so commit from inside it with
   `git -C docs/superpowers commit`.
@@ -1034,6 +1042,41 @@ Three rules, from two documented incidents:
    request already exists from Pickup, so this is not about opening it — it is about the
    description, the recap, and the closure records, all of which Ship writes from context it
    cannot reconstruct afterwards.
+
+<a id="handed-over-commands"></a>
+
+### Handed-over commands
+
+`CONTEXT.md` defines a Handed-over command and a Directory-bound command. A command shown only
+to explain a past failure is not handed over, so these rules do not apply to it.
+
+- A handed-over command runs from any directory. It is never a Directory-bound command.
+- Every line names its own target: `git -C <absolute path>`, `gh --repo s205109/AHKFlowApp`,
+  the tool's own project or file option, and an absolute path for every script and file.
+- A handed-over command never contains `cd` or `Set-Location`. It never contains
+  `Push-Location` or `pushd` without `Pop-Location` or `popd` on the same line. The human
+  often copies one line, and a line that relied on an earlier one then fails on its own. A
+  directory change also leaves their terminal in another folder.
+- A tool with no directory option gets one line that returns to where it started:
+  `Push-Location <absolute path>; <command>; Pop-Location`.
+- A handed-over command never starts with `!`. That prefix belongs to the Claude Code prompt,
+  and a real shell reads it as an operator. In bash, `! true && echo ran` prints nothing: bash
+  runs the first command, reads its success as failure, and skips the rest. In PowerShell 7,
+  `! git --version` fails to parse, and nothing on the line runs.
+
+<a id="next-step-line"></a>
+
+### The Recap and the Next-step line
+
+- A turn that used a tool ends with a Next-step line: a line that starts `Next:` and names one
+  or two concrete steps, or a line that starts `Nothing pending.` The final message leads with
+  its Recap, one sentence that states the result. A turn with no tool call needs neither.
+- The steps may follow `Next:` on the same line, or sit in one or two list items below it.
+  Markup around the marker does not matter, so `**Next:**` counts as `Next:`.
+- In Claude Code, `.claude/hooks/stop-next-step.ps1` checks the Next-step line. It refuses the
+  first stop of a turn that has none, and it never refuses twice. Nothing checks the Recap.
+  This repository registers the hook for Claude Code only, so Codex and Copilot follow the
+  rule as text.
 
 ---
 

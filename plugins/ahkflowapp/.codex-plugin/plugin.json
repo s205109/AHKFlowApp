@@ -1,6 +1,6 @@
 {
   "name": "ahkflowapp",
-  "version": "0.1.0+codex.4801e9d46271",
+  "version": "0.1.0+codex.587333f9dec1",
   "description": "Repo-local Codex plugin exposing focused AHKFlowApp project skills.",
   "author": {
     "name": "AHKFlowApp maintainers",
