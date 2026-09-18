@@ -35,10 +35,17 @@ that I never have to work out where to stand first.
 
 - Parity check and drift guard — wave 2 (backlog 072).
 - Cleanup user experience — wave 3 (backlog 073).
+- A CI check on the pull request title or the `Sessions:` list. Only 7 of the last 30 merged
+  pull requests (#388 to #418) used the exact `(backlog NNN)` title form, so a later item may
+  want one.
+- Re-running the friction counts, or changing the 072 metric's patterns.
+- A `Stop` hook for Codex or Copilot. Neither has one.
 
 ## Notes / dependencies
 
-- Spec: `docs/superpowers/specs/2026-08-10-development-process-design-071.md` §13
-  (private plans repo).
-- Target: directory-bound commands handed to the human drop to zero, and next-step asks
-  drop further, as a direction, not a percentage: backlog 072 has no established baseline yet.
+- Spec: `docs/superpowers/specs/2026-09-18-commands-skill-and-recap-rules-design-075.md`
+  (private plans repo). Parent: `docs/superpowers/specs/2026-08-10-development-process-design-071.md` §13.
+- Target: the rules, not a count. Backlog 072 measured 179 directory-bound command lines and
+  35 to 89 next-step asks over four weeks. Its command metric counts every command that names
+  a directory, so a compliant `git -C <absolute path>` counts too. That metric cannot measure
+  this rule, and this item does not re-run it.
