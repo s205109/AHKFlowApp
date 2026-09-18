@@ -38,3 +38,25 @@ One line per finished task, written after its deliverable commit.
       `WorktreePowerShellHost.Tests.ps1` still passes. From this commit, a Claude Code session
       that loads these settings runs the hook at every turn end; the live check waits for
       Verify, as the plan says.
+
+- [x] Task 4 — metric comment in `scripts/measure-process-friction.ps1`, three moved citations
+      in `docs/development/cleanup-event-identity.md`, `Sessions:` block in
+      `.github/PULL_REQUEST_TEMPLATE.md`, both baselines, five moved citations in the spec.
+      Repo-side commit `f0b8d53d`, spec commit `c89f2ed` (plans repository, committed from
+      outside the worktree).
+
+      **All line-number predictions verified against the live tree before writing them, not
+      copied from the plan.** `Test-HumanTurn`/`Get-MessageKey`/`Get-CleanupEventLine` landed at
+      186/270/406 exactly as predicted. The five spec citations landed at 965/948/133/128/186,
+      matching the plan's table exactly. `check-citation-freshness.ps1` passed for the public
+      repository, the spec, and the plan. `ProcessFriction.Tests.ps1`,
+      `CleanupEventScripts.Tests.ps1` and `StopNextStepHook.Tests.ps1` (its parity case loads
+      the edited script) all passed. Baselines measured: `HandoverRules.Tests.ps1` 0.5s,
+      `StopNextStepHook.Tests.ps1` 5.5s (it shells out 14 times).
+
+      **Full Gate run.** `scripts/test-fast.ps1 -Mode PowerShell`: all 74 suites passed,
+      including both new ones, alongside another session's concurrent worktree suite run
+      sharing the same Lane pool.
+
+All four tasks are done. The plan is finished, pending the live check (a fresh Claude Code
+session) and Verify/Document/Ship.
