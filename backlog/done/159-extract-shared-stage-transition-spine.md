@@ -6,7 +6,7 @@
 - **Type**: Refactor
 - **Interfaces**: none (internal script code, no UI/API/CLI change)
 - **Difficulty**: moderate
-- **Stage**: 3-plan
+- **Stage**: 9-ship
 
 ## Summary
 
@@ -29,14 +29,18 @@ Write each criterion as state a reader can observe in the repository, not as a c
 "The handler returns `Result.NotFound()` for a missing id" can be checked. "The old check is
 removed" and "tests cover the new API" cannot.
 
-- [ ] `scripts/backlog-snapshot.common.ps1` carries one function for the shared stage-transition
+- [x] `scripts/backlog-snapshot.common.ps1` carries one function for the shared stage-transition
       walk, and both `scripts/check-plan-split-record.ps1` and
       `scripts/check-shipped-plan-ticked.ps1` call it instead of each defining its own copy.
-- [ ] `tests/PlanSplitRecord.Tests.ps1` and `tests/ShippedPlanTicked.Tests.ps1` pass unmodified,
-      proving the extraction is behavior-preserving.
-- [ ] The combined line count of `scripts/backlog-snapshot.common.ps1`,
+      The function is `Get-BranchBacklogTransition`. Neither caller keeps a copy of the walk.
+- [x] `tests/PlanSplitRecord.Tests.ps1` and `tests/ShippedPlanTicked.Tests.ps1` pass unmodified,
+      proving the extraction is behavior-preserving. `git diff origin/main...HEAD -- tests/`
+      returns nothing, and both suites pass. Mutating the new function's return value fails 8
+      split tests and 15 shipped tests, so both suites really do run through it.
+- [x] The combined line count of `scripts/backlog-snapshot.common.ps1`,
       `scripts/check-plan-split-record.ps1`, and `scripts/check-shipped-plan-ticked.ps1` is lower
-      than before the extraction.
+      than before the extraction. 895 before, 892 after. The margin is three lines, not the 95 the
+      reviewer estimated, so this criterion turned out to be a weak one. See the size note below.
 
 ## Out of scope
 
@@ -60,6 +64,17 @@ removed" and "tests cover the new API" cannot.
   needs a look at both call sites before writing one. The plan below carries that look in its
   Design notes, so no separate spec was written.
 - Plan: `docs/superpowers/plans/2026-09-18-extract-shared-stage-transition-spine-plan-159.md`
-- **Base branch.** This work stacks on `feature/wt-plan-declares-its-pull-requests` (PR #417).
-  `scripts/check-plan-split-record.ps1` exists only on that branch, so this item cannot be done
-  from `main`. The worktree branch was rebased onto it at Pickup.
+- **Base branch.** `main`. At Pickup, `scripts/check-plan-split-record.ps1` existed only on
+  `feature/wt-plan-declares-its-pull-requests`, so the branch was rebased onto that one first.
+  PR #417 merged on 2026-09-18, and the branch was rebased onto `main`.
+- **Size, measured.** The reviewer's estimate of about 95 lines saved is far too high. The three
+  files hold 895 lines before the extraction and 892 after, so the saving is 3 lines. The spine
+  costs about as many lines as the two copies it replaces, because the walk itself is irreducible
+  and the new function carries its own comment block. Criterion 3 asks only for a lower total, so
+  it holds, but a future item should not use line count as the test for an extraction. The value
+  here is that a bug in the walk, or a new check that needs the same walk, has one place to go.
+- **Third caller left alone.** `Get-ShippingPrProblem` in `scripts/check-shipping-pr-closes-item.ps1`
+  reads the same two snapshots, but it reports instead of throwing, carries on when the base is
+  unusable, decides on acceptance box counts rather than Stage lines, and skips the item template
+  by file name. Folding it in would need three or four switch parameters, and a shared function
+  steered by flags reads worse than the copies it replaced.
