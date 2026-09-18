@@ -15,3 +15,18 @@ One line per finished task, written after its deliverable commit.
       touched `.agents/handover-commands`. No damage: main's skill set already matched, so
       nothing there changed. Re-ran with cwd in the worktree; the four expected new paths and
       the Codex plugin version bump appeared.
+
+- [x] Task 2 — `.claude/hooks/stop-next-step.ps1` and `tests/StopNextStepHook.Tests.ps1`.
+      Commit `e0a0d23d`. Red run recorded first: `FAILED: 14 test(s)`, matching the plan exactly
+      (the hook did not exist, so every case that shells out failed with exit 64, and the module
+      case failed with "Test-HumanPrompt is not recognized"). Green run after: 14 of 14 passed.
+
+      **Two mutations, both proven.** Changing `'^Next:(.*)$'` to `'^Nextx:(.*)$'` turned exactly
+      the three predicted cases red ("Next: with a step on the same line", "Bold **Next:**",
+      "Next: followed by two list items"); the other 11 stayed green, including both refusal
+      cases, because a hook that no longer recognises `Next:` still recognises `Nothing pending.`
+      and still refuses a bare `Next:` (no match either way). Restored, green again. Deleting
+      `if (Test-HumanPrompt -Record $record) { return $false }` from `Get-LineVerdict` turned
+      exactly the predicted case red ("A turn with no tool call is allowed, even after a tool
+      turn"): with the human-prompt branch gone, the reader walks past the human line into the
+      prior tool call and refuses wrongly. Restored, green again, clean tree both times.
