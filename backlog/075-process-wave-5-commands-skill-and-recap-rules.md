@@ -6,7 +6,7 @@
 - **Type**: Process / documentation
 - **Interfaces**: none (skills, agent instructions)
 - **Difficulty**: complex
-- **Stage**: 4-execute
+- **Stage**: 7-document
 - **Depends on**: 072-process-wave-2-parity-drift-guard-templates
 
 ## Summary
@@ -22,13 +22,13 @@ that I never have to work out where to stand first.
 
 ## Acceptance criteria
 
-- [ ] A commands skill states that every handed-over command runs from any directory:
+- [x] A commands skill states that every handed-over command runs from any directory:
       `git -C <path>`, `gh --repo <owner>/<name>`, absolute paths everywhere else.
-- [ ] The skill forbids the `!` prefix in a handed-over command. That prefix belongs to
+- [x] The skill forbids the `!` prefix in a handed-over command. That prefix belongs to
       the Claude Code prompt; in a real shell it changes what the command does.
-- [ ] The skill states that a pull request title carries its backlog number.
-- [ ] The skill states that a pull request description carries the session id.
-- [ ] The Next-step line is enforced in Claude Code: a `Stop` hook refuses the first stop of
+- [x] The skill states that a pull request title carries its backlog number.
+- [x] The skill states that a pull request description carries the session id.
+- [x] The Next-step line is enforced in Claude Code: a `Stop` hook refuses the first stop of
       a turn that used a tool and ends without one. The Recap rule is written into
       `workflow.md`, and nothing checks it.
 
