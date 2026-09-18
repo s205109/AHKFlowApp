@@ -189,6 +189,24 @@ _Avoid_: ticket, issue, task, story, card
 The value — trivial, moderate, complex, or to-be-determined — that decides which Stage Pickup jumps to, and which artifacts the work needs. A filed Backlog item never carries trivial, because trivial work runs as a Housekeeping round and a round files no item.
 _Avoid_: complexity, size, effort, priority, points
 
+**Split record**:
+The `## Split` section a Plan carries near its top. It holds three fields: the estimate in work sessions, the task at which the user story closes, and a verdict, required once the Plan meets the split trigger. A Plan that reaches Execute without a complete record is refused at the push.
+_Avoid_: size record, budget, sizing, plan header
+
+**Work session**:
+The unit the Split record's estimate is written in. One work session is about five hours of work
+on one item. Count the time the test runs take, not only the time to write code. The Split trigger
+compares against this unit, so a plan that names hours or days instead cannot be judged.
+_Avoid_: session, sitting, day, sprint, story point
+
+**Split trigger**:
+The condition that makes a split evaluation mandatory: an estimate of more than two sessions, or a Plan with fifteen or more lines that name a test-run command. Meeting it never forces a split. It forces a written verdict, which may be that no split is possible.
+_Avoid_: limit, cap, gate, quota, budget
+
+**Extension**:
+The Plan tasks that come after the task which closes the user story. An Extension is real work, but it is work beyond the user story, and the Split record makes it visible before Execute starts.
+_Avoid_: tail, overflow, extra tasks, scope creep
+
 **Wave**:
 One numbered slice of the work that builds the development process itself. The Waves run in order. Most are tracked by a Backlog item, but the final Wave covers personal configuration outside this repository and gets none.
 _Avoid_: phase, milestone, iteration, sprint
