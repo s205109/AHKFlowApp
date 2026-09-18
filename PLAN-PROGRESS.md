@@ -54,8 +54,8 @@ Simplify (nothing new to simplify — a 9-line addition in the existing pattern)
 `-Mode PowerShell` slice re-run, all 73 suites green; Coverage self-skips as before), and Document
 (no doc or acceptance-criteria change needed) re-ran clean before returning here.
 
-**PUSHBACK — finding 2:** `docs/development/workflow.md:435-436` already documents the fractional
-form ("1 session" or "1.5 sessions"). No change.
+**PUSHBACK — finding 2:** already documented
+(`docs/development/workflow.md:435`, "Write a number, such as `1 session` or"). No change.
 
 **DEFER — findings 3, 4, 5:** spine extraction (`Get-BranchExecutingItem` vs
 `check-shipped-plan-ticked.ps1`) and split-trigger threshold recalibration after ten more items.
