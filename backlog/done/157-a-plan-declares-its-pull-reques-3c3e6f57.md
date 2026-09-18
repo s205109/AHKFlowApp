@@ -6,7 +6,7 @@
 - **Type**: Process / CI
 - **Interfaces**: none (workflow documents, a new Check)
 - **Difficulty**: complex
-- **Stage**: 8-review
+- **Stage**: 9-ship
 
 ## Summary
 
