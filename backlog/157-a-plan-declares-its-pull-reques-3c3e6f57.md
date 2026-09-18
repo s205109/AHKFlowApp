@@ -176,4 +176,9 @@ list, and writes into this item which branch it deleted.
 - Spec: `docs/superpowers/specs/2026-09-17-plan-split-record-design-157.md`
 - Design deleted the Approach A branch. The choice, the measurements behind it, and the three
   new glossary terms are in the spec. The rejected alternatives are in ADR 0019.
+- **Suite evidence.** On 2026-09-18, `tests/PlanSplitRecord.Tests.ps1` passed on Windows 11 under
+  `scripts/run-powershell-suites.ps1`, in 4.4 seconds, which is the manifest baseline. It also
+  passed on Linux in Docker, image `mcr.microsoft.com/powershell:latest`, with the repository
+  mounted read-only and git installed in the container. So the manifest carries
+  `["windows","linux"]`.
 - Plan: `docs/superpowers/plans/2026-09-18-plan-split-record-plan-157.md`

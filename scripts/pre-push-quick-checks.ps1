@@ -211,6 +211,36 @@ try {
         Write-Success 'Every shipped plan carries a ticked step.'
     }
 
+    # A plan must show the size of its work before Execute starts: an estimate, the task that
+    # closes the user story, and a written split verdict when the plan meets the split trigger.
+    # Backlog 157 moved that from judgement to the push. It lives here for the same reason as the
+    # steps above: CI cannot see docs/superpowers, so it cannot read a plan.
+    #
+    # Only items that enter Execute on the pushed branch are judged, so no plan written before the
+    # rule is ever read. $targets is the list the step above built from the pushed commits.
+    # tests/PlanSplitRecord.Tests.ps1 covers the rule against fixtures.
+    Write-Step 'Checking that a plan entering Execute carries its Split record'
+    if ($scanPlan.Action -ne 'Run') {
+        Write-Host $scanPlan.Reason
+    }
+    elseif ($targets.Count -eq 0) {
+        Write-Host 'This push sends no commit, so no item enters Execute.'
+    }
+    else {
+        foreach ($target in $targets) {
+            $targetBase = & git -C $repoRoot merge-base $target origin/main
+            if ($LASTEXITCODE -ne 0 -or -not $targetBase) {
+                throw "Could not resolve the merge base of '$target' with origin/main, so which items enter Execute is unknown. Fetch the remote and retry. $skipHint"
+            }
+            & $pwshPath -NoProfile -File (Join-Path $PSScriptRoot 'check-plan-split-record.ps1') `
+                -MergeBase ([string] $targetBase).Trim() -TargetCommit $target
+            if ($LASTEXITCODE -ne 0) {
+                throw "A plan entering Execute carries an incomplete Split record. $skipHint"
+            }
+        }
+        Write-Success 'Every plan entering Execute carries its Split record.'
+    }
+
     # The build and the fast slice can only fail on a Code change. With none, they cost about forty
     # seconds and prove nothing. The answer comes from the same module the Gate's coverage step
     # reads, so the push and the Gate never disagree about one branch.
