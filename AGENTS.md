@@ -289,6 +289,16 @@ the API URL + `/health`. SWA hostname:
 - Treat the main checkout as human-owned. A session in main may inspect, edit, build, test, and format. A session in a managed worktree may read main, but any shell command that writes, moves, or deletes a path under main is refused — see [workflow.md#stage-1-pickup](docs/development/workflow.md#stage-1-pickup).
 - Run a gated Git command from main, where most now get an in-session prompt. `git commit` is the exception: it always needs a worktree, or a session-wide `AHKFLOW_ALLOW_MAIN=1` set before the session starts, and it never gets a prompt. Full rules: [`docs/agents/cross-agent-git-guardrails.md`](docs/agents/cross-agent-git-guardrails.md) — see [workflow.md#stage-1-pickup](docs/development/workflow.md#stage-1-pickup).
 
+## Commands and next steps
+
+These rules apply in every stage. So each line links to its rule in `workflow.md`, not to a
+stage. The `handover-commands` skill has worked examples.
+
+- Hand the human only commands that run from any directory. Each line names its own target: `git -C <absolute path>`, `gh --repo s205109/AHKFlowApp`, or an absolute path. No line changes the directory for a later one — see [workflow.md#handed-over-commands](docs/development/workflow.md#handed-over-commands).
+- Write a handed-over command without a `!` prefix. That prefix belongs to the Claude Code prompt, and a real shell reads it as an operator — see [workflow.md#handed-over-commands](docs/development/workflow.md#handed-over-commands).
+- End every turn that used a tool with a Next-step line: `Next:` and one or two concrete steps, or `Nothing pending.` Lead the final message with a one-sentence Recap — see [workflow.md#next-step-line](docs/development/workflow.md#next-step-line).
+- Put `(backlog NNN)` in a pull request title. At your session's first push, add one bullet for it to the `Sessions:` list in the description — see [workflow.md#pull-request-title-and-sessions](docs/development/workflow.md#pull-request-title-and-sessions).
+
 ## Agent skills
 
 ### Issue tracker

@@ -358,7 +358,7 @@ The first sentence of an agent's final message in a turn that used a tool. It st
 _Avoid_: summary, wrap-up, status update
 
 **Next-step line**:
-The end of an agent's final message in a turn that used a tool: a line that starts `Next:` and names one or two concrete steps, or the line `Nothing pending.` It tells the human what to do next without being asked.
+The end of an agent's final message in a turn that used a tool: a line that starts `Next:` and names one or two concrete steps, or a line that starts `Nothing pending.` It tells the human what to do next without being asked.
 _Avoid_: next steps section, suggestions, follow-ups
 
 **First page load**:
