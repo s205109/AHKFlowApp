@@ -195,6 +195,15 @@ try {
         Assert-True ($result.ExitCode -eq 2) "Expected exit 2, got $($result.ExitCode)."
     }
 
+    Invoke-TestCase '.claude/settings.json runs this hook on Stop, once' {
+        $settings = Get-Content -LiteralPath (Join-Path $repoRoot '.claude/settings.json') -Raw | ConvertFrom-Json
+        Assert-True ($null -ne $settings.hooks.PSObject.Properties['Stop']) '.claude/settings.json has no Stop hook.'
+        $entries = @($settings.hooks.Stop | ForEach-Object { @($_.hooks) } |
+            Where-Object { $_.PSObject.Properties['command'] -and $_.command -match 'stop-next-step\.ps1' })
+        Assert-True ($entries.Count -eq 1) "Expected one Stop entry for stop-next-step.ps1, found $($entries.Count)."
+        Assert-True ($entries[0].command -match '-NoProfile') 'The hook must start pwsh with -NoProfile. A profile adds start-up time to every turn end.'
+    }
+
     # --- The functions, loaded directly ---
 
     # A missing hook must fail the cases below, not end the run before the summary.
