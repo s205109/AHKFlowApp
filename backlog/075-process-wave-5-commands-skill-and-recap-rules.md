@@ -6,7 +6,7 @@
 - **Type**: Process / documentation
 - **Interfaces**: none (skills, agent instructions)
 - **Difficulty**: complex
-- **Stage**: 3-plan
+- **Stage**: 4-execute
 - **Depends on**: 072-process-wave-2-parity-drift-guard-templates
 
 ## Summary
