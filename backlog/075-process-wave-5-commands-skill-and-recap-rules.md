@@ -43,6 +43,9 @@ that I never have to work out where to stand first.
 - A `Stop` hook for Codex or Copilot. Both have a stop event that can make the agent continue
   (checked 2026-09-18). The hook's tool-use test reads Claude Code's transcript format, and
   nobody has checked the Codex or Copilot formats.
+- Writing the `Sessions:` bullet with no model tokens. Backlog 081's transition script already
+  owns the push, so it is the natural home. Here an agent adds its bullet once, at its first
+  push, with one piped command.
 
 ## Notes / dependencies
 
