@@ -6,7 +6,7 @@
 - **Type**: Process / CI
 - **Interfaces**: none (workflow documents, a new Check)
 - **Difficulty**: complex
-- **Stage**: 4-execute
+- **Stage**: 8-review
 
 ## Summary
 
@@ -104,25 +104,25 @@ name a test-run command replaced it. The spec gives the numbers.
 Criterion 1 picks the branch. Design then deletes the branch it did not choose from this
 list, and writes into this item which branch it deleted.
 
-- [ ] The person who picks this item reads "The choice to make at pickup", chooses one
+- [x] The person who picks this item reads "The choice to make at pickup", chooses one
       approach, and records the choice and the reason in this item and in the spec.
-- [ ] `docs/development/workflow.md` carries the new rule. It names the stage that applies the
+- [x] `docs/development/workflow.md` carries the new rule. It names the stage that applies the
       rule, names the Difficulty values the rule covers, and says what the writer must record.
       `workflow.md` is the Source, so the rule lives there first.
-- [ ] `AGENTS.md` and `.claude/CLAUDE.md` each carry one rule line that links to the new
+- [x] `AGENTS.md` and `.claude/CLAUDE.md` each carry one rule line that links to the new
       `workflow.md` section, in the same form the rule lines around it use.
-- [ ] A PowerShell suite reports a problem when the record the chosen approach requires is
+- [x] A PowerShell suite reports a problem when the record the chosen approach requires is
       missing, for an item that needs one and stands at Stage `4-execute` or later.
-- [ ] The same suite reports a problem when a plan carries no session estimate, and when it
+- [x] The same suite reports a problem when a plan carries no session estimate, and when it
       carries no line naming the task at which the user story closes.
-- [ ] The same suite reports a problem when a plan meets the split trigger and carries no split
+- [x] The same suite reports a problem when a plan meets the split trigger and carries no split
       verdict. The trigger is an estimate over two sessions, or fifteen or more plan lines that
       name a test-run command.
-- [ ] The same suite reports no problem for an item whose plan pointer reads `- Plan: none`,
+- [x] The same suite reports no problem for an item whose plan pointer reads `- Plan: none`,
       and for an item that has not reached the stage that writes the record.
-- [ ] The suite is listed in `tests/powershell-suites.json`, with a measured baseline and a
+- [x] The suite is listed in `tests/powershell-suites.json`, with a measured baseline and a
       platform array backed by a recorded run.
-- [ ] The plan for this item states its own estimate in work sessions, and that estimate is two
+- [x] The plan for this item states its own estimate in work sessions, and that estimate is two
       sessions or fewer. If the first draft is larger, the item is split into stacked items
       before Execute starts. This item must not repeat the shape it describes.
 
