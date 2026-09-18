@@ -146,6 +146,12 @@ try {
         Assert-True ($result.ExitCode -eq 0) "Expected exit 0, got $($result.ExitCode). Stderr: $($result.Stderr)"
     }
 
+    Invoke-TestCase 'Next: followed by three list items is refused' {
+        $message = "Done.`n`nNext:`n- run the suite`n- open the pull request`n- write the changelog"
+        $result = Invoke-Hook (New-HookInput -TranscriptPath (New-ToolTurnTranscript) -Message $message)
+        Assert-True ($result.ExitCode -eq 2) "Expected exit 2, got $($result.ExitCode). Stderr: $($result.Stderr)"
+    }
+
     Invoke-TestCase 'Nothing pending. is allowed, with or without words after it' {
         foreach ($ending in @('Nothing pending.', 'Nothing pending. The branch is merged.')) {
             $result = Invoke-Hook (New-HookInput -TranscriptPath (New-ToolTurnTranscript) -Message "Checked it.`n`n$ending")

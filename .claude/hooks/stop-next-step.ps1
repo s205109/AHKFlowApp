@@ -119,7 +119,9 @@ function Test-NextStepLine {
     $line = ConvertTo-PlainLine -Line $lines[$index]
     if ($line -match '^Nothing pending\.') { return $true }
     if ($line -notmatch '^Next:(.*)$') { return $false }
-    return ($Matches[1].Trim().Length -gt 0 -or $listItems -gt 0)
+    # The rule allows one or two list items below a bare `Next:`. Three or more names too many
+    # steps to be concrete, so it does not count.
+    return ($Matches[1].Trim().Length -gt 0 -or ($listItems -ge 1 -and $listItems -le 2))
 }
 
 if ($AsModule) { return }

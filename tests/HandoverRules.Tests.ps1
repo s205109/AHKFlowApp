@@ -70,6 +70,25 @@ function Get-RuleQuote {
     return , $quotes.ToArray()
 }
 
+# Every <a id="..."></a> anchor's own text: from that anchor to the next anchor of any kind, or
+# the end of the file. A quote must match its own anchor's section, not merely appear somewhere
+# else in the document under a different anchor.
+function Get-AnchorSection {
+    param([Parameter(Mandatory)][AllowEmptyString()][string] $Text)
+    $anchorMatches = [regex]::Matches($Text, '<a id="([^"]+)"></a>')
+    $sections = [ordered]@{}
+    for ($i = 0; $i -lt $anchorMatches.Count; $i++) {
+        $name = $anchorMatches[$i].Groups[1].Value
+        # Start at the anchor's own line. An anchor embedded mid-line, such as inside a bullet's
+        # "- <a id=...></a>text", would otherwise drop the "- " that precedes it.
+        $start = $Text.LastIndexOf("`n", [Math]::Max(0, $anchorMatches[$i].Index - 1)) + 1
+        $end = if ($i + 1 -lt $anchorMatches.Count) { $anchorMatches[$i + 1].Index } else { $Text.Length }
+        $raw = $Text.Substring($start, $end - $start) -replace '<a id="[^"]*"></a>', ''
+        $sections[$name] = ConvertTo-FlatText $raw
+    }
+    return $sections
+}
+
 # Top-level bullets under one '## ' heading, up to the next '#' or '##' heading.
 function Get-SectionBullet {
     param([Parameter(Mandatory)][AllowEmptyString()][AllowEmptyCollection()][string[]] $Lines, [Parameter(Mandatory)][string] $Heading)
@@ -84,9 +103,8 @@ function Get-SectionBullet {
 }
 
 $workflowText = [System.IO.File]::ReadAllText((Join-Path $repoRoot 'docs/development/workflow.md'))
-$workflowAnchor = @([regex]::Matches($workflowText, '<a id="([^"]+)"></a>') | ForEach-Object { $_.Groups[1].Value })
-# An anchor inside a bullet is markup, not rule text, so the flat copy drops it.
-$workflowFlat = ConvertTo-FlatText ($workflowText -replace '<a id="[^"]*"></a>', '')
+$workflowSection = Get-AnchorSection -Text $workflowText
+$workflowAnchor = @($workflowSection.Keys)
 
 $skillPath = Join-Path $repoRoot '.agents/handover-commands/SKILL.md'
 # A missing skill is a failure the cases report, not a crash before them.
@@ -104,13 +122,28 @@ Invoke-TestCase 'Every rule anchor exists in workflow.md, and none reads as a st
     }
 }
 
+Invoke-TestCase 'A quote is checked against its own anchor''s section, not the whole document' {
+    $fakeText = @"
+<a id="anchor-a"></a>
+- Section A text holds unique-marker-alpha, and nothing else.
+
+<a id="anchor-b"></a>
+- Section B text holds unique-marker-beta, and nothing else.
+"@
+    $sections = Get-AnchorSection -Text $fakeText
+    Assert-True ($sections['anchor-a'].Contains('unique-marker-alpha', [System.StringComparison]::Ordinal)) `
+        'Sanity check: section a must hold its own text.'
+    Assert-True (-not $sections['anchor-b'].Contains('unique-marker-alpha', [System.StringComparison]::Ordinal)) `
+        'A quote borrowed from another anchor''s section must not silently match a different one.'
+}
+
 Invoke-TestCase 'Every quote in the skill is still in workflow.md, word for word' {
     Assert-True ($quotes.Count -gt 0) "The skill holds no quote. Expected marker lines like <!-- rule: workflow.md#next-step-line -->."
     foreach ($quote in $quotes) {
         Assert-True ($quote.Text.Length -gt 0) "SKILL.md:$($quote.Line) has a marker with no blockquote below it."
         Assert-True ($workflowAnchor -ccontains $quote.Anchor) "SKILL.md:$($quote.Line) names #$($quote.Anchor), which workflow.md does not have."
-        Assert-True ($workflowFlat.Contains($quote.Text, [System.StringComparison]::Ordinal)) `
-            "SKILL.md:$($quote.Line) no longer matches workflow.md. Quote: $($quote.Text.Substring(0, [Math]::Min(120, $quote.Text.Length)))"
+        Assert-True ($workflowSection[$quote.Anchor].Contains($quote.Text, [System.StringComparison]::Ordinal)) `
+            "SKILL.md:$($quote.Line) no longer matches its own section (#$($quote.Anchor)) in workflow.md. Quote: $($quote.Text.Substring(0, [Math]::Min(120, $quote.Text.Length)))"
     }
 }
 

@@ -56,3 +56,9 @@ that I never have to work out where to stand first.
   35 to 89 next-step asks over four weeks. Its command metric counts every command that names
   a directory, so a compliant `git -C <absolute path>` counts too. That metric cannot measure
   this rule, and this item does not re-run it.
+- Live check, 2026-09-18: a fresh Claude Code session in this worktree ran a tool then answered
+  with no Next-step line. The registered `Stop` hook refused the stop with the exact refusal
+  text, naming `docs/development/workflow.md#next-step-line`; the session added a `Next:` line
+  and stopped. A second turn with no tool call produced no hook message. This is what
+  `tests/StopNextStepHook.Tests.ps1` cannot prove on its own — that test launches the script
+  directly, not through Claude Code's own `Stop` event.
