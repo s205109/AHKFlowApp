@@ -37,3 +37,26 @@ Exemption: internal-only, no observable surface (no UI, no API contract, no emit
 ## Document (Stage 7)
 
 All 9 acceptance boxes ticked, verified true against the branch. Docs updated in Task 5.
+
+## Review round 1 (Stage 8)
+
+Codex reviewed the PR body (no inline threads) on 2026-09-18. Verdict: ready to merge, no Critical
+findings. Full response posted as a PR comment.
+
+**Recovery task — CONFIRMED finding 1: a whitespace-only `- Plan:` bullet was silently skipped
+with no diagnostic anywhere.** My first read said `tests/BacklogPlanPointer.Tests.ps1` already
+catches this. It does not: `Test-BacklogPlanPath`/`Test-BacklogPlanNone` take a mandatory
+`string`, PowerShell refuses to bind an empty string, the bind throws, and
+`Get-BacklogPointerProblem` reports zero problems for that item — confirmed by running it against
+a fixture. Fixed in `30104880`: `check-plan-split-record.ps1` now reports the empty bullet
+directly. Regression test `tests/PlanSplitRecord.Tests.ps1` case 21b, confirmed red before the fix.
+Simplify (nothing new to simplify — a 9-line addition in the existing pattern), Verify (full
+`-Mode PowerShell` slice re-run, all 73 suites green; Coverage self-skips as before), and Document
+(no doc or acceptance-criteria change needed) re-ran clean before returning here.
+
+**PUSHBACK — finding 2:** `docs/development/workflow.md:435-436` already documents the fractional
+form ("1 session" or "1.5 sessions"). No change.
+
+**DEFER — findings 3, 4, 5:** spine extraction (`Get-BranchExecutingItem` vs
+`check-shipped-plan-ticked.ps1`) and split-trigger threshold recalibration after ten more items.
+Not yet filed as backlog items; asked the user where.
