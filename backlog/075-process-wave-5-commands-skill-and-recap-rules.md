@@ -6,7 +6,7 @@
 - **Type**: Process / documentation
 - **Interfaces**: none (skills, agent instructions)
 - **Difficulty**: complex
-- **Stage**: 2-design
+- **Stage**: 3-plan
 - **Depends on**: 072-process-wave-2-parity-drift-guard-templates
 
 ## Summary
@@ -28,8 +28,9 @@ that I never have to work out where to stand first.
       the Claude Code prompt; in a real shell it changes what the command does.
 - [ ] The skill states that a pull request title carries its backlog number.
 - [ ] The skill states that a pull request description carries the session id.
-- [ ] The recap rule is enforced: every finished piece of work ends with a short recap and
-      one or two concrete next steps.
+- [ ] The Next-step line is enforced in Claude Code: a `Stop` hook refuses the first stop of
+      a turn that used a tool and ends without one. The Recap rule is written into
+      `workflow.md`, and nothing checks it.
 
 ## Out of scope
 
@@ -39,12 +40,15 @@ that I never have to work out where to stand first.
   pull requests (#388 to #418) used the exact `(backlog NNN)` title form, so a later item may
   want one.
 - Re-running the friction counts, or changing the 072 metric's patterns.
-- A `Stop` hook for Codex or Copilot. Neither has one.
+- A `Stop` hook for Codex or Copilot. Both have a stop event that can make the agent continue
+  (checked 2026-09-18). The hook's tool-use test reads Claude Code's transcript format, and
+  nobody has checked the Codex or Copilot formats.
 
 ## Notes / dependencies
 
 - Spec: `docs/superpowers/specs/2026-09-18-commands-skill-and-recap-rules-design-075.md`
   (private plans repo). Parent: `docs/superpowers/specs/2026-08-10-development-process-design-071.md` §13.
+- Plan: `docs/superpowers/plans/2026-09-18-commands-skill-and-recap-rules-plan-075.md`
 - Target: the rules, not a count. Backlog 072 measured 179 directory-bound command lines and
   35 to 89 next-step asks over four weeks. Its command metric counts every command that names
   a directory, so a compliant `git -C <absolute path>` counts too. That metric cannot measure
