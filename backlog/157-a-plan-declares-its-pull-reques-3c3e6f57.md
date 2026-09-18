@@ -50,7 +50,7 @@ sessions, the item is split into stacked items before Execute starts. A cheap Ch
   tasks or eight light ones.
 - **Why the threshold is worth setting anyway.** The repository already treats four or more
   independent tasks as the point where a `complex` item goes to subagent-driven execution
-  (`docs/development/workflow.md:423`, "plus four or more independent tasks"). That rule adds
+  (`docs/development/workflow.md:475`, "plus four or more independent tasks"). That rule adds
   agents. It does not reduce work.
 - **The weakness.** Nobody has read real task counts across several items yet. Setting the
   threshold at three is a guess until somebody does.
