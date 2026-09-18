@@ -6,7 +6,7 @@
 - **Type**: Process / CI
 - **Interfaces**: none (workflow documents, a new Check)
 - **Difficulty**: complex
-- **Stage**: 2-design
+- **Stage**: 3-plan
 
 ## Summary
 
@@ -176,4 +176,4 @@ list, and writes into this item which branch it deleted.
 - Spec: `docs/superpowers/specs/2026-09-17-plan-split-record-design-157.md`
 - Design deleted the Approach A branch. The choice, the measurements behind it, and the three
   new glossary terms are in the spec. The rejected alternatives are in ADR 0019.
-- Plan: none - filed at Intake. The Plan stage writes the path here.
+- Plan: `docs/superpowers/plans/2026-09-18-plan-split-record-plan-157.md`
