@@ -187,6 +187,18 @@
         ]
       }
     ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pwsh -NoProfile -NonInteractive -File \"${CLAUDE_PROJECT_DIR}/.claude/hooks/stop-next-step.ps1\"",
+            "timeout": 30,
+            "statusMessage": "Checking for a Next-step line..."
+          }
+        ]
+      }
+    ],
     "WorktreeCreate": [
       {
         "hooks": [

@@ -345,6 +345,22 @@ _Avoid_: item done, item finished, wrapped up
 The one pull request that finishes a Backlog item's work and closes its Records. An item may take several pull requests, and only the last one is this.
 _Avoid_: final PR, closing PR, the merge
 
+**Handed-over command**:
+A command an agent asks the human to run in their own shell. A command shown only to explain a past failure is not handed over, so it may stay broken on purpose.
+_Avoid_: suggested command, user command, copy-paste command
+
+**Directory-bound command**:
+A Handed-over command whose result depends on the directory the human's shell is in. A bare `git status` is one. `git -C C:\Dev\segocom-github\AHKFlowApp status` is not, even though it names a directory.
+_Avoid_: relative command, local command, path command
+
+**Recap**:
+The first sentence of an agent's final message in a turn that used a tool. It states the result of the turn. A Next-step line closes the same message.
+_Avoid_: summary, wrap-up, status update
+
+**Next-step line**:
+The end of an agent's final message in a turn that used a tool: a line that starts `Next:` and names one or two concrete steps, or a line that starts `Nothing pending.` It tells the human what to do next without being asked.
+_Avoid_: next steps section, suggestions, follow-ups
+
 **First page load**:
 A fresh browser context opening a page for the first time. The whole WebAssembly app downloads and starts inside it, so it is the slowest wait an E2E test makes. Navigating again inside that same page is not one: the app is already running by then.
 _Avoid_: initial load, cold load, page open
