@@ -224,6 +224,16 @@ try {
     Assert-Equal '' $record.Verdict 'A bullet after the section ends is not read'
     Assert-Equal '1 2' ($record.TaskNumbers -join ' ') 'Task headings count at levels two to four'
 
+    # 15b. A '## Split' section placed after the first task is not the record. The rule is "after
+    #      the plan header and before the first task", so a cold start reads it first; a section at
+    #      the bottom of the plan defeats that even though the fields themselves are complete.
+    $text = @('# probe', '', '### Task 1: real work', '', 'body', '', '## Split', '', '- **Estimate**: 1 session', '- **User story closes at**: Task 1') -join "`n"
+    $record = Get-PlanSplitRecord -PlanText $text
+    Assert-True (-not $record.HasSection) 'A Split section after the first task is not the record'
+    $problems = @(Get-PlanSplitProblem -Record $record)
+    Assert-Equal 1 $problems.Count 'A misplaced Split section is reported as missing'
+    Assert-True (($problems -join ' ') -match '## Split') "The problem must name the section, got: $problems"
+
     # === Get-PlanSplitFailure: fixture folders, no git ========================
 
     # 16. A plan with no Split section. Reported, naming the item, the plan, and the problem.

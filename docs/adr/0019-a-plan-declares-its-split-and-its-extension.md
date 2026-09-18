@@ -1,10 +1,10 @@
 # A plan declares its split and its extension
 
 Every Plan carries a `## Split` section near its top, holding three fields: an estimate in work
-sessions, the task at which the user story closes, and a verdict on splitting. A Plan meets the
-split trigger when the estimate is more than two sessions, or when fifteen or more of its lines
-name a test-run command. A Plan at the trigger must carry a real split evaluation, and a written
-reason when no split is taken.
+sessions, the task at which the user story closes, and a verdict on splitting once the Plan meets
+the split trigger. A Plan meets the split trigger when the estimate is more than two sessions, or
+when fifteen or more of its lines name a test-run command. A Plan at the trigger must carry a real
+split evaluation, and a written reason when no split is taken.
 
 The trigger is deliberately **not** a task count. That needs explaining, because a task count is
 the first rule anybody proposes.

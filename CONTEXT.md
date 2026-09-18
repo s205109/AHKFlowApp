@@ -190,7 +190,7 @@ The value — trivial, moderate, complex, or to-be-determined — that decides w
 _Avoid_: complexity, size, effort, priority, points
 
 **Split record**:
-The `## Split` section a Plan carries near its top. It holds three fields: the estimate in work sessions, the task at which the user story closes, and the split verdict. A Plan that reaches Execute without one is refused at the push.
+The `## Split` section a Plan carries near its top. It holds three fields: the estimate in work sessions, the task at which the user story closes, and a verdict, required once the Plan meets the split trigger. A Plan that reaches Execute without a complete record is refused at the push.
 _Avoid_: size record, budget, sizing, plan header
 
 **Work session**:

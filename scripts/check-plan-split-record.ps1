@@ -95,13 +95,22 @@ function Get-PlanSplitRecord {
     $taskNumbers = @()
     $testRunLineCount = 0
     $sectionStart = -1
+    $firstTaskLine = -1
     for ($i = 0; $i -lt $lines.Count; $i++) {
         if ($lines[$i] -match $PlanSplitTestRunPattern) { $testRunLineCount++ }
         if ($fenced[$i]) { continue }
         # Plans write '### Task 1:', '## Task 1 -' and more, so the level is not fixed.
-        if ($lines[$i] -match '^#{2,4}\s+Task\s+(?<n>\d+)\b') { $taskNumbers += [int] $Matches.n }
+        if ($lines[$i] -match '^#{2,4}\s+Task\s+(?<n>\d+)\b') {
+            $taskNumbers += [int] $Matches.n
+            if ($firstTaskLine -lt 0) { $firstTaskLine = $i }
+        }
         if ($sectionStart -lt 0 -and $lines[$i] -match '^##\s+Split\s*$') { $sectionStart = $i }
     }
+
+    # The rule is "after the plan header and before the first task". A Split section that starts
+    # at or after the first task heading defeats that, even when its fields are complete, so it is
+    # not the record.
+    if ($firstTaskLine -ge 0 -and $sectionStart -ge $firstTaskLine) { $sectionStart = -1 }
 
     $fields = @{ Estimate = ''; UserStoryClosesAt = ''; Verdict = '' }
     if ($sectionStart -ge 0) {
