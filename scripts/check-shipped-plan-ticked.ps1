@@ -118,9 +118,8 @@ function Test-BacklogItemIsNewlyShipped {
 # One record per item the target commit ships: Number, RelativePath and Stage. One record per
 # number, never one per changed path.
 #
-# Every backlog read comes from a commit: the base snapshot for "was it already shipped", and the
-# target snapshot for "what does it say now". Nothing here reads the working tree, because the
-# working tree is not what a push carries.
+# Get-BranchBacklogTransition does the walk and the two snapshot reads. This function is the rule
+# and the output shape, and nothing else.
 function Get-BranchShippedItem {
     param(
         [Parameter(Mandatory)][string] $RepoRoot,
@@ -128,65 +127,21 @@ function Get-BranchShippedItem {
         [Parameter(Mandatory)][string] $TargetCommit
     )
 
-    $candidate = @(Get-BranchBacklogCandidate -RepoRoot $RepoRoot -MergeBase $MergeBase -TargetCommit $TargetCommit)
-    if ($candidate.Count -eq 0) { return @() }
-
-    $inventory = Get-BacklogInventoryFromRef -MainCheckout $RepoRoot -BaseRef $MergeBase
-    if ($inventory.Status -ne 'ok') {
-        throw "The base '$MergeBase' $($inventory.Detail), so which items this branch ships is unknown."
-    }
-
-    $target = Get-BacklogInventoryFromRef -MainCheckout $RepoRoot -BaseRef $TargetCommit
-    if ($target.Status -ne 'ok') {
-        throw "The pushed commit '$TargetCommit' $($target.Detail), so which items it ships is unknown."
-    }
+    $transition = @(Get-BranchBacklogTransition -RepoRoot $RepoRoot -MergeBase $MergeBase -TargetCommit $TargetCommit `
+        -BaseUnknownClause 'which items this branch ships' `
+        -TargetUnknownClause 'which items it ships')
 
     $shipped = @()
-    foreach ($record in $candidate) {
-        $number = $record.Number
-
-        # The item as the pushed commit holds it: its Stage line and its path there.
-        $targetLines = Get-BacklogItemLinesFromRef -MainCheckout $RepoRoot -Inventory $target -ItemNumber $number
-        if ($targetLines.Status -ne 'found') { continue }
-
-        $targetPattern = '^backlog/' + $WorktreeBacklogSubfolderPattern + [regex]::Escape($number) + '-[^/]*\.md$'
-        $targetPaths = @(@($target.Paths) | Where-Object { $_ -match $targetPattern })
-        if ($targetPaths.Count -ne 1) { continue }
-
-        $item = [pscustomobject]@{
-            RelativePath = $targetPaths[0]
-            Stages = @(Get-SingleBacklogStage -Lines $targetLines.Lines | Where-Object { $_ })
-        }
-
-        # The base is looked up under the number the file carried THERE, which is the same number
-        # unless this branch renumbered it. Looking it up under the new number would find nothing
-        # and call every renumbered item newly shipped.
-        $baseNumber = $record.BaseNumber
-
-        # A base that carries two files for one number is treated as 'not shipped in the base',
-        # which judges the item here. That is the fail-closed reading, and the duplicate is already
-        # reported by the backlog numbering check.
-        $pattern = '^backlog/' + $WorktreeBacklogSubfolderPattern + [regex]::Escape($baseNumber) + '-[^/]*\.md$'
-        $basePaths = @(@($inventory.Paths) | Where-Object { $_ -match $pattern })
-        $basePath = ''
-        $baseStages = @()
-        if ($basePaths.Count -eq 1) {
-            $basePath = $basePaths[0]
-            $fromRef = Get-BacklogItemLinesFromRef -MainCheckout $RepoRoot -Inventory $inventory -ItemNumber $baseNumber
-            if ($fromRef.Status -eq 'found') {
-                $baseStages = @(Get-SingleBacklogStage -Lines $fromRef.Lines | Where-Object { $_ })
-            }
-        }
-
+    foreach ($record in $transition) {
         $isShipped = Test-BacklogItemIsNewlyShipped `
-            -WorkingStages @($item.Stages) -WorkingPath $item.RelativePath `
-            -BaseStages $baseStages -BasePath $basePath
+            -WorkingStages @($record.Stages) -WorkingPath $record.RelativePath `
+            -BaseStages $record.BaseStages -BasePath $record.BasePath
         if (-not $isShipped) { continue }
 
         $shipped += [pscustomobject]@{
-            Number = $number
-            RelativePath = $item.RelativePath
-            Stage = @($item.Stages)[0]
+            Number = $record.Number
+            RelativePath = $record.RelativePath
+            Stage = @($record.Stages)[0]
         }
     }
 

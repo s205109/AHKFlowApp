@@ -354,8 +354,8 @@ function Test-BacklogItemEntersExecute {
 # Lines. Lines is the item as pushed, so Get-PlanSplitFailure reads the pointer without a second
 # git call.
 #
-# Every backlog read comes from a commit. The base is looked up under the number the item carried
-# THERE, which differs only across a renumber: an item's identity is the file, not the number.
+# Get-BranchBacklogTransition does the walk and the two snapshot reads. This function is the rule
+# and the output shape, and nothing else.
 function Get-BranchExecutingItem {
     param(
         [Parameter(Mandatory)][string] $RepoRoot,
@@ -363,49 +363,21 @@ function Get-BranchExecutingItem {
         [Parameter(Mandatory)][string] $TargetCommit
     )
 
-    $candidate = @(Get-BranchBacklogCandidate -RepoRoot $RepoRoot -MergeBase $MergeBase -TargetCommit $TargetCommit)
-    if ($candidate.Count -eq 0) { return @() }
-
-    $base = Get-BacklogInventoryFromRef -MainCheckout $RepoRoot -BaseRef $MergeBase
-    if ($base.Status -ne 'ok') {
-        throw "The base '$MergeBase' $($base.Detail), so which items enter Execute on this branch is unknown."
-    }
-
-    $target = Get-BacklogInventoryFromRef -MainCheckout $RepoRoot -BaseRef $TargetCommit
-    if ($target.Status -ne 'ok') {
-        throw "The pushed commit '$TargetCommit' $($target.Detail), so which items it carries into Execute is unknown."
-    }
+    $transition = @(Get-BranchBacklogTransition -RepoRoot $RepoRoot -MergeBase $MergeBase -TargetCommit $TargetCommit `
+        -BaseUnknownClause 'which items enter Execute on this branch' `
+        -TargetUnknownClause 'which items it carries into Execute')
 
     $entering = @()
-    foreach ($record in $candidate) {
-        $targetLines = Get-BacklogItemLinesFromRef -MainCheckout $RepoRoot -Inventory $target -ItemNumber $record.Number
-        if ($targetLines.Status -ne 'found') { continue }
-
-        $targetPattern = '^backlog/' + $WorktreeBacklogSubfolderPattern + [regex]::Escape($record.Number) + '-[^/]*\.md$'
-        $targetPaths = @(@($target.Paths) | Where-Object { $_ -match $targetPattern })
-        if ($targetPaths.Count -ne 1) { continue }
-
-        $basePath = ''
-        $baseStages = @()
-        $basePattern = '^backlog/' + $WorktreeBacklogSubfolderPattern + [regex]::Escape($record.BaseNumber) + '-[^/]*\.md$'
-        $basePaths = @(@($base.Paths) | Where-Object { $_ -match $basePattern })
-        if ($basePaths.Count -eq 1) {
-            $basePath = $basePaths[0]
-            $fromBase = Get-BacklogItemLinesFromRef -MainCheckout $RepoRoot -Inventory $base -ItemNumber $record.BaseNumber
-            if ($fromBase.Status -eq 'found') {
-                $baseStages = @(Get-SingleBacklogStage -Lines $fromBase.Lines | Where-Object { $_ })
-            }
-        }
-
-        $workingStages = @(Get-SingleBacklogStage -Lines $targetLines.Lines | Where-Object { $_ })
-        $enters = Test-BacklogItemEntersExecute -WorkingStages $workingStages -BaseStages $baseStages -BasePath $basePath
+    foreach ($record in $transition) {
+        $enters = Test-BacklogItemEntersExecute -WorkingStages @($record.Stages) `
+            -BaseStages $record.BaseStages -BasePath $record.BasePath
         if (-not $enters) { continue }
 
         $entering += [pscustomobject]@{
             Number = $record.Number
-            RelativePath = $targetPaths[0]
-            Stage = $workingStages[0]
-            Lines = @($targetLines.Lines)
+            RelativePath = $record.RelativePath
+            Stage = @($record.Stages)[0]
+            Lines = @($record.Lines)
         }
     }
 

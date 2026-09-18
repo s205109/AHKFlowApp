@@ -130,3 +130,73 @@ function Get-BranchBacklogCandidate {
     }
     return @($candidate)
 }
+
+# One record per backlog item this branch touches, holding everything a stage rule needs to judge
+# it: the item as the pushed commit holds it, and the same item as the merge base held it.
+#
+# Backlog 159 pulled this out of Get-BranchShippedItem and Get-BranchExecutingItem, which walked it
+# twice. Each caller now keeps only its own rule and its own output shape.
+#
+# The base is read under BaseNumber. Get-BranchBacklogCandidate above says why that matters.
+#
+# An item the pushed commit does not hold, or holds under two file names, is skipped. That is the
+# fail-closed reading, and the backlog numbering check already reports the duplicate.
+#
+# BaseUnknownClause and TargetUnknownClause are the middle of the sentence each caller throws, so
+# a failed push says which question could not be answered. A caller that ships items and a caller
+# that judges items entering Execute cannot honestly print the same sentence.
+function Get-BranchBacklogTransition {
+    param(
+        [Parameter(Mandatory)][string] $RepoRoot,
+        [Parameter(Mandatory)][string] $MergeBase,
+        [Parameter(Mandatory)][string] $TargetCommit,
+        [Parameter(Mandatory)][string] $BaseUnknownClause,
+        [Parameter(Mandatory)][string] $TargetUnknownClause
+    )
+
+    $candidate = @(Get-BranchBacklogCandidate -RepoRoot $RepoRoot -MergeBase $MergeBase -TargetCommit $TargetCommit)
+    if ($candidate.Count -eq 0) { return @() }
+
+    $base = Get-BacklogInventoryFromRef -MainCheckout $RepoRoot -BaseRef $MergeBase
+    if ($base.Status -ne 'ok') {
+        throw "The base '$MergeBase' $($base.Detail), so $BaseUnknownClause is unknown."
+    }
+
+    $target = Get-BacklogInventoryFromRef -MainCheckout $RepoRoot -BaseRef $TargetCommit
+    if ($target.Status -ne 'ok') {
+        throw "The pushed commit '$TargetCommit' $($target.Detail), so $TargetUnknownClause is unknown."
+    }
+
+    $transition = @()
+    foreach ($record in $candidate) {
+        $targetLines = Get-BacklogItemLinesFromRef -MainCheckout $RepoRoot -Inventory $target -ItemNumber $record.Number
+        if ($targetLines.Status -ne 'found') { continue }
+
+        $targetPattern = '^backlog/' + $WorktreeBacklogSubfolderPattern + [regex]::Escape($record.Number) + '-[^/]*\.md$'
+        $targetPaths = @(@($target.Paths) | Where-Object { $_ -match $targetPattern })
+        if ($targetPaths.Count -ne 1) { continue }
+
+        $basePath = ''
+        $baseStages = @()
+        $basePattern = '^backlog/' + $WorktreeBacklogSubfolderPattern + [regex]::Escape($record.BaseNumber) + '-[^/]*\.md$'
+        $basePaths = @(@($base.Paths) | Where-Object { $_ -match $basePattern })
+        if ($basePaths.Count -eq 1) {
+            $basePath = $basePaths[0]
+            $fromBase = Get-BacklogItemLinesFromRef -MainCheckout $RepoRoot -Inventory $base -ItemNumber $record.BaseNumber
+            if ($fromBase.Status -eq 'found') {
+                $baseStages = @(Get-SingleBacklogStage -Lines $fromBase.Lines | Where-Object { $_ })
+            }
+        }
+
+        $transition += [pscustomobject]@{
+            Number = $record.Number
+            RelativePath = $targetPaths[0]
+            Lines = @($targetLines.Lines)
+            Stages = @(Get-SingleBacklogStage -Lines $targetLines.Lines | Where-Object { $_ })
+            BasePath = $basePath
+            BaseStages = $baseStages
+        }
+    }
+
+    return @($transition)
+}
