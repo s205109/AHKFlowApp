@@ -60,3 +60,12 @@ One line per finished task, written after its deliverable commit.
 
 All four tasks are done. The plan is finished, pending the live check (a fresh Claude Code
 session) and Verify/Document/Ship.
+
+## Live check
+
+Run by the human in a fresh Claude Code session in this worktree, 2026-09-18. Step 2 (a tool
+turn with no Next-step line): the hook refused the stop with the exact refusal text, naming
+`docs/development/workflow.md#next-step-line`; Claude Code continued once, added a `Next:`
+line, and stopped. Step 3 (no tool call): no hook message. Both match the plan's expected
+result exactly. Live proof that Claude Code calls the hook, not only that the suite calls it
+as a subprocess.
