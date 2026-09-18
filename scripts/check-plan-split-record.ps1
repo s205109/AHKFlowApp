@@ -221,15 +221,24 @@ function Get-PlanSplitFailure {
 
     # An empty array binds as $null, and @($null) is a one-element list holding nothing.
     foreach ($record in @($Item | Where-Object { $null -ne $_ })) {
-        # '\S' first, so a bullet holding only spaces reads as no bullet rather than as an empty
-        # path, which Get-BacklogPlanRelativePath would refuse to bind.
-        $bullet = @($record.Lines) | Where-Object { $_ -match '^\s*-\s*Plan:\s*(?<rest>\S.*)$' } | Select-Object -First 1
+        # A missing bullet is tests/BacklogPlanPointer.Tests.ps1's problem to report. A bullet
+        # whose content is only whitespace is not: Test-BacklogPlanPath and Test-BacklogPlanNone
+        # both take a mandatory string, so an empty Value throws there and the item is silently
+        # read as zero problems. This check reports the empty bullet instead.
+        $bulletLine = @($record.Lines) | Where-Object { $_ -match '^\s*-\s*Plan:' } | Select-Object -First 1
+        if (-not $bulletLine) { continue }
 
-        # No bullet is tests/BacklogPlanPointer.Tests.ps1's problem, and it already reports it.
-        # 'none' means the item has no plan, so it has no record to carry.
-        if (-not $bullet) { continue }
-        $null = $bullet -match '^\s*-\s*Plan:\s*(?<rest>\S.*)$'
+        $null = $bulletLine -match '^\s*-\s*Plan:\s*(?<rest>.*)$'
         $rest = $Matches.rest.Trim()
+        if (-not $rest) {
+            $failures += [pscustomobject]@{
+                Number = $record.Number
+                ItemPath = $record.RelativePath
+                PlanPath = ''
+                Problems = @("The '- Plan:' bullet is empty, so no Split record can be read. Write a path under $WorktreePlansFolder, or 'none — <reason>'.")
+            }
+            continue
+        }
         if ($rest -match '^none\b') { continue }
 
         $relative = Get-BacklogPlanRelativePath -BulletRest $rest

@@ -265,6 +265,16 @@ try {
     $result = Get-PlanSplitFailure -RepoRoot $root -Item @(New-EnteringItem -PlanBullet '- Plan: `docs/elsewhere/plan.md`')
     Assert-Equal 1 $result.Failures.Count 'A pointer outside the plans folder fails'
 
+    # 21b. A '- Plan:' bullet whose content is only whitespace. tests/BacklogPlanPointer.Tests.ps1
+    #      does not catch this: its Test-BacklogPlanPath and Test-BacklogPlanNone both take a
+    #      mandatory string, and PowerShell refuses to bind an empty string to one, so the bullet
+    #      is silently read as zero problems there. This check must report it instead.
+    $result = Get-PlanSplitFailure -RepoRoot $root -Item @(New-EnteringItem -PlanBullet '- Plan:   ')
+    Assert-Equal 1 $result.Failures.Count 'A whitespace-only Plan bullet fails'
+    if ($result.Failures.Count -eq 1) {
+        Assert-True ((@($result.Failures[0].Problems) -join ' ') -match 'empty') 'The failure must say the bullet is empty'
+    }
+
     # 22. The line a push prints for each judged plan. This line is what makes the size visible.
     $summary = Format-PlanSplitSummary -Number '900' -Record (Get-PlanSplitRecord -PlanText (New-PlanText))
     Assert-Equal 'Backlog item 900: estimate 1 session(s); the user story closes at Task 2 of 3; 0 line(s) name a test-run command; below the split trigger.' $summary 'The summary line reads the record'
