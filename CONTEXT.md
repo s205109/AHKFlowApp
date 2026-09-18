@@ -193,6 +193,12 @@ _Avoid_: complexity, size, effort, priority, points
 The `## Split` section a Plan carries near its top. It holds three fields: the estimate in work sessions, the task at which the user story closes, and the split verdict. A Plan that reaches Execute without one is refused at the push.
 _Avoid_: size record, budget, sizing, plan header
 
+**Work session**:
+The unit the Split record's estimate is written in. One work session is about five hours of work
+on one item. Count the time the test runs take, not only the time to write code. The Split trigger
+compares against this unit, so a plan that names hours or days instead cannot be judged.
+_Avoid_: session, sitting, day, sprint, story point
+
 **Split trigger**:
 The condition that makes a split evaluation mandatory: an estimate of more than two sessions, or a Plan with fifteen or more lines that name a test-run command. Meeting it never forces a split. It forces a written verdict, which may be that no split is possible.
 _Avoid_: limit, cap, gate, quota, budget

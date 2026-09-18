@@ -414,6 +414,58 @@ holds a folder, so a backlog item cannot name a personal plan.
 | not applicable | cannot occur for a filed item: every tracked item gets a committed plan, however small the work. Only a housekeeping round skips Plan, and a round never enters it | none |
 | resume | confirm the session is inside the worktree and enter it if not; plan exists; if execution started, take Plan's success edge and use Execute's resume there; else re-read and submit | stay |
 
+#### The split record
+
+Every plan carries a `## Split` section. The Plan stage writes it, after the plan header and
+before the first task, so a cold start reads it first. The rule covers every tracked item that has
+a plan, `complex` and `moderate` alike. Difficulty does not decide whether the rule applies. An
+item whose pointer reads `- Plan: none — <reason>` has no plan, so it needs no record.
+
+The section holds three fields, written exactly like this:
+
+```markdown
+## Split
+
+- **Estimate**: 2 sessions
+- **User story closes at**: Task 4
+- **Verdict**: <the split this item took, or why no split was taken>
+```
+
+- **Estimate** is the work the plan needs, in work sessions. One work session is about five hours
+  of work on one item, and `CONTEXT.md` pins the term. Write a number, such as `1 session` or
+  `1.5 sessions`. Count the time the test runs take, not only the time to write code.
+- **User story closes at** names the task that satisfies the item's user story, by its number.
+  The plan must have a task heading with that number. Every task after it is the **Extension**:
+  real work, but work beyond the user story.
+- **Verdict** records the split evaluation. It is required when the plan meets the split trigger.
+
+A plan meets the **split trigger** when either condition holds:
+
+- the estimate is more than two sessions, or
+- 15 or more lines of the plan name a test-run command: `test-fast.ps1`,
+  `run-powershell-suites`, `Invoke-Pester`, or `dotnet test`.
+
+The second condition catches an estimate that is wrong. Test runs cost real time: one serial pass
+over the PowerShell suites takes more than 14 minutes.
+
+A plan at the trigger evaluates a split with two tests, and its verdict names both of them:
+
+1. **The extension test.** Every task after the one that closes the user story is a candidate
+   second item.
+2. **The disjoint set test.** A group of tasks that touches files no other task touches is a
+   candidate second item.
+
+When a test finds a split, split the item into stacked items before Execute starts. Create the
+second item's worktree with `-BaseRef` on `scripts/new-worktree.ps1`. When neither test finds a
+split, write that down in the verdict, and write why. That written reason is the override.
+
+`scripts/check-plan-split-record.ps1` checks the record at pre-push. It judges only items that
+enter `4-execute` or a later stage on the pushed branch, so it never reads a plan written before
+this rule. CI cannot run it, because CI cannot see `docs/superpowers/`.
+`tests/PlanSplitRecord.Tests.ps1` proves the check's logic on fixtures, and CI runs that suite.
+The reasons, and the rules that were rejected, are in
+[`docs/adr/0019-a-plan-declares-its-split-and-its-extension.md`](../adr/0019-a-plan-declares-its-split-and-its-extension.md).
+
 <a id="stage-4-execute"></a>
 
 ### Stage 4 — Execute
@@ -952,6 +1004,9 @@ These rules are fixed. They are not left to the judgement of the session.
   and the human confirms understanding before the plan is written.
 - **Completion criteria per plan task.** Every task lists each surface that must change.
   "90 percent done" is the named failure this prevents.
+- **Split record per plan.** Every plan carries a `## Split` section: the estimate in work
+  sessions, the task at which the user story closes, and a verdict. A plan at the split trigger
+  must carry a written split evaluation. See [The split record](#the-split-record).
 - **Execution mode rule.** Difficulty `complex` plus four or more independent plan tasks
   means subagent-driven execution (`superpowers:subagent-driven-development`). Otherwise
   execution is inline. The session decides and states the choice in the recap.
