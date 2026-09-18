@@ -30,3 +30,11 @@ One line per finished task, written after its deliverable commit.
       exactly the predicted case red ("A turn with no tool call is allowed, even after a tool
       turn"): with the human-prompt branch gone, the reader walks past the human line into the
       prior tool call and refuses wrongly. Restored, green again, clean tree both times.
+
+- [x] Task 3 — registered `.claude/hooks/stop-next-step.ps1` under `Stop` in
+      `.claude/settings.json`. Commit `ed7655da`. Red run recorded first: the new settings case
+      failed with ".claude/settings.json has no Stop hook." as predicted. After registering,
+      all 15 cases passed, `.claude/settings.json` still parses, and
+      `WorktreePowerShellHost.Tests.ps1` still passes. From this commit, a Claude Code session
+      that loads these settings runs the hook at every turn end; the live check waits for
+      Verify, as the plan says.
