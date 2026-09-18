@@ -6,7 +6,7 @@
 - **Type**: Process / CI
 - **Interfaces**: none (workflow documents, a new Check)
 - **Difficulty**: complex
-- **Stage**: 3-plan
+- **Stage**: 4-execute
 
 ## Summary
 
