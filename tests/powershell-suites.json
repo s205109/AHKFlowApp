@@ -25,6 +25,7 @@
     { "name": "IntervalUnion.Tests.ps1", "jobs": ["invariants", "suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 0.5 },
     { "name": "MeasureTestModes.Tests.ps1", "jobs": ["suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 24.8 },
     { "name": "PersonalDefaultsSyncMarker.Tests.ps1", "jobs": ["suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 0.5 },
+    { "name": "PlanSplitRecord.Tests.ps1", "jobs": ["suites"], "platform": ["windows"], "execution": "parallel", "baselineSeconds": null },
     { "name": "PlanWorkflowParity.Tests.ps1", "jobs": ["suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 6.6 },
     { "name": "PrAgentConfiguration.Tests.ps1", "jobs": ["suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": null },
     { "name": "PreCommitAntiPatternHook.Tests.ps1", "jobs": ["suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 2.3 },
