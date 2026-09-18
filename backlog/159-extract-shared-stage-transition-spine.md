@@ -6,7 +6,7 @@
 - **Type**: Refactor
 - **Interfaces**: none (internal script code, no UI/API/CLI change)
 - **Difficulty**: moderate
-- **Stage**: 0-intake
+- **Stage**: 3-plan
 
 ## Summary
 
@@ -57,5 +57,9 @@ removed" and "tests cover the new API" cannot.
   independently; read as a rough size signal, not a target.
 - Spec: none — the shape of the extraction (what the shared function's signature looks like, and
   whether `Get-BranchExecutingItem`'s extra stage-index filtering stays a thin wrapper around it)
-  needs a look at both call sites before writing one.
-- Plan: none — not planned yet.
+  needs a look at both call sites before writing one. The plan below carries that look in its
+  Design notes, so no separate spec was written.
+- Plan: `docs/superpowers/plans/2026-09-18-extract-shared-stage-transition-spine-plan-159.md`
+- **Base branch.** This work stacks on `feature/wt-plan-declares-its-pull-requests` (PR #417).
+  `scripts/check-plan-split-record.ps1` exists only on that branch, so this item cannot be done
+  from `main`. The worktree branch was rebased onto it at Pickup.
