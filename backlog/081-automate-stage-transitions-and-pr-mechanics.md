@@ -42,26 +42,26 @@ commit, the push, and the pull request cannot disagree with each other.
 
 ## Acceptance criteria
 
-- [ ] One script performs a transition end to end: set the `Stage` field to the target,
+- [x] One script performs a transition end to end: set the `Stage` field to the target,
       commit with the conventional message, and push.
-- [ ] It refuses a transition the source does not allow. The legal targets come from
+- [x] It refuses a transition the source does not allow. The legal targets come from
       `docs/development/workflow.md`, read at run time, not from a list copied into the
       script — a copy is one more thing to drift.
-- [ ] Pickup also pushes the branch and opens the draft pull request, and stamps the Stage
+- [x] Pickup also pushes the branch and opens the draft pull request, and stamps the Stage
       **only after** `gh pr create` succeeds.
-- [ ] Ship pushes the closure commit before the ready flip.
-- [ ] A failure edge refuses to run until the red evidence and a recovery task are recorded
+- [x] Ship pushes the closure commit before the ready flip.
+- [x] A failure edge refuses to run until the red evidence and a recovery task are recorded
       in `PLAN-PROGRESS.md`, matching the Verify failure rule.
-- [ ] A housekeeping round with no item writes the `Stage:` line in its pull request body
+- [x] A housekeeping round with no item writes the `Stage:` line in its pull request body
       instead, with the read-modify-write sequence the source specifies, including the
       read-back check.
-- [ ] It works from a worktree without any main-checkout handover, for the paths it touches.
-- [ ] Tests cover: each legal transition, a refused illegal one, the Pickup ordering, the
+- [x] It works from a worktree without any main-checkout handover, for the paths it touches.
+- [x] Tests cover: each legal transition, a refused illegal one, the Pickup ordering, the
       Ship push, and the round pull-request-body path.
 
 ## Out of scope
 
-- Creating worktrees. `scripts/new-worktree.ps1:106` refuses nested creation, so a new
+- Creating worktrees. (`scripts/new-worktree.ps1:129`, "Nested worktree creation from a linked worktree is refused.") refuses nested creation, so a new
   worktree still starts from the main checkout. Worth its own item if it stays painful.
 - Reserving a backlog number before the worktree is named — backlog 080.
 - Regenerating the PDF and rehashing the sidecar when an exit string changes. Related

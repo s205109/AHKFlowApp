@@ -32,8 +32,7 @@ It was rejected because of what the script reads. Acceptance criterion 2 of back
 the legal targets to come from `docs/development/workflow.md` at run time, not from a list copied
 into the script. That reader already exists, in PowerShell: `Get-WorkflowStage`
 (`scripts/process-workflow.common.ps1:156`, "function Get-WorkflowStage {") and
-`Get-WorkflowStageTable` (`scripts/process-workflow.common.ps1:131`,
-"function Get-WorkflowStageTable {").
+`Get-WorkflowStageTable` (`scripts/process-workflow.common.ps1:131`, "function Get-WorkflowStageTable {").
 
 A bash implementation needs its own parser for the same document. That is a second copy of the
 process rules. Backlog 072 built a drift guard because copies of process rules drift, and the
