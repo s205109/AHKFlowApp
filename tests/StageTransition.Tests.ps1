@@ -65,7 +65,11 @@ function New-TransitionFixture {
         [switch] $NoItem,
         # Every failure edge needs PLAN-PROGRESS.md to exist, because Task 5 refuses without it.
         # Pass this for any case whose stage is 4-execute or later.
-        [switch] $WithProgress
+        [switch] $WithProgress,
+        # The item's linked plan, and whether it carries the freeze directive. 'none' writes no
+        # '- Plan:' bullet and no file, which is what every case before the freeze rule used.
+        [ValidateSet('none', 'unfrozen', 'frozen')]
+        [string] $PlanState = 'none'
     )
 
     $bare = New-Root -Prefix 'transition-remote'
@@ -86,6 +90,7 @@ function New-TransitionFixture {
               -Destination (Join-Path $root 'docs/development/workflow.md')
 
     $itemName = 'backlog/081-automate-stage-transitions.md'
+    $planName = 'docs/superpowers/plans/2026-09-20-stage-transition-plan-081.md'
     if (-not $NoItem) {
         $box = if ($AllBoxesTicked) { '- [x]' } else { '- [ ]' }
         $item = @(
@@ -99,8 +104,11 @@ function New-TransitionFixture {
             '## Acceptance criteria'
             ''
             "$box One script performs a transition end to end."
-        ) -join "`n"
-        Set-Content -LiteralPath (Join-Path $root $itemName) -Value $item -Encoding utf8
+        )
+        if ($PlanState -ne 'none') {
+            $item += @('', '## Notes / dependencies', '', "- Plan: ``$planName``")
+        }
+        Set-Content -LiteralPath (Join-Path $root $itemName) -Value ($item -join "`n") -Encoding utf8
     }
 
     if ($WithProgress) {
@@ -132,10 +140,30 @@ function New-TransitionFixture {
         if (-not $StackedOn) { & git -C $acting push -u origin $name *> $null }
     }
 
+    # The linked plan lives in the acting checkout, untracked, exactly like the real
+    # docs/superpowers link. The freeze check reads the working tree, so untracked is enough,
+    # and 'git add -- backlog PLAN-PROGRESS.md' can never sweep it into a commit.
+    if ($PlanState -ne 'none') {
+        $planPath = Join-Path $acting $planName
+        New-Item -ItemType Directory -Path (Split-Path -Parent $planPath) -Force | Out-Null
+        $plan = @()
+        if ($PlanState -eq 'frozen') {
+            $plan += '<!-- citation-check:ignore-file -->'
+            $plan += '<!-- Frozen: the work this file planned has shipped. -->'
+        }
+        $plan += @(
+            '# Plan 081'
+            ''
+            'The driver lives in (`scripts/take-stage-transition.ps1:1`, "#Requires -Version 7.0").'
+        )
+        Set-Content -LiteralPath $planPath -Value ($plan -join "`n") -Encoding utf8
+    }
+
     return [pscustomobject]@{
         Root     = (Resolve-Path -LiteralPath $acting).Path
         Bare     = (Resolve-Path -LiteralPath $bare).Path
         ItemPath = (Join-Path (Resolve-Path -LiteralPath $acting).Path $itemName)
+        PlanPath = (Join-Path (Resolve-Path -LiteralPath $acting).Path $planName)
     }
 }
 
@@ -150,7 +178,13 @@ function New-FakeGh {
         # head is some other branch, so a test proves that by handing back a different name.
         [string] $HeadRefName = 'feature/wt-transition-test',
         # What 'gh pr list --head <branch>' answers. Empty means no pull request is open yet.
-        [string] $ExistingPr = ''
+        [string] $ExistingPr = '',
+        # What 'gh pr view <n> --json isDraft' answers. Pickup reuses only a draft, and the round
+        # resumes Ship only while the pull request is still a draft, so both read this.
+        [string] $IsDraft = 'true',
+        # What 'gh pr view <n> --json baseRefName' answers. Pickup refuses a pull request opened
+        # against a base other than the one it was asked for.
+        [string] $BaseRefName = 'main'
     )
 
     $dir = New-Root -Prefix 'fake-gh'
@@ -161,13 +195,16 @@ function New-FakeGh {
     $bodyFile = Join-Path $dir 'pr-body.txt'
     Set-Content -LiteralPath $bodyFile -Value $Body -Encoding utf8
 
-    # Order matters twice over. 'headRefName' is tested before 'view', because that query is a
-    # 'gh pr view' too. 'view' and 'edit' are tested before 'create', because 'gh pr create'
-    # also carries the word 'create' and an earlier branch would swallow it.
+    # Order matters twice over. 'headRefName', 'isDraft' and 'baseRefName' are tested before
+    # 'view', because each of those queries is a 'gh pr view' too. 'view' and 'edit' are tested
+    # before 'create', because 'gh pr create' also carries the word 'create' and an earlier
+    # branch would swallow it.
     $script = @"
 #!/usr/bin/env pwsh
 `$args -join ' ' | Add-Content -LiteralPath '$log'
 if (`$args -contains 'headRefName') { Write-Output '$HeadRefName'; exit 0 }
+if (`$args -contains 'isDraft') { Write-Output '$IsDraft'; exit 0 }
+if (`$args -contains 'baseRefName') { Write-Output '$BaseRefName'; exit 0 }
 if (`$args -contains 'list') { Write-Output '$ExistingPr'; exit 0 }
 if (`$args -contains 'view') { Get-Content -Raw -LiteralPath '$bodyFile'; exit 0 }
 if (`$args -contains 'edit') {
@@ -217,6 +254,15 @@ function Invoke-WithFakeGh {
     } finally {
         $env:PATH = $saved
     }
+}
+
+# A transition refused before its first gh call leaves no log file at all. Reading it directly
+# then throws and stops the suite, which hides the assertion that was about to report the real
+# problem.
+function Get-GhLog {
+    param([pscustomobject] $Gh)
+    if (-not (Test-Path -LiteralPath $Gh.Log)) { return '' }
+    return ((Get-Content -LiteralPath $Gh.Log) -join "`n")
 }
 
 function Get-RemoteItemStage {
@@ -545,11 +591,13 @@ try {
         'A round entering Ship must flip to ready'
 
     $r6b = New-TransitionFixture -Stage '9-ship' -AsWorktree -Branch 'chore/wt-backlog-housekeeping' -NoItem
-    $r6bGh = New-FakeGh -Body "Stage: 9-ship" -HeadRefName 'chore/wt-backlog-housekeeping'
+    # -IsDraft 'false' is the merged case: the flip already happened. The draft case is the
+    # resume, and round 2's finding 2 covers it.
+    $r6bGh = New-FakeGh -Body "Stage: 9-ship" -HeadRefName 'chore/wt-backlog-housekeeping' -IsDraft 'false'
     Invoke-WithFakeGh -Gh $r6bGh -Action {
         & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $r6b.Root -Edge 'success' -Pr 500 *> $null
     }
-    Assert-True (((Get-Content -Raw -LiteralPath $r6bGh.Log) -join "`n") -notmatch 'pr ready') `
+    Assert-True (((Get-Content -Raw -LiteralPath $r6bGh.Log) -join "`n") -notmatch 'pr ready 500\s*$') `
         'A round leaving Ship must not flip again; it is already ready and merged'
 
     # --- A round failure edge records its evidence in the body (review finding 7) ---
@@ -590,6 +638,142 @@ try {
     Assert-Equal '9-ship' (Get-FixtureStage -Root $r8.Root) 'A shipped item must keep reading 9-ship'
     Assert-Equal $r8Head (& git -C $r8.Root rev-parse HEAD).Trim() `
         'A refused cleanup transition must make no commit'
+
+    # ================= Copilot review round 2, PR 421 =================
+
+    # --- Ship refuses while the linked plan is still open to the citation check (finding 1) ---
+    # Ship moves the item into backlog/done/, and scripts/check-archived-plan-frozen.ps1 then
+    # demands the plan be frozen. That check runs in the pre-push hook, so an unfrozen plan made
+    # Ship's own push fail AFTER the closure commit was already made. Refuse before anything moves.
+    $f1 = New-TransitionFixture -Stage '8-review' -Difficulty 'complex' -AsWorktree `
+                                -AllBoxesTicked -WithProgress -PlanState 'unfrozen'
+    $f1Head = (& git -C $f1.Root rev-parse HEAD).Trim()
+    $f1Gh = New-FakeGh
+    Invoke-WithFakeGh -Gh $f1Gh -Action {
+        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $f1.Root -Item '081' -Edge 'success' -Pr 421 *> $null
+    }
+    Assert-True ($script:LastTransitionExit -ne 0) 'Ship must refuse an unfrozen plan'
+    Assert-True (-not (Test-Path -LiteralPath (Join-Path $f1.Root 'backlog/done/081-automate-stage-transitions.md'))) `
+        'A Ship refused for an unfrozen plan must not move the item'
+    Assert-Equal $f1Head (& git -C $f1.Root rev-parse HEAD).Trim() `
+        'A Ship refused for an unfrozen plan must make no closure commit'
+    Assert-True ((Get-GhLog -Gh $f1Gh) -notmatch 'pr ready') `
+        'A Ship refused for an unfrozen plan must not flip the pull request'
+
+    # The same fixture, frozen. The freeze is the only difference, so this proves the refusal
+    # reads the directive rather than the presence of a plan.
+    $f1b = New-TransitionFixture -Stage '8-review' -Difficulty 'complex' -AsWorktree `
+                                 -AllBoxesTicked -WithProgress -PlanState 'frozen'
+    $f1bGh = New-FakeGh
+    Invoke-WithFakeGh -Gh $f1bGh -Action {
+        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $f1b.Root -Item '081' -Edge 'success' -Pr 421 *> $null
+    }
+    Assert-Equal 0 $script:LastTransitionExit 'Ship with a frozen plan must succeed'
+    Assert-True (Test-Path -LiteralPath (Join-Path $f1b.Root 'backlog/done/081-automate-stage-transitions.md')) `
+        'Ship with a frozen plan must move the item'
+
+    # --- A tracked Ship failure reopens the records and the pull request (finding 5) ---
+    # This edge starts from the state Ship leaves: the item in backlog/done/ and no
+    # PLAN-PROGRESS.md. The ordinary path refuses it, because it demands a progress file that
+    # Ship itself deleted, so the edge workflow.md documents could not be taken at all.
+    $f5 = New-TransitionFixture -Stage '8-review' -Difficulty 'complex' -AsWorktree `
+                                -AllBoxesTicked -WithProgress -PlanState 'frozen'
+    $f5Branch = (& git -C $f5.Root rev-parse --abbrev-ref HEAD).Trim()
+    $f5Gh = New-FakeGh
+    Invoke-WithFakeGh -Gh $f5Gh -Action {
+        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $f5.Root -Item '081' -Edge 'success' -Pr 421 *> $null
+    }
+    Assert-Equal 0 $script:LastTransitionExit 'The Ship that sets up the failure case must succeed'
+
+    $f5Gh2 = New-FakeGh
+    Invoke-WithFakeGh -Gh $f5Gh2 -Action {
+        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $f5.Root -Item '081' -Edge 'failure' -Pr 421 `
+            -Evidence 'CI: 2 checks failed after the ready flip' `
+            -RecoveryTask 'Task 9: fix the failing parity check' *> $null
+    }
+    Assert-Equal 0 $script:LastTransitionExit 'A Ship failure edge must succeed'
+    Assert-Equal '6-verify' (Get-FixtureStage -Root $f5.Root) 'A Ship failure must set 6-verify'
+    Assert-True (Test-Path -LiteralPath (Join-Path $f5.Root 'backlog/081-automate-stage-transitions.md')) `
+        'A Ship failure must move the item back out of backlog/done/'
+    Assert-True (-not (Test-Path -LiteralPath (Join-Path $f5.Root 'backlog/done/081-automate-stage-transitions.md'))) `
+        'A Ship failure must leave nothing behind in backlog/done/'
+
+    # Tolerant on purpose: when the restore does not happen, the three assertions below must
+    # report that, rather than a Get-Content error that stops the whole suite.
+    $f5Progress = (Get-Content -Raw -LiteralPath (Join-Path $f5.Root 'PLAN-PROGRESS.md') -ErrorAction SilentlyContinue) ?? ''
+    Assert-True ($f5Progress -match 'Task 1 done')   'A Ship failure must restore the progress file Ship deleted'
+    Assert-True ($f5Progress -match '2 checks failed') 'A Ship failure must record its red evidence'
+    Assert-True ($f5Progress -match 'fix the failing parity check') 'A Ship failure must record its recovery task'
+
+    # The undo comes first: Review can only be re-entered with a draft pull request.
+    Assert-True ((Get-GhLog -Gh $f5Gh2) -match 'ready 421 .*--undo') `
+        'A Ship failure must convert the pull request back to draft'
+
+    Assert-Equal (& git -C $f5.Root rev-parse HEAD).Trim() (& git -C $f5.Bare rev-parse $f5Branch).Trim() `
+        'A Ship failure must push the reopened records'
+
+    # --- A round Ship failure undoes the ready flip too (finding 4) ---
+    $f4 = New-TransitionFixture -Stage '9-ship' -AsWorktree -Branch 'chore/wt-backlog-housekeeping' -NoItem
+    $f4Gh = New-FakeGh -Body "## What`n`nChores.`n`nStage: 9-ship" -HeadRefName 'chore/wt-backlog-housekeeping' -IsDraft 'false'
+    Invoke-WithFakeGh -Gh $f4Gh -Action {
+        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $f4.Root -Edge 'failure' -Pr 500 `
+            -Evidence 'CI: 1 check failed' -RecoveryTask 'Chore 2: repair the suite' *> $null
+    }
+    Assert-Equal 0 $script:LastTransitionExit 'A round Ship failure must succeed'
+    Assert-True ((Get-GhLog -Gh $f4Gh) -match 'ready 500 .*--undo') `
+        'A round Ship failure must convert the pull request back to draft'
+    Assert-True ((Get-Content -Raw -LiteralPath $f4Gh.BodyFile) -match '(?m)^Stage: 6-verify\r?$') `
+        'A round Ship failure must record 6-verify in the body'
+
+    # --- A round at 9-ship resumes the ready flip rather than advancing (finding 2) ---
+    # The body is written to 9-ship before 'gh pr ready' runs, so a failed flip leaves the body
+    # at 9-ship with a draft pull request. A rerun used to resolve 9-ship -> 10-cleanup and
+    # record Cleanup on an unmerged draft.
+    $f2 = New-TransitionFixture -Stage '9-ship' -AsWorktree -Branch 'chore/wt-backlog-housekeeping' -NoItem
+    $f2Gh = New-FakeGh -Body "## What`n`nChores.`n`nStage: 9-ship" -HeadRefName 'chore/wt-backlog-housekeeping' -IsDraft 'true'
+    Invoke-WithFakeGh -Gh $f2Gh -Action {
+        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $f2.Root -Edge 'success' -Pr 500 *> $null
+    }
+    Assert-Equal 0 $script:LastTransitionExit 'A round resuming Ship must succeed'
+    Assert-True ((Get-GhLog -Gh $f2Gh) -match 'pr ready 500') `
+        'A round resuming Ship must retry the ready flip'
+    Assert-True ((Get-Content -Raw -LiteralPath $f2Gh.BodyFile) -match '(?m)^Stage: 9-ship\r?$') `
+        'A round resuming Ship must leave the body at 9-ship'
+    Assert-True ((Get-Content -Raw -LiteralPath $f2Gh.BodyFile) -notmatch '10-cleanup') `
+        'A round resuming Ship must never write 10-cleanup'
+
+    # Already ready: there is nothing to resume, and Cleanup writes no Stage line for a round
+    # either. The merged pull request is the record.
+    $f2b = New-TransitionFixture -Stage '9-ship' -AsWorktree -Branch 'chore/wt-backlog-housekeeping' -NoItem
+    $f2bGh = New-FakeGh -Body "Stage: 9-ship" -HeadRefName 'chore/wt-backlog-housekeeping' -IsDraft 'false'
+    Invoke-WithFakeGh -Gh $f2bGh -Action {
+        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $f2b.Root -Edge 'success' -Pr 500 *> $null
+    }
+    Assert-True ($script:LastTransitionExit -ne 0) 'A round leaving Ship must be refused'
+    Assert-True ((Get-Content -Raw -LiteralPath $f2bGh.BodyFile) -match '(?m)^Stage: 9-ship\r?$') `
+        'A refused round cleanup must leave the body at 9-ship'
+
+    # --- Pickup refuses a pull request it cannot reuse (finding 3) ---
+    # 'gh pr list --head' answers with any open pull request for the branch. One already flipped
+    # to ready, or opened against another base, is not the draft Pickup asked for, and stamping
+    # 1-pickup as done against it records a Pickup that never happened.
+    $f3 = New-TransitionFixture -Stage '1-pickup' -Difficulty 'complex' -AsWorktree
+    $f3Gh = New-FakeGh -ExistingPr '421' -IsDraft 'false'
+    Invoke-WithFakeGh -Gh $f3Gh -Action {
+        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $f3.Root -Item '081' -Edge 'success' *> $null
+    }
+    Assert-True ($script:LastTransitionExit -ne 0) 'Pickup must refuse a pull request that is no longer a draft'
+    Assert-Equal '1-pickup' (Get-SingleBacklogStage -Lines (Get-Content -LiteralPath $f3.ItemPath)) `
+        'A refused Pickup must leave the Stage at 1-pickup'
+
+    $f3b = New-TransitionFixture -Stage '1-pickup' -Difficulty 'complex' -AsWorktree
+    $f3bGh = New-FakeGh -ExistingPr '421' -IsDraft 'true' -BaseRefName 'feature/wt-somewhere-else'
+    Invoke-WithFakeGh -Gh $f3bGh -Action {
+        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $f3b.Root -Item '081' -Edge 'success' *> $null
+    }
+    Assert-True ($script:LastTransitionExit -ne 0) 'Pickup must refuse a pull request opened against another base'
+    Assert-Equal '1-pickup' (Get-SingleBacklogStage -Lines (Get-Content -LiteralPath $f3b.ItemPath)) `
+        'A Pickup refused for the wrong base must leave the Stage at 1-pickup'
 
     # --- Every legal transition lands on the target workflow.md names ---
     $workflowPath = Join-Path $suiteRoot 'docs/development/workflow.md'

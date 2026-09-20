@@ -50,6 +50,7 @@ $PSNativeCommandUseErrorActionPreference = $false
 . (Join-Path $PSScriptRoot 'backlog-snapshot.common.ps1')
 . (Join-Path $PSScriptRoot 'worktree-git.common.ps1')
 . (Join-Path $PSScriptRoot 'backlog-acceptance.common.ps1')
+. (Join-Path $PSScriptRoot 'citation-freshness.common.ps1')
 
 function Find-TransitionItem {
     param([string] $Worktree, [string] $Item)
@@ -140,6 +141,47 @@ function Assert-PrOnBranch {
         throw ("Pull request $Pr belongs to branch '$head', but this worktree is on '$Branch'. " +
                'Nothing was changed. Pass the number of this branch''s own pull request.')
     }
+}
+
+# Ship moves the item into backlog/done/, and scripts/check-archived-plan-frozen.ps1 then treats
+# the item's plan and spec as shipped. That check runs in the pre-push hook, so an unfrozen plan
+# made Ship's own push fail AFTER the closure commit was already made - the one state this script
+# exists to prevent. Refuse before anything moves, and say exactly what to add.
+function Assert-ShippedRecordsFrozen {
+    param([string] $Worktree, [pscustomobject] $Record)
+
+    $open = @()
+    foreach ($line in (Get-Content -LiteralPath $Record.Path)) {
+        # 'none - <reason>' carries no backticked path and so matches nothing.
+        if ($line -notmatch '^\s*-\s+(Plan|Spec):') { continue }
+        if ($line -notmatch '`(?<path>[^`]+\.md)`') { continue }
+
+        $pointed = Join-Path $Worktree $Matches.path
+        if (-not (Test-Path -LiteralPath $pointed -PathType Leaf)) { continue }
+
+        $lines = @(Get-Content -LiteralPath $pointed)
+        if (Test-CitationIgnoreFile -Lines $lines) { continue }
+
+        # Only a file holding a canonical citation can rot, and only those does the check ask to
+        # freeze. Demanding a freeze on a file with nothing to re-audit would be noise.
+        $canonical = 0
+        foreach ($text in $lines) {
+            foreach ($citation in (Get-CitationOnLine -Line $text)) {
+                if ($citation.Kind -eq 'Canonical') { $canonical++ }
+            }
+        }
+        if ($canonical -eq 0) { continue }
+
+        $open += $Matches.path
+    }
+
+    if ($open.Count -eq 0) { return }
+
+    throw ("Ship cannot close the records while these files are still open to the citation " +
+           "check: $($open -join ', '). Put these two lines at the top of each one, above the " +
+           'heading, and commit them in the plans repository: ' +
+           '"<!-- citation-check:ignore-file -->" and a second comment saying the work has ' +
+           'shipped. Nothing was changed.')
 }
 
 function Assert-TransitionAllowed {
@@ -320,7 +362,25 @@ function Invoke-PickupTransition {
     }
 
     if ($existing) {
-        Write-Host "Pull request $existing is already open for $branch. Reusing it."
+        # 'gh pr list --head' answers with ANY open pull request for the branch. Pickup asked for
+        # a draft against a named base, and stamping Pickup as done against something else
+        # records a Pickup that never happened. Check both before reusing it.
+        $draft = ((& gh pr view $existing --repo s205109/AHKFlowApp --json isDraft -q .isDraft) -join '').Trim()
+        if ($LASTEXITCODE -ne 0) { throw "Could not read the draft state of pull request $existing. Nothing was stamped." }
+        if ($draft -ne 'true') {
+            throw ("Pull request $existing is open for $branch but is no longer a draft. Pickup " +
+                   'opens a draft, so this is not the pull request it was asked for. Nothing was stamped.')
+        }
+
+        $prBase = ((& gh pr view $existing --repo s205109/AHKFlowApp --json baseRefName -q .baseRefName) -join '').Trim()
+        if ($LASTEXITCODE -ne 0) { throw "Could not read the base branch of pull request $existing. Nothing was stamped." }
+        if ($prBase -ne $Base) {
+            throw ("Pull request $existing targets '$prBase', but this Pickup was asked for " +
+                   "'$Base'. Nothing was stamped. Pass the base the pull request really uses, " +
+                   'or retarget the pull request.')
+        }
+
+        Write-Host "Draft pull request $existing is already open for $branch against $Base. Reusing it."
     } else {
         # The body carries the Sessions bullet and nothing else: a script cannot write a good
         # description, and the item does not ask it to.
@@ -369,6 +429,8 @@ function Invoke-ShipTransition {
                'Tick them at Document, or write into the item why a box stays unticked.')
     }
 
+    Assert-ShippedRecordsFrozen -Worktree $Worktree -Record $record
+
     Invoke-RemotePreflight -Worktree $Worktree -Branch $branch
 
     # Close the records: move the item, delete the progress file, set the Stage. One commit.
@@ -394,6 +456,80 @@ function Invoke-ShipTransition {
     if ($LASTEXITCODE -ne 0) { throw 'The records are closed and pushed, but the ready flip failed. Flip it by hand.' }
 
     Write-Host "Item $Item is closed at $target, pushed, and the pull request is ready."
+}
+
+# The failure edge OUT of Ship, which the ordinary path cannot take. Ship deleted
+# PLAN-PROGRESS.md and moved the item into backlog/done/, so Assert-FailureEdgeReady would refuse
+# for a missing progress file that Ship itself removed. workflow.md section 'Stage 9 - Ship' asks
+# this edge to undo all three things Ship did: the ready flip, the move, and the deletion.
+function Invoke-ShipFailureTransition {
+    param(
+        [string] $Worktree, [string] $Item, [pscustomobject] $Context,
+        [int] $Pr, [string] $Note = '', [string] $Evidence = '', [string] $RecoveryTask = ''
+    )
+
+    $branch = $Context.Branch
+    $record = $Context.Record
+    $target = $Context.Target
+
+    # No -HasProgressFile here. Ship deleted it, and restoring it is this path's own job.
+    Assert-FailureEdgeReady -Worktree $Worktree -Evidence $Evidence -RecoveryTask $RecoveryTask
+    Assert-PrOnBranch -Pr $Pr -Branch $branch
+    Assert-BranchNotDiverged -Worktree $Worktree -Branch $branch
+
+    # The undo comes first. The target is a pre-Review stage, and Review's entry condition is a
+    # draft pull request, so a record written while the pull request is still ready describes a
+    # state the workflow cannot resume from.
+    & gh pr ready $Pr --repo s205109/AHKFlowApp --undo
+    if ($LASTEXITCODE -ne 0) {
+        throw 'The pull request could not be converted back to draft. Nothing was changed.'
+    }
+
+    Invoke-RemotePreflight -Worktree $Worktree -Branch $branch
+
+    # Move the item back out of backlog/done/. A rerun after a half-finished attempt finds it
+    # already out, and that is not an error.
+    $leaf = Split-Path -Leaf $record.Path
+    if ((Split-Path -Leaf (Split-Path -Parent $record.Path)) -eq 'done') {
+        Move-Item -LiteralPath $record.Path -Destination (Join-Path (Join-Path $Worktree 'backlog') $leaf)
+    }
+    $itemPath = Join-Path (Join-Path $Worktree 'backlog') $leaf
+
+    Restore-ProgressFile -Worktree $Worktree
+    Add-FailureRecord -Worktree $Worktree -Target $target -Evidence $Evidence -RecoveryTask $RecoveryTask
+    Set-ItemStage -Path $itemPath -Stage $target
+
+    & git -C $Worktree add -A -- backlog PLAN-PROGRESS.md
+    $message = "docs: $Item failure edge to $target"
+    if ($Note) { $message = "$message, $Note" }
+    & git -C $Worktree commit -m $message
+    if ($LASTEXITCODE -ne 0) { throw 'The reopening commit failed.' }
+
+    & git -C $Worktree push origin $branch
+    if ($LASTEXITCODE -ne 0) { throw 'The reopening commit was made but not pushed. Push it before anything else.' }
+
+    Write-Host "Item $Item is reopened at $target, and pull request $Pr is a draft again."
+}
+
+# Ship's closure commit deleted PLAN-PROGRESS.md, so the file the failure record belongs in comes
+# back out of git history. The commit that deleted it is the closure commit, and its parent holds
+# the last content the file had.
+function Restore-ProgressFile {
+    param([string] $Worktree)
+
+    $progress = Join-Path $Worktree 'PLAN-PROGRESS.md'
+    if (Test-Path -LiteralPath $progress) { return }
+
+    $deleted = ((& git -C $Worktree log --diff-filter=D --format=%H -1 -- PLAN-PROGRESS.md) -join '').Trim()
+    if (-not $deleted) {
+        throw ('PLAN-PROGRESS.md is gone and no commit on this branch deleted it, so there is ' +
+               'nothing to restore. Write it back by hand and run this again.')
+    }
+
+    $text = (& git -C $Worktree show "${deleted}^:PLAN-PROGRESS.md") -join "`n"
+    if ($LASTEXITCODE -ne 0) { throw "Could not read PLAN-PROGRESS.md from $deleted^." }
+
+    Set-Content -LiteralPath $progress -Value $text -Encoding utf8
 }
 
 # A housekeeping round files no item, so its record is the 'Stage:' line in its pull request
@@ -431,8 +567,41 @@ function Invoke-RoundTransition {
     if ($hits -ne 1) { throw "PR $Pr body: expected 1 Stage line, found $hits." }
 
     $current = ([regex]::Match($body, $rx)).Value -replace '^Stage: ', ''
+
+    # A round at 9-ship is the one place the body can be ahead of the pull request. The body is
+    # written to 9-ship first, and only then does 'gh pr ready' run, so a failed flip leaves a
+    # draft pull request whose body already reads Ship. Resolving the target here would answer
+    # 10-cleanup and record Cleanup on work that never merged.
+    if ($current -eq '9-ship' -and $Edge -eq 'success') {
+        $draft = ((& gh pr view $Pr --repo s205109/AHKFlowApp --json isDraft -q .isDraft) -join '').Trim()
+        if ($LASTEXITCODE -ne 0) { throw "Could not read the draft state of pull request $Pr." }
+
+        if ($draft -eq 'true') {
+            & gh pr ready $Pr --repo s205109/AHKFlowApp
+            if ($LASTEXITCODE -ne 0) { throw "Pull request $Pr is still a draft and the ready flip failed again." }
+            Write-Host ("Pull request $Pr was still a draft at 9-ship. It is ready now. Ship is " +
+                        'not finished until CI is green and the pull request has merged.')
+            return
+        }
+
+        throw ('Cleanup writes no Stage line. The round stays at 9-ship in its pull request ' +
+               'body, and the merged pull request is the record. Remove the worktree and the ' +
+               'branch instead.')
+    }
+
     $workflow = Join-Path $Worktree 'docs/development/workflow.md'
     $target = Resolve-TransitionTarget -WorkflowPath $workflow -Stage $current -Edge $Edge -To $To
+
+    # A round leaving Ship on the failure edge returns to a pre-Review stage, and Review can only
+    # be entered with a draft pull request. The undo comes before the body is rewritten, for the
+    # same reason a tracked item undoes first: a record must never describe a state the workflow
+    # cannot resume from.
+    if ($current -eq '9-ship' -and $Edge -eq 'failure') {
+        & gh pr ready $Pr --repo s205109/AHKFlowApp --undo
+        if ($LASTEXITCODE -ne 0) {
+            throw "Pull request $Pr could not be converted back to draft. The body still reads $current."
+        }
+    }
 
     # gh pr edit --body-file replaces the whole body, so the whole body is written back. A file
     # holding only the Stage line would delete the description.
@@ -500,6 +669,16 @@ function Invoke-Transition {
 
     if ($context.Stage -eq '1-pickup' -and $Edge -eq 'success') {
         Invoke-PickupTransition -Worktree $Worktree -Item $Item -Context $context -Note $Note -Base $Base
+        return
+    }
+
+    # Leaving Ship on the failure edge is its own path. Ship deleted PLAN-PROGRESS.md and moved
+    # the item into backlog/done/, so the ordinary path refuses for a missing progress file that
+    # Ship itself removed. This is read before the target, because both paths below are chosen by
+    # the target and neither of them can undo a Ship.
+    if ($context.Stage -eq '9-ship' -and $Edge -eq 'failure') {
+        Invoke-ShipFailureTransition -Worktree $Worktree -Item $Item -Context $context -Pr $Pr `
+                                     -Note $Note -Evidence $Evidence -RecoveryTask $RecoveryTask
         return
     }
 
