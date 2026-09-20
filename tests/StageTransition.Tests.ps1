@@ -72,7 +72,8 @@ function New-TransitionFixture {
     & git init --bare $bare *> $null
 
     $root = New-Root -Prefix 'transition-work'
-    & git init $root *> $null
+    # A named default branch, so 'origin/main' is a ref the marker check can really resolve.
+    & git init -b main $root *> $null
     & git -C $root config user.email 'test@example.com' *> $null
     & git -C $root config user.name 'Transition Test' *> $null
     & git -C $root config core.hooksPath (Join-Path $root '.nohooks') *> $null
@@ -135,6 +136,60 @@ function New-TransitionFixture {
         Root     = (Resolve-Path -LiteralPath $acting).Path
         Bare     = (Resolve-Path -LiteralPath $bare).Path
         ItemPath = (Join-Path (Resolve-Path -LiteralPath $acting).Path $itemName)
+    }
+}
+
+# A fake gh. The ordering test needs 'pr create' to fail on demand, which no real call can be
+# asked to do safely.
+function New-FakeGh {
+    param([int] $CreateExitCode = 0, [string] $PrNumber = '421')
+
+    $dir = New-Root -Prefix 'fake-gh'
+    $log = Join-Path $dir 'gh-calls.log'
+    $script = @"
+#!/usr/bin/env pwsh
+`$args -join ' ' | Add-Content -LiteralPath '$log'
+if (`$args -contains 'create') {
+    if ($CreateExitCode -ne 0) { Write-Error 'fake gh: pr create refused'; exit $CreateExitCode }
+    Write-Output 'https://github.com/s205109/AHKFlowApp/pull/$PrNumber'
+    exit 0
+}
+exit 0
+"@
+    Set-Content -LiteralPath (Join-Path $dir 'gh.ps1') -Value $script -Encoding utf8
+
+    # The shim the shell will actually pick, which differs by platform. Both are written from the
+    # one gh.ps1 above, so the fake's behaviour has a single definition.
+    if ($IsWindows) {
+        # Windows resolves gh.cmd before gh.ps1.
+        Set-Content -LiteralPath (Join-Path $dir 'gh.cmd') `
+            -Value "@echo off`r`npwsh -NoProfile -File `"%~dp0gh.ps1`" %*" -Encoding ascii
+    } else {
+        # Linux needs an extensionless executable named exactly 'gh'.
+        $sh = Join-Path $dir 'gh'
+        Set-Content -LiteralPath $sh -Value "#!/bin/sh`nexec pwsh -NoProfile -File `"`$(dirname `"`$0`")/gh.ps1`" `"`$@`"" -Encoding utf8
+        & chmod +x $sh
+    }
+
+    return [pscustomobject]@{ Dir = $dir; Log = $log }
+}
+
+# The exit code is captured INSIDE the block and kept in a script variable. Never read
+# $LASTEXITCODE after this helper returns. It happens to survive the finally today, because
+# restoring PATH is pure PowerShell, but one native call added to the cleanup later would
+# overwrite it. The assertion would then read the cleanup's result, and a cleanup that
+# succeeded would make a '-ne 0' assertion go red for a reason unrelated to the transition.
+$script:LastTransitionExit = $null
+
+function Invoke-WithFakeGh {
+    param([pscustomobject] $Gh, [scriptblock] $Action)
+    $saved = $env:PATH
+    try {
+        $env:PATH = "$($Gh.Dir)$([System.IO.Path]::PathSeparator)$saved"
+        & $Action
+        $script:LastTransitionExit = $LASTEXITCODE
+    } finally {
+        $env:PATH = $saved
     }
 }
 
@@ -223,6 +278,50 @@ try {
     $fx3 = New-TransitionFixture
     & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $fx3.Root -Item '081' -Edge 'success' *> $null
     Assert-True ($LASTEXITCODE -ne 0) 'The main checkout must be refused'
+
+    # --- Pickup opens the draft pull request, then stamps ---
+    $pk = New-TransitionFixture -Stage '1-pickup' -Difficulty 'complex' -AsWorktree
+    $gh = New-FakeGh -CreateExitCode 0
+    Invoke-WithFakeGh -Gh $gh -Action {
+        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $pk.Root -Item '081' -Edge 'success' *> $null
+    }
+    Assert-Equal '2-design' (Get-SingleBacklogStage -Lines (Get-Content -LiteralPath $pk.ItemPath)) `
+        'Pickup with complex must stamp 2-design'
+    Assert-True ((Get-Content -Raw -LiteralPath $gh.Log) -match 'pr create') 'Pickup must call gh pr create'
+
+    # --- The ordering: gh pr create fails, so nothing is stamped ---
+    $pk2 = New-TransitionFixture -Stage '1-pickup' -Difficulty 'complex' -AsWorktree
+    $pkBefore = (& git -C $pk2.Root rev-parse HEAD).Trim()
+    $gh2 = New-FakeGh -CreateExitCode 1
+    Invoke-WithFakeGh -Gh $gh2 -Action {
+        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $pk2.Root -Item '081' -Edge 'success' *> $null
+    }
+    Assert-True ($script:LastTransitionExit -ne 0) 'A failed gh pr create must fail the transition'
+    Assert-Equal '1-pickup' (Get-SingleBacklogStage -Lines (Get-Content -LiteralPath $pk2.ItemPath)) `
+        'A failed gh pr create must leave the Stage at 1-pickup'
+    # -join matters: '-match' against an array filters it and returns an array, not a boolean.
+    Assert-True (((& git -C $pk2.Root log --oneline "$pkBefore..HEAD") -join "`n") -notmatch 'at 2-design') `
+        'A failed gh pr create must leave no stamp commit'
+
+    # --- Stacked work: the marker is judged against the real base, not against main ---
+    # A worktree created with new-worktree.ps1 -BaseRef branches from an unmerged branch. Such a
+    # branch already differs from origin/main by every commit of the branch below it, so a marker
+    # check against main would see 'this branch has commits' and skip the marker. The pull request
+    # would then be opened between two identical refs.
+    $pk3 = New-TransitionFixture -Stage '1-pickup' -Difficulty 'complex' -AsWorktree -StackedOn 'feature/wt-below'
+    $gh3 = New-FakeGh -CreateExitCode 0
+    $countBefore = @(& git -C $pk3.Root rev-list "origin/feature/wt-below..HEAD").Count
+    Assert-Equal 0 $countBefore 'The stacked branch must start with no commits of its own'
+
+    Invoke-WithFakeGh -Gh $gh3 -Action {
+        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $pk3.Root -Item '081' `
+            -Edge 'success' -Base 'feature/wt-below' *> $null
+    }
+    Assert-Equal 0 $script:LastTransitionExit 'A stacked pickup must succeed'
+    Assert-True (((& git -C $pk3.Root log --oneline "origin/feature/wt-below..HEAD") -join "`n") -match 'pickup, opening draft PR') `
+        'A stacked pickup must still make the marker commit'
+    Assert-True ((Get-Content -Raw -LiteralPath $gh3.Log) -match '--base feature/wt-below') `
+        'The pull request must be opened against the real base, not main'
 
     # --- Every legal transition lands on the target workflow.md names ---
     $workflowPath = Join-Path $suiteRoot 'docs/development/workflow.md'

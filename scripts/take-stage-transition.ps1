@@ -188,10 +188,85 @@ function Invoke-StageTransition {
     Write-Host "Item $Item is now at $target."
 }
 
+# GitHub refuses a pull request between identical refs, so a branch with no commits of its own
+# cannot open one. The empty marker commit is the same device the Source uses for a housekeeping
+# round. See workflow.md section 2.
+function Add-PickupMarkerCommit {
+    param([string] $Worktree, [string] $Item, [string] $BaseRef)
+
+    $own = @(& git -C $Worktree rev-list "$BaseRef..HEAD" 2>$null)
+    if ($own.Count -gt 0) { return }
+
+    & git -C $Worktree commit --allow-empty -m "chore: $Item pickup, opening draft PR"
+    if ($LASTEXITCODE -ne 0) { throw 'The pickup marker commit failed.' }
+}
+
+function Invoke-PickupTransition {
+    param([string] $Worktree, [string] $Item, [string] $To = '', [string] $Note = '', [string] $Base = 'main')
+
+    Assert-TransitionAllowed -Worktree $Worktree
+
+    $branch = (& git -C $Worktree rev-parse --abbrev-ref HEAD).Trim()
+    $record = Find-TransitionItem -Worktree $Worktree -Item $Item
+    $difficulty = Get-ItemDifficulty -Path $record.Path
+    $workflow = Join-Path $Worktree 'docs/development/workflow.md'
+
+    $target = Resolve-TransitionTarget -WorkflowPath $workflow -Stage '1-pickup' `
+                                       -Edge 'success' -Difficulty $difficulty -To $To
+
+    # 1. A commit to open the pull request against, judged against the SAME base the pull request
+    #    will use. The two must agree: asking 'does this branch differ from origin/main' while
+    #    opening the pull request against another branch answers a question nobody asked.
+    Add-PickupMarkerCommit -Worktree $Worktree -Item $Item -BaseRef "origin/$Base"
+
+    # 2. Publish the branch. Nothing is stamped yet.
+    & git -C $Worktree push -u origin $branch
+    if ($LASTEXITCODE -ne 0) { throw 'The branch push failed, so there is nothing to open a pull request against.' }
+
+    # 3. The draft pull request. The body carries the Sessions bullet and nothing else: a script
+    #    cannot write a good description, and the item does not ask it to.
+    $title = "$(Get-ItemTitle -Path $record.Path) (backlog $Item)"
+    $body = Get-SessionsBody
+    & gh pr create --draft --base $Base --head $branch --title $title --body $body
+    if ($LASTEXITCODE -ne 0) {
+        throw ('gh pr create failed, so the Stage was not stamped. The branch is pushed; ' +
+               'open the pull request and run this again.')
+    }
+
+    # 4. Only now the stamp.
+    Set-ItemStage -Path $record.Path -Stage $target
+    & git -C $Worktree add -- $record.RelativePath
+    $message = "docs: $Item at $target"
+    if ($Note) { $message = "$message, $Note" }
+    & git -C $Worktree commit -m $message
+    if ($LASTEXITCODE -ne 0) { throw 'The stamp commit failed.' }
+
+    & git -C $Worktree push origin $branch
+    if ($LASTEXITCODE -ne 0) { throw 'The stamp was committed but not pushed. Push it before anything else.' }
+
+    Write-Host "Item $Item is now at $target, with a draft pull request open."
+}
+
+# One entry point picks the path. Pickup, Ship, and a housekeeping round each have mechanics the
+# ordinary path does not, and the caller must not have to know which is which.
+function Invoke-Transition {
+    Assert-TransitionAllowed -Worktree $Worktree
+
+    $record = Find-TransitionItem -Worktree $Worktree -Item $Item
+    $stage = $record.Stages[0]
+
+    if ($stage -eq '1-pickup' -and $Edge -eq 'success') {
+        Invoke-PickupTransition -Worktree $Worktree -Item $Item -To $To -Note $Note -Base $Base
+        return
+    }
+
+    Invoke-StageTransition -Worktree $Worktree -Item $Item -Edge $Edge -To $To -Note $Note
+}
+
 if ($AsModule) { return }
 
 try {
-    Invoke-StageTransition -Worktree $Worktree -Item $Item -Edge $Edge -To $To -Note $Note
+    Invoke-Transition
     exit 0
 } catch {
     Write-Host "REFUSED: $($_.Exception.Message)"
