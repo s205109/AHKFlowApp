@@ -142,7 +142,16 @@ function New-TransitionFixture {
 # A fake gh. The ordering test needs 'pr create' to fail on demand, which no real call can be
 # asked to do safely.
 function New-FakeGh {
-    param([int] $CreateExitCode = 0, [string] $PrNumber = '421', [string] $Body = '')
+    param(
+        [int] $CreateExitCode = 0,
+        [string] $PrNumber = '421',
+        [string] $Body = '',
+        # The branch the pull request named by -Pr points at. The script refuses a number whose
+        # head is some other branch, so a test proves that by handing back a different name.
+        [string] $HeadRefName = 'feature/wt-transition-test',
+        # What 'gh pr list --head <branch>' answers. Empty means no pull request is open yet.
+        [string] $ExistingPr = ''
+    )
 
     $dir = New-Root -Prefix 'fake-gh'
     $log = Join-Path $dir 'gh-calls.log'
@@ -152,11 +161,14 @@ function New-FakeGh {
     $bodyFile = Join-Path $dir 'pr-body.txt'
     Set-Content -LiteralPath $bodyFile -Value $Body -Encoding utf8
 
-    # 'view' and 'edit' are tested before 'create', because 'gh pr create' also carries the word
-    # 'create' and an earlier branch would swallow it.
+    # Order matters twice over. 'headRefName' is tested before 'view', because that query is a
+    # 'gh pr view' too. 'view' and 'edit' are tested before 'create', because 'gh pr create'
+    # also carries the word 'create' and an earlier branch would swallow it.
     $script = @"
 #!/usr/bin/env pwsh
 `$args -join ' ' | Add-Content -LiteralPath '$log'
+if (`$args -contains 'headRefName') { Write-Output '$HeadRefName'; exit 0 }
+if (`$args -contains 'list') { Write-Output '$ExistingPr'; exit 0 }
 if (`$args -contains 'view') { Get-Content -Raw -LiteralPath '$bodyFile'; exit 0 }
 if (`$args -contains 'edit') {
     `$i = [array]::IndexOf(`$args, '--body-file')
@@ -407,8 +419,10 @@ try {
         & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $sh2.Root -Item '081' -Edge 'success' -Pr 421 *> $null
     }
     Assert-True ($script:LastTransitionExit -ne 0) 'An unticked acceptance box must refuse Ship'
-    Assert-True (-not (Test-Path -LiteralPath $shGh2.Log)) `
-        'A refused Ship must not call gh at all, so it cannot flip the pull request'
+    # Ship does call gh before it refuses, to check the pull request belongs to this branch.
+    # What it must never do is flip one.
+    Assert-True (((Get-Content -Raw -LiteralPath $shGh2.Log) -join "`n") -notmatch 'pr ready') `
+        'A refused Ship must not flip the pull request'
 
     # --- A failure edge refuses without its evidence ---
     $fl = New-TransitionFixture -Stage '6-verify' -Difficulty 'complex' -AsWorktree -WithProgress
@@ -445,7 +459,7 @@ try {
     # --- A round rewrites one line of its body and keeps the rest ---
     $rd = New-TransitionFixture -Stage '5-simplify' -AsWorktree -Branch 'chore/wt-backlog-housekeeping' -NoItem
     $roundBody = "## What`n`nThree chores.`n`nStage: 5-simplify`n`nSessions:`n`n- abc (agent, 5-simplify)"
-    $rdGh = New-FakeGh -Body $roundBody
+    $rdGh = New-FakeGh -Body $roundBody -HeadRefName 'chore/wt-backlog-housekeeping'
 
     Invoke-WithFakeGh -Gh $rdGh -Action {
         & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $rd.Root -Edge 'success' -Pr 500 *> $null
@@ -453,17 +467,129 @@ try {
     Assert-Equal 0 $script:LastTransitionExit 'A round transition must succeed'
 
     $written = Get-Content -Raw -LiteralPath $rdGh.BodyFile
-    Assert-True ($written -match '(?m)^Stage: 6-verify$') 'The round body must read the new stage'
+    Assert-True ($written -match '(?m)^Stage: 6-verify\r?$') 'The round body must read the new stage'
     Assert-True ($written -match 'Three chores')           'The round body must keep its description'
     Assert-True ($written -match 'Sessions:')              'The round body must keep its Sessions list'
     Assert-Equal 1 ([regex]::Matches($written, '(?m)^Stage: ')).Count 'Exactly one Stage line must survive'
 
     # --- Two Stage lines is a refusal, not a guess ---
-    $rdGh2 = New-FakeGh -Body "Stage: 5-simplify`nStage: 6-verify"
+    $rdGh2 = New-FakeGh -Body "Stage: 5-simplify`nStage: 6-verify" -HeadRefName 'chore/wt-backlog-housekeeping'
     Invoke-WithFakeGh -Gh $rdGh2 -Action {
         & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $rd.Root -Edge 'success' -Pr 500 *> $null
     }
     Assert-True ($script:LastTransitionExit -ne 0) 'A body with two Stage lines must be refused'
+
+    # ================= Copilot review round, PR 421 =================
+
+    # --- A failure edge with no evidence must not publish anything (review finding 1) ---
+    # The pre-flight push ran before the failure prerequisites were checked, so a refused
+    # transition still pushed whatever the branch was carrying.
+    $r1 = New-TransitionFixture -Stage '6-verify' -Difficulty 'complex' -AsWorktree -WithProgress
+    $r1Branch = (& git -C $r1.Root rev-parse --abbrev-ref HEAD).Trim()
+    Set-Content -LiteralPath (Join-Path $r1.Root 'unpushed.txt') -Value 'work' -Encoding utf8
+    & git -C $r1.Root add -A *> $null
+    & git -C $r1.Root commit -m 'unpushed work' *> $null
+    $r1RemoteBefore = (& git -C $r1.Bare rev-parse $r1Branch).Trim()
+
+    & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $r1.Root -Item '081' -Edge 'failure' *> $null
+    Assert-True ($LASTEXITCODE -ne 0) 'A failure edge with no evidence must still be refused'
+    Assert-Equal $r1RemoteBefore (& git -C $r1.Bare rev-parse $r1Branch).Trim() `
+        'A refused failure edge must not push the branch'
+
+    # --- Ship refuses a pull request number pointing at another branch (review finding 2) ---
+    $r2 = New-TransitionFixture -Stage '8-review' -Difficulty 'complex' -AsWorktree -AllBoxesTicked -WithProgress
+    $r2Gh = New-FakeGh -HeadRefName 'feature/wt-somebody-else'
+    Invoke-WithFakeGh -Gh $r2Gh -Action {
+        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $r2.Root -Item '081' -Edge 'success' -Pr 999 *> $null
+    }
+    Assert-True ($script:LastTransitionExit -ne 0) 'Ship must refuse a pull request on another branch'
+    Assert-True (-not (Test-Path -LiteralPath (Join-Path $r2.Root 'backlog/done/081-automate-stage-transitions.md'))) `
+        'A refused Ship must not move the item'
+    Assert-True (((Get-Content -Raw -LiteralPath $r2Gh.Log) -join "`n") -notmatch 'pr ready') `
+        'A refused Ship must not flip any pull request'
+
+    # --- An item worktree with -Pr and no -Item is refused, not treated as a round (finding 3) ---
+    $r3 = New-TransitionFixture -Stage '5-simplify' -Difficulty 'complex' -AsWorktree
+    $r3Gh = New-FakeGh -Body "Stage: 5-simplify"
+    Invoke-WithFakeGh -Gh $r3Gh -Action {
+        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $r3.Root -Edge 'success' -Pr 500 *> $null
+    }
+    Assert-True ($script:LastTransitionExit -ne 0) 'A missing -Item on an item branch must be refused'
+    Assert-True ((Get-Content -Raw -LiteralPath $r3Gh.BodyFile) -match '(?m)^Stage: 5-simplify\r?$') `
+        'A refused run must not rewrite any pull request body'
+
+    # --- Pickup reuses a pull request that already exists (review finding 5) ---
+    # gh pr create succeeded, then the session died before the stamp. A rerun must find that
+    # pull request and stamp, rather than calling create again and failing forever.
+    $r5 = New-TransitionFixture -Stage '1-pickup' -Difficulty 'complex' -AsWorktree
+    $r5Gh = New-FakeGh -CreateExitCode 1 -ExistingPr '421'
+    Invoke-WithFakeGh -Gh $r5Gh -Action {
+        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $r5.Root -Item '081' -Edge 'success' *> $null
+    }
+    Assert-Equal 0 $script:LastTransitionExit 'Pickup must succeed when the pull request already exists'
+    Assert-Equal '2-design' (Get-SingleBacklogStage -Lines (Get-Content -LiteralPath $r5.ItemPath)) `
+        'A resumed Pickup must stamp the Stage'
+    Assert-True (((Get-Content -Raw -LiteralPath $r5Gh.Log) -join "`n") -notmatch 'pr create') `
+        'A resumed Pickup must not call gh pr create again'
+
+    # --- A round flips to ready entering 9-ship, not leaving it (review finding 6) ---
+    $r6 = New-TransitionFixture -Stage '8-review' -AsWorktree -Branch 'chore/wt-backlog-housekeeping' -NoItem
+    $r6Gh = New-FakeGh -Body "## What`n`nChores.`n`nStage: 8-review" -HeadRefName 'chore/wt-backlog-housekeeping'
+    Invoke-WithFakeGh -Gh $r6Gh -Action {
+        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $r6.Root -Edge 'success' -Pr 500 *> $null
+    }
+    Assert-Equal 0 $script:LastTransitionExit 'A round entering Ship must succeed'
+    Assert-True ((Get-Content -Raw -LiteralPath $r6Gh.BodyFile) -match '(?m)^Stage: 9-ship\r?$') `
+        'The round body must read 9-ship'
+    Assert-True (((Get-Content -Raw -LiteralPath $r6Gh.Log) -join "`n") -match 'pr ready') `
+        'A round entering Ship must flip to ready'
+
+    $r6b = New-TransitionFixture -Stage '9-ship' -AsWorktree -Branch 'chore/wt-backlog-housekeeping' -NoItem
+    $r6bGh = New-FakeGh -Body "Stage: 9-ship" -HeadRefName 'chore/wt-backlog-housekeeping'
+    Invoke-WithFakeGh -Gh $r6bGh -Action {
+        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $r6b.Root -Edge 'success' -Pr 500 *> $null
+    }
+    Assert-True (((Get-Content -Raw -LiteralPath $r6bGh.Log) -join "`n") -notmatch 'pr ready') `
+        'A round leaving Ship must not flip again; it is already ready and merged'
+
+    # --- A round failure edge records its evidence in the body (review finding 7) ---
+    # workflow.md gives the round the same rule as tracked work, with the pull request body
+    # standing in for PLAN-PROGRESS.md, which a round does not have.
+    $r7 = New-TransitionFixture -Stage '6-verify' -AsWorktree -Branch 'chore/wt-backlog-housekeeping' -NoItem
+    $r7Gh = New-FakeGh -Body "Stage: 6-verify" -HeadRefName 'chore/wt-backlog-housekeeping'
+    Invoke-WithFakeGh -Gh $r7Gh -Action {
+        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $r7.Root -Edge 'failure' -Pr 500 *> $null
+    }
+    Assert-True ($script:LastTransitionExit -ne 0) 'A round failure edge with no evidence must be refused'
+    Assert-True ((Get-Content -Raw -LiteralPath $r7Gh.BodyFile) -match '(?m)^Stage: 6-verify\r?$') `
+        'A refused round failure must leave the body alone'
+
+    $r7b = New-TransitionFixture -Stage '6-verify' -AsWorktree -Branch 'chore/wt-backlog-housekeeping' -NoItem
+    $r7bGh = New-FakeGh -Body "Stage: 6-verify" -HeadRefName 'chore/wt-backlog-housekeeping'
+    Invoke-WithFakeGh -Gh $r7bGh -Action {
+        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $r7b.Root -Edge 'failure' -Pr 500 `
+            -Evidence 'pwsh ./scripts/test-fast.ps1 -Mode Fast : 2 failed' `
+            -RecoveryTask 'Chore 3: fix the parity check' *> $null
+    }
+    Assert-Equal 0 $script:LastTransitionExit 'A round failure edge with evidence must succeed'
+    $r7Body = Get-Content -Raw -LiteralPath $r7bGh.BodyFile
+    Assert-True ($r7Body -match '(?m)^Stage: 4-execute\r?$') 'The round body must read the failure target'
+    Assert-True ($r7Body -match '2 failed')                'The round body must carry the red evidence'
+    Assert-True ($r7Body -match 'fix the parity check')    'The round body must carry the recovery task'
+
+    # --- A tracked item never writes Stage 10 (review finding 8) ---
+    # 9-ship success happens after the merge, and workflow.md says the Stage field is never
+    # written after merge. An item in backlog/done/ must keep reading 'Stage: 9-ship'.
+    $r8 = New-TransitionFixture -Stage '9-ship' -Difficulty 'complex' -AsWorktree -AllBoxesTicked -WithProgress
+    $r8Head = (& git -C $r8.Root rev-parse HEAD).Trim()
+    $r8Gh = New-FakeGh
+    Invoke-WithFakeGh -Gh $r8Gh -Action {
+        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $r8.Root -Item '081' -Edge 'success' -Pr 421 *> $null
+    }
+    Assert-True ($script:LastTransitionExit -ne 0) 'A tracked item must refuse the 10-cleanup transition'
+    Assert-Equal '9-ship' (Get-FixtureStage -Root $r8.Root) 'A shipped item must keep reading 9-ship'
+    Assert-Equal $r8Head (& git -C $r8.Root rev-parse HEAD).Trim() `
+        'A refused cleanup transition must make no commit'
 
     # --- Every legal transition lands on the target workflow.md names ---
     $workflowPath = Join-Path $suiteRoot 'docs/development/workflow.md'
@@ -476,6 +602,10 @@ try {
 
             $targets = @(Get-StageEdgeTarget -WorkflowPath $workflowPath -Stage $stageId -Edge $edge)
             if ($targets.Count -ne 1) { continue }   # Pickup's three targets are Task 3's case.
+
+            # 10-cleanup is reached only after the merge, and the Stage field is never written
+            # after merge. The script refuses that transition, and its own case above proves it.
+            if ($targets[0] -eq '10-cleanup') { continue }
 
             # A failure edge refuses without PLAN-PROGRESS.md once Task 5 lands, so every stage
             # from 4-execute on gets one. The stage id carries its own number, so this reads the

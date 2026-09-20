@@ -70,8 +70,8 @@ commit, the push, and the pull request cannot disagree with each other.
 
 ## Notes / dependencies
 
-- Plan: docs/superpowers/plans/2026-09-20-stage-transition-script-plan-081.md
-- Spec: docs/superpowers/specs/2026-09-19-stage-transition-script-design-081.md
+- Plan: `docs/superpowers/plans/2026-09-20-stage-transition-script-plan-081.md`
+- Spec: `docs/superpowers/specs/2026-09-19-stage-transition-script-design-081.md`
 - Depends on backlog 072, which adds `Stage` and `Difficulty` to the item template and to
   `scripts/new-backlog-item.ps1`. Without those the script has no field to edit on a fresh
   item.

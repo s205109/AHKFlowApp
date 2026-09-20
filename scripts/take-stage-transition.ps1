@@ -122,6 +122,26 @@ function Get-TransitionContext {
     }
 }
 
+# A pull request number is typed by hand, and a stale or mistyped one points at somebody
+# else's work. Every path that mutates a pull request asks GitHub which branch it belongs to
+# first, and refuses before it touches any record.
+function Assert-PrOnBranch {
+    param([int] $Pr, [string] $Branch)
+
+    if ($Pr -le 0) { throw 'This transition needs -Pr: the pull request number it acts on.' }
+
+    $head = (& gh pr view $Pr --repo s205109/AHKFlowApp --json headRefName -q .headRefName) -join ''
+    if ($LASTEXITCODE -ne 0) {
+        throw "Could not read pull request $Pr. Check the number, and that gh is signed in."
+    }
+
+    $head = $head.Trim()
+    if ($head -ne $Branch) {
+        throw ("Pull request $Pr belongs to branch '$head', but this worktree is on '$Branch'. " +
+               'Nothing was changed. Pass the number of this branch''s own pull request.')
+    }
+}
+
 function Assert-TransitionAllowed {
     param([string] $Worktree)
 
@@ -169,17 +189,23 @@ function Invoke-RemotePreflight {
     if ($LASTEXITCODE -ne 0) { throw 'The pre-flight push failed. Nothing was changed.' }
 }
 
-function Add-FailureRecord {
-    param(
-        [string] $Worktree, [string] $Item, [string] $Target,
-        [string] $Evidence, [string] $RecoveryTask
-    )
+# Every reason a failure edge could be refused, checked and nothing written. This runs before
+# the remote pre-flight, which pushes: a refused transition must change nothing, and the
+# pre-flight publishing the branch is a change.
+function Assert-FailureEdgeReady {
+    param([string] $Worktree, [string] $Evidence, [string] $RecoveryTask, [switch] $HasProgressFile)
 
-    $progress = Join-Path $Worktree 'PLAN-PROGRESS.md'
-    if (-not (Test-Path -LiteralPath $progress)) {
+    if (-not $Evidence)     { throw 'A failure edge needs -Evidence: the failing command and its output.' }
+    if (-not $RecoveryTask) { throw 'A failure edge needs -RecoveryTask: the named task that fixes it.' }
+
+    if ($HasProgressFile -and -not (Test-Path -LiteralPath (Join-Path $Worktree 'PLAN-PROGRESS.md'))) {
         throw ('There is no PLAN-PROGRESS.md, so this work never reached Execute and a failure ' +
                'edge is not possible from here.')
     }
+}
+
+function Get-FailureRecordText {
+    param([string] $Target, [string] $Evidence, [string] $RecoveryTask)
 
     $stamp = (Get-Date).ToString('yyyy-MM-dd')
     $block = @(
@@ -196,7 +222,17 @@ function Add-FailureRecord {
         ''
     ) -join "`n"
 
-    Add-Content -LiteralPath $progress -Value $block -Encoding utf8
+    return $block
+}
+
+function Add-FailureRecord {
+    param(
+        [string] $Worktree, [string] $Target, [string] $Evidence, [string] $RecoveryTask
+    )
+
+    Add-Content -LiteralPath (Join-Path $Worktree 'PLAN-PROGRESS.md') `
+                -Value (Get-FailureRecordText -Target $Target -Evidence $Evidence -RecoveryTask $RecoveryTask) `
+                -Encoding utf8
 }
 
 function Invoke-StageTransition {
@@ -209,14 +245,17 @@ function Invoke-StageTransition {
     $record = $Context.Record
     $target = $Context.Target
 
+    # Every refusal first, then the pre-flight, then the writes. The pre-flight pushes, so a
+    # failure edge judged after it would publish the branch and only then refuse.
+    if ($Edge -eq 'failure') {
+        Assert-FailureEdgeReady -Worktree $Worktree -Evidence $Evidence `
+                                -RecoveryTask $RecoveryTask -HasProgressFile
+    }
+
     Invoke-RemotePreflight -Worktree $Worktree -Branch $branch
 
-    # A failure edge without its red evidence and its named recovery task is a claim with no
-    # record behind it. Both refusals run before the Stage is written.
     if ($Edge -eq 'failure') {
-        if (-not $Evidence)     { throw 'A failure edge needs -Evidence: the failing command and its output.' }
-        if (-not $RecoveryTask) { throw 'A failure edge needs -RecoveryTask: the named task that fixes it.' }
-        Add-FailureRecord -Worktree $Worktree -Item $Item -Target $target `
+        Add-FailureRecord -Worktree $Worktree -Target $target `
                           -Evidence $Evidence -RecoveryTask $RecoveryTask
     }
 
@@ -271,14 +310,27 @@ function Invoke-PickupTransition {
     & git -C $Worktree push -u origin $branch
     if ($LASTEXITCODE -ne 0) { throw 'The branch push failed, so there is nothing to open a pull request against.' }
 
-    # 3. The draft pull request. The body carries the Sessions bullet and nothing else: a script
-    #    cannot write a good description, and the item does not ask it to.
-    $title = "$(Get-ItemTitle -Path $record.Path) (backlog $Item)"
-    $body = Get-SessionsBody
-    & gh pr create --draft --base $Base --head $branch --title $title --body $body
+    # 3. The draft pull request, unless this branch already has one. A session that died
+    #    between a successful 'gh pr create' and the stamp leaves exactly that state, and
+    #    GitHub refuses a second pull request for the same branch. Without this lookup the
+    #    rerun fails forever and the item can never leave 1-pickup.
+    $existing = ((& gh pr list --repo s205109/AHKFlowApp --head $branch --state open --json number -q '.[0].number') -join '').Trim()
     if ($LASTEXITCODE -ne 0) {
-        throw ('gh pr create failed, so the Stage was not stamped. The branch is pushed; ' +
-               'open the pull request and run this again.')
+        throw 'Could not ask GitHub whether this branch already has a pull request. Nothing was stamped.'
+    }
+
+    if ($existing) {
+        Write-Host "Pull request $existing is already open for $branch. Reusing it."
+    } else {
+        # The body carries the Sessions bullet and nothing else: a script cannot write a good
+        # description, and the item does not ask it to.
+        $title = "$(Get-ItemTitle -Path $record.Path) (backlog $Item)"
+        $body = Get-SessionsBody
+        & gh pr create --draft --base $Base --head $branch --title $title --body $body
+        if ($LASTEXITCODE -ne 0) {
+            throw ('gh pr create failed, so the Stage was not stamped. The branch is pushed; ' +
+                   'open the pull request and run this again.')
+        }
     }
 
     # 4. Only now the stamp.
@@ -302,6 +354,10 @@ function Invoke-ShipTransition {
     $record = $Context.Record
     $target = $Context.Target
 
+    # The pull request number is checked before any record moves, because Ship's whole job is
+    # to leave the records and the pull request agreeing with each other.
+    Assert-PrOnBranch -Pr $Pr -Branch $branch
+
     # The records decide the flip. Test results do not: the five-step Gate stays outside this
     # script, which checks records and never runs tests.
     $boxes = Get-AcceptanceBoxCount -Lines (Get-Content -LiteralPath $record.Path)
@@ -312,7 +368,6 @@ function Invoke-ShipTransition {
         throw ("Item $Item has $($boxes.Total - $boxes.Ticked) unticked acceptance box(es). " +
                'Tick them at Document, or write into the item why a box stays unticked.')
     }
-    if ($Pr -le 0) { throw 'Ship needs -Pr: the pull request number to flip to ready.' }
 
     Invoke-RemotePreflight -Worktree $Worktree -Branch $branch
 
@@ -346,16 +401,26 @@ function Invoke-ShipTransition {
 $script:RoundBranch = 'chore/wt-backlog-housekeeping'
 
 function Invoke-RoundTransition {
-    param([string] $Worktree, [string] $Edge, [int] $Pr, [string] $To = '')
+    param(
+        [string] $Worktree, [string] $Edge, [int] $Pr, [string] $To = '',
+        [string] $Evidence = '', [string] $RecoveryTask = ''
+    )
 
     Assert-TransitionAllowed -Worktree $Worktree
     if ($Pr -le 0) { throw 'A housekeeping round needs -Pr: the round pull request number.' }
+
+    # A round has no PLAN-PROGRESS.md, so workflow.md puts the same red evidence and recovery
+    # task in the pull request body instead. The rule is the same; only the place differs.
+    if ($Edge -eq 'failure') {
+        Assert-FailureEdgeReady -Worktree $Worktree -Evidence $Evidence -RecoveryTask $RecoveryTask
+    }
 
     # Half the pre-flight applies here. A round has no item and no Stage commit, so there is
     # nothing to compare and nothing of its own to push. A diverged branch is still worth
     # refusing before the body is rewritten.
     $branch = (& git -C $Worktree rev-parse --abbrev-ref HEAD).Trim()
     Assert-BranchNotDiverged -Worktree $Worktree -Branch $branch
+    Assert-PrOnBranch -Pr $Pr -Branch $branch
 
     $rx = '(?m)^Stage: [^\r\n]+'
 
@@ -371,9 +436,15 @@ function Invoke-RoundTransition {
 
     # gh pr edit --body-file replaces the whole body, so the whole body is written back. A file
     # holding only the Stage line would delete the description.
+    $written = $body -replace $rx, "Stage: $target"
+    if ($Edge -eq 'failure') {
+        $written = $written.TrimEnd() + "`n" +
+                   (Get-FailureRecordText -Target $target -Evidence $Evidence -RecoveryTask $RecoveryTask)
+    }
+
     $tmp = New-TemporaryFile
     try {
-        ($body -replace $rx, "Stage: $target") | Set-Content -LiteralPath $tmp.FullName -Encoding utf8
+        $written | Set-Content -LiteralPath $tmp.FullName -Encoding utf8
         & gh pr edit $Pr --repo s205109/AHKFlowApp --body-file $tmp.FullName
         if ($LASTEXITCODE -ne 0) { throw "The round body edit failed. PR $Pr is still at $current." }
     } finally {
@@ -382,16 +453,21 @@ function Invoke-RoundTransition {
 
     # The read-back is the check, and it is part of the transition.
     $after = (& gh pr view $Pr --repo s205109/AHKFlowApp --json body -q .body) -join "`n"
-    $confirmed = ([regex]::Matches($after, "(?m)^Stage: $([regex]::Escape($target))$")).Count
+    # \r? because GitHub returns a pull request body with CRLF line endings, and '$' in
+    # multiline mode matches before the '\n' only, so the '\r' would sit in the way.
+    $confirmed = ([regex]::Matches($after, "(?m)^Stage: $([regex]::Escape($target))\r?$")).Count
     if ($confirmed -ne 1) {
         throw "Read-back failed: PR $Pr does not read 'Stage: $target'. The round is still at $current."
     }
 
-    # A round at Ship flips to ready. It has no item to move and no closure commit, so nothing is
-    # pushed and the push-before-flip rule has nothing to order.
-    if ($target -eq '10-cleanup' -and $current -eq '9-ship') {
+    # A round flips to ready on the way INTO Ship, the same moment a tracked item does.
+    # workflow.md puts the flip in Stage 9's own action: close the records, push, then flip,
+    # then wait for CI and merge. Flipping on the way out of Ship would come after the merge,
+    # which is too late to be merged at all. A round has no item to move and no closure commit,
+    # so nothing is pushed and the push-before-flip rule has nothing to order.
+    if ($target -eq '9-ship') {
         & gh pr ready $Pr --repo s205109/AHKFlowApp
-        if ($LASTEXITCODE -ne 0) { throw 'The round body is at 10-cleanup but the ready flip failed.' }
+        if ($LASTEXITCODE -ne 0) { throw 'The round body is at 9-ship but the ready flip failed.' }
     }
 
     Write-Host "Round pull request $Pr is now at $target."
@@ -403,10 +479,18 @@ function Invoke-Transition {
     Assert-TransitionAllowed -Worktree $Worktree
 
     # The round is found before the item is looked for, because a round has no item to find.
+    # The branch name is the only test. A missing -Item is not a second way in: on an item
+    # worktree that would rewrite an arbitrary pull request body, or flip it to ready.
     $onBranch = (& git -C $Worktree rev-parse --abbrev-ref HEAD).Trim()
-    if ($onBranch -eq $script:RoundBranch -or ($Pr -gt 0 -and -not $Item)) {
-        Invoke-RoundTransition -Worktree $Worktree -Edge $Edge -Pr $Pr -To $To
+    if ($onBranch -eq $script:RoundBranch) {
+        Invoke-RoundTransition -Worktree $Worktree -Edge $Edge -Pr $Pr -To $To `
+                               -Evidence $Evidence -RecoveryTask $RecoveryTask
         return
+    }
+
+    if (-not $Item) {
+        throw ("This worktree is on '$onBranch', which is not the housekeeping round branch " +
+               "'$($script:RoundBranch)'. A tracked transition needs -Item.")
     }
 
     # Read the item, the branch and the target once, then hand the same context to whichever
@@ -424,6 +508,15 @@ function Invoke-Transition {
     if ($context.Target -eq '9-ship') {
         Invoke-ShipTransition -Worktree $Worktree -Item $Item -Context $context -Pr $Pr -Note $Note
         return
+    }
+
+    # Cleanup is reached only after the pull request has merged, and workflow.md says the Stage
+    # field is never written after merge: the backlog/done/ location and the merged pull request
+    # are the durable record, and a shipped item must keep reading 'Stage: 9-ship'. Writing
+    # 10-cleanup would also put a commit on a branch that no longer has anywhere to go.
+    if ($context.Target -eq '10-cleanup') {
+        throw ('Cleanup writes no Stage field. The item stays at 9-ship in backlog/done/, and ' +
+               'the merged pull request is the record. Remove the worktree and the branch instead.')
     }
 
     Invoke-StageTransition -Worktree $Worktree -Item $Item -Context $context -Edge $Edge -Note $Note `
