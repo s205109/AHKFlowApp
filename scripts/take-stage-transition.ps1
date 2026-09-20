@@ -247,6 +247,57 @@ function Invoke-PickupTransition {
     Write-Host "Item $Item is now at $target, with a draft pull request open."
 }
 
+function Invoke-ShipTransition {
+    param([string] $Worktree, [string] $Item, [int] $Pr, [string] $Note = '')
+
+    Assert-TransitionAllowed -Worktree $Worktree
+
+    $branch = (& git -C $Worktree rev-parse --abbrev-ref HEAD).Trim()
+    $record = Find-TransitionItem -Worktree $Worktree -Item $Item
+    $workflow = Join-Path $Worktree 'docs/development/workflow.md'
+
+    $target = Resolve-TransitionTarget -WorkflowPath $workflow -Stage $record.Stages[0] `
+                                       -Edge 'success' -Difficulty (Get-ItemDifficulty -Path $record.Path)
+
+    # The records decide the flip. Test results do not: the five-step Gate stays outside this
+    # script, which checks records and never runs tests.
+    $boxes = Get-AcceptanceBoxCount -Lines (Get-Content -LiteralPath $record.Path)
+    if ($boxes.Total -eq 0) {
+        throw "Item $Item has no acceptance boxes, so Ship cannot confirm the work is done."
+    }
+    if ($boxes.Ticked -ne $boxes.Total) {
+        throw ("Item $Item has $($boxes.Total - $boxes.Ticked) unticked acceptance box(es). " +
+               'Tick them at Document, or write into the item why a box stays unticked.')
+    }
+    if ($Pr -le 0) { throw 'Ship needs -Pr: the pull request number to flip to ready.' }
+
+    Invoke-RemotePreflight -Worktree $Worktree -Branch $branch
+
+    # Close the records: move the item, delete the progress file, set the Stage. One commit.
+    $destination = Join-Path (Join-Path $Worktree 'backlog/done') (Split-Path -Leaf $record.Path)
+    New-Item -ItemType Directory -Path (Split-Path -Parent $destination) -Force | Out-Null
+    Move-Item -LiteralPath $record.Path -Destination $destination
+    Set-ItemStage -Path $destination -Stage $target
+
+    $progress = Join-Path $Worktree 'PLAN-PROGRESS.md'
+    if (Test-Path -LiteralPath $progress) { Remove-Item -LiteralPath $progress -Force }
+
+    & git -C $Worktree add -A -- backlog PLAN-PROGRESS.md
+    $message = "docs: $Item close the records"
+    if ($Note) { $message = "$message, $Note" }
+    & git -C $Worktree commit -m $message
+    if ($LASTEXITCODE -ne 0) { throw 'The closure commit failed.' }
+
+    # Push BEFORE the flip. A merge of an unpushed closure drops the records.
+    & git -C $Worktree push origin $branch
+    if ($LASTEXITCODE -ne 0) { throw 'The closure commit was made but not pushed. Push it before flipping to ready.' }
+
+    & gh pr ready $Pr --repo s205109/AHKFlowApp
+    if ($LASTEXITCODE -ne 0) { throw 'The records are closed and pushed, but the ready flip failed. Flip it by hand.' }
+
+    Write-Host "Item $Item is closed at $target, pushed, and the pull request is ready."
+}
+
 # One entry point picks the path. Pickup, Ship, and a housekeeping round each have mechanics the
 # ordinary path does not, and the caller must not have to know which is which.
 function Invoke-Transition {
@@ -257,6 +308,16 @@ function Invoke-Transition {
 
     if ($stage -eq '1-pickup' -and $Edge -eq 'success') {
         Invoke-PickupTransition -Worktree $Worktree -Item $Item -To $To -Note $Note -Base $Base
+        return
+    }
+
+    # Ship is the transition that lands on 9-ship. That is where the records close and the pull
+    # request becomes ready, so the target decides the path, not the stage the item is leaving.
+    $workflow = Join-Path $Worktree 'docs/development/workflow.md'
+    $target = Resolve-TransitionTarget -WorkflowPath $workflow -Stage $stage -Edge $Edge `
+                                       -Difficulty (Get-ItemDifficulty -Path $record.Path) -To $To
+    if ($target -eq '9-ship') {
+        Invoke-ShipTransition -Worktree $Worktree -Item $Item -Pr $Pr -Note $Note
         return
     }
 

@@ -323,6 +323,37 @@ try {
     Assert-True ((Get-Content -Raw -LiteralPath $gh3.Log) -match '--base feature/wt-below') `
         'The pull request must be opened against the real base, not main'
 
+    # --- Ship pushes the closure commit before it flips the pull request ---
+    $sh = New-TransitionFixture -Stage '8-review' -Difficulty 'complex' -AsWorktree -AllBoxesTicked -WithProgress
+    $shGh = New-FakeGh
+    Invoke-WithFakeGh -Gh $shGh -Action {
+        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $sh.Root -Item '081' -Edge 'success' -Pr 421 *> $null
+    }
+    Assert-Equal 0 $script:LastTransitionExit 'A ticked Ship must succeed'
+
+    Assert-True (Test-Path -LiteralPath (Join-Path $sh.Root 'backlog/done/081-automate-stage-transitions.md')) `
+        'Ship must move the item into backlog/done/'
+    Assert-True (-not (Test-Path -LiteralPath (Join-Path $sh.Root 'PLAN-PROGRESS.md'))) `
+        'Ship must delete PLAN-PROGRESS.md'
+
+    # The ordering claim, read from the remote rather than from intent.
+    $shBranch = (& git -C $sh.Root rev-parse --abbrev-ref HEAD).Trim()
+    $remoteHead = (& git -C $sh.Bare rev-parse $shBranch).Trim()
+    $localHead = (& git -C $sh.Root rev-parse HEAD).Trim()
+    Assert-Equal $localHead $remoteHead 'The closure commit must be on the remote'
+
+    Assert-True ((Get-Content -Raw -LiteralPath $shGh.Log) -match 'pr ready') 'Ship must flip the pull request to ready'
+
+    # --- An unticked box refuses the flip ---
+    $sh2 = New-TransitionFixture -Stage '8-review' -Difficulty 'complex' -AsWorktree -WithProgress
+    $shGh2 = New-FakeGh
+    Invoke-WithFakeGh -Gh $shGh2 -Action {
+        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $sh2.Root -Item '081' -Edge 'success' -Pr 421 *> $null
+    }
+    Assert-True ($script:LastTransitionExit -ne 0) 'An unticked acceptance box must refuse Ship'
+    Assert-True (-not (Test-Path -LiteralPath $shGh2.Log)) `
+        'A refused Ship must not call gh at all, so it cannot flip the pull request'
+
     # --- Every legal transition lands on the target workflow.md names ---
     $workflowPath = Join-Path $suiteRoot 'docs/development/workflow.md'
     $allStages = Get-WorkflowStage -Path $workflowPath
@@ -340,10 +371,17 @@ try {
             # number rather than matching against a list of stage names written here.
             $needsProgress = ([int]($bare -split '-')[0]) -ge 4
 
+            # Every case runs under a fake gh and carries a pull request number. One of them,
+            # the success edge of 8-review, lands on 9-ship and so takes the Ship path, which
+            # calls 'gh pr ready'. The loop cannot know which case that is without copying the
+            # dispatch rule here, so it gives every case what the heaviest path needs.
             $case = New-TransitionFixture -Stage $bare -Difficulty 'complex' -AsWorktree `
                                           -AllBoxesTicked -WithProgress:$needsProgress
-            & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $case.Root -Item '081' `
-                -Edge $edge -Evidence 'red' -RecoveryTask 'recover' *> $null
+            $caseGh = New-FakeGh
+            Invoke-WithFakeGh -Gh $caseGh -Action {
+                & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $case.Root -Item '081' `
+                    -Edge $edge -Pr 421 -Evidence 'red' -RecoveryTask 'recover' *> $null
+            }
 
             Assert-Equal $targets[0] (Get-FixtureStage -Root $case.Root) `
                 "The '$edge' edge of '$stageId' must land on '$($targets[0])'"
