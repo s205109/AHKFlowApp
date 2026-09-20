@@ -354,6 +354,38 @@ try {
     Assert-True (-not (Test-Path -LiteralPath $shGh2.Log)) `
         'A refused Ship must not call gh at all, so it cannot flip the pull request'
 
+    # --- A failure edge refuses without its evidence ---
+    $fl = New-TransitionFixture -Stage '6-verify' -Difficulty 'complex' -AsWorktree -WithProgress
+
+    & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $fl.Root -Item '081' -Edge 'failure' *> $null
+    Assert-True ($LASTEXITCODE -ne 0) 'A failure edge without evidence must be refused'
+    Assert-Equal '6-verify' (Get-SingleBacklogStage -Lines (Get-Content -LiteralPath $fl.ItemPath)) `
+        'A refused failure edge must leave the Stage alone'
+
+    # --- With evidence, the record and the Stage land in ONE commit ---
+    & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $fl.Root -Item '081' -Edge 'failure' `
+        -Evidence 'pwsh ./scripts/test-fast.ps1 -Mode Fast : 3 failed' `
+        -RecoveryTask 'Task 8: fix the emitter escaping' *> $null
+    Assert-Equal 0 $LASTEXITCODE 'A failure edge with evidence must succeed'
+    Assert-Equal '4-execute' (Get-SingleBacklogStage -Lines (Get-Content -LiteralPath $fl.ItemPath)) `
+        'Verify failure must target 4-execute'
+
+    $progressText = Get-Content -Raw -LiteralPath (Join-Path $fl.Root 'PLAN-PROGRESS.md')
+    Assert-True ($progressText -match 'fix the emitter escaping') 'The recovery task must be recorded'
+    Assert-True ($progressText -match '3 failed') 'The red evidence must be recorded'
+
+    # One commit, not two. A resume that read the Stage between two commits would find a failure
+    # edge with no evidence behind it.
+    $touched = @(& git -C $fl.Root show --name-only --pretty=format: HEAD | Where-Object { $_ })
+    Assert-True ($touched -contains 'PLAN-PROGRESS.md') 'The record must be in the transition commit'
+    Assert-True (($touched -join ' ') -match 'backlog/') 'The Stage change must be in the same commit'
+
+    # --- No PLAN-PROGRESS.md means the work never reached Execute ---
+    $fl2 = New-TransitionFixture -Stage '6-verify' -Difficulty 'complex' -AsWorktree
+    & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $fl2.Root -Item '081' -Edge 'failure' `
+        -Evidence 'x' -RecoveryTask 'y' *> $null
+    Assert-True ($LASTEXITCODE -ne 0) 'A failure edge with no PLAN-PROGRESS.md must be refused'
+
     # --- Every legal transition lands on the target workflow.md names ---
     $workflowPath = Join-Path $suiteRoot 'docs/development/workflow.md'
     $allStages = Get-WorkflowStage -Path $workflowPath

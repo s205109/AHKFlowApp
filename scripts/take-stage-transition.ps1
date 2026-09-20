@@ -153,10 +153,41 @@ function Invoke-RemotePreflight {
     if ($LASTEXITCODE -ne 0) { throw 'The pre-flight push failed. Nothing was changed.' }
 }
 
+function Add-FailureRecord {
+    param(
+        [string] $Worktree, [string] $Item, [string] $Target,
+        [string] $Evidence, [string] $RecoveryTask
+    )
+
+    $progress = Join-Path $Worktree 'PLAN-PROGRESS.md'
+    if (-not (Test-Path -LiteralPath $progress)) {
+        throw ('There is no PLAN-PROGRESS.md, so this work never reached Execute and a failure ' +
+               'edge is not possible from here.')
+    }
+
+    $stamp = (Get-Date).ToString('yyyy-MM-dd')
+    $block = @(
+        ''
+        "## Failure edge to $Target ($stamp)"
+        ''
+        '**Red evidence:**'
+        ''
+        '```'
+        $Evidence
+        '```'
+        ''
+        "**Recovery task:** $RecoveryTask"
+        ''
+    ) -join "`n"
+
+    Add-Content -LiteralPath $progress -Value $block -Encoding utf8
+}
+
 function Invoke-StageTransition {
     param(
         [string] $Worktree, [string] $Item, [string] $Edge,
-        [string] $To = '', [string] $Note = ''
+        [string] $To = '', [string] $Note = '',
+        [string] $Evidence = '', [string] $RecoveryTask = ''
     )
 
     Assert-TransitionAllowed -Worktree $Worktree
@@ -173,12 +204,22 @@ function Invoke-StageTransition {
 
     Invoke-RemotePreflight -Worktree $Worktree -Branch $branch
 
+    # A failure edge without its red evidence and its named recovery task is a claim with no
+    # record behind it. Both refusals run before the Stage is written.
+    if ($Edge -eq 'failure') {
+        if (-not $Evidence)     { throw 'A failure edge needs -Evidence: the failing command and its output.' }
+        if (-not $RecoveryTask) { throw 'A failure edge needs -RecoveryTask: the named task that fixes it.' }
+        Add-FailureRecord -Worktree $Worktree -Item $Item -Target $target `
+                          -Evidence $Evidence -RecoveryTask $RecoveryTask
+    }
+
     Set-ItemStage -Path $record.Path -Stage $target
 
-    $message = "docs: $Item at $target"
+    $message = if ($Edge -eq 'failure') { "docs: $Item failure edge to $target" } else { "docs: $Item at $target" }
     if ($Note) { $message = "$message, $Note" }
 
     & git -C $Worktree add -- $record.RelativePath
+    if ($Edge -eq 'failure') { & git -C $Worktree add -- PLAN-PROGRESS.md }
     & git -C $Worktree commit -m $message
     if ($LASTEXITCODE -ne 0) { throw 'The transition commit failed.' }
 
@@ -321,7 +362,8 @@ function Invoke-Transition {
         return
     }
 
-    Invoke-StageTransition -Worktree $Worktree -Item $Item -Edge $Edge -To $To -Note $Note
+    Invoke-StageTransition -Worktree $Worktree -Item $Item -Edge $Edge -To $To -Note $Note `
+                           -Evidence $Evidence -RecoveryTask $RecoveryTask
 }
 
 if ($AsModule) { return }
