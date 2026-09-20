@@ -18,7 +18,7 @@ Set-StrictMode -Version Latest
 
 # Stage 3's exit condition is 'Plan committed', so 4-execute is the first stage whose records
 # can outlive their own work. The plan-pointer check uses the same index for the same reason
-# (`scripts/backlog.common.ps1:154`, "$script:BacklogPointerTriggerIndex = 4").
+# (`scripts/backlog.common.ps1:163`, "$script:BacklogPointerTriggerIndex = 4").
 $script:BacklogStaleTriggerIndex = 4
 
 # Measured on 2026-08-19 against main at 7433ca2f, by replaying every item in backlog/done/
@@ -122,7 +122,7 @@ function Get-BacklogStaleOpenProblem {
         if ($item.Folder -in $script:BacklogItemSubfolder) { continue }
 
         # A missing, repeated, or unknown Stage value belongs to the check that already owns
-        # those messages (`scripts/backlog.common.ps1:91`, "function Get-BacklogProblem {").
+        # those messages (`scripts/backlog.common.ps1:100`, "function Get-BacklogProblem {").
         if ($item.Stages.Count -ne 1) { continue }
         $stage = $item.Stages[0]
         $index = [array]::IndexOf($script:BacklogStageOrder, $stage)

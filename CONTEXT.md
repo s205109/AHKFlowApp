@@ -181,6 +181,10 @@ _Avoid_: phase, step, status, state
 One of the five ways work leaves a Stage: success, failure, blocked, not applicable, or resume. Every Edge names exactly one target.
 _Avoid_: transition, path, branch, arrow
 
+**Transition**:
+The act of taking an Edge and recording the result. A Transition writes the target Stage into the Backlog item, commits that edit, and pushes it. A Housekeeping round has no item, so its Transition rewrites the `Stage:` line in the round pull request body instead. The Edge is the route. The Transition is the act of travelling it, and it is what a reader of `main` sees.
+_Avoid_: move, update, bump, promote
+
 **Backlog item**:
 A numbered file under `backlog/` that describes one piece of tracked work, and carries its own Stage and Difficulty. Process documents shorten it to "item", because the Item defined above cannot be meant there.
 _Avoid_: ticket, issue, task, story, card

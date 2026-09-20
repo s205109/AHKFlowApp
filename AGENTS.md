@@ -133,6 +133,8 @@ disagreement between that file and this one, `workflow.md` wins.
 The sections below are the rule index. Each line is a rule; its link is the stage that owns
 the narrative.
 
+- Take a stage transition with `scripts/take-stage-transition.ps1`. It writes the field, commits, pushes, and drives the pull request in one order, and it reads every legal target from `workflow.md` at run time. A Claude Code session inside an entered worktree cannot run PowerShell, so it calls the script through the exit and re-enter cycle — see [workflow.md#4-the-current-stage-field](docs/development/workflow.md#4-the-current-stage-field).
+
 ## Debugging
 
 - State the root cause with `file:line` evidence before editing — see [workflow.md#stage-2-design](docs/development/workflow.md#stage-2-design).

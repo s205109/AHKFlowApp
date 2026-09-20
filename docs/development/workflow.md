@@ -774,6 +774,13 @@ field in the same commit that completes the stage. A failure edge sets the field
 the target stage. A blocked item keeps its last stage; the move to `backlog/blocked/` plus
 the unblock note carry the rest.
 
+**One command performs the transition.** `scripts/take-stage-transition.ps1` writes the field,
+makes the commit, pushes it, and drives the pull request, in the one order that cannot leave
+them disagreeing. It reads every legal target from this document at run time, so it follows the
+Source and never carries a copy of it. A Claude Code session inside an entered worktree cannot
+run PowerShell, so it calls the script through the exit and re-enter cycle. The reasons are in
+[`docs/adr/0020-a-transition-runs-outside-the-entered-worktree.md`](../adr/0020-a-transition-runs-outside-the-entered-worktree.md).
+
 **Coming back out of `backlog/blocked/`.** Every blocked edge moves an item in; nothing
 moves it back, so the move out is a step of its own and it comes **before** the resume
 edge. When the external condition the unblock note names has cleared:
