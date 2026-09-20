@@ -63,6 +63,14 @@ function Get-BacklogItem {
             Select-String -Pattern '^- \*\*Stage\*\*:\s*(?<stage>\S+)\s*$' |
             ForEach-Object { $_.Matches[0].Groups['stage'].Value })
 
+        # Same rule as the Stage field above, and read from the same pass: one value or none.
+        # A repeated Difficulty line is the numbering check's problem, not this caller's, so an
+        # ambiguous item reports '' rather than picking the first one.
+        $difficultyValues = @($lines |
+            Select-String -Pattern '^- \*\*Difficulty\*\*:\s*(?<value>\S+)\s*$' |
+            ForEach-Object { $_.Matches[0].Groups['value'].Value })
+        $difficulty = if ($difficultyValues.Count -eq 1) { $difficultyValues[0] } else { '' }
+
         $relativePath = $file.FullName.Substring($repoRoot.Length + 1) -replace '\\', '/'
 
         [PSCustomObject]@{
@@ -76,6 +84,7 @@ function Get-BacklogItem {
             Folder       = Split-Path -Leaf (Split-Path -Parent $file.FullName)
             HeadingKey   = $headingKey
             Stages       = $stages
+            Difficulty   = $difficulty
         }
     }
 }

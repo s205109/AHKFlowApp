@@ -273,19 +273,44 @@ try {
     Assert-Equal '3-plan' (Get-RemoteItemStage -Bare $fx.Bare -Branch $branch) `
         'The transition must be pushed, because the remote is what a reader of main sees'
 
-    # --- An edge that names no stage changes nothing at all ---
-    # 'blocked' from Design targets 'blocked/', which is a folder and not a stage. The plan named
-    # 'not applicable' here, but workflow.md gives that edge a real target, '3-plan'.
+    # --- A transition the source does not allow is refused at driver level ---
+    # This is acceptance criterion 2, proven through the script rather than through the reader.
+    # Design success has exactly one target, '3-plan', so '9-ship' is a target workflow.md does
+    # not give this edge.
     $fx2 = New-TransitionFixture -Stage '2-design' -Difficulty 'complex' -AsWorktree
     $before = (& git -C $fx2.Root rev-parse HEAD).Trim()
 
-    & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $fx2.Root -Item '081' -Edge 'blocked' *> $null
-    Assert-True ($LASTEXITCODE -ne 0) 'An edge that names no stage must fail'
+    & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $fx2.Root -Item '081' `
+        -Edge 'success' -To '9-ship' *> $null
+    Assert-True ($LASTEXITCODE -ne 0) 'A target the source does not allow must be refused'
 
     $after = (& git -C $fx2.Root rev-parse HEAD).Trim()
     Assert-Equal $before $after 'A refused transition must leave the commit log untouched'
     Assert-Equal '2-design' (Get-SingleBacklogStage -Lines (Get-Content -LiteralPath (Join-Path $fx2.Root 'backlog/081-automate-stage-transitions.md'))) `
         'A refused transition must leave the field untouched'
+
+    # --- An edge that names no stage is a different refusal, and also changes nothing ---
+    # Pickup's 'not applicable' edge targets 'none'. That is not an illegal edge; it is a legal
+    # edge with no field to write, and the two must not be confused.
+    $fx2b = New-TransitionFixture -Stage '1-pickup' -Difficulty 'complex' -AsWorktree
+    $beforeB = (& git -C $fx2b.Root rev-parse HEAD).Trim()
+
+    & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $fx2b.Root -Item '081' -Edge 'not applicable' *> $null
+    Assert-True ($LASTEXITCODE -ne 0) 'An edge that names no stage must fail'
+    Assert-Equal $beforeB (& git -C $fx2b.Root rev-parse HEAD).Trim() `
+        'An edge that names no stage must leave the commit log untouched'
+
+    # --- 'blocked' is not a transition this script performs ---
+    # Moving an item into backlog/blocked/ is a manual git mv, so the parameter must refuse the
+    # word rather than accept it and fail later with a message about a missing stage.
+    $fx2c = New-TransitionFixture -Stage '2-design' -Difficulty 'complex' -AsWorktree
+    $blockedRefused = $false
+    try {
+        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $fx2c.Root -Item '081' -Edge 'blocked' *> $null
+    } catch {
+        $blockedRefused = $true
+    }
+    Assert-True $blockedRefused 'The blocked edge must be refused by the parameter itself'
 
     # --- The main checkout is refused ---
     # Deliberately no -AsWorktree here. A plain repository is what Test-LinkedWorktree must reject.
@@ -316,6 +341,23 @@ try {
     # -join matters: '-match' against an array filters it and returns an array, not a boolean.
     Assert-True (((& git -C $pk2.Root log --oneline "$pkBefore..HEAD") -join "`n") -notmatch 'at 2-design') `
         'A failed gh pr create must leave no stamp commit'
+
+    # --- A base ref that does not resolve is refused before anything is written ---
+    # git rev-list writes to stderr and returns non-zero for an unknown ref. Reading only its
+    # stdout makes a misspelled -Base look like 'this branch has no commits of its own', so the
+    # marker commit lands and the pull request is opened against a base that does not exist.
+    $pkBad = New-TransitionFixture -Stage '1-pickup' -Difficulty 'complex' -AsWorktree
+    $pkBadHead = (& git -C $pkBad.Root rev-parse HEAD).Trim()
+    $ghBad = New-FakeGh -CreateExitCode 0
+    Invoke-WithFakeGh -Gh $ghBad -Action {
+        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $pkBad.Root -Item '081' `
+            -Edge 'success' -Base 'no-such-base' *> $null
+    }
+    Assert-True ($script:LastTransitionExit -ne 0) 'A base ref that does not resolve must be refused'
+    Assert-Equal $pkBadHead (& git -C $pkBad.Root rev-parse HEAD).Trim() `
+        'A refused base ref must leave no marker commit'
+    Assert-Equal '1-pickup' (Get-SingleBacklogStage -Lines (Get-Content -LiteralPath $pkBad.ItemPath)) `
+        'A refused base ref must leave the Stage at 1-pickup'
 
     # --- Stacked work: the marker is judged against the real base, not against main ---
     # A worktree created with new-worktree.ps1 -BaseRef branches from an unmerged branch. Such a

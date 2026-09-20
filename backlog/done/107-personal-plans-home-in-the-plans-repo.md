@@ -39,7 +39,7 @@ so that one private repository holds all of my planning work.
 
 - The rule now lives in two bullets, starting at (`AGENTS.md:163`, "Commit a project plan or spec to").
   Both link to `docs/development/workflow.md#stage-3-plan`, which now carries the narrative.
-- (`scripts/backlog.common.ps1:180`, "if ($Value -notmatch '^`docs/superpowers/plans/[^/`]+\.md`\.?$') { return $false }")
+- (`scripts/backlog.common.ps1:189`, "if ($Value -notmatch '^`docs/superpowers/plans/[^/`]+\.md`\.?$') { return $false }")
   requires a `- Plan:` pointer to match a single file directly inside
   `docs/superpowers/plans/`. A path with a subfolder fails.
   (`tests/BacklogPlanPointer.Tests.ps1:94`, "A path with a subfolder fails") asserts that

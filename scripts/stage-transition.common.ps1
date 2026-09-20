@@ -16,9 +16,10 @@ Set-StrictMode -Version Latest
 
 . (Join-Path $PSScriptRoot 'process-workflow.common.ps1')
 
-# The five Edge words. 'resume' is deliberately absent: its target is 'stay', so it writes
-# nothing and is not a transition.
-$script:TransitionEdge = @('success', 'failure', 'blocked', 'not applicable')
+# The Edge words this reader will resolve. Two of the five are deliberately absent, for the
+# same reason: neither writes a Stage field. 'resume' targets 'stay', and 'blocked' targets the
+# backlog/blocked/ folder, which is a move and not a stage.
+$script:TransitionEdge = @('success', 'failure', 'not applicable')
 
 # Get-WorkflowStage keys its dictionary by the bare stage id, because its anchor regex captures
 # the text after 'stage-'. Callers hold the id in both spellings: an item's Stage field reads

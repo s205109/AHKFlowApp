@@ -24,13 +24,15 @@
 param(
     [string] $Worktree,
     [string] $Item,
-    [ValidateSet('success', 'failure', 'blocked', 'not applicable')]
+    # 'blocked' is absent on purpose. Its target is the backlog/blocked/ folder, not a stage, so
+    # this script has no field to write. Blocking an item stays a manual 'git mv' plus the
+    # unblock note, as section 4 of workflow.md describes.
+    [ValidateSet('success', 'failure', 'not applicable')]
     [string] $Edge,
     [string] $To = '',
     [string] $Note = '',
     [string] $Evidence = '',
     [string] $RecoveryTask = '',
-    [string] $UnblockNote = '',
     [int] $Pr = 0,
     # The branch this work merges into. It decides two things that must agree: whether the branch
     # has a commit of its own, and what 'gh pr create --base' is given. Stacked work created with
@@ -66,17 +68,6 @@ function Find-TransitionItem {
     return $record
 }
 
-function Get-ItemDifficulty {
-    param([string] $Path)
-
-    $lines = @(Get-Content -LiteralPath $Path)
-    $found = @($lines | ForEach-Object {
-        if ($_ -match '^- \*\*Difficulty\*\*:\s*(?<value>\S+)\s*$') { $Matches.value }
-    })
-    if ($found.Count -ne 1) { return '' }
-    return $found[0]
-}
-
 function Set-ItemStage {
     param([string] $Path, [string] $Stage)
 
@@ -104,6 +95,31 @@ function Get-ItemTitle {
 function Get-SessionsBody {
     $id = if ($env:CLAUDE_CODE_SESSION_ID) { $env:CLAUDE_CODE_SESSION_ID } else { 'none' }
     return "Sessions:`n`n- $id (agent, 1-pickup)"
+}
+
+# Everything the three item paths need, gathered once. Each of them used to repeat the same
+# five lines, and the dispatcher then resolved the target a second time so it could choose a
+# path. One context means workflow.md is parsed once and the item file is read once.
+function Get-TransitionContext {
+    param(
+        [string] $Worktree, [string] $Item, [string] $Edge, [string] $To = ''
+    )
+
+    $record = Find-TransitionItem -Worktree $Worktree -Item $Item
+    $workflow = Join-Path $Worktree 'docs/development/workflow.md'
+    $stage = $record.Stages[0]
+
+    # Resolve before anything is written. A refused transition must change nothing, and the
+    # target is also what the dispatcher reads to pick the Ship path.
+    $target = Resolve-TransitionTarget -WorkflowPath $workflow -Stage $stage -Edge $Edge `
+                                       -Difficulty $record.Difficulty -To $To
+
+    return [pscustomobject]@{
+        Branch = (& git -C $Worktree rev-parse --abbrev-ref HEAD).Trim()
+        Record = $record
+        Stage  = $stage
+        Target = $target
+    }
 }
 
 function Assert-TransitionAllowed {
@@ -185,22 +201,13 @@ function Add-FailureRecord {
 
 function Invoke-StageTransition {
     param(
-        [string] $Worktree, [string] $Item, [string] $Edge,
-        [string] $To = '', [string] $Note = '',
-        [string] $Evidence = '', [string] $RecoveryTask = ''
+        [string] $Worktree, [string] $Item, [pscustomobject] $Context, [string] $Edge,
+        [string] $Note = '', [string] $Evidence = '', [string] $RecoveryTask = ''
     )
 
-    Assert-TransitionAllowed -Worktree $Worktree
-
-    $branch = (& git -C $Worktree rev-parse --abbrev-ref HEAD).Trim()
-    $record = Find-TransitionItem -Worktree $Worktree -Item $Item
-    $stage = $record.Stages[0]
-    $difficulty = Get-ItemDifficulty -Path $record.Path
-    $workflow = Join-Path $Worktree 'docs/development/workflow.md'
-
-    # Resolve before touching anything. A refused transition must change nothing.
-    $target = Resolve-TransitionTarget -WorkflowPath $workflow -Stage $stage `
-                                       -Edge $Edge -Difficulty $difficulty -To $To
+    $branch = $Context.Branch
+    $record = $Context.Record
+    $target = $Context.Target
 
     Invoke-RemotePreflight -Worktree $Worktree -Branch $branch
 
@@ -235,7 +242,13 @@ function Invoke-StageTransition {
 function Add-PickupMarkerCommit {
     param([string] $Worktree, [string] $Item, [string] $BaseRef)
 
+    # The exit code matters as much as the output. git rev-list prints nothing and returns
+    # non-zero for a ref it cannot resolve, so reading stdout alone makes a misspelled -Base
+    # look like 'this branch has no commits of its own'.
     $own = @(& git -C $Worktree rev-list "$BaseRef..HEAD" 2>$null)
+    if ($LASTEXITCODE -ne 0) {
+        throw "'$BaseRef' is not a ref this worktree can resolve. Check -Base, and fetch if the branch is new."
+    }
     if ($own.Count -gt 0) { return }
 
     & git -C $Worktree commit --allow-empty -m "chore: $Item pickup, opening draft PR"
@@ -243,17 +256,11 @@ function Add-PickupMarkerCommit {
 }
 
 function Invoke-PickupTransition {
-    param([string] $Worktree, [string] $Item, [string] $To = '', [string] $Note = '', [string] $Base = 'main')
+    param([string] $Worktree, [string] $Item, [pscustomobject] $Context, [string] $Note = '', [string] $Base = 'main')
 
-    Assert-TransitionAllowed -Worktree $Worktree
-
-    $branch = (& git -C $Worktree rev-parse --abbrev-ref HEAD).Trim()
-    $record = Find-TransitionItem -Worktree $Worktree -Item $Item
-    $difficulty = Get-ItemDifficulty -Path $record.Path
-    $workflow = Join-Path $Worktree 'docs/development/workflow.md'
-
-    $target = Resolve-TransitionTarget -WorkflowPath $workflow -Stage '1-pickup' `
-                                       -Edge 'success' -Difficulty $difficulty -To $To
+    $branch = $Context.Branch
+    $record = $Context.Record
+    $target = $Context.Target
 
     # 1. A commit to open the pull request against, judged against the SAME base the pull request
     #    will use. The two must agree: asking 'does this branch differ from origin/main' while
@@ -289,16 +296,11 @@ function Invoke-PickupTransition {
 }
 
 function Invoke-ShipTransition {
-    param([string] $Worktree, [string] $Item, [int] $Pr, [string] $Note = '')
+    param([string] $Worktree, [string] $Item, [pscustomobject] $Context, [int] $Pr, [string] $Note = '')
 
-    Assert-TransitionAllowed -Worktree $Worktree
-
-    $branch = (& git -C $Worktree rev-parse --abbrev-ref HEAD).Trim()
-    $record = Find-TransitionItem -Worktree $Worktree -Item $Item
-    $workflow = Join-Path $Worktree 'docs/development/workflow.md'
-
-    $target = Resolve-TransitionTarget -WorkflowPath $workflow -Stage $record.Stages[0] `
-                                       -Edge 'success' -Difficulty (Get-ItemDifficulty -Path $record.Path)
+    $branch = $Context.Branch
+    $record = $Context.Record
+    $target = $Context.Target
 
     # The records decide the flip. Test results do not: the five-step Gate stays outside this
     # script, which checks records and never runs tests.
@@ -407,25 +409,24 @@ function Invoke-Transition {
         return
     }
 
-    $record = Find-TransitionItem -Worktree $Worktree -Item $Item
-    $stage = $record.Stages[0]
+    # Read the item, the branch and the target once, then hand the same context to whichever
+    # path runs. Resolving here is also the refusal: an illegal edge or an impossible -To stops
+    # the run before any path is chosen.
+    $context = Get-TransitionContext -Worktree $Worktree -Item $Item -Edge $Edge -To $To
 
-    if ($stage -eq '1-pickup' -and $Edge -eq 'success') {
-        Invoke-PickupTransition -Worktree $Worktree -Item $Item -To $To -Note $Note -Base $Base
+    if ($context.Stage -eq '1-pickup' -and $Edge -eq 'success') {
+        Invoke-PickupTransition -Worktree $Worktree -Item $Item -Context $context -Note $Note -Base $Base
         return
     }
 
     # Ship is the transition that lands on 9-ship. That is where the records close and the pull
     # request becomes ready, so the target decides the path, not the stage the item is leaving.
-    $workflow = Join-Path $Worktree 'docs/development/workflow.md'
-    $target = Resolve-TransitionTarget -WorkflowPath $workflow -Stage $stage -Edge $Edge `
-                                       -Difficulty (Get-ItemDifficulty -Path $record.Path) -To $To
-    if ($target -eq '9-ship') {
-        Invoke-ShipTransition -Worktree $Worktree -Item $Item -Pr $Pr -Note $Note
+    if ($context.Target -eq '9-ship') {
+        Invoke-ShipTransition -Worktree $Worktree -Item $Item -Context $context -Pr $Pr -Note $Note
         return
     }
 
-    Invoke-StageTransition -Worktree $Worktree -Item $Item -Edge $Edge -To $To -Note $Note `
+    Invoke-StageTransition -Worktree $Worktree -Item $Item -Context $context -Edge $Edge -Note $Note `
                            -Evidence $Evidence -RecoveryTask $RecoveryTask
 }
 
