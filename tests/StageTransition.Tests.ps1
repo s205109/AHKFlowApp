@@ -142,13 +142,27 @@ function New-TransitionFixture {
 # A fake gh. The ordering test needs 'pr create' to fail on demand, which no real call can be
 # asked to do safely.
 function New-FakeGh {
-    param([int] $CreateExitCode = 0, [string] $PrNumber = '421')
+    param([int] $CreateExitCode = 0, [string] $PrNumber = '421', [string] $Body = '')
 
     $dir = New-Root -Prefix 'fake-gh'
     $log = Join-Path $dir 'gh-calls.log'
+
+    # The body lives in a file, so the read-modify-write and the read-back both work against
+    # real state rather than a recording.
+    $bodyFile = Join-Path $dir 'pr-body.txt'
+    Set-Content -LiteralPath $bodyFile -Value $Body -Encoding utf8
+
+    # 'view' and 'edit' are tested before 'create', because 'gh pr create' also carries the word
+    # 'create' and an earlier branch would swallow it.
     $script = @"
 #!/usr/bin/env pwsh
 `$args -join ' ' | Add-Content -LiteralPath '$log'
+if (`$args -contains 'view') { Get-Content -Raw -LiteralPath '$bodyFile'; exit 0 }
+if (`$args -contains 'edit') {
+    `$i = [array]::IndexOf(`$args, '--body-file')
+    if (`$i -ge 0) { Copy-Item -LiteralPath `$args[`$i + 1] -Destination '$bodyFile' -Force }
+    exit 0
+}
 if (`$args -contains 'create') {
     if ($CreateExitCode -ne 0) { Write-Error 'fake gh: pr create refused'; exit $CreateExitCode }
     Write-Output 'https://github.com/s205109/AHKFlowApp/pull/$PrNumber'
@@ -171,7 +185,7 @@ exit 0
         & chmod +x $sh
     }
 
-    return [pscustomobject]@{ Dir = $dir; Log = $log }
+    return [pscustomobject]@{ Dir = $dir; Log = $log; BodyFile = $bodyFile }
 }
 
 # The exit code is captured INSIDE the block and kept in a script variable. Never read
@@ -385,6 +399,29 @@ try {
     & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $fl2.Root -Item '081' -Edge 'failure' `
         -Evidence 'x' -RecoveryTask 'y' *> $null
     Assert-True ($LASTEXITCODE -ne 0) 'A failure edge with no PLAN-PROGRESS.md must be refused'
+
+    # --- A round rewrites one line of its body and keeps the rest ---
+    $rd = New-TransitionFixture -Stage '5-simplify' -AsWorktree -Branch 'chore/wt-backlog-housekeeping' -NoItem
+    $roundBody = "## What`n`nThree chores.`n`nStage: 5-simplify`n`nSessions:`n`n- abc (agent, 5-simplify)"
+    $rdGh = New-FakeGh -Body $roundBody
+
+    Invoke-WithFakeGh -Gh $rdGh -Action {
+        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $rd.Root -Edge 'success' -Pr 500 *> $null
+    }
+    Assert-Equal 0 $script:LastTransitionExit 'A round transition must succeed'
+
+    $written = Get-Content -Raw -LiteralPath $rdGh.BodyFile
+    Assert-True ($written -match '(?m)^Stage: 6-verify$') 'The round body must read the new stage'
+    Assert-True ($written -match 'Three chores')           'The round body must keep its description'
+    Assert-True ($written -match 'Sessions:')              'The round body must keep its Sessions list'
+    Assert-Equal 1 ([regex]::Matches($written, '(?m)^Stage: ')).Count 'Exactly one Stage line must survive'
+
+    # --- Two Stage lines is a refusal, not a guess ---
+    $rdGh2 = New-FakeGh -Body "Stage: 5-simplify`nStage: 6-verify"
+    Invoke-WithFakeGh -Gh $rdGh2 -Action {
+        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $rd.Root -Edge 'success' -Pr 500 *> $null
+    }
+    Assert-True ($script:LastTransitionExit -ne 0) 'A body with two Stage lines must be refused'
 
     # --- Every legal transition lands on the target workflow.md names ---
     $workflowPath = Join-Path $suiteRoot 'docs/development/workflow.md'

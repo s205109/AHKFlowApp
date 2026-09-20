@@ -339,10 +339,73 @@ function Invoke-ShipTransition {
     Write-Host "Item $Item is closed at $target, pushed, and the pull request is ready."
 }
 
+# A housekeeping round files no item, so its record is the 'Stage:' line in its pull request
+# body. The branch name is fixed precisely so a round can be found.
+$script:RoundBranch = 'chore/wt-backlog-housekeeping'
+
+function Invoke-RoundTransition {
+    param([string] $Worktree, [string] $Edge, [int] $Pr, [string] $To = '')
+
+    Assert-TransitionAllowed -Worktree $Worktree
+    if ($Pr -le 0) { throw 'A housekeeping round needs -Pr: the round pull request number.' }
+
+    # Half the pre-flight applies here. A round has no item and no Stage commit, so there is
+    # nothing to compare and nothing of its own to push. A diverged branch is still worth
+    # refusing before the body is rewritten.
+    $branch = (& git -C $Worktree rev-parse --abbrev-ref HEAD).Trim()
+    Assert-BranchNotDiverged -Worktree $Worktree -Branch $branch
+
+    $rx = '(?m)^Stage: [^\r\n]+'
+
+    # -join is not cosmetic. PowerShell captures multiline native output as System.Object[], and
+    # [regex]::Matches on an array matches nothing.
+    $body = (& gh pr view $Pr --repo s205109/AHKFlowApp --json body -q .body) -join "`n"
+    $hits = ([regex]::Matches($body, $rx)).Count
+    if ($hits -ne 1) { throw "PR $Pr body: expected 1 Stage line, found $hits." }
+
+    $current = ([regex]::Match($body, $rx)).Value -replace '^Stage: ', ''
+    $workflow = Join-Path $Worktree 'docs/development/workflow.md'
+    $target = Resolve-TransitionTarget -WorkflowPath $workflow -Stage $current -Edge $Edge -To $To
+
+    # gh pr edit --body-file replaces the whole body, so the whole body is written back. A file
+    # holding only the Stage line would delete the description.
+    $tmp = New-TemporaryFile
+    try {
+        ($body -replace $rx, "Stage: $target") | Set-Content -LiteralPath $tmp.FullName -Encoding utf8
+        & gh pr edit $Pr --repo s205109/AHKFlowApp --body-file $tmp.FullName
+        if ($LASTEXITCODE -ne 0) { throw "The round body edit failed. PR $Pr is still at $current." }
+    } finally {
+        Remove-Item -LiteralPath $tmp.FullName -Force -ErrorAction SilentlyContinue
+    }
+
+    # The read-back is the check, and it is part of the transition.
+    $after = (& gh pr view $Pr --repo s205109/AHKFlowApp --json body -q .body) -join "`n"
+    $confirmed = ([regex]::Matches($after, "(?m)^Stage: $([regex]::Escape($target))$")).Count
+    if ($confirmed -ne 1) {
+        throw "Read-back failed: PR $Pr does not read 'Stage: $target'. The round is still at $current."
+    }
+
+    # A round at Ship flips to ready. It has no item to move and no closure commit, so nothing is
+    # pushed and the push-before-flip rule has nothing to order.
+    if ($target -eq '10-cleanup' -and $current -eq '9-ship') {
+        & gh pr ready $Pr --repo s205109/AHKFlowApp
+        if ($LASTEXITCODE -ne 0) { throw 'The round body is at 10-cleanup but the ready flip failed.' }
+    }
+
+    Write-Host "Round pull request $Pr is now at $target."
+}
+
 # One entry point picks the path. Pickup, Ship, and a housekeeping round each have mechanics the
 # ordinary path does not, and the caller must not have to know which is which.
 function Invoke-Transition {
     Assert-TransitionAllowed -Worktree $Worktree
+
+    # The round is found before the item is looked for, because a round has no item to find.
+    $onBranch = (& git -C $Worktree rev-parse --abbrev-ref HEAD).Trim()
+    if ($onBranch -eq $script:RoundBranch -or ($Pr -gt 0 -and -not $Item)) {
+        Invoke-RoundTransition -Worktree $Worktree -Edge $Edge -Pr $Pr -To $To
+        return
+    }
 
     $record = Find-TransitionItem -Worktree $Worktree -Item $Item
     $stage = $record.Stages[0]
