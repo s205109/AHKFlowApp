@@ -66,4 +66,4 @@ removed" and "tests cover the new API" cannot.
   - The SQL copy of the Delivery rule: (`src/Backend/AHKFlowApp.Application/Queries/Hotstrings/ListHotstringsQuery.cs:210`, "Mirrors HotstringEmitter.ResolveEffectiveDelivery").
 - Verification: pure refactor. Name the covering tests and paste their fresh pass output.
 - Spec: none — `moderate` goes from Pickup to Plan.
-- Plan: none — written at Stage 3.
+- Plan: `docs/superpowers/plans/2026-09-26-one-home-for-emitted-runtime-helpers-plan-160.md`
