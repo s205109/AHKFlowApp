@@ -30,3 +30,18 @@ Transient byte test, expected SHA-256
       `Passed!  - Failed:     0, Passed:     1, Skipped:     0, Total:     1, Duration: 123 ms`.
       The session started a Docker daemon (`dockerd`) in the container, so Task 3 runs the Docker
       checks itself.
+- [x] Task 2 — `de52b82`. `RuntimeHelpers.cs` and `DefinitionWrapping.cs` (both CRLF) own the
+      helper, the helper decision, the Description lines, and the `#HotIf` wrapping. The
+      Application build had 0 warnings, and the solution build had 0 warnings. Tests:
+      `Passed!  - Failed:     0, Passed:   117, Skipped:     0, Total:   117, Duration: 248 ms`
+      (116 baseline plus the byte test, whose byte-baseline assertion passed). The three
+      acceptance searches printed nothing.
+
+      **Not in the plan: stale citations.** The move broke six filing-time evidence citations in
+      the backlog item, which `check-citation-freshness.ps1` failed. Each now carries
+      `citation-check:ignore` with the reason, and the repository check passes again. The plan
+      itself cites the base tree in 31 places, and those now fail the pre-push plan check. See
+      the end of this file.
+
+      **Not in the plan: the stage field.** The item still read `3-plan`. `867e5b3` stamps
+      `4-execute` by hand, because `take-stage-transition.ps1` needs `gh`.
