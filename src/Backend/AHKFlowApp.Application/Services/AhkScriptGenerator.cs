@@ -32,19 +32,14 @@ public sealed class AhkScriptGenerator(
             GeneratedAt: clock.GetUtcNow());
 
         List<string> lines = [renderer.Render(profile.HeaderTemplate, ctx)];
-        if (hsList.Any(h => HotstringEmitter.ResolveEffectiveDelivery(h) == HotstringDelivery.ClipboardPaste))
-            lines.Add(HotstringEmitter.PasteHelperFunction);
+        lines.AddRange(RuntimeHelpers.NeededBy(hsList, hkList));
         lines.Add(HotstringsSection);
 
         EmitContextGroups(
             lines,
             hsList,
             h => (h.ContextMatchType, h.ContextValue),
-            (target, hs) =>
-            {
-                target.AddRange(HotstringEmitter.DescriptionCommentLines(hs.Description));
-                target.Add(HotstringEmitter.Emit(hs));
-            });
+            hs => DefinitionWrapping.WithDescription(hs.Description, HotstringEmitter.Emit(hs)));
 
         lines.Add(HotkeysSection);
 
@@ -52,11 +47,7 @@ public sealed class AhkScriptGenerator(
             lines,
             hkList,
             h => (h.ContextMatchType, h.ContextValue),
-            (target, hk) =>
-            {
-                target.AddRange(HotstringEmitter.DescriptionCommentLines(hk.Description));
-                target.Add(HotkeyEmitter.Emit(hk));
-            });
+            hk => DefinitionWrapping.WithDescription(hk.Description, HotkeyEmitter.Emit(hk)));
 
         lines.Add(renderer.Render(profile.FooterTemplate, ctx));
 
@@ -65,9 +56,9 @@ public sealed class AhkScriptGenerator(
 
     /// <summary>
     /// Groups entries by window context (both parts null means global) and appends them to
-    /// <paramref name="lines"/>. Context groups come first, wrapped in
-    /// <c>#HotIf WinActive(...)</c> and closed with a bare <c>#HotIf</c>, ordered by match type
-    /// then by value. The global group comes last and stays unwrapped. Every group closes before
+    /// <paramref name="lines"/>. Context groups come first, ordered by match type then by value.
+    /// <see cref="DefinitionWrapping.InWindowContext"/> wraps each context group in
+    /// <c>#HotIf WinActive(...)</c> and closes it with a bare <c>#HotIf</c>. The global group comes last and stays unwrapped. Every group closes before
     /// the next one opens, so no context can leak into the entries that follow.
     /// </summary>
     /// <remarks>
@@ -78,7 +69,7 @@ public sealed class AhkScriptGenerator(
         List<string> lines,
         List<T> ordered,
         Func<T, (WindowMatchType? MatchType, string? Value)> contextOf,
-        Action<List<string>, T> emitOne)
+        Func<T, IEnumerable<string>> linesOf)
     {
         List<IGrouping<(WindowMatchType? MatchType, string? Value), T>> groups =
             [.. ordered.GroupBy(contextOf)];
@@ -89,18 +80,13 @@ public sealed class AhkScriptGenerator(
             .ThenBy(g => g.Key.Value, StringComparer.Ordinal);
 
         foreach (IGrouping<(WindowMatchType? MatchType, string? Value), T> group in contextGroups)
-        {
-            lines.Add(HotstringEmitter.EmitHotIfOpen(group.Key.MatchType!.Value, group.Key.Value!));
-            foreach (T item in group)
-                emitOne(lines, item);
-            lines.Add(HotstringEmitter.HotIfClose);
-        }
+            lines.AddRange(DefinitionWrapping.InWindowContext(
+                group.Key.MatchType, group.Key.Value, group.SelectMany(linesOf)));
 
         IGrouping<(WindowMatchType? MatchType, string? Value), T>? globalGroup =
             groups.FirstOrDefault(g => g.Key.MatchType is null);
 
         if (globalGroup is not null)
-            foreach (T item in globalGroup)
-                emitOne(lines, item);
+            lines.AddRange(globalGroup.SelectMany(linesOf));
     }
 }

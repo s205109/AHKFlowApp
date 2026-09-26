@@ -75,7 +75,8 @@ internal sealed class HotstringPreviewRequestDtoExample : IExamplesProvider<Hots
 
 internal sealed class HotstringPreviewDtoExample : IExamplesProvider<HotstringPreviewDto>
 {
-    // Matches HotstringEmitter.Emit + GetHotstringPreviewQueryHandler's #HotIf wrapping exactly:
+    // Matches HotstringEmitter.Emit + DefinitionWrapping's #HotIf wrapping exactly, which the
+    // preview handler and AhkScriptGenerator both use:
     // context groups are wrapped in `#HotIf WinActive(...)` ... bare `#HotIf` (D9).
     public HotstringPreviewDto GetExamples() => new(
         Snippet: "#HotIf WinActive(\"ahk_exe outlook.exe\")\n:T:sig::Best regards,`nJohn Doe`nSales Team\n#HotIf",

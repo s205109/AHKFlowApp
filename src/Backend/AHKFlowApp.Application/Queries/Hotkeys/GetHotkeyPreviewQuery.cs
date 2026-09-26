@@ -4,7 +4,6 @@ using AHKFlowApp.Application.Mapping;
 using AHKFlowApp.Application.Services;
 using AHKFlowApp.Application.Validation;
 using AHKFlowApp.Domain.Entities;
-using AHKFlowApp.Domain.Enums;
 using Ardalis.Result;
 using FluentValidation;
 
@@ -39,16 +38,15 @@ internal sealed class GetHotkeyPreviewQueryHandler(TimeProvider clock)
         // do, so the previewed snippet is exactly what a save would persist and emit (spec §8).
         var hk = Hotkey.Create(Guid.Empty, request.Input.ToDefinition(appliesToAllProfiles: true), clock);
 
-        string snippet = HotkeyEmitter.Emit(hk);
-        string commentBlock = string.Join('\n', HotstringEmitter.DescriptionCommentLines(hk.Description));
-        if (commentBlock.Length > 0)
-            snippet = $"{commentBlock}\n{snippet}";
-
-        // Mirrors AhkScriptGenerator's context-group wrapping so the live preview matches exactly
-        // what the downloaded script would contain for this hotkey. The comment lines are already
-        // in place, so they sit inside the block the same way they do in the generated script.
-        if (hk.ContextMatchType is WindowMatchType matchType)
-            snippet = $"{HotstringEmitter.EmitHotIfOpen(matchType, hk.ContextValue!)}\n{snippet}\n{HotstringEmitter.HotIfClose}";
+        // The same Runtime helpers and the same wrapping AhkScriptGenerator uses, so the live preview
+        // matches the downloaded script byte for byte. No hotkey needs a helper today, so the list
+        // starts empty.
+        List<string> lines = [.. RuntimeHelpers.NeededBy([], [hk])];
+        lines.AddRange(DefinitionWrapping.InWindowContext(
+            hk.ContextMatchType,
+            hk.ContextValue,
+            DefinitionWrapping.WithDescription(hk.Description, HotkeyEmitter.Emit(hk))));
+        string snippet = string.Join('\n', lines);
 
         return Task.FromResult(Result.Success(new HotkeyPreviewDto(snippet)));
     }

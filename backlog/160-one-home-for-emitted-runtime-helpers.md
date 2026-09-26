@@ -57,12 +57,12 @@ removed" and "tests cover the new API" cannot.
   the scope (paste helper plus wrapping; SQL Delivery copy gets a parity test only), byte-identical
   output, the **Runtime helper** term, and Difficulty `moderate`.
 - Evidence at filing time:
-  - The paste helper constant: (`src/Backend/AHKFlowApp.Application/Services/HotstringEmitter.cs:19`, "public const string PasteHelperFunction =").
-  - The generator adds the helper: (`src/Backend/AHKFlowApp.Application/Services/AhkScriptGenerator.cs:36`, "lines.Add(HotstringEmitter.PasteHelperFunction);").
-  - The hotstring preview adds it again: (`src/Backend/AHKFlowApp.Application/Queries/Hotstrings/GetHotstringPreviewQuery.cs:119`, "HotstringEmitter.PasteHelperFunction").
-  - The generator opens `#HotIf`: (`src/Backend/AHKFlowApp.Application/Services/AhkScriptGenerator.cs:93`, "lines.Add(HotstringEmitter.EmitHotIfOpen(").
-  - The hotstring preview wraps: (`src/Backend/AHKFlowApp.Application/Queries/Hotstrings/GetHotstringPreviewQuery.cs:116`, "HotstringEmitter.EmitHotIfOpen(matchType, hs.ContextValue!)").
-  - The hotkey preview wraps: (`src/Backend/AHKFlowApp.Application/Queries/Hotkeys/GetHotkeyPreviewQuery.cs:51`, "HotstringEmitter.EmitHotIfOpen(matchType, hk.ContextValue!)").
+  - The paste helper constant: (`src/Backend/AHKFlowApp.Application/Services/HotstringEmitter.cs:19`, "public const string PasteHelperFunction ="). <!-- citation-check:ignore records the tree at filing time, before this item moved the code -->
+  - The generator adds the helper: (`src/Backend/AHKFlowApp.Application/Services/AhkScriptGenerator.cs:36`, "lines.Add(HotstringEmitter.PasteHelperFunction);"). <!-- citation-check:ignore records the tree at filing time, before this item moved the code -->
+  - The hotstring preview adds it again: (`src/Backend/AHKFlowApp.Application/Queries/Hotstrings/GetHotstringPreviewQuery.cs:119`, "HotstringEmitter.PasteHelperFunction"). <!-- citation-check:ignore records the tree at filing time, before this item moved the code -->
+  - The generator opens `#HotIf`: (`src/Backend/AHKFlowApp.Application/Services/AhkScriptGenerator.cs:93`, "lines.Add(HotstringEmitter.EmitHotIfOpen("). <!-- citation-check:ignore records the tree at filing time, before this item moved the code -->
+  - The hotstring preview wraps: (`src/Backend/AHKFlowApp.Application/Queries/Hotstrings/GetHotstringPreviewQuery.cs:116`, "HotstringEmitter.EmitHotIfOpen(matchType, hs.ContextValue!)"). <!-- citation-check:ignore records the tree at filing time, before this item moved the code -->
+  - The hotkey preview wraps: (`src/Backend/AHKFlowApp.Application/Queries/Hotkeys/GetHotkeyPreviewQuery.cs:51`, "HotstringEmitter.EmitHotIfOpen(matchType, hk.ContextValue!)"). <!-- citation-check:ignore records the tree at filing time, before this item moved the code -->
   - The SQL copy of the Delivery rule: (`src/Backend/AHKFlowApp.Application/Queries/Hotstrings/ListHotstringsQuery.cs:210`, "Mirrors HotstringEmitter.ResolveEffectiveDelivery").
 - Verification: pure refactor. Name the covering tests and paste their fresh pass output.
 - Spec: none — `moderate` goes from Pickup to Plan.

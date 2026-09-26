@@ -16,6 +16,8 @@ the emitters are the only thing standing between a user's input and a broken scr
 |---|---|
 | Script assembly | `src/Backend/AHKFlowApp.Application/Services/AhkScriptGenerator.cs` |
 | Hotstring lines, options, escaping | `src/Backend/AHKFlowApp.Application/Services/HotstringEmitter.cs` |
+| Runtime helpers, and which ones a script needs | `src/Backend/AHKFlowApp.Application/Services/RuntimeHelpers.cs` |
+| Description comments and `#HotIf` wrapping | `src/Backend/AHKFlowApp.Application/Services/DefinitionWrapping.cs` |
 | Hotkey lines, per-action emission | `src/Backend/AHKFlowApp.Application/Services/HotkeyEmitter.cs` |
 | Hotkey key registry and roles | `src/Backend/AHKFlowApp.Application/Constants/HotkeyKeys.cs` |
 | Raw definition parsing | `src/Backend/AHKFlowApp.Application/Services/RawHotstringDefinitionParser.cs` |
@@ -98,8 +100,8 @@ The shape is:
 The first `::` after the options block delimits the trigger. Everything after it is the replacement,
 which may be inline or a brace body.
 
-An `; ` comment line is emitted above each entry from its Description (`DescriptionCommentLines`);
-a blank Description emits nothing.
+An `; ` comment line is emitted above each entry from its Description
+(`DefinitionWrapping.WithDescription`); a blank Description emits nothing.
 
 ### Option flags we emit
 
@@ -203,7 +205,8 @@ body, and a `( … )` continuation section kept as verbatim literal text.
 instead. Delivery resolves to clipboard when Kind is Text and either the user chose `ClipboardPaste`
 or delivery is `Auto` and the replacement is ≥ 200 characters
 (`HotstringDeliveryDefaults.AutoClipboardThresholdChars`). The helper is emitted once per script,
-only if something needs it:
+only if something needs it. `RuntimeHelpers.NeededBy` decides this, for the script and for both
+previews:
 
 ```ahk
 AhkFlow_PasteReplacement(text, endChar := "") {
@@ -288,8 +291,8 @@ unwrapped. Grouping is why the `GroupBy` in `AhkScriptGenerator` must stay stabl
 
 A bare `#HotIf` (no expression) clears context and restores global scope. Every opened group **must**
 be closed with one, or the context leaks into every hotstring and hotkey that follows it in the file.
-Use `HotstringEmitter.HotIfClose` rather than a literal, so the generator and the preview handler
-can't drift.
+`DefinitionWrapping` owns the open and close lines. The generator and both preview handlers call
+it, so they cannot drift.
 
 `ContextValue` is embedded raw into the `WinActive()` expression. That's only safe because
 `WindowContextRules.AddWindowContextRules` rejects double-quotes, backticks, and control characters
