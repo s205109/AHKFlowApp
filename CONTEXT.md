@@ -126,6 +126,10 @@ _Avoid_: script (unqualified), file, output, ahk
 The code that turns one Hotstring or one Hotkey into its AutoHotkey definition line. There is one emitter per kind of Item. It is not the generator, which assembles a whole Profile script around the lines the emitters produce.
 _Avoid_: writer, serializer, renderer, formatter, generator
 
+**Runtime helper**:
+An AutoHotkey function that the app writes once into a Profile script, because some generated definitions call it. The clipboard paste function that clipboard Delivery uses is one. A Runtime helper is not an Emitter: an Emitter writes one definition, and a Runtime helper serves many.
+_Avoid_: library, snippet, prelude, shared function
+
 **Header/Footer template**:
 The user-editable text a Profile places before and after the definitions in its Profile script. Tokens such as the profile's name or the generation time are substituted when the script is generated; unknown tokens are left as typed.
 _Avoid_: preamble, banner, boilerplate, prologue/epilogue
