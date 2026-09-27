@@ -187,3 +187,6 @@ code-review (high) on PR #423: 9 findings; 6 need code or record changes (no pre
 
 **Recovery task:** R1 to R6 under 'Review round 1' in PLAN-PROGRESS.md
 
+
+Simplify, after review round 1: nothing to simplify. The round's diff is one new test, two comment
+fixes, one constant built from `ClipboardPasteName`, and named arguments at two call sites.
