@@ -86,8 +86,11 @@ removed" and "tests cover the new API" cannot.
      nothing. `HotkeyEmitter.cs` names the class only in an XML `cref`, which is not a call.
   4. The 11-row theory is at
      (`tests/AHKFlowApp.Application.Tests/Hotstrings/ListHotstringsQueryHandlerTests.cs:667`, "public async Task ExecuteAsync_DeliveryAroundAutoThreshold_MatchesEmitterResolver(").
-     With `>=` changed to `>` in the SQL copy, exactly 3 of its 11 cases failed. `PLAN-PROGRESS.md`
-     holds that run.
+     With `>=` changed to `>` in the SQL copy, exactly 3 of its 11 cases failed, all with
+     `kind: Text, delivery: Auto`: `asciiChars: 200, supplementaryChars: 0, trailingSpaces: 0`,
+     `asciiChars: 199, supplementaryChars: 0, trailingSpaces: 1`, and
+     `asciiChars: 0, supplementaryChars: 100, trailingSpaces: 0`. The session that ran Execute
+     recorded the run on 2026-09-27, in commit `a49ae75`.
   5. At Verify, the generator, preview, and round-trip tests passed: Fast 116 of 116, Integration
      41 of 41 and 19 of 19. `git diff origin/main...HEAD -- tests/` removes one line, which is a
      comment in `GetHotkeyPreviewQueryTests.cs`, and adds only the new theory.
