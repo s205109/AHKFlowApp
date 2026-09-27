@@ -147,20 +147,26 @@ the PR records them.
 
 Recovery tasks. Each needs a code or record change, so Review takes the failure edge to Execute:
 
-- [ ] R1 (finding 1): add a lasting test for the preview order. The byte test was transient, and no
+- [x] R1 (finding 1): add a lasting test for the preview order. The byte test was transient, and no
       committed test combines ClipboardPaste with a Window context and a Description. Assert that
       the snippet is the helper, then the `#HotIf` open line, then the comment, then the
       definition, then the close line.
-- [ ] R2 (finding 3): `HeaderPresetCatalog.cs` still cites `AhkScriptGenerator.cs:93-96` for the
+- [x] R2 (finding 3): `HeaderPresetCatalog.cs` still cites `AhkScriptGenerator.cs:93-96` for the
       bare `#HotIf` close. Point it at `DefinitionWrapping` instead.
-- [ ] R3 (finding 2): the `NeededBy` summary says it returns every helper the definitions call. It
+- [x] R3 (finding 2): the `NeededBy` summary says it returns every helper the definitions call. It
       only sees definitions the app emits, and it does not read a Raw definition's text. Say so.
-- [ ] R4 (finding 9): criterion 4's evidence in the backlog item points at `PLAN-PROGRESS.md`, which
+- [x] R4 (finding 9): criterion 4's evidence in the backlog item points at `PLAN-PROGRESS.md`, which
       Ship deletes. Write the three failing case names into the item instead.
-- [ ] R5 (finding 6): `RuntimeHelpers.cs` holds the helper name twice. Build the helper text from
+- [x] R5 (finding 6): `RuntimeHelpers.cs` holds the helper name twice. Build the helper text from
       `ClipboardPasteName` in one constant interpolated raw string. The byte test must keep its hash.
-- [ ] R6 (finding 7): `PreviewSnippet` takes three string parameters next to each other. Use named
+- [x] R6 (finding 7): `PreviewSnippet` takes three string parameters next to each other. Use named
       arguments at the two call sites, so a swap cannot compile silently.
+
+Results: `2ff0b883` holds R1, R2, R3, R5, and R6, and `2a3dc71a` holds R4. With the transient byte
+test put back for one run, 118 of 118 passed: the 116 covering tests, the new R1 test, and the byte
+test, whose hash was still `D9ADCC9F…` after R5 rewrote the helper constant. The build had 0
+warnings, `dotnet format --verify-no-changes` was clean on the edited files, the repository citation
+check passed, and the three acceptance searches printed nothing.
 
 Declined, with the reason in the PR comment:
 
