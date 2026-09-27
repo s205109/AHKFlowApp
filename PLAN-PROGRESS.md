@@ -95,3 +95,43 @@ acceptance searches printed nothing.
 
 The commit was made while the item still read `4-execute`. The transition to `5-simplify`
 (`38ac944`) came after it.
+
+## Verify
+
+Verification artifact: exemption 3 of AGENTS.md, pure refactor with named coverage. Fresh pass
+output at `96c5310`, 2026-09-27:
+
+- Fast, the four covering classes: `Passed!  - Failed:     0, Passed:   116, Skipped:     0, Total:   116`
+- Integration, Application (`AhkScriptGeneratorIntegrationTests`, `RawContinuationRoundTripTests`,
+  `ListHotstringsQueryHandlerTests` with the 11 parity rows):
+  `Passed!  - Failed:     0, Passed:    41, Skipped:     0, Total:    41`
+- Integration, API (`HotstringPreviewEndpointsTests`, `HotkeyPreviewEndpointsTests`):
+  `Passed!  - Failed:     0, Passed:    19, Skipped:     0, Total:    19`
+- Byte test after Simplify: hash still `D9ADCC9F…`, 117 of 117 with the Fast classes.
+
+The Gate, run locally in the cloud container:
+
+1. Build: `0 Warning(s)`, `0 Error(s)`.
+2. Format: `dotnet format AHKFlowApp.slnx --verify-no-changes` exit 0.
+3. PowerShell suites: 54 of 56 passed on the first run.
+   - `BacklogStaleOpen.Tests.ps1` failed because the clone was shallow. After
+     `git fetch --unshallow`, the suite passed on its own.
+   - `WorktreeRemovalLog.Tests.ps1` failed: "Four writers of 25 lines must produce 100 lines,
+     got 97". The same suite fails the same way on the base `362d7ce` in this container, and this
+     branch changes no script and no suite. It is not this branch's failure.
+4. Coverage: every project except E2E passed under coverage. API 239, Application 2114, CLI 210,
+   Domain 44, Infrastructure 26, TestUtilities 14, UI.Blazor 960, all with 0 failed.
+   - The E2E fixture could not install its browser here: `Playwright browser installation failed
+     (exit 1)`, 66 of 79 failed. `Microsoft.Playwright` 1.59.0 asks for a newer Chromium than the
+     container has, and the container's rules forbid `playwright install`.
+   - The first coverage run failed earlier, because `reportgenerator` was missing. It was
+     installed with `dotnet tool install -g dotnet-reportgenerator-globaltool`.
+   - The run stopped at the failed E2E project, so the local coverage thresholds were not checked.
+5. `git diff --check origin/main...HEAD`: exit 0.
+
+CI on the same head, `96c5310`: all 7 checks passed. `build-test` runs the E2E tests with
+coverage, every other test with coverage, and the per-assembly coverage thresholds.
+`powershell-suites` runs the suites on Linux, including `WorktreeRemovalLog.Tests.ps1`.
+
+Verdict: the artifact is green. Locally, Gate steps 1, 2, and 5 are green. Steps 3 and 4 are green
+except for the parts this container cannot run, and CI ran those parts green on the same commit.
