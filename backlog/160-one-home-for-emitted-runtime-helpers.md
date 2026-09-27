@@ -6,7 +6,7 @@
 - **Type**: Refactor
 - **Interfaces**: none (internal Application code; no UI, API, or CLI contract change)
 - **Difficulty**: moderate
-- **Stage**: 8-review
+- **Stage**: 4-execute
 
 ## Summary
 

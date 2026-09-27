@@ -170,3 +170,14 @@ Declined, with the reason in the PR comment:
   same validator rule.
 - Finding 8: the helper's CRLF line breaks. Grilling Q10 settled that a follow-up item handles them
   after Ship, because fixing them changes the output.
+
+## Failure edge to 4-execute (2026-09-27)
+
+**Red evidence:**
+
+```
+code-review (high) on PR #423: 9 findings; 6 need code or record changes (no preview-order test; stale HeaderPresetCatalog comment; NeededBy summary overclaims; item evidence points at PLAN-PROGRESS.md; helper name held twice; loose PreviewSnippet string parameters).
+```
+
+**Recovery task:** R1 to R6 under 'Review round 1' in PLAN-PROGRESS.md
+
