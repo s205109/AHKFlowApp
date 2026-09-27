@@ -65,10 +65,13 @@ Transient byte test, expected SHA-256
       - After `git checkout --` restored the file (`git status --short` printed nothing):
         `Passed!  - Failed:     0, Passed:    38, Skipped:     0, Total:    38, Duration: 2 s`
 
-## Open: the plan's own citations
+## Resolved: the plan's own citations
 
 The plan cites the base tree `362d7ce` on purpose ("Line numbers in the tasks are those of the
-base commit"). After Task 2, 31 of those citations fail tiers 1 and 2 of
-`check-citation-freshness.ps1`, which the pre-push hook runs on this branch's plan. The plan is
-not frozen yet: Stage 9 freezes it. This needs a human decision before the next push through
-the hook.
+base commit"). After Task 2, those citations failed tiers 1 and 2 of
+`check-citation-freshness.ps1`, which the pre-push hook runs on this branch's plan. On
+2026-09-27, against `a49ae75`, the check reported 38 problems.
+
+The human decided on 2026-09-27: freeze the plan now, before Ship. Plans repository commit
+`68c7745` adds `citation-check:ignore-file` and a comment saying why. The same check then
+reported no problem. Stage 9 still confirms the freeze.
