@@ -58,8 +58,9 @@ public sealed class AhkScriptGenerator(
     /// Groups entries by window context (both parts null means global) and appends them to
     /// <paramref name="lines"/>. Context groups come first, ordered by match type then by value.
     /// <see cref="DefinitionWrapping.InWindowContext"/> wraps each context group in
-    /// <c>#HotIf WinActive(...)</c> and closes it with a bare <c>#HotIf</c>. The global group comes last and stays unwrapped. Every group closes before
-    /// the next one opens, so no context can leak into the entries that follow.
+    /// <c>#HotIf WinActive(...)</c> and closes it with a bare <c>#HotIf</c>. The global group
+    /// comes last and stays unwrapped. Every group closes before the next one opens, so no context
+    /// can leak into the entries that follow.
     /// </summary>
     /// <remarks>
     /// <c>GroupBy</c> is stable, so the caller's pre-sort survives inside each group. Hotstrings

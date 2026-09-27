@@ -104,14 +104,13 @@ internal sealed class GetHotstringPreviewQueryHandler(TimeProvider clock)
         HotstringDelivery effectiveDelivery = HotstringEmitter.ResolveEffectiveDelivery(hs);
 
         // The same Runtime helpers and the same wrapping AhkScriptGenerator uses, so the live preview
-        // matches the downloaded script byte for byte. A needed helper comes first, above the #HotIf
-        // block, so the snippet is complete on its own.
-        List<string> lines = [.. RuntimeHelpers.NeededBy([hs], [])];
-        lines.AddRange(DefinitionWrapping.InWindowContext(
+        // matches the downloaded script byte for byte.
+        string snippet = DefinitionWrapping.PreviewSnippet(
+            RuntimeHelpers.NeededBy([hs], []),
             hs.ContextMatchType,
             hs.ContextValue,
-            DefinitionWrapping.WithDescription(hs.Description, HotstringEmitter.Emit(hs))));
-        string snippet = string.Join('\n', lines);
+            hs.Description,
+            HotstringEmitter.Emit(hs));
 
         return Task.FromResult(Result.Success(
             new HotstringPreviewDto(snippet, rawSummary, effectiveDelivery)));
