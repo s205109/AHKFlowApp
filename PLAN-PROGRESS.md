@@ -75,3 +75,23 @@ base commit"). After Task 2, those citations failed tiers 1 and 2 of
 The human decided on 2026-09-27: freeze the plan now, before Ship. Plans repository commit
 `68c7745` adds `citation-check:ignore-file` and a comment saying why. The same check then
 reported no problem. Stage 9 still confirms the freeze.
+
+## Simplify
+
+Verdict: simplification applied, in `1ae3f1b`. `/simplify` ran four read-only review agents:
+reuse, simplification, efficiency, and altitude.
+
+- Fixed: both preview handlers repeated the same order of helpers, wrapping, and join.
+  `DefinitionWrapping.PreviewSnippet` now owns that order, and each handler makes one call.
+  Three of the four agents found this.
+- Fixed: one 153-character line in the `EmitContextGroups` XML summary is wrapped again.
+- Skipped: rewording the comment in `ListHotstringsQuery.cs` that names the parity test.
+  Grilling Q8 settled that the line names the test.
+- Skipped: efficiency. The agent found no real waste.
+
+Evidence: the byte test hash was still `D9ADCC9F…`, and 117 of 117 tests passed. The build had
+0 warnings. `dotnet format --verify-no-changes` was clean on the four edited files. The three
+acceptance searches printed nothing.
+
+The commit was made while the item still read `4-execute`. The transition to `5-simplify`
+(`38ac944`) came after it.
