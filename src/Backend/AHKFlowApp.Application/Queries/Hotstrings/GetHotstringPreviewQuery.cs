@@ -106,11 +106,11 @@ internal sealed class GetHotstringPreviewQueryHandler(TimeProvider clock)
         // The same Runtime helpers and the same wrapping AhkScriptGenerator uses, so the live preview
         // matches the downloaded script byte for byte.
         string snippet = DefinitionWrapping.PreviewSnippet(
-            RuntimeHelpers.NeededBy([hs], []),
-            hs.ContextMatchType,
-            hs.ContextValue,
-            hs.Description,
-            HotstringEmitter.Emit(hs));
+            runtimeHelpers: RuntimeHelpers.NeededBy([hs], []),
+            matchType: hs.ContextMatchType,
+            value: hs.ContextValue,
+            description: hs.Description,
+            definition: HotstringEmitter.Emit(hs));
 
         return Task.FromResult(Result.Success(
             new HotstringPreviewDto(snippet, rawSummary, effectiveDelivery)));

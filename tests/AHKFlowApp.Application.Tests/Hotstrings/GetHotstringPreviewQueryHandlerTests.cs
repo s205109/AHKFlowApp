@@ -1,5 +1,6 @@
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Application.Queries.Hotstrings;
+using AHKFlowApp.Application.Services;
 using AHKFlowApp.Domain.Enums;
 using Ardalis.Result;
 using FluentAssertions;
@@ -50,5 +51,29 @@ public sealed class GetHotstringPreviewQueryHandlerTests
         result.IsSuccess.Should().BeTrue();
         result.Value.RawSummary!.LiftedComment.Should().Be("moved note");
         result.Value.Snippet.Should().Be("; moved note\n::btw::by the way");
+    }
+
+    // Pins the order of a full preview: the Runtime helper first, then the #HotIf block, with the
+    // Description comment inside it, above the definition. The helper text itself comes from its
+    // constant, so this test pins the order and not the helper's bytes.
+    [Fact]
+    public async Task Preview_ClipboardWithWindowContextAndDescription_PutsHelperAboveHotIfBlock()
+    {
+        Result<HotstringPreviewDto> result = await _sut.ExecuteAsync(
+            new GetHotstringPreviewQuery(new HotstringPreviewRequestDto(
+                HotstringKind.Text, "sig", "Best regards",
+                IsCaseSensitive: false, OmitEndingCharacter: false,
+                IsEndingCharacterRequired: true, IsTriggerInsideWord: false,
+                ContextMatchType: WindowMatchType.WindowClass, ContextValue: "Notepad",
+                Description: "a note", Delivery: HotstringDelivery.ClipboardPaste)),
+            default);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Snippet.Should().Be(
+            RuntimeHelpers.ClipboardPasteFunction + "\n" +
+            "#HotIf WinActive(\"ahk_class Notepad\")\n" +
+            "; a note\n" +
+            ":X:sig::AhkFlow_PasteReplacement(\"Best regards\", A_EndChar)\n" +
+            "#HotIf");
     }
 }

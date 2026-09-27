@@ -18,10 +18,11 @@ internal static class RuntimeHelpers
 
     // Clipboard Delivery calls this helper. It saves the user's clipboard, pastes the text, and
     // restores the clipboard. The raw string takes its line breaks from this file, and
-    // .gitattributes checks .cs files out with CRLF, so the helper's lines end in CRLF.
+    // .gitattributes checks .cs files out with CRLF, so the helper's lines end in CRLF. The
+    // function name comes from ClipboardPasteName, so the name exists once.
     public const string ClipboardPasteFunction =
-        """
-        AhkFlow_PasteReplacement(text, endChar := "") {
+        $$"""
+        {{ClipboardPasteName}}(text, endChar := "") {
             saved := ClipboardAll()
             A_Clipboard := text
             if !ClipWait(1) {
@@ -38,10 +39,12 @@ internal static class RuntimeHelpers
         """;
 
     /// <summary>
-    /// The text of every Runtime helper the given definitions call, in script order. The list is
-    /// empty when no definition calls a helper.
+    /// The text of every Runtime helper that the app's emitted definitions call, in script order.
+    /// The list is empty when no emitted definition calls a helper.
     /// </summary>
     /// <remarks>
+    /// Only the calls the emitters write count. A Raw definition keeps the text the user typed, and
+    /// this method does not read that text for helper calls.
     /// No Hotkey Action calls a Runtime helper yet, because the window-snap body stays inline in
     /// <see cref="HotkeyEmitter"/>. The hotkeys are part of the question anyway, so a future hotkey
     /// helper changes this method and no caller.

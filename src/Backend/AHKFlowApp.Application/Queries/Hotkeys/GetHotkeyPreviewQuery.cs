@@ -41,11 +41,11 @@ internal sealed class GetHotkeyPreviewQueryHandler(TimeProvider clock)
         // The same Runtime helpers and the same wrapping AhkScriptGenerator uses, so the live preview
         // matches the downloaded script byte for byte. No hotkey needs a helper today.
         string snippet = DefinitionWrapping.PreviewSnippet(
-            RuntimeHelpers.NeededBy([], [hk]),
-            hk.ContextMatchType,
-            hk.ContextValue,
-            hk.Description,
-            HotkeyEmitter.Emit(hk));
+            runtimeHelpers: RuntimeHelpers.NeededBy([], [hk]),
+            matchType: hk.ContextMatchType,
+            value: hk.ContextValue,
+            description: hk.Description,
+            definition: HotkeyEmitter.Emit(hk));
 
         return Task.FromResult(Result.Success(new HotkeyPreviewDto(snippet)));
     }
