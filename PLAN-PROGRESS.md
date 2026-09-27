@@ -207,3 +207,7 @@ Verify, after review round 1, at `68d6a4d9`, 2026-09-27:
   part and the thresholds.
 
 Verdict: green.
+
+Document, after review round 1: the six boxes stay ticked. R4 (`2a3dc71a`) moved criterion 4's
+evidence into the item. R2 fixed the one stale code comment. `docs/development/ahk-v2-syntax.md` did
+not need a change this round. The repository citation check still passes on the item's evidence.
