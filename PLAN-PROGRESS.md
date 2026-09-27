@@ -190,3 +190,20 @@ code-review (high) on PR #423: 9 findings; 6 need code or record changes (no pre
 
 Simplify, after review round 1: nothing to simplify. The round's diff is one new test, two comment
 fixes, one constant built from `ClipboardPasteName`, and named arguments at two call sites.
+
+Verify, after review round 1, at `68d6a4d9`, 2026-09-27:
+
+- Covering tests: Application `Passed!  - Failed:     0, Passed:   158, Skipped:     0, Total:   158`
+  (the 117 Fast tests, which include the new R1 test, plus 41 Integration), and API
+  `Passed!  - Failed:     0, Passed:    19, Skipped:     0, Total:    19`.
+- Gate step 1, build: `0 Warning(s)`, `0 Error(s)`. Step 2, format: exit 0. Step 5,
+  `git diff --check origin/main...HEAD`: exit 0.
+- Gate step 3: `All 56 suite(s) passed.` That includes `WorktreeRemovalLog.Tests.ps1`, which failed
+  in the first Verify. So that suite is unreliable in this container, and it is not this branch's.
+- Gate step 4: every project except E2E passed under coverage (Application now 2115). E2E still
+  cannot install its browser in the container.
+- CI on `68d6a4d9`: all 7 checks passed, including `build-test`, which runs E2E and the coverage
+  thresholds, and `powershell-suites`. As the human accepted at the first Verify, CI covers the E2E
+  part and the thresholds.
+
+Verdict: green.
