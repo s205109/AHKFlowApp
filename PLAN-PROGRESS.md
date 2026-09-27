@@ -135,3 +135,6 @@ coverage, every other test with coverage, and the per-assembly coverage threshol
 
 Verdict: the artifact is green. Locally, Gate steps 1, 2, and 5 are green. Steps 3 and 4 are green
 except for the parts this container cannot run, and CI ran those parts green on the same commit.
+
+The human accepted CI's green run on `96c5310` for the parts of Gate steps 3 and 4 that this
+container cannot run, on 2026-09-27. Verify exits on its success edge.
