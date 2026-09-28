@@ -2,6 +2,26 @@ using System.Text;
 
 namespace AHKFlowApp.UI.Blazor.Helpers;
 
+/// <summary>
+/// The four Option flags of a Raw definition that the dialog's structured checkboxes can hold.
+/// </summary>
+/// <param name="OmitEndingCharacter">
+/// Taken from the definition as written, with no gate on <c>*</c>. Both write paths,
+/// <see cref="RawDefinition.Compose"/> and the server's HotstringEmitter, already drop a
+/// meaningless <c>O</c>.
+/// </param>
+public sealed record RawTriggerOptions(
+    bool IsEndingCharacterRequired,
+    bool IsTriggerInsideWord,
+    bool IsCaseSensitive,
+    bool OmitEndingCharacter)
+{
+    /// <summary>The AutoHotkey defaults, which a definition with no Option flags means. Note these
+    /// are not the defaults a brand new hotstring gets: HotstringEditModel starts inside-word
+    /// matching at true.</summary>
+    public static RawTriggerOptions Default { get; } = new(true, false, false, false);
+}
+
 /// <summary>Result of decomposing a Raw definition back into structured fields.</summary>
 /// <param name="Trigger">Decoded trigger from the first line.</param>
 /// <param name="Body">Inline replacement, or the brace/continuation-body content when the definition uses one.</param>
@@ -19,11 +39,16 @@ namespace AHKFlowApp.UI.Blazor.Helpers;
 /// mirrors the server lift so the dialog can fold them into Description instead of dropping them.
 /// Null when there is no leading comment.
 /// </param>
+/// <param name="Options">
+/// The <c>*</c>, <c>?</c>, <c>C</c>, and <c>O</c> flags the definition carries, resolved left to
+/// right. <see cref="RawTriggerOptions.Default"/> when the definition could not be read.
+/// </param>
 public sealed record RawDecomposition(
     string Trigger,
     string Body,
     IReadOnlyList<string> UnexpressibleOptions,
     IReadOnlyList<string> LossyReasons,
+    RawTriggerOptions Options,
     string? LiftedComment = null);
 
 /// <summary>
@@ -69,22 +94,22 @@ public static class RawDefinition
 
         int firstIdx = Array.FindIndex(lines, defStart, l => l.Trim().Length > 0);
         if (firstIdx < 0)
-            return new RawDecomposition("", "", [], [], lifted);
+            return new RawDecomposition("", "", [], [], RawTriggerOptions.Default, lifted);
 
         string first = lines[firstIdx].TrimStart();
         // :options:trigger::rest — options/trigger contain no ':'; first '::' delimits.
         int firstColon = first.IndexOf(':');
         if (firstColon != 0)
-            return new RawDecomposition("", remainder, [], [], lifted);
+            return new RawDecomposition("", remainder, [], [], RawTriggerOptions.Default, lifted);
 
         int secondColon = first.IndexOf(':', 1);
         if (secondColon < 0)
-            return new RawDecomposition("", remainder, [], [], lifted);
+            return new RawDecomposition("", remainder, [], [], RawTriggerOptions.Default, lifted);
 
         string optionsBlock = first[1..secondColon];
         int doubleColon = first.IndexOf("::", secondColon + 1, StringComparison.Ordinal);
         if (doubleColon < 0)
-            return new RawDecomposition("", remainder, [], [], lifted);
+            return new RawDecomposition("", remainder, [], [], RawTriggerOptions.Default, lifted);
 
         string triggerRaw = first[(secondColon + 1)..doubleColon];
         string inlineRest = first[(doubleColon + 2)..];
@@ -141,7 +166,9 @@ public static class RawDefinition
 
         List<string> unexpressible = [.. optionTokens.Where(t => !ExpressibleOptions.Contains(t))];
         // No trimming: mirror the server parser — the abbreviation's whitespace is literal.
-        return new RawDecomposition(DecodeEscapes(triggerRaw), body, unexpressible, lossy, lifted);
+        return new RawDecomposition(
+            DecodeEscapes(triggerRaw), body, unexpressible, lossy,
+            ResolveTriggerOptions(optionTokens), lifted);
     }
 
     // Consume leading blank/comment lines above the definition (mirrors the server's lift): comment
@@ -183,6 +210,32 @@ public static class RawDefinition
         }
 
         return active;
+    }
+
+    // AutoHotkey applies option flags left to right, so the last one wins: ":*?*0:" ends with the
+    // ending character required again.
+    private static RawTriggerOptions ResolveTriggerOptions(IReadOnlyList<string> optionTokens)
+    {
+        RawTriggerOptions resolved = RawTriggerOptions.Default;
+
+        foreach (string token in optionTokens)
+        {
+            resolved = token.ToUpperInvariant() switch
+            {
+                "*" => resolved with { IsEndingCharacterRequired = false },
+                "*0" => resolved with { IsEndingCharacterRequired = true },
+                "?" => resolved with { IsTriggerInsideWord = true },
+                "?0" => resolved with { IsTriggerInsideWord = false },
+                "C" => resolved with { IsCaseSensitive = true },
+                // C1 matches without regard to case, the same as C0.
+                "C0" or "C1" => resolved with { IsCaseSensitive = false },
+                "O" => resolved with { OmitEndingCharacter = true },
+                "O0" => resolved with { OmitEndingCharacter = false },
+                _ => resolved,
+            };
+        }
+
+        return resolved;
     }
 
     // Longest-match tokenizer (SE/SP/SI before S; each flag absorbs its sign/digits), mirroring the
