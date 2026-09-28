@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: UI
 - **Difficulty**: moderate
-- **Stage**: 3-plan
+- **Stage**: 9-ship
 
 ## Summary
 
@@ -29,13 +29,13 @@ Write each criterion as state a reader can observe in the repository, not as a c
 "The handler returns `Result.NotFound()` for a missing id" can be checked. "The old check is
 removed" and "tests cover the new API" cannot.
 
-- [ ] After a switch from Raw `:*C:btw::by the way` to Text, the dialog shows ending character
+- [x] After a switch from Raw `:*C:btw::by the way` to Text, the dialog shows ending character
       not required and case sensitive, or it asks for confirmation before it discards them.
-- [ ] After a switch from Raw `::btw::by the way` (no `?`) to Text, the dialog does not turn
+- [x] After a switch from Raw `::btw::by the way` (no `?`) to Text, the dialog does not turn
       triggering inside words on without a confirmation.
-- [ ] A bUnit test in `tests/AHKFlowApp.UI.Blazor.Tests` covers a Raw definition that carries
+- [x] A bUnit test in `tests/AHKFlowApp.UI.Blazor.Tests` covers a Raw definition that carries
       each of `*`, `?`, `C`, and `O`.
-- [ ] A browser test in `tests/AHKFlowApp.E2E.Tests/RawHotstringFlowTests.cs` switches a Raw
+- [x] A browser test in `tests/AHKFlowApp.E2E.Tests/RawHotstringFlowTests.cs` switches a Raw
       hotstring to Text and asserts the option checkboxes a person sees. The repository's
       verification table asks for a `*FlowTests.cs` for a Blazor UI flow, and every Raw flow
       test today moves into Raw rather than out of it.
