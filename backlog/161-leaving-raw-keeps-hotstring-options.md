@@ -35,6 +35,10 @@ removed" and "tests cover the new API" cannot.
       triggering inside words on without a confirmation.
 - [ ] A bUnit test in `tests/AHKFlowApp.UI.Blazor.Tests` covers a Raw definition that carries
       each of `*`, `?`, `C`, and `O`.
+- [ ] A browser test in `tests/AHKFlowApp.E2E.Tests/RawHotstringFlowTests.cs` switches a Raw
+      hotstring to Text and asserts the option checkboxes a person sees. The repository's
+      verification table asks for a `*FlowTests.cs` for a Blazor UI flow, and every Raw flow
+      test today moves into Raw rather than out of it.
 
 ## Out of scope
 
