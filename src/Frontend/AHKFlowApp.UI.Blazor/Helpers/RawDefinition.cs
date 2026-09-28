@@ -64,6 +64,10 @@ public static class RawDefinition
     private static readonly HashSet<string> ExpressibleOptions =
         new(StringComparer.OrdinalIgnoreCase) { "*", "*0", "?", "?0", "C", "C0", "O", "O0" };
 
+    // The three tokens that decide case sensitivity. Any one of them overrides an earlier one.
+    private static readonly HashSet<string> CaseFamilyOptions =
+        new(StringComparer.OrdinalIgnoreCase) { "C", "C0", "C1" };
+
     /// <summary>
     /// Composes a starting Raw definition from structured fields, matching the server's Script→Raw
     /// transform: brace body, options in <c>* ? C O</c> order, backtick-first trigger escaping.
@@ -167,7 +171,8 @@ public static class RawDefinition
             }
         }
 
-        List<string> unexpressible = [.. optionTokens.Where(t => !ExpressibleOptions.Contains(t))];
+        List<string> unexpressible =
+            [.. DropSupersededCaseTokens(optionTokens).Where(t => !ExpressibleOptions.Contains(t))];
         // No trimming: mirror the server parser — the abbreviation's whitespace is literal.
         return new RawDecomposition(
             DecodeEscapes(triggerRaw), body, unexpressible, lossy,
@@ -213,6 +218,21 @@ public static class RawDefinition
         }
 
         return active;
+    }
+
+    // 'C1' is the one flag whose loss depends on where it sits. A later 'C', 'C0', or 'C1' decides
+    // case conforming on its own, so an earlier 'C1' loses nothing, and reporting it would tell the
+    // user the switch discards something it keeps. Drop every 'C1' but the last case-family one.
+    private static IEnumerable<string> DropSupersededCaseTokens(IReadOnlyList<string> optionTokens)
+    {
+        int lastCaseFlag = -1;
+        for (int i = 0; i < optionTokens.Count; i++)
+            if (CaseFamilyOptions.Contains(optionTokens[i]))
+                lastCaseFlag = i;
+
+        for (int i = 0; i < optionTokens.Count; i++)
+            if (i == lastCaseFlag || !optionTokens[i].Equals("C1", StringComparison.OrdinalIgnoreCase))
+                yield return optionTokens[i];
     }
 
     // AutoHotkey applies option flags left to right, so the last one wins: ":*?*0:" ends with the

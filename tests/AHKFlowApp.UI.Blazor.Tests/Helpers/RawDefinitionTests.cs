@@ -130,6 +130,29 @@ public sealed class RawDefinitionTests
         result.UnexpressibleOptions.Should().BeEquivalentTo("C1");
     }
 
+    // A later C, C0, or C1 decides case conforming on its own, so an earlier C1 loses nothing and
+    // must not be reported. The warning list resolves the C family in order, the same way the four
+    // structured values do.
+    [Theory]
+    [InlineData(":C1C:btw::x")]
+    [InlineData(":C1C0:btw::x")]
+    public void Decompose_C1SupersededByALaterCaseFlag_DoesNotWarn(string definition)
+    {
+        RawDecomposition result = RawDefinition.Decompose(definition);
+
+        result.UnexpressibleOptions.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData(":CC1:btw::x")]     // C1 comes last, so its non-conforming half really is lost
+    [InlineData(":C1C1:btw::x")]    // repeated, and still reported exactly once
+    public void Decompose_C1IsTheLastCaseFlag_WarnsOnce(string definition)
+    {
+        RawDecomposition result = RawDefinition.Decompose(definition);
+
+        result.UnexpressibleOptions.Should().BeEquivalentTo("C1");
+    }
+
     [Fact]
     public void Decompose_CleanContinuationSection_ExtractsBodyWithoutLoss()
     {
