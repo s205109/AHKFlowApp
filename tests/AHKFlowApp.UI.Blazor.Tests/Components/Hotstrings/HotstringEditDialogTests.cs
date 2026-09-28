@@ -1216,6 +1216,72 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
         });
     }
 
+    // Backlog 161. One branch in OnKindChangedAsync serves Text, Macro, and Date & time, so the
+    // destination kind is a theory column rather than a copied test body. Every row asserts all
+    // four option fields: the bug dropped three of them and switched the fourth ON.
+    [Theory]
+    [InlineData(":*C:btw::by the way", "Text", HotstringKind.Text, false, false, true, false)]
+    [InlineData("::btw::by the way", "Text", HotstringKind.Text, true, false, false, false)]
+    [InlineData(":?O:btw::by the way", "Text", HotstringKind.Text, true, true, false, true)]
+    // One definition carrying all four at once, which acceptance criterion 3 asks for by name.
+    [InlineData(":*?CO:btw::by the way", "Text", HotstringKind.Text, false, true, true, true)]
+    [InlineData(":*C:btw::by the way", "Macro", HotstringKind.Macro, false, false, true, false)]
+    [InlineData(":*C:btw::by the way", "Date & time", HotstringKind.DateTime, false, false, true, false)]
+    public async Task KindToggle_LeavingRaw_KeepsTheDefinitionsOptions(
+        string definition, string toggleText, HotstringKind expectedKind,
+        bool endingRequired, bool insideWord, bool caseSensitive, bool omitEnding)
+    {
+        HotstringEditModel item = new() { Trigger = "btw", Kind = HotstringKind.Raw, Replacement = definition };
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
+        provider.WaitForAssertion(() => provider.Find("[data-test=\"kind-selector\"]"));
+
+        provider.FindAll(".mud-toggle-item").First(e => e.TextContent.Contains(toggleText)).Click();
+
+        provider.WaitForAssertion(() =>
+        {
+            item.Kind.Should().Be(expectedKind);
+            item.IsEndingCharacterRequired.Should().Be(endingRequired);
+            item.IsTriggerInsideWord.Should().Be(insideWord);
+            item.IsCaseSensitive.Should().Be(caseSensitive);
+            item.OmitEndingCharacter.Should().Be(omitEnding);
+        });
+    }
+
+    [Fact]
+    public async Task KindToggle_RawWithUnexpressibleOptions_StillAsksBeforeDiscarding()
+    {
+        // K1000 and SE have no structured field, so the question must still be asked, and nothing
+        // may change until it is answered. This one is a guard, not a red test: it passes before
+        // this task too, and its job is to fail if the expressible set ever swallows everything.
+        HotstringEditModel item = new() { Trigger = "ftw", Kind = HotstringKind.Raw, Replacement = ":K1000 SE:ftw::for the win" };
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
+        provider.WaitForAssertion(() => provider.Find("[data-test=\"kind-selector\"]"));
+
+        provider.FindAll(".mud-toggle-item").First(e => e.TextContent.Trim() == "Text").Click();
+
+        provider.WaitForAssertion(() => provider.Markup.Should().Contain("Converting to Text"));
+        item.Kind.Should().Be(HotstringKind.Raw);
+    }
+
+    [Fact]
+    public async Task KindToggle_RawWithCancelTokenOnly_SwitchesWithoutAsking()
+    {
+        // The other side of the boundary. ':*0:' is expressible after this task, so saying it
+        // would be discarded would be false, and the switch goes straight through.
+        HotstringEditModel item = new() { Trigger = "btw", Kind = HotstringKind.Raw, Replacement = ":*0:btw::by the way" };
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
+        provider.WaitForAssertion(() => provider.Find("[data-test=\"kind-selector\"]"));
+
+        provider.FindAll(".mud-toggle-item").First(e => e.TextContent.Trim() == "Text").Click();
+
+        provider.WaitForAssertion(() =>
+        {
+            item.Kind.Should().Be(HotstringKind.Text);
+            item.IsEndingCharacterRequired.Should().BeTrue();
+        });
+        provider.Markup.Should().NotContain("Converting to Text");
+    }
+
     [Fact]
     public async Task ScriptSuggestion_TextLooksLikeCode_ShowsDismissibleAlert()
     {

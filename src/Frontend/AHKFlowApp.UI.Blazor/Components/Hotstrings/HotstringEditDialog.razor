@@ -473,10 +473,11 @@
             // Fold a lifted leading comment into Description (mirrors the server) so switching away
             // from Raw doesn't silently drop it.
             Item.Description = MergeDescription(Item.Description, decomposed.LiftedComment);
-            Item.IsCaseSensitive = false;
-            Item.OmitEndingCharacter = false;
-            Item.IsEndingCharacterRequired = true;
-            Item.IsTriggerInsideWord = true;
+            // The definition's own flags, not the edit model's new-item defaults (backlog 161).
+            Item.IsCaseSensitive = decomposed.Options.IsCaseSensitive;
+            Item.OmitEndingCharacter = decomposed.Options.OmitEndingCharacter;
+            Item.IsEndingCharacterRequired = decomposed.Options.IsEndingCharacterRequired;
+            Item.IsTriggerInsideWord = decomposed.Options.IsTriggerInsideWord;
             ClearDateTimeFields();
             Item.Kind = newKind;
             ResetDeliveryForNonText();

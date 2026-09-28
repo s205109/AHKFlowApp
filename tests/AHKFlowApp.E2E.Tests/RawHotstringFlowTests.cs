@@ -213,4 +213,34 @@ public sealed class RawHotstringFlowTests(StackFixtureC fixture) : IAsyncLifetim
         await Assertions.Expect(
             page.Locator(".desktop-branch .hotstrings-grid td[data-label=\"Trigger\"]")).ToContainTextAsync("ftw");
     }
+
+    [Fact]
+    public async Task SwitchRawToTextViaDialog_KeepsTheVisibleOptionStates()
+    {
+        // Backlog 161. The parsing matrix is covered by bUnit; this proves the three checkboxes a
+        // person sees after the switch, in a real browser.
+        await using IBrowserContext ctx = await fixture.Browser.NewContextAsync(DesktopViewport);
+
+        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/hotstrings");
+        await page.WaitForSelectorAsync("button.add-hotstring");
+
+        await page.ClickAsync("button.add-hotstring");
+        await page.WaitForSelectorAsync("input[data-test=\"trigger-input\"]");
+        await page.FillAsync("input[data-test=\"trigger-input\"]", "seed");
+
+        await page.ClickAsync("button.promote-edit");
+        await page.WaitForSelectorAsync(".hotstring-edit-dialog");
+
+        // Into Raw with an empty replacement, so no discard confirmation appears.
+        await page.ClickAsync(".hotstring-edit-dialog .mud-toggle-item:has-text('Raw')");
+        ILocator definition = page.Locator(".hotstring-edit-dialog textarea[data-test=\"replacement-input\"]");
+        await definition.FillAsync(":*C:btw::by the way");
+
+        // Back out to Text. '*' and 'C' are both expressible, so this needs no confirmation.
+        await page.ClickAsync(".hotstring-edit-dialog .mud-toggle-item:has-text('Text')");
+
+        await Assertions.Expect(page.Locator("input[data-test=\"case-sensitive-checkbox\"]")).ToBeCheckedAsync();
+        await Assertions.Expect(page.Locator("input[data-test=\"expand-immediately-checkbox\"]")).ToBeCheckedAsync();
+        await Assertions.Expect(page.Locator("input[data-test=\"inside-words-checkbox\"]")).Not.ToBeCheckedAsync();
+    }
 }

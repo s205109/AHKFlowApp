@@ -58,6 +58,101 @@ public sealed class RawDefinitionTests
         result.UnexpressibleOptions.Should().BeEquivalentTo("K1000", "SE");
     }
 
+    // Backlog 161. One theory for the whole option-resolution table. The repeated-flag rows are
+    // the ones that matter: a resolver that ignored every cancel token would still pass every row
+    // where the cancel stands alone, because cancelling gives back the default it started from.
+    [Theory]
+    // No options, then each of the four on its own.
+    [InlineData("::btw::x", true, false, false, false)]
+    [InlineData(":*:btw::x", false, false, false, false)]
+    [InlineData(":?:btw::x", true, true, false, false)]
+    [InlineData(":C:btw::x", true, false, true, false)]
+    [InlineData(":O:btw::x", true, false, false, true)]
+    // The pair from the bug report.
+    [InlineData(":*C:btw::x", false, false, true, false)]
+    // Repeated flags: the last one decides, in both directions.
+    [InlineData(":**0:btw::x", true, false, false, false)]
+    [InlineData(":*0*:btw::x", false, false, false, false)]
+    [InlineData(":??0:btw::x", true, false, false, false)]
+    [InlineData(":?0?:btw::x", true, true, false, false)]
+    [InlineData(":CC0:btw::x", true, false, false, false)]
+    [InlineData(":C0C:btw::x", true, false, true, false)]
+    [InlineData(":OO0:btw::x", true, false, false, false)]
+    [InlineData(":O0O:btw::x", true, false, false, true)]
+    // C1 takes part in the same ordering as C and C0.
+    [InlineData(":CC1:btw::x", true, false, false, false)]
+    [InlineData(":C1C:btw::x", true, false, true, false)]
+    // 'O' survives alongside '*'; the gate lives in the two write paths, not here.
+    [InlineData(":*O:btw::x", false, false, false, true)]
+    // AutoHotkey reads option letters without regard to case.
+    [InlineData(":c?:btw::x", true, true, true, false)]
+    // Every cancel token at once, which must land exactly on the defaults.
+    [InlineData(":*0?0C0O0:btw::x", true, false, false, false)]
+    public void Decompose_ResolvesTheFourStructuredOptions(
+        string definition, bool endingRequired, bool insideWord, bool caseSensitive, bool omitEnding)
+    {
+        RawDecomposition result = RawDefinition.Decompose(definition);
+
+        result.Options.Should().Be(
+            new RawTriggerOptions(endingRequired, insideWord, caseSensitive, omitEnding));
+    }
+
+    // Decompose gives up on four separate paths before it reads an option block. Each one must
+    // still report the AutoHotkey defaults, because the caller assigns whatever comes back.
+    [Theory]
+    [InlineData("")]                      // nothing but blank lines
+    [InlineData("not a definition")]      // no leading ':'
+    [InlineData(":onlyonecolon")]         // no second ':'
+    [InlineData(":opts:trigger")]         // no '::' after the trigger
+    public void Decompose_UnreadableDefinition_ReportsTheDefaults(string definition)
+    {
+        RawDecomposition result = RawDefinition.Decompose(definition);
+
+        result.Options.Should().Be(new RawTriggerOptions(true, false, false, false));
+    }
+
+    [Fact]
+    public void Decompose_CancelTokens_AreExpressible()
+    {
+        // A structured field holds each resolved value, so none of these is discarded by a switch
+        // away from Raw, and warning that they are would be false.
+        RawDecomposition result = RawDefinition.Decompose(":*0?0C0O0:btw::x");
+
+        result.UnexpressibleOptions.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Decompose_C1_KeepsWarning()
+    {
+        // C1 also stops case conforming, and no structured field holds that half of it.
+        RawDecomposition result = RawDefinition.Decompose(":C1:btw::x");
+
+        result.UnexpressibleOptions.Should().BeEquivalentTo("C1");
+    }
+
+    // A later C, C0, or C1 decides case conforming on its own, so an earlier C1 loses nothing and
+    // must not be reported. The warning list resolves the C family in order, the same way the four
+    // structured values do.
+    [Theory]
+    [InlineData(":C1C:btw::x")]
+    [InlineData(":C1C0:btw::x")]
+    public void Decompose_C1SupersededByALaterCaseFlag_DoesNotWarn(string definition)
+    {
+        RawDecomposition result = RawDefinition.Decompose(definition);
+
+        result.UnexpressibleOptions.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData(":CC1:btw::x")]     // C1 comes last, so its non-conforming half really is lost
+    [InlineData(":C1C1:btw::x")]    // repeated, and still reported exactly once
+    public void Decompose_C1IsTheLastCaseFlag_WarnsOnce(string definition)
+    {
+        RawDecomposition result = RawDefinition.Decompose(definition);
+
+        result.UnexpressibleOptions.Should().BeEquivalentTo("C1");
+    }
+
     [Fact]
     public void Decompose_CleanContinuationSection_ExtractsBodyWithoutLoss()
     {
