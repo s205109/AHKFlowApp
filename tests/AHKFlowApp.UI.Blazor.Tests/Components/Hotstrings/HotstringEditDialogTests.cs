@@ -1223,6 +1223,8 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
     [InlineData(":*C:btw::by the way", "Text", HotstringKind.Text, false, false, true, false)]
     [InlineData("::btw::by the way", "Text", HotstringKind.Text, true, false, false, false)]
     [InlineData(":?O:btw::by the way", "Text", HotstringKind.Text, true, true, false, true)]
+    // One definition carrying all four at once, which acceptance criterion 3 asks for by name.
+    [InlineData(":*?CO:btw::by the way", "Text", HotstringKind.Text, false, true, true, true)]
     [InlineData(":*C:btw::by the way", "Macro", HotstringKind.Macro, false, false, true, false)]
     [InlineData(":*C:btw::by the way", "Date & time", HotstringKind.DateTime, false, false, true, false)]
     public async Task KindToggle_LeavingRaw_KeepsTheDefinitionsOptions(
