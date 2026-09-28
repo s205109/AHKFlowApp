@@ -1,9 +1,12 @@
 using AHKFlowApp.Application;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Application.Queries.Hotstrings;
+using AHKFlowApp.Application.Services;
+using AHKFlowApp.Domain.Constants;
 using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Domain.Enums;
 using AHKFlowApp.Infrastructure.Persistence;
+using AHKFlowApp.TestUtilities.Builders;
 using Ardalis.Result;
 using FluentAssertions;
 using Xunit;
@@ -637,5 +640,56 @@ public sealed class ListHotstringsQueryHandlerTests(HotstringDbFixture fx)
         Result<PagedList<HotstringDto>> result = await handler.ExecuteAsync(new ListHotstringsQuery(), default);
 
         result.Value.Items.Should().ContainSingle().Which.EffectiveDelivery.Should().Be(HotstringDelivery.Type);
+    }
+
+    private const int Threshold = HotstringDeliveryDefaults.AutoClipboardThresholdChars;
+
+    // One character outside the Basic Multilingual Plane: two UTF-16 code units.
+    private const string Supplementary = "\U0001F600";
+
+    // The list projects EffectiveDelivery with a SQL copy of HotstringEmitter.ResolveEffectiveDelivery,
+    // because the resolver cannot translate to SQL. The resolver is the oracle here: on every row the
+    // SQL copy must agree with it. The rows sit on both sides of the Auto threshold and come from the
+    // threshold constant, so a change to the constant moves them too. Both copies count UTF-16 code
+    // units. The supplementary rows fail when one copy starts to count characters instead.
+    [Theory]
+    [InlineData(HotstringKind.Text, HotstringDelivery.Auto, Threshold - 1, 0, 0)]
+    [InlineData(HotstringKind.Text, HotstringDelivery.Auto, Threshold, 0, 0)]
+    [InlineData(HotstringKind.Text, HotstringDelivery.Auto, Threshold + 1, 0, 0)]
+    [InlineData(HotstringKind.Text, HotstringDelivery.Auto, Threshold - 1, 0, 1)] // reaches the threshold only through a trailing space
+    [InlineData(HotstringKind.Text, HotstringDelivery.Auto, Threshold % 2, Threshold / 2, 0)] // the threshold in code units, half of it in characters
+    [InlineData(HotstringKind.Text, HotstringDelivery.Auto, Threshold % 2 + 1, Threshold / 2 - 1, 0)] // one code unit under the threshold
+    [InlineData(HotstringKind.Text, HotstringDelivery.Type, Threshold, 0, 0)]
+    [InlineData(HotstringKind.Text, HotstringDelivery.Type, Threshold + 1, 0, 0)]
+    [InlineData(HotstringKind.Text, HotstringDelivery.ClipboardPaste, 1, 0, 0)]
+    [InlineData(HotstringKind.Macro, HotstringDelivery.Auto, Threshold, 0, 0)]
+    [InlineData(HotstringKind.Macro, HotstringDelivery.ClipboardPaste, 1, 0, 0)]
+    public async Task ExecuteAsync_DeliveryAroundAutoThreshold_MatchesEmitterResolver(
+        HotstringKind kind, HotstringDelivery delivery, int asciiChars, int supplementaryChars, int trailingSpaces)
+    {
+        var owner = Guid.NewGuid();
+        string replacement = new string('x', asciiChars)
+            + string.Concat(Enumerable.Repeat(Supplementary, supplementaryChars))
+            + new string(' ', trailingSpaces);
+        Hotstring entity = new HotstringBuilder()
+            .WithOwner(owner)
+            .WithKind(kind)
+            .WithDelivery(delivery)
+            .WithReplacement(replacement)
+            .Build();
+
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Hotstrings.Add(entity);
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        ListHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner), new AppEnvironment(false), TimeProvider.System);
+
+        Result<PagedList<HotstringDto>> result = await handler.ExecuteAsync(new ListHotstringsQuery(), default);
+
+        result.Value.Items.Should().ContainSingle().Which.EffectiveDelivery
+            .Should().Be(HotstringEmitter.ResolveEffectiveDelivery(entity));
     }
 }

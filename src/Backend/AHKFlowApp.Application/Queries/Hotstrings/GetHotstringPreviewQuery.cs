@@ -103,20 +103,14 @@ internal sealed class GetHotstringPreviewQueryHandler(TimeProvider clock)
 
         HotstringDelivery effectiveDelivery = HotstringEmitter.ResolveEffectiveDelivery(hs);
 
-        // Prepend the Description comment lines above the definition, via the same shared formatter
-        // AhkScriptGenerator uses, so the live preview matches the downloaded script byte-for-byte.
-        string snippet = HotstringEmitter.Emit(hs);
-        string commentBlock = string.Join('\n', HotstringEmitter.DescriptionCommentLines(hs.Description));
-        if (commentBlock.Length > 0)
-            snippet = $"{commentBlock}\n{snippet}";
-
-        // Mirrors AhkScriptGenerator's context-group wrapping (D9) so the live preview matches
-        // exactly what the downloaded script would contain for this hotstring.
-        if (hs.ContextMatchType is WindowMatchType matchType)
-            snippet = $"{HotstringEmitter.EmitHotIfOpen(matchType, hs.ContextValue!)}\n{snippet}\n{HotstringEmitter.HotIfClose}";
-
-        if (effectiveDelivery == HotstringDelivery.ClipboardPaste)
-            snippet = $"{HotstringEmitter.PasteHelperFunction}\n{snippet}";
+        // The same Runtime helpers and the same wrapping AhkScriptGenerator uses, so the live preview
+        // matches the downloaded script byte for byte.
+        string snippet = DefinitionWrapping.PreviewSnippet(
+            runtimeHelpers: RuntimeHelpers.NeededBy([hs], []),
+            matchType: hs.ContextMatchType,
+            value: hs.ContextValue,
+            description: hs.Description,
+            definition: HotstringEmitter.Emit(hs));
 
         return Task.FromResult(Result.Success(
             new HotstringPreviewDto(snippet, rawSummary, effectiveDelivery)));

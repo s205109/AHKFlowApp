@@ -74,7 +74,7 @@ internal static class HeaderPresetCatalog
         """;
 
     // A timer, not #HotIf. AhkScriptGenerator closes every window-context group with a bare
-    // #HotIf (AhkScriptGenerator.cs:93-96), which would clear any context this header set.
+    // #HotIf (DefinitionWrapping.InWindowContext), which would clear any context this header set.
     private const string PauseWhileAppInFrontBody = """
         ; Pause every hotstring and hotkey while one application is in front.
         ; Replace REPLACE-ME.exe with the application you want. Keep the ahk_exe part.

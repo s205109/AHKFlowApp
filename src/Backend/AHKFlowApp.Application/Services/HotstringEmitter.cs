@@ -11,29 +11,6 @@ namespace AHKFlowApp.Application.Services;
 /// </summary>
 internal static class HotstringEmitter
 {
-    // Bare "#HotIf" (no expression) clears any preceding #HotIf's context, restoring
-    // global scope for everything emitted after it. Single source shared with the
-    // preview handler so both code paths use the identical close string.
-    public const string HotIfClose = "#HotIf";
-    public const string PasteHelperName = "AhkFlow_PasteReplacement";
-    public const string PasteHelperFunction =
-        """
-        AhkFlow_PasteReplacement(text, endChar := "") {
-            saved := ClipboardAll()
-            A_Clipboard := text
-            if !ClipWait(1) {
-                A_Clipboard := saved
-                return
-            }
-            Send "^v"
-            Sleep 150
-            A_Clipboard := saved
-            saved := ""
-            if (endChar != "")
-                SendText endChar
-        }
-        """;
-
     // Raw is emitted verbatim: its Replacement already holds the entire ":opts:trigger::"
     // definition (plus any brace body), so the ":{options}:{trigger}::{body}" template is
     // bypassed entirely — re-prefixing would double the definition. AhkScriptGenerator adds
@@ -56,32 +33,6 @@ internal static class HotstringEmitter
                     && hs.Replacement.Length >= HotstringDeliveryDefaults.AutoClipboardThresholdChars))
             ? HotstringDelivery.ClipboardPaste
             : HotstringDelivery.Type;
-
-    // Single source of truth for Description-as-comment emission, shared by AhkScriptGenerator
-    // (script lines above each entity) and the preview handler (snippet). Each Description line
-    // becomes a "; " comment line; an empty/whitespace Description yields nothing.
-    public static IEnumerable<string> DescriptionCommentLines(string? description)
-    {
-        if (string.IsNullOrWhiteSpace(description))
-            yield break;
-
-        foreach (string line in description.Replace("\r\n", "\n").Replace('\r', '\n').Split('\n'))
-            yield return line.Length == 0 ? ";" : $"; {line}";
-    }
-
-    // ContextValue has already passed validation guaranteeing no double-quote, backtick, or
-    // control characters (see WindowContextRules.AddWindowContextRules) — safe to embed raw here.
-    public static string EmitHotIfOpen(WindowMatchType matchType, string value)
-    {
-        string criterion = matchType switch
-        {
-            WindowMatchType.Executable => $"ahk_exe {value}",
-            WindowMatchType.WindowClass => $"ahk_class {value}",
-            WindowMatchType.TitleContains => value,
-            _ => throw new InvalidOperationException($"Unsupported WindowMatchType: {matchType}"),
-        };
-        return $"#HotIf WinActive(\"{criterion}\")";
-    }
 
     private static string BuildOptions(Hotstring hs)
     {
@@ -109,7 +60,7 @@ internal static class HotstringEmitter
         string endCharArgument = hs.IsEndingCharacterRequired && !hs.OmitEndingCharacter
             ? ", A_EndChar"
             : "";
-        return $"{PasteHelperName}(\"{AhkEscaping.EscapeStringLiteral(hs.Replacement)}\"{endCharArgument})";
+        return $"{RuntimeHelpers.ClipboardPasteName}(\"{AhkEscaping.EscapeStringLiteral(hs.Replacement)}\"{endCharArgument})";
     }
 
     private static string BuildBody(Hotstring hs) =>

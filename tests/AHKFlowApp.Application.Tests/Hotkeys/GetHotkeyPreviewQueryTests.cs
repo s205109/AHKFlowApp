@@ -98,7 +98,7 @@ public sealed class GetHotkeyPreviewQueryTests
 
         // ValidDescription requires non-empty Description at the boundary, but the handler
         // itself has no such guard — this pins that an empty comment block is simply omitted,
-        // matching HotstringEmitter.DescriptionCommentLines' yield-break on blank input.
+        // matching DefinitionWrapping.WithDescription, which adds no comment line for blank input.
         snippet.Should().Be("F8::return");
     }
 

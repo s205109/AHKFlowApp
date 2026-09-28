@@ -212,6 +212,7 @@ internal sealed class ListHotstringsQueryHandler(
                 // is nvarchar(max); string.Length here translates to SQL Server LEN(), which strips
                 // trailing spaces and would undercount them against the resolver's .NET Length. Use
                 // DATALENGTH (byte count) / 2 (UTF-16 chars) instead, which preserves them.
+                // ListHotstringsQueryHandlerTests.ExecuteAsync_DeliveryAroundAutoThreshold_MatchesEmitterResolver fails when the two disagree.
                 h.Kind == HotstringKind.Text
                     && (h.Delivery == HotstringDelivery.ClipboardPaste
                         || (h.Delivery == HotstringDelivery.Auto
