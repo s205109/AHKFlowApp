@@ -98,4 +98,4 @@ Result: `Failed! - Failed: 2, Passed: 1, Skipped: 0, Total: 3`
   both `*` and `O`, which `Compose` never writes together.
 
 - Spec: none — `moderate`, so the item goes straight to Plan.
-- Plan: none — not written yet.
+- Plan: `docs/superpowers/plans/2026-09-28-leaving-raw-keeps-hotstring-options-plan-161.md`
