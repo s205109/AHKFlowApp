@@ -58,8 +58,11 @@ public sealed record RawDecomposition(
 /// </summary>
 public static class RawDefinition
 {
+    // The '0' variants cancel their flag, and a structured field holds each resolved value, so a
+    // switch away from Raw keeps them and must not claim it discarded them. 'C1' is absent on
+    // purpose: it also stops case conforming, and no structured field holds that.
     private static readonly HashSet<string> ExpressibleOptions =
-        new(StringComparer.OrdinalIgnoreCase) { "*", "?", "C", "O" };
+        new(StringComparer.OrdinalIgnoreCase) { "*", "*0", "?", "?0", "C", "C0", "O", "O0" };
 
     /// <summary>
     /// Composes a starting Raw definition from structured fields, matching the server's Script→Raw

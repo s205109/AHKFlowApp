@@ -112,6 +112,25 @@ public sealed class RawDefinitionTests
     }
 
     [Fact]
+    public void Decompose_CancelTokens_AreExpressible()
+    {
+        // A structured field holds each resolved value, so none of these is discarded by a switch
+        // away from Raw, and warning that they are would be false.
+        RawDecomposition result = RawDefinition.Decompose(":*0?0C0O0:btw::x");
+
+        result.UnexpressibleOptions.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Decompose_C1_KeepsWarning()
+    {
+        // C1 also stops case conforming, and no structured field holds that half of it.
+        RawDecomposition result = RawDefinition.Decompose(":C1:btw::x");
+
+        result.UnexpressibleOptions.Should().BeEquivalentTo("C1");
+    }
+
+    [Fact]
     public void Decompose_CleanContinuationSection_ExtractsBodyWithoutLoss()
     {
         RawDecomposition result = RawDefinition.Decompose(":*:col::\n(\nred\ngreen\nblue\n)");
