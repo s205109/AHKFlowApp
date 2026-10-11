@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: UI, API, CLI
 - **Difficulty**: moderate
-- **Stage**: 3-plan
+- **Stage**: 4-execute
 
 ## Summary
 
