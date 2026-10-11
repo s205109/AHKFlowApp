@@ -13,3 +13,6 @@ One line per finished task, written after its deliverable commit.
   of 80. Deferrals: none. One change the plan did not list:
   `ClipboardDeliveryFlowTests.AutoLongText_DownloadedScriptContainsOneHelperAndPasteCall` read
   `:X?:longclip::` from the old default, and now reads `:X:longclip::`.
+- Task 2: `6d071bd`. Tests green: the missing-field API test went red, then green, and the
+  opt-in guard passed both times. The Integration slice passed: Application 365, CLI 25, API 241,
+  Infrastructure 26. Deferrals: none.
