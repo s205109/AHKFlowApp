@@ -87,4 +87,4 @@ removed" and "tests cover the new API" cannot.
   generic over the validated type, and `AddHotkeyActionRules` validates through `IHotkeyDraft`,
   whose members match `HotkeyDefinition` field for field.
 - Spec: `docs/superpowers/specs/2026-10-11-restored-items-pass-current-rules-design-162.md`
-- Plan: none — Plan stage has not run yet.
+- Plan: `docs/superpowers/plans/2026-10-11-restored-items-pass-current-rules-plan-162.md`
