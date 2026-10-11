@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Domain.Enums;
@@ -35,6 +36,50 @@ public sealed class HotstringsEndpointsTests(ApiTestFixture fixture)
 
         HttpResponseMessage get = await client.GetAsync(response.Headers.Location);
         get.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task Post_IsTriggerInsideWordLeftOut_StoresFalseAndEmitsNoQuestionMark()
+    {
+        (HotstringDto stored, string script) = await CreateFromJsonAndPreviewAsync(
+            """{"trigger":"btw","replacement":"by the way"}""");
+
+        stored.IsTriggerInsideWord.Should().BeFalse();
+        script.Should().Contain(":T:btw::by the way");
+        script.Should().NotContain(":?T:btw::");
+    }
+
+    // A guard, not a red test: it passes before and after the change. It proves that opting in
+    // still works once the default is off.
+    [Fact]
+    public async Task Post_IsTriggerInsideWordTrue_StoresTrueAndEmitsQuestionMark()
+    {
+        (HotstringDto stored, string script) = await CreateFromJsonAndPreviewAsync(
+            """{"trigger":"btw","replacement":"by the way","isTriggerInsideWord":true}""");
+
+        stored.IsTriggerInsideWord.Should().BeTrue();
+        script.Should().Contain(":?T:btw::by the way");
+    }
+
+    // Posts a JSON string, not a CreateHotstringDto. Serializing the record writes every property,
+    // so it would send the default value and never reach the missing-field path.
+    private async Task<(HotstringDto Stored, string Script)> CreateFromJsonAndPreviewAsync(string json)
+    {
+        using HttpClient client = CreateAuthed();
+        HttpResponseMessage profileResponse = await client.PostAsJsonAsync(
+            "/api/v1/profiles", new CreateProfileDto("Work", null, null));
+        profileResponse.EnsureSuccessStatusCode();
+        ProfileDto profile = (await profileResponse.Content.ReadFromJsonAsync<ProfileDto>())!;
+
+        using var body = new StringContent(json, Encoding.UTF8, "application/json");
+        HttpResponseMessage created = await client.PostAsync("/api/v1/hotstrings", body);
+        created.StatusCode.Should().Be(HttpStatusCode.Created);
+
+        HttpResponseMessage get = await client.GetAsync(created.Headers.Location);
+        HotstringDto stored = (await get.Content.ReadFromJsonAsync<HotstringDto>())!;
+        ProfileScriptPreviewDto preview = (await client.GetFromJsonAsync<ProfileScriptPreviewDto>(
+            $"/api/v1/downloads/{profile.Id}/preview"))!;
+        return (stored, preview.Script);
     }
 
     [Fact]

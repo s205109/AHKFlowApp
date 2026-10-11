@@ -12,7 +12,7 @@ internal sealed class CreateHotstringDtoExample : IExamplesProvider<CreateHotstr
         ProfileIds: null,
         AppliesToAllProfiles: true,
         IsEndingCharacterRequired: true,
-        IsTriggerInsideWord: true,
+        IsTriggerInsideWord: false,
         Delivery: HotstringDelivery.Auto);
 }
 
@@ -24,7 +24,7 @@ internal sealed class UpdateHotstringDtoExample : IExamplesProvider<UpdateHotstr
         ProfileIds: null,
         AppliesToAllProfiles: true,
         IsEndingCharacterRequired: true,
-        IsTriggerInsideWord: true,
+        IsTriggerInsideWord: false,
         Description: "Common chat abbreviation");
 }
 
@@ -38,7 +38,7 @@ internal sealed class HotstringDtoExample : IExamplesProvider<HotstringDto>
         Replacement: "by the way",
         Description: "Common chat abbreviation",
         IsEndingCharacterRequired: true,
-        IsTriggerInsideWord: true,
+        IsTriggerInsideWord: false,
         CreatedAt: DateTimeOffset.Parse("2026-04-17T09:00:00Z"),
         UpdatedAt: DateTimeOffset.Parse("2026-04-17T09:00:00Z"),
         CategoryIds: []);

@@ -55,7 +55,7 @@ public sealed record HotstringDto(
 /// <param name="ProfileIds">Profiles to attach the new hotstring to. Ignored when <paramref name="AppliesToAllProfiles"/> is true.</param>
 /// <param name="AppliesToAllProfiles">When true, the hotstring applies to every profile and <paramref name="ProfileIds"/> is ignored.</param>
 /// <param name="IsEndingCharacterRequired">Controls AutoHotkey's <c>*</c> option.</param>
-/// <param name="IsTriggerInsideWord">Controls AutoHotkey's <c>?</c> option.</param>
+/// <param name="IsTriggerInsideWord">Controls AutoHotkey's <c>?</c> option. Off by default, as in AutoHotkey: a hotstring fires inside a word only when its definition carries <c>?</c>.</param>
 /// <param name="Description">Optional human-readable note for the hotstring.</param>
 /// <param name="CategoryIds">Categories to assign to the new hotstring.</param>
 /// <param name="Kind">Hotstring kind. <see cref="HotstringKind.Text"/>, <see cref="HotstringKind.DateTime"/>, <see cref="HotstringKind.Macro"/>, and <see cref="HotstringKind.Raw"/> are all supported via the API.</param>
@@ -73,7 +73,7 @@ public sealed record CreateHotstringDto(
     Guid[]? ProfileIds = null,
     bool AppliesToAllProfiles = true,
     bool IsEndingCharacterRequired = true,
-    bool IsTriggerInsideWord = true,
+    bool IsTriggerInsideWord = false,
     string? Description = null,
     Guid[]? CategoryIds = null,
     HotstringKind Kind = HotstringKind.Text,
