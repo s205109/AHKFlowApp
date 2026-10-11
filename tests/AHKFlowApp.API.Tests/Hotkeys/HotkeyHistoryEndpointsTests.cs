@@ -1,9 +1,13 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using AHKFlowApp.Application.DTOs;
+using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Domain.Enums;
+using AHKFlowApp.Infrastructure.Persistence;
 using AHKFlowApp.TestUtilities.Fixtures;
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace AHKFlowApp.API.Tests.Hotkeys;
@@ -108,6 +112,40 @@ public sealed class HotkeyHistoryEndpointsTests(ApiTestFixture fixture)
         after.Should().NotContain(d => d.Id == dto.Id);
         HttpResponseMessage history = await client.GetAsync($"/api/v1/hotkeys/{dto.Id}/history");
         history.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task Revert_SnapshotFailsCurrentRules_Returns400WithTheRuleMessage()
+    {
+        var oid = Guid.NewGuid();
+        using HttpClient client = CreateAuthed(oid);
+        HotkeyDto dto = await CreateAsync(client, "he6 original", "f17");
+
+        // Plant an Edit Snapshot whose Key the canonical registry refuses. That check landed
+        // after Snapshots started being written, so a stored row can hold such a Key.
+        await using (AsyncServiceScope scope = _factory.Services.CreateAsyncScope())
+        {
+            AppDbContext db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            HotkeySnapshot bad = new(
+                Description: "he6 original", Key: "NotAKeyName",
+                Ctrl: true, Alt: false, Shift: false, Win: false,
+                AppliesToAllProfiles: true, ProfileIds: [], CategoryIds: [],
+                CreatedAt: DateTimeOffset.UnixEpoch, UpdatedAt: DateTimeOffset.UnixEpoch,
+                ActionKind: HotkeyActionKind.Run, RunTarget: "notepad.exe",
+                RunTargetKind: RunTargetKind.Application);
+
+            db.EntityHistories.Add(EntityHistory.Create(
+                oid, TrackedEntityType.Hotkey, dto.Id, version: 1, HistoryChangeType.Edit,
+                schemaVersion: 1, JsonSerializer.Serialize(bad), TimeProvider.System));
+            await db.SaveChangesAsync();
+        }
+
+        HttpResponseMessage revert = await client.PostAsync(
+            $"/api/v1/hotkeys/{dto.Id}/history/1/revert", content: null);
+
+        revert.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        string body = await revert.Content.ReadAsStringAsync();
+        body.Should().Contain("Key must be a known key name");
     }
 
     [Fact]

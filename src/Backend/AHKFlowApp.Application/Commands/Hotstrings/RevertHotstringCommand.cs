@@ -4,6 +4,7 @@ using AHKFlowApp.Application.Common;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Application.Mapping;
 using AHKFlowApp.Application.Services;
+using AHKFlowApp.Application.Validation;
 using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Domain.Enums;
 using Ardalis.Result;
@@ -47,6 +48,16 @@ internal sealed class RevertHotstringCommandHandler(
         if (snapshot is null)
             return Result.Error("Snapshot could not be read.");
 
+        // A legacy Kind=Script snapshot is composed into an equivalent Raw definition; other
+        // kinds apply as-is.
+        HotstringDefinition definition = ScriptToRawComposer.ToDefinition(snapshot);
+
+        // The rules a new save must pass (backlog 162). This runs BEFORE the recorder: a refused
+        // Revert must leave no Version behind.
+        ValidationError[] failures = DefinitionRuleCheck.Check(definition);
+        if (failures.Length > 0)
+            return Result.Invalid(failures);
+
         EntityHistory historyEntry = await recorder.RecordHotstringAsync(entity, HistoryChangeType.Edit, ct);
 
         Guid[] liveProfileIds = await db.Profiles
@@ -58,9 +69,7 @@ internal sealed class RevertHotstringCommandHandler(
             .Select(c => c.Id)
             .ToArrayAsync(ct);
 
-        // A legacy Kind=Script snapshot is composed into an equivalent Raw definition; other
-        // kinds apply as-is. Revert bypasses validation, so this is where the conversion runs.
-        entity.Update(ScriptToRawComposer.ToDefinition(snapshot), clock);
+        entity.Update(definition, clock);
 
         db.HotstringProfiles.RemoveRange(entity.Profiles);
         entity.Profiles.Clear();
