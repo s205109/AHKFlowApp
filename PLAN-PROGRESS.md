@@ -21,6 +21,25 @@ One line per finished task, written after its deliverable commit.
   CLI 30, API 241, Infrastructure 26. `dotnet format --verify-no-changes` exited 0. Deferrals:
   none.
 
+## Final whole-branch review
+
+One fresh reviewer read the whole branch: no Critical findings. Two fixes, each proved by a test
+that failed first:
+
+- `6bb4c0a`: the Clone test set the field to `false`, now the default, so it passed even with
+  the copy removed from `Clone()`. It now uses `true`.
+- `f1f07e7`: `--no-inside-word false` asked for the option on in the old CLI and silently got off
+  in the new one. It now gets on, as spec decision 3 promises. Both flags together still exit 2.
+
+Deferred minors, for the human to decide:
+
+- No Fast-slice command test covers a Raw create with `--inside-word`, `--no-inside-word`, or
+  both. Only the CLI integration theory does.
+- `RawHotstringFlowTests.SwitchRawToTextViaDialog_KeepsTheVisibleOptionStates` now passes on the
+  default alone. bUnit rows still cover the decomposition.
+- Two comments are slightly off: `IHotstringsApiClient.cs` says the Raw path "sends no value",
+  and `Hotstrings.razor` names only the older CLI as a source of `true` on Raw rows.
+
 ## Resolved: the plan's own citations
 
 The plan and spec cite the tree before the change. After Task 3, 39 of those citations failed
