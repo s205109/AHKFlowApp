@@ -109,4 +109,60 @@ public sealed class DefinitionRuleCheckTests
             .Select(f => f.ErrorMessage)
             .Should().Contain("DateTimeFormat is required.");
     }
+
+    private static HotkeyDefinition RunDefinition(string key = "n") =>
+        new(
+            Description: "Open Notepad",
+            Key: key,
+            Ctrl: true,
+            Alt: false,
+            Shift: false,
+            Win: false,
+            ActionKind: HotkeyActionKind.Run,
+            AppliesToAllProfiles: true,
+            RunTarget: "notepad.exe",
+            RunTargetKind: RunTargetKind.Application);
+
+    [Fact]
+    public void Check_ValidHotkeyDefinition_ReturnsNoFailures()
+    {
+        DefinitionRuleCheck.Check(RunDefinition()).Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Check_HotkeyKeyNotInRegistry_ReturnsFailure()
+    {
+        DefinitionRuleCheck.Check(RunDefinition(key: "NotAKeyName"))
+            .Select(f => f.ErrorMessage)
+            .Should().Contain(m => m.StartsWith("Key must be a known key name"));
+    }
+
+    [Fact]
+    public void Check_RemapWithNoDestination_ReturnsFailure()
+    {
+        HotkeyDefinition remap = RunDefinition() with
+        {
+            ActionKind = HotkeyActionKind.Remap,
+            RunTarget = null,
+            RunTargetKind = null,
+            RemapDest = null,
+        };
+
+        DefinitionRuleCheck.Check(remap).Should().NotBeEmpty(
+            "the emitter throws on a Remap with no destination, so the rules must catch it first");
+    }
+
+    [Fact]
+    public void Check_HotkeyContextValueWithBacktick_ReturnsFailure()
+    {
+        HotkeyDefinition bad = RunDefinition() with
+        {
+            ContextMatchType = WindowMatchType.TitleContains,
+            ContextValue = "a ` b",
+        };
+
+        DefinitionRuleCheck.Check(bad)
+            .Select(f => f.ErrorMessage)
+            .Should().Contain("ContextValue must not contain backtick characters.");
+    }
 }

@@ -19,10 +19,19 @@ internal static class DefinitionRuleCheck
     // Built once. A FluentValidation validator holds only rule definitions and is safe to reuse,
     // which is why AddValidatorsFromAssembly can register them as singletons.
     private static readonly HotstringDefinitionValidator s_hotstring = new();
+    private static readonly HotkeyDefinitionValidator s_hotkey = new();
 
     /// <summary>Returns one error per failed rule, or an empty array when the definition passes.</summary>
     public static ValidationError[] Check(HotstringDefinition definition) =>
         ToErrors(s_hotstring.Validate(definition));
+
+    /// <summary>
+    /// Returns one error per failed rule, or an empty array when the definition passes. The
+    /// caller passes the definition the legacy converter produced, not the stored Snapshot
+    /// shape: the converted definition is what the Emitter will read.
+    /// </summary>
+    public static ValidationError[] Check(HotkeyDefinition definition) =>
+        ToErrors(s_hotkey.Validate(new HotkeyDefinitionDraft(definition)));
 
     private static ValidationError[] ToErrors(ValidationResult result) =>
         [.. result.Errors.Select(failure => new ValidationError
