@@ -90,7 +90,8 @@ public sealed class HotstringEditModelTests
             ProfileIds = [profileId],
             CategoryIds = [categoryId],
             IsEndingCharacterRequired = true,
-            IsTriggerInsideWord = false
+            // Not the default, so the test fails if Clone() stops copying the field.
+            IsTriggerInsideWord = true
         };
 
         HotstringEditModel clone = model.Clone();
