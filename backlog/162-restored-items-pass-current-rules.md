@@ -5,7 +5,7 @@
 - **Epic**: History
 - **Type**: Bug
 - **Interfaces**: API (Restore and Revert responses), UI (Recycle Bin and history messages)
-- **Difficulty**: to-be-determined
+- **Difficulty**: complex
 - **Stage**: 2-design
 
 ## Summary
@@ -21,21 +21,35 @@ validators to have run. The likely effect is a Profile script that does not load
 As an Owner who restores or reverts a Hotstring or Hotkey, I want the result to pass the same rules
 as a new save, so that one old Snapshot cannot stop my whole Profile script from loading.
 
+Design settled the open question below. A failing Revert is refused; a failing Restore brings the
+item back **Applies to no profile**, so the data returns and no Profile script can break. The
+reasons are in [`docs/adr/0021-a-failed-restore-applies-to-no-profile.md`](../docs/adr/0021-a-failed-restore-applies-to-no-profile.md).
+
 ## Acceptance criteria
 
 Write each criterion as state a reader can observe in the repository, not as a change to it.
 "The handler returns `Result.NotFound()` for a missing id" can be checked. "The old check is
 removed" and "tests cover the new API" cannot.
 
-- [ ] Restore and Revert of a Hotstring check the definition they are about to apply against the
-      same rules as Create and Update. A Snapshot that fails returns `Result.Invalid(errors)` and
-      leaves the Item unchanged.
-- [ ] Restore and Revert of a Hotkey do the same.
+- [ ] Restore and Revert of a Hotstring, and Restore and Revert of a Hotkey, check the definition
+      they are about to apply against the same rules Create and Update apply. For a Hotkey the
+      check reads the definition `LegacyHotkeySnapshotConverter.ToDefinition` produced, not the
+      stored Snapshot shape.
+- [ ] A Revert whose definition fails returns `Result.Invalid(errors)` and leaves the Hotstring or
+      Hotkey unchanged. The errors name the failing rules.
+- [ ] A Restore whose definition fails still creates the Item, with no Profile link and
+      `AppliesToAllProfiles` false, and its response names every failing rule.
+- [ ] A Restore whose definition passes keeps the Snapshot's own Profile scope, filtered to live
+      Profiles as it is today.
+- [ ] The rules checked are the definition's own rules only. The Profile and Category association
+      rules are not among them, so a Restore whose Profiles were all deleted still succeeds.
 - [ ] An integration test in `tests/AHKFlowApp.API.Tests` seeds a Snapshot that a current rule
-      refuses, and shows that Restore and Revert both return 400 with the rule's message.
+      refuses, and shows Revert returning 400 with the rule's message and Restore returning 200
+      with the Item attached to no Profile.
 - [ ] A legacy Script Snapshot and a legacy Hotkey Snapshot still restore, as ADR-0003 and
       ADR-0005 require. The existing legacy restore tests pass without edits.
-- [ ] The Recycle Bin and the history dialog show the 400 message to the Owner.
+- [ ] The Recycle Bin names the failing rules after a Restore that came back applying to no
+      profile, and the history dialog shows the 400 message after a refused Revert.
 
 ## Out of scope
 
@@ -58,9 +72,14 @@ removed" and "tests cover the new API" cannot.
   - The date format is written unescaped: (`src/Backend/AHKFlowApp.Application/Services/HotstringEmitter.cs:77`, "validation lives elsewhere").
   - The Macro emitter trusts its input: (`src/Backend/AHKFlowApp.Application/Services/HotstringEmitter.cs:85`, "enforced elsewhere (Task 3)").
   - A Remap with no destination throws during generation: (`src/Backend/AHKFlowApp.Application/Services/HotkeyEmitter.cs:66`, "Remap requires a RemapDest").
-- Open question for Pickup: should a failing Snapshot be refused, or restored with a warning and
-  left for the Owner to fix? Refusing is simpler, but it can make a deleted Item impossible to get
-  back. Settle this before Difficulty.
+- Open question for Pickup — **settled in Design.** A failing Revert is refused. A failing Restore
+  brings the Item back applying to no profile. ADR-0021 holds the reasoning.
 - Only the Owner writes their own Snapshots, so this is a reliability risk, not an attack path.
-- Spec: none — not picked up yet.
-- Plan: none — not picked up yet.
+- Design found that no `IsEnabled` flag exists on a Hotstring, a Hotkey, or a Profile. Detaching
+  from every Profile is therefore the only lever that makes an Item inert without changing an
+  Emitter.
+- Design also found the rules are already reusable: `HotstringRules` and `WindowContextRules` are
+  generic over the validated type, and `AddHotkeyActionRules` validates through `IHotkeyDraft`,
+  whose members match `HotkeyDefinition` field for field.
+- Spec: `docs/superpowers/specs/2026-10-11-restored-items-pass-current-rules-design-162.md`
+- Plan: none — Plan stage has not run yet.
