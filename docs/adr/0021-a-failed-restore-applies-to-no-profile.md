@@ -34,10 +34,16 @@ needs no change to any Emitter, and no new column.
 ## Considered Options
 
 **Refuse both.** Simpler, and one rule instead of two. Rejected because it makes a deleted item
-unrecoverable for a reason the Owner cannot act on, and because it would break the promise in
-ADR-0005 that a legacy hotkey Snapshot keeps restoring. A pre-registry Snapshot can hold a `Key` the
-canonical registry now refuses, and a legacy `Kind=Script` hotstring Snapshot can compose into a Raw
-definition whose derived trigger breaks the Raw 40-character cap.
+unrecoverable for a reason the Owner cannot act on. That reason stands on its own.
+
+A second consideration points the same way, and it is worth stating precisely rather than
+overstating. ADR-0005 keeps the legacy converter as permanent runtime code and leaves stored
+Snapshots unrewritten. It does not promise that a Restore always succeeds, so refusing one would not
+breach it. What refusing both would do is make the converter pointless for a subset of rows: a
+pre-registry Snapshot can hold a `Key` the canonical registry now refuses, and a legacy
+`Kind=Script` hotstring Snapshot can compose into a Raw definition whose derived trigger breaks the
+Raw 40-character cap. The converter would still run on those rows and the restore would still fail.
+Keeping them recoverable honours what ADR-0005 was for.
 
 **Accept both unchanged, with a warning.** Rejected: the warning arrives in the UI while the broken
 value is already in the next generated script, and a Profile script that does not load is a larger

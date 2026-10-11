@@ -38,7 +38,12 @@ removed" and "tests cover the new API" cannot.
 - [ ] A Revert whose definition fails returns `Result.Invalid(errors)` and leaves the Hotstring or
       Hotkey unchanged. The errors name the failing rules.
 - [ ] A Restore whose definition fails still creates the Item, with no Profile link and
-      `AppliesToAllProfiles` false, and its response names every failing rule.
+      `AppliesToAllProfiles` false, and its response carries a `RestoreWarnings` collection naming
+      every failing rule.
+- [ ] A test walks the whole recovery sequence: a Restore that fails the rules, the generated
+      Profile script with the Item absent, a repair that assigns a Profile, then the generated
+      script with the Item present. It runs for a Snapshot that applied to all Profiles and for one
+      that named Profiles explicitly.
 - [ ] A Restore whose definition passes keeps the Snapshot's own Profile scope, filtered to live
       Profiles as it is today.
 - [ ] The rules checked are the definition's own rules only. The Profile and Category association
