@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: UI
 - **Difficulty**: to-be-determined
-- **Stage**: 1-pickup
+- **Stage**: 2-design
 
 ## Summary
 
