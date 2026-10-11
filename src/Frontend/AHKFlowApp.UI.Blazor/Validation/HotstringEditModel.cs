@@ -27,7 +27,8 @@ public sealed class HotstringEditModel
     public bool AppliesToAllProfiles { get; set; } = true;
     public List<Guid> ProfileIds { get; set; } = [];
     public bool IsEndingCharacterRequired { get; set; } = true;
-    public bool IsTriggerInsideWord { get; set; } = true;
+    // Off by default, as in AutoHotkey: a hotstring fires inside a word only when its definition carries ?.
+    public bool IsTriggerInsideWord { get; set; }
     public List<Guid> CategoryIds { get; set; } = [];
     public HotstringKind Kind { get; set; } = HotstringKind.Text;
     public bool IsCaseSensitive { get; set; }

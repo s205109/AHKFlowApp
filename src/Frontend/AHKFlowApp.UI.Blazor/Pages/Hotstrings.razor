@@ -998,7 +998,7 @@
     private static string OptionGlyphs(HotstringEditModel item)
     {
         // Raw carries its options inside the verbatim definition; the structured flags are left at
-        // defaults (e.g. CLI-created rows default IsTriggerInsideWord=true) and are meaningless here.
+        // defaults (rows created by an older CLI hold IsTriggerInsideWord=true) and are meaningless here.
         if (item.Kind == HotstringKind.Raw) return "";
 
         string glyphs = "";

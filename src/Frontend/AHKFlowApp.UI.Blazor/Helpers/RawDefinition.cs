@@ -16,9 +16,7 @@ public sealed record RawTriggerOptions(
     bool IsCaseSensitive,
     bool OmitEndingCharacter)
 {
-    /// <summary>The AutoHotkey defaults, which a definition with no Option flags means. Note these
-    /// are not the defaults a brand new hotstring gets: HotstringEditModel starts inside-word
-    /// matching at true.</summary>
+    /// <summary>The AutoHotkey defaults, which a definition with no Option flags means.</summary>
     public static RawTriggerOptions Default { get; } = new(true, false, false, false);
 }
 

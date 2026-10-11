@@ -39,6 +39,14 @@ public sealed class HotstringEditModelTests
     }
 
     [Fact]
+    public void New_IsTriggerInsideWord_DefaultsToFalse()
+    {
+        var model = new HotstringEditModel();
+
+        model.IsTriggerInsideWord.Should().BeFalse();
+    }
+
+    [Fact]
     public void ToCreateDto_MapsAllFields()
     {
         var profileId = Guid.NewGuid();

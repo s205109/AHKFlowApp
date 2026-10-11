@@ -66,8 +66,9 @@ public sealed class MacroHotstringFlowTests(StackFixtureD fixture) : IAsyncLifet
         await page.WaitForSelectorAsync("[data-test=\"preview-snippet\"]");
 
         ILocator snippet = page.Locator("[data-test=\"preview-snippet\"]");
-        // ":?:" — the dialog's defaults include trigger-inside-word, emitted as the ? option.
-        await Assertions.Expect(snippet).ToContainTextAsync(":?:htag::");
+        // "::htag::" — a new hotstring starts with Trigger inside words off, so no ? option.
+        await Assertions.Expect(snippet).ToContainTextAsync("::htag::");
+        await Assertions.Expect(snippet).Not.ToContainTextAsync(":?:");
         await Assertions.Expect(snippet).ToContainTextAsync("SendText \"<b></b>\"");
         await Assertions.Expect(snippet).ToContainTextAsync("Send \"{Left 4}\"");
 
