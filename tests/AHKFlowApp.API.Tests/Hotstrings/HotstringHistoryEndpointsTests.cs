@@ -141,6 +141,44 @@ public sealed class HotstringHistoryEndpointsTests(ApiTestFixture fixture)
     }
 
     [Fact]
+    public async Task Restore_SnapshotFailsCurrentRules_Returns200AttachedToNoProfile()
+    {
+        var oid = Guid.NewGuid();
+        var id = Guid.NewGuid();
+        using HttpClient client = CreateAuthed(oid);
+
+        // A Delete tombstone, planted directly: the API would refuse to create this value.
+        await using (AsyncServiceScope scope = _factory.Services.CreateAsyncScope())
+        {
+            AppDbContext db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            HotstringSnapshot bad = new(
+                Trigger: "he7", Replacement: "text", Description: null,
+                AppliesToAllProfiles: true,
+                IsEndingCharacterRequired: true, IsTriggerInsideWord: false,
+                ProfileIds: [], CategoryIds: [],
+                CreatedAt: DateTimeOffset.UnixEpoch, UpdatedAt: DateTimeOffset.UnixEpoch,
+                ContextMatchType: WindowMatchType.TitleContains, ContextValue: "a \" b");
+
+            db.EntityHistories.Add(EntityHistory.Create(
+                oid, TrackedEntityType.Hotstring, id, version: 1, HistoryChangeType.Delete,
+                schemaVersion: 1, JsonSerializer.Serialize(bad), TimeProvider.System));
+            await db.SaveChangesAsync();
+        }
+
+        HttpResponseMessage restore = await client.PostAsync(
+            $"/api/v1/hotstrings/{id}/restore", content: null);
+
+        restore.StatusCode.Should().Be(HttpStatusCode.OK);
+        HotstringDto? restored = await restore.Content.ReadFromJsonAsync<HotstringDto>();
+
+        restored!.Id.Should().Be(id);
+        restored.AppliesToAllProfiles.Should().BeFalse();
+        restored.ProfileIds.Should().BeEmpty();
+        restored.RestoreWarnings.Should()
+            .Contain("ContextValue must not contain double-quote characters.");
+    }
+
+    [Fact]
     public async Task Endpoints_WithoutAuth_Return401()
     {
         using HttpClient anon = _factory.CreateClient();

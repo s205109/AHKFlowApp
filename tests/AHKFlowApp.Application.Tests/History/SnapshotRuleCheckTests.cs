@@ -214,4 +214,135 @@ public sealed class SnapshotRuleCheckTests(HistoryDbFixture fx)
             atRetentionLimit ? EntityHistoryRecorder.MaxVersionsPerItem : 1,
             "a refused Revert changes the timeline in no way");
     }
+
+    [Fact]
+    public async Task RestoreHotstring_SnapshotFailsCurrentRules_CreatesItemAttachedToNoProfile()
+    {
+        var owner = Guid.NewGuid();
+        var id = Guid.NewGuid();
+
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.EntityHistories.Add(EntityHistory.Create(
+                owner, TrackedEntityType.Hotstring, id, version: 1, HistoryChangeType.Delete,
+                schemaVersion: 1, JsonSerializer.Serialize(BadContextSnapshot([], appliesToAll: true)),
+                TimeProvider.System));
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        RestoreHotstringCommandHandler handler = new(
+            db, CurrentUserHelper.For(owner), TimeProvider.System,
+            new EntityHistoryRecorder(db, TimeProvider.System));
+
+        Result<HotstringDto> result = await handler.ExecuteAsync(new RestoreHotstringCommand(id), default);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.AppliesToAllProfiles.Should().BeFalse();
+        result.Value.ProfileIds.Should().BeEmpty();
+        result.Value.RestoreWarnings.Should()
+            .Contain("ContextValue must not contain double-quote characters.");
+
+        Hotstring stored = await db.Hotstrings.AsNoTracking().SingleAsync(h => h.Id == id);
+        stored.AppliesToAllProfiles.Should().BeFalse();
+        (await db.HotstringProfiles.CountAsync(j => j.HotstringId == id)).Should().Be(0);
+    }
+
+    // Review Focus 4: D5 only moves AppliesToAllProfiles when the Snapshot said true. A Snapshot
+    // that named Profiles explicitly takes the other branch and must still end up detached.
+    [Fact]
+    public async Task RestoreHotstring_FailingSnapshotWithExplicitProfiles_DropsTheLinks()
+    {
+        var owner = Guid.NewGuid();
+        var id = Guid.NewGuid();
+        Profile profile = new ProfileBuilder().WithOwner(owner).Build();
+
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Profiles.Add(profile);
+            seed.EntityHistories.Add(EntityHistory.Create(
+                owner, TrackedEntityType.Hotstring, id, version: 1, HistoryChangeType.Delete,
+                schemaVersion: 1,
+                JsonSerializer.Serialize(BadContextSnapshot([profile.Id], appliesToAll: false)),
+                TimeProvider.System));
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        RestoreHotstringCommandHandler handler = new(
+            db, CurrentUserHelper.For(owner), TimeProvider.System,
+            new EntityHistoryRecorder(db, TimeProvider.System));
+
+        Result<HotstringDto> result = await handler.ExecuteAsync(new RestoreHotstringCommand(id), default);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.ProfileIds.Should().BeEmpty();
+        result.Value.RestoreWarnings.Should().NotBeNullOrEmpty();
+        (await db.HotstringProfiles.CountAsync(j => j.HotstringId == id)).Should().Be(0);
+    }
+
+    // Review Focus 3: a Snapshot whose Profiles were all deleted already restores with none.
+    // That is a success with no warnings, and must stay one.
+    [Fact]
+    public async Task RestoreHotstring_ValidSnapshotWhoseProfilesAreGone_SucceedsWithNoWarnings()
+    {
+        var owner = Guid.NewGuid();
+        var id = Guid.NewGuid();
+        var deletedProfileId = Guid.NewGuid();
+
+        HotstringSnapshot good = new(
+            Trigger: "ok1", Replacement: "fine", Description: null,
+            AppliesToAllProfiles: false,
+            IsEndingCharacterRequired: true, IsTriggerInsideWord: false,
+            ProfileIds: [deletedProfileId], CategoryIds: [],
+            CreatedAt: DateTimeOffset.UnixEpoch, UpdatedAt: DateTimeOffset.UnixEpoch);
+
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.EntityHistories.Add(EntityHistory.Create(
+                owner, TrackedEntityType.Hotstring, id, version: 1, HistoryChangeType.Delete,
+                schemaVersion: 1, JsonSerializer.Serialize(good), TimeProvider.System));
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        RestoreHotstringCommandHandler handler = new(
+            db, CurrentUserHelper.For(owner), TimeProvider.System,
+            new EntityHistoryRecorder(db, TimeProvider.System));
+
+        Result<HotstringDto> result = await handler.ExecuteAsync(new RestoreHotstringCommand(id), default);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.ProfileIds.Should().BeEmpty();
+        result.Value.RestoreWarnings.Should().BeNullOrEmpty();
+        result.Value.AppliesToAllProfiles.Should().BeFalse("the snapshot said false and it passed the rules");
+    }
+
+    [Fact]
+    public async Task RestoreHotkey_SnapshotKeyNotInRegistry_CreatesItemAttachedToNoProfile()
+    {
+        var owner = Guid.NewGuid();
+        var id = Guid.NewGuid();
+
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.EntityHistories.Add(EntityHistory.Create(
+                owner, TrackedEntityType.Hotkey, id, version: 1, HistoryChangeType.Delete,
+                schemaVersion: 1, JsonSerializer.Serialize(BadKeySnapshot()), TimeProvider.System));
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        RestoreHotkeyCommandHandler handler = new(
+            db, CurrentUserHelper.For(owner), TimeProvider.System,
+            new EntityHistoryRecorder(db, TimeProvider.System));
+
+        Result<HotkeyDto> result = await handler.ExecuteAsync(new RestoreHotkeyCommand(id), default);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.AppliesToAllProfiles.Should().BeFalse();
+        result.Value.ProfileIds.Should().BeEmpty();
+        result.Value.RestoreWarnings.Should().NotBeNullOrEmpty();
+        (await db.HotkeyProfiles.CountAsync(j => j.HotkeyId == id)).Should().Be(0);
+    }
 }

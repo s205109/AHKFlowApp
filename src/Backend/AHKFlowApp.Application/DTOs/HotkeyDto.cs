@@ -25,6 +25,7 @@ namespace AHKFlowApp.Application.DTOs;
 /// <param name="CreatedAt">UTC creation timestamp.</param>
 /// <param name="UpdatedAt">UTC last-update timestamp.</param>
 /// <param name="CategoryIds">Categories assigned to this hotkey.</param>
+/// <param name="RestoreWarnings">The rules this hotkey's stored snapshot failed, when a Restore brought it back applying to no profile. Null or empty on every other response. See ADR-0021.</param>
 public sealed record HotkeyDto(
     Guid Id,
     Guid[] ProfileIds,
@@ -47,7 +48,8 @@ public sealed record HotkeyDto(
     string? ContextValue,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
-    Guid[] CategoryIds);
+    Guid[] CategoryIds,
+    string[]? RestoreWarnings = null);
 
 /// <summary>Payload to create a new hotkey.</summary>
 /// <param name="Description">Human-readable label.</param>

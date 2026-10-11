@@ -149,6 +149,43 @@ public sealed class HotkeyHistoryEndpointsTests(ApiTestFixture fixture)
     }
 
     [Fact]
+    public async Task Restore_SnapshotFailsCurrentRules_Returns200AttachedToNoProfile()
+    {
+        var oid = Guid.NewGuid();
+        var id = Guid.NewGuid();
+        using HttpClient client = CreateAuthed(oid);
+
+        // A Delete tombstone, planted directly: the API would refuse to create this Key.
+        await using (AsyncServiceScope scope = _factory.Services.CreateAsyncScope())
+        {
+            AppDbContext db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            HotkeySnapshot bad = new(
+                Description: "he7 original", Key: "NotAKeyName",
+                Ctrl: true, Alt: false, Shift: false, Win: false,
+                AppliesToAllProfiles: true, ProfileIds: [], CategoryIds: [],
+                CreatedAt: DateTimeOffset.UnixEpoch, UpdatedAt: DateTimeOffset.UnixEpoch,
+                ActionKind: HotkeyActionKind.Run, RunTarget: "notepad.exe",
+                RunTargetKind: RunTargetKind.Application);
+
+            db.EntityHistories.Add(EntityHistory.Create(
+                oid, TrackedEntityType.Hotkey, id, version: 1, HistoryChangeType.Delete,
+                schemaVersion: 1, JsonSerializer.Serialize(bad), TimeProvider.System));
+            await db.SaveChangesAsync();
+        }
+
+        HttpResponseMessage restore = await client.PostAsync(
+            $"/api/v1/hotkeys/{id}/restore", content: null);
+
+        restore.StatusCode.Should().Be(HttpStatusCode.OK);
+        HotkeyDto? restored = await restore.Content.ReadFromJsonAsync<HotkeyDto>();
+
+        restored!.Id.Should().Be(id);
+        restored.AppliesToAllProfiles.Should().BeFalse();
+        restored.ProfileIds.Should().BeEmpty();
+        restored.RestoreWarnings.Should().NotBeNullOrEmpty();
+    }
+
+    [Fact]
     public async Task Endpoints_WithoutAuth_Return401()
     {
         using HttpClient anon = _factory.CreateClient();

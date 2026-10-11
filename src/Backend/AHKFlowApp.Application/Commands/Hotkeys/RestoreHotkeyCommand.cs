@@ -4,6 +4,7 @@ using AHKFlowApp.Application.Common;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Application.Mapping;
 using AHKFlowApp.Application.Services;
+using AHKFlowApp.Application.Validation;
 using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Domain.Enums;
 using Ardalis.Result;
@@ -55,16 +56,27 @@ internal sealed class RestoreHotkeyCommandHandler(
             .Select(c => c.Id)
             .ToArrayAsync(ct);
 
+        // The converted definition is what the Emitter will read, so it is what the rules judge.
+        HotkeyDefinition definition = LegacyHotkeySnapshotConverter.ToDefinition(snapshot);
+
+        // The rules a new save must pass (backlog 162). A Snapshot that fails them still comes
+        // back, but attached to no Profile, so it reaches no generated script until the Owner
+        // repairs it. ADR-0021 holds the reasoning.
+        string[] warnings = [.. DefinitionRuleCheck.Check(definition).Select(e => e.ErrorMessage)];
+        bool keepProfileScope = warnings.Length == 0;
+        if (!keepProfileScope)
+            definition = definition with { AppliesToAllProfiles = false };
+
         var entity = Hotkey.Restore(
             request.Id,
             ownerOid,
-            LegacyHotkeySnapshotConverter.ToDefinition(snapshot),
+            definition,
             snapshot.CreatedAt,
             clock);
 
         db.Hotkeys.Add(entity);
 
-        if (!snapshot.AppliesToAllProfiles)
+        if (keepProfileScope && !snapshot.AppliesToAllProfiles)
         {
             foreach (Guid pid in liveProfileIds)
                 db.HotkeyProfiles.Add(HotkeyProfile.Create(entity.Id, pid));
@@ -89,6 +101,6 @@ internal sealed class RestoreHotkeyCommandHandler(
                     HotkeyConflictMessages.Duplicate(entity.ContextMatchType, entity.ContextValue));
         }
 
-        return Result.Success(entity.ToDto());
+        return Result.Success(entity.ToDto() with { RestoreWarnings = warnings.Length > 0 ? warnings : null });
     }
 }

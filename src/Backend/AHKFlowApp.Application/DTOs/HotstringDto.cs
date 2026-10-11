@@ -25,6 +25,7 @@ namespace AHKFlowApp.Application.DTOs;
 /// <param name="Delivery">Requested delivery mode for Text hotstrings; non-Text kinds require <see cref="HotstringDelivery.Auto"/>.</param>
 /// <param name="ReplacementIsTruncated">True only for list projections when a long Text replacement was shortened; detail responses always contain the full replacement.</param>
 /// <param name="EffectiveDelivery">Resolved delivery for display; never <see cref="HotstringDelivery.Auto"/>.</param>
+/// <param name="RestoreWarnings">The rules this hotstring's stored snapshot failed, when a Restore brought it back applying to no profile. Null or empty on every other response. See ADR-0021.</param>
 public sealed record HotstringDto(
     Guid Id,
     Guid[] ProfileIds,
@@ -47,7 +48,8 @@ public sealed record HotstringDto(
     string? ContextValue = null,
     HotstringDelivery Delivery = HotstringDelivery.Auto,
     bool ReplacementIsTruncated = false,
-    HotstringDelivery EffectiveDelivery = HotstringDelivery.Type);
+    HotstringDelivery EffectiveDelivery = HotstringDelivery.Type,
+    string[]? RestoreWarnings = null);
 
 /// <summary>Payload to create a new hotstring.</summary>
 /// <param name="Trigger">Abbreviation that activates the replacement.</param>
