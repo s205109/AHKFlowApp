@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: API (Restore and Revert responses), UI (Recycle Bin and history messages)
 - **Difficulty**: to-be-determined
-- **Stage**: 0-intake
+- **Stage**: 1-pickup
 
 ## Summary
 
