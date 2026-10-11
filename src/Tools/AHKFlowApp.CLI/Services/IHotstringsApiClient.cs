@@ -72,7 +72,8 @@ public sealed record CreateHotstringDto(
     Guid[]? ProfileIds = null,
     bool AppliesToAllProfiles = true,
     bool IsEndingCharacterRequired = true,
-    bool IsTriggerInsideWord = true,
+    // The --raw path sends no value, so a Raw create stores this default.
+    bool IsTriggerInsideWord = false,
     HotstringKind Kind = HotstringKind.Text,
     HotstringDelivery Delivery = HotstringDelivery.Auto);
 

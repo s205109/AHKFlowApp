@@ -241,14 +241,14 @@ public sealed class NewHotstringCommandTests
     }
 
     [Fact]
-    public async Task DefaultsTrueForFlags()
+    public async Task Defaults_EndingCharOn_InsideWordOff()
     {
         (IHotstringsApiClient? hs, IProfilesApiClient? profiles) = Fakes();
 
         await Run(["hotstring", "new", "-t", "x", "-r", "y"], hs, profiles);
 
         await hs.Received(1).CreateAsync(
-            Arg.Is<CreateHotstringDto>(d => d.IsEndingCharacterRequired && d.IsTriggerInsideWord),
+            Arg.Is<CreateHotstringDto>(d => d.IsEndingCharacterRequired && !d.IsTriggerInsideWord),
             Arg.Any<CancellationToken>());
     }
 
@@ -260,20 +260,80 @@ public sealed class NewHotstringCommandTests
         await Run(["hotstring", "new", "-t", "x", "-r", "y", "--no-ending-char"], hs, profiles);
 
         await hs.Received(1).CreateAsync(
-            Arg.Is<CreateHotstringDto>(d => !d.IsEndingCharacterRequired && d.IsTriggerInsideWord),
+            Arg.Is<CreateHotstringDto>(d => !d.IsEndingCharacterRequired && !d.IsTriggerInsideWord),
             Arg.Any<CancellationToken>());
     }
 
     [Fact]
-    public async Task NoInsideWord_FlipsFalse()
+    public async Task NoInsideWord_StillAccepted_SendsFalse()
     {
         (IHotstringsApiClient? hs, IProfilesApiClient? profiles) = Fakes();
 
-        await Run(["hotstring", "new", "-t", "x", "-r", "y", "--no-inside-word"], hs, profiles);
+        (int exit, string _, string _) = await Run(
+            ["hotstring", "new", "-t", "x", "-r", "y", "--no-inside-word"], hs, profiles);
 
+        exit.Should().Be(0);
         await hs.Received(1).CreateAsync(
             Arg.Is<CreateHotstringDto>(d => d.IsEndingCharacterRequired && !d.IsTriggerInsideWord),
             Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task InsideWord_SendsTrue()
+    {
+        (IHotstringsApiClient? hs, IProfilesApiClient? profiles) = Fakes();
+
+        (int exit, string _, string _) = await Run(
+            ["hotstring", "new", "-t", "x", "-r", "y", "--inside-word"], hs, profiles);
+
+        exit.Should().Be(0);
+        await hs.Received(1).CreateAsync(
+            Arg.Is<CreateHotstringDto>(d => d.IsEndingCharacterRequired && d.IsTriggerInsideWord),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task InsideWordWithNoInsideWord_OnText_Exit2_NoApiCall()
+    {
+        (IHotstringsApiClient? hs, IProfilesApiClient? profiles) = Fakes();
+
+        (int exit, string _, string? stderr) = await Run(
+            ["hotstring", "new", "-t", "x", "-r", "y", "--inside-word", "--no-inside-word"], hs, profiles);
+
+        exit.Should().Be(2);
+        stderr.Should().Contain("--inside-word cannot be combined with --no-inside-word.");
+        await hs.DidNotReceive().CreateAsync(Arg.Any<CreateHotstringDto>(), Arg.Any<CancellationToken>());
+    }
+
+    // Review Focus 2 and 3: old scripts combine the two --no- flags, and --inside-word must combine
+    // with --no-ending-char without a false conflict.
+    [Theory]
+    [InlineData("--no-ending-char --no-inside-word", false)]
+    [InlineData("--no-ending-char --inside-word", true)]
+    public async Task NoEndingChar_CombinesWithInsideWordFlags(string flags, bool expectedInsideWord)
+    {
+        (IHotstringsApiClient? hs, IProfilesApiClient? profiles) = Fakes();
+
+        (int exit, string _, string _) = await Run(
+            ["hotstring", "new", "-t", "x", "-r", "y", .. flags.Split(' ')], hs, profiles);
+
+        exit.Should().Be(0);
+        await hs.Received(1).CreateAsync(
+            Arg.Is<CreateHotstringDto>(d =>
+                !d.IsEndingCharacterRequired && d.IsTriggerInsideWord == expectedInsideWord),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Help_ListsInsideWord_HidesNoInsideWord()
+    {
+        (IHotstringsApiClient? hs, IProfilesApiClient? profiles) = Fakes();
+
+        (int exit, string? stdout, string _) = await Run(["hotstring", "new", "--help"], hs, profiles);
+
+        exit.Should().Be(0);
+        stdout.Should().Contain("--inside-word").And.Contain("Trigger inside words too (default: off).");
+        stdout.Should().NotContain("--no-inside-word");
     }
 
     [Fact]

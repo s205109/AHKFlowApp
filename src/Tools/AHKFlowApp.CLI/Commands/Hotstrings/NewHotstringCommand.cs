@@ -27,12 +27,15 @@ public static class NewHotstringCommand
         };
         Option<string[]> profile = new("--profile", "-p") { Description = "Profile name (repeatable)." };
         Option<bool> noEndingChar = new("--no-ending-char") { Description = "Don't require an ending character (default: required)." };
-        Option<bool> noInsideWord = new("--no-inside-word") { Description = "Don't trigger inside words (default: triggers inside words)." };
+        // Off by default, as in AutoHotkey: a hotstring fires inside a word only when its definition carries ?.
+        Option<bool> insideWord = new("--inside-word") { Description = "Trigger inside words too (default: off)." };
+        // Scripts written before --inside-word still pass this. It asks for the default, so help hides it.
+        Option<bool> noInsideWord = new("--no-inside-word") { Description = "Don't trigger inside words (default).", Hidden = true };
         Option<bool> json = new("--json") { Description = "Emit JSON instead of human summary." };
 
         Command cmd = new("new", "Create a new hotstring.")
         {
-            trigger, replacement, replacementFile, delivery, raw, profile, noEndingChar, noInsideWord, json,
+            trigger, replacement, replacementFile, delivery, raw, profile, noEndingChar, insideWord, noInsideWord, json,
         };
 
         cmd.SetAction(async (ParseResult parse, CancellationToken ct) =>
@@ -80,6 +83,13 @@ public static class NewHotstringCommand
                 {
                     await stderr.WriteLineAsync(
                         "Specify either --raw, or --trigger with exactly one of --replacement or --replacement-file.");
+                    return 2;
+                }
+
+                // Raw ignores both flags, as it ignores --no-ending-char: the definition carries its own options.
+                if (rawDefinition is null && parse.GetValue(insideWord) && parse.GetValue(noInsideWord))
+                {
+                    await stderr.WriteLineAsync("--inside-word cannot be combined with --no-inside-word.");
                     return 2;
                 }
 
@@ -134,7 +144,7 @@ public static class NewHotstringCommand
                         ProfileIds: resolvedIds,
                         AppliesToAllProfiles: appliesToAll,
                         IsEndingCharacterRequired: !parse.GetValue(noEndingChar),
-                        IsTriggerInsideWord: !parse.GetValue(noInsideWord),
+                        IsTriggerInsideWord: parse.GetValue(insideWord),
                         Delivery: parsedDelivery);
 
                 HotstringDto created = await hotstrings.CreateAsync(input, ct);

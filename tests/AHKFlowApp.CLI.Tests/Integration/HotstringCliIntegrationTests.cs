@@ -85,6 +85,51 @@ public sealed class HotstringCliIntegrationTests(SqlContainerFixture sql) : IAsy
         row!.AppliesToAllProfiles.Should().BeTrue();
     }
 
+    [Theory]
+    [InlineData("", false)]
+    [InlineData("--inside-word", true)]
+    public async Task Create_Text_StoresInsideWordFromFlag(string flag, bool expected)
+    {
+        string[] args = flag.Length == 0
+            ? ["hotstring", "new", "-t", "btw", "-r", "by the way"]
+            : ["hotstring", "new", "-t", "btw", "-r", "by the way", flag];
+
+        (int exit, string _, string stderr) = await RunAsync(args);
+
+        exit.Should().Be(0, "stderr was: {0}", stderr);
+        Hotstring row = await ReadRowAsync("btw");
+        row.IsTriggerInsideWord.Should().Be(expected);
+    }
+
+    // A Raw definition carries its own options. The command ignores both flags for it, alone or
+    // together, stores the structured flag as false, and keeps the definition's own ?.
+    [Theory]
+    [InlineData("--inside-word")]
+    [InlineData("--no-inside-word")]
+    [InlineData("--inside-word --no-inside-word")]
+    public async Task Create_Raw_IgnoresInsideWordFlags_StoresFalseAndKeepsDefinition(string flags)
+    {
+        string[] args = ["hotstring", "new", "--raw", ":?:btw::by the way", .. flags.Split(' ')];
+
+        (int exit, string _, string stderr) = await RunAsync(args);
+
+        exit.Should().Be(0, "stderr was: {0}", stderr);
+        Hotstring row = await ReadRowAsync("btw");
+        row.Kind.Should().Be(AHKFlowApp.Domain.Enums.HotstringKind.Raw);
+        row.IsTriggerInsideWord.Should().BeFalse();
+        row.Replacement.Should().Contain(":?:btw::");
+    }
+
+    private async Task<Hotstring> ReadRowAsync(string trigger)
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+        AppDbContext db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Hotstring? row = await db.Hotstrings
+            .FirstOrDefaultAsync(h => h.OwnerOid == _testUserOid && h.Trigger == trigger);
+        row.Should().NotBeNull();
+        return row!;
+    }
+
     [Fact]
     public async Task List_HappyPath_RendersSeededTriggers()
     {
