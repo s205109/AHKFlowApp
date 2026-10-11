@@ -1,9 +1,12 @@
 using System.Net;
+using System.Text.Json;
+using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Domain.Enums;
 using AHKFlowApp.E2E.Tests.Fixtures;
 using AHKFlowApp.Infrastructure.Persistence;
 using AHKFlowApp.TestUtilities.Builders;
+using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Playwright;
@@ -199,6 +202,71 @@ public sealed class VersionHistoryFlowTests(StackFixtureC fixture) : IAsyncLifet
             .GetByRole(AriaRole.Button, new() { Name = "Delete" })
             .ClickAsync();
         await page.WaitForSelectorAsync("text=Hotkey deleted.");
+    }
+
+    [Fact]
+    public async Task RestoreOfSnapshotFailingCurrentRules_WarnsAndAppliesToNoProfile()
+    {
+        // A tombstone whose window context carries a double quote. The rule forbidding that
+        // landed after Snapshots started being written, so a stored row can hold one. There is
+        // no live row for this id, so the Recycle Bin lists it.
+        Guid id = await SeedFailingHotstringTombstoneAsync("rb-bad");
+
+        await using IBrowserContext ctx = await fixture.Browser.NewContextAsync();
+        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/recycle-bin");
+
+        await page.WaitForSelectorAsync("tbody tr:has-text(\"rb-bad\")");
+        await page.Locator("tbody tr", new() { HasTextString = "rb-bad" })
+            .Locator("button.restore-item")
+            .ClickAsync();
+
+        // The warning names the rule the stored Snapshot failed, instead of the plain
+        // "Hotstring restored." message a clean restore shows.
+        await page.WaitForSelectorAsync("text=applies to no profile");
+        await page.WaitForSelectorAsync("text=ContextValue must not contain double-quote characters.");
+
+        // The row leaves the Recycle Bin, because a live row now exists for that id.
+        await page.WaitForSelectorAsync(
+            "tbody tr:has-text(\"rb-bad\")",
+            new() { State = WaitForSelectorState.Detached });
+
+        Hotstring restored = await FindHotstringWithProfilesAsync(id);
+        restored.AppliesToAllProfiles.Should().BeFalse();
+        restored.Profiles.Should().BeEmpty(
+            "an item applying to no profile is excluded from every generated profile script");
+    }
+
+    private async Task<Guid> SeedFailingHotstringTombstoneAsync(string trigger)
+    {
+        await using AsyncServiceScope scope = fixture.Api.Services.CreateAsyncScope();
+        AppDbContext db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        var id = Guid.NewGuid();
+        HotstringSnapshot bad = new(
+            Trigger: trigger, Replacement: "restored text", Description: null,
+            AppliesToAllProfiles: true,
+            IsEndingCharacterRequired: true, IsTriggerInsideWord: false,
+            ProfileIds: [], CategoryIds: [],
+            CreatedAt: DateTimeOffset.UnixEpoch, UpdatedAt: DateTimeOffset.UnixEpoch,
+            ContextMatchType: WindowMatchType.TitleContains, ContextValue: "a \" b");
+
+        db.EntityHistories.Add(EntityHistory.Create(
+            TestAuthHandler.TestOwnerOid, TrackedEntityType.Hotstring, id,
+            version: 1, HistoryChangeType.Delete,
+            schemaVersion: 1, JsonSerializer.Serialize(bad), TimeProvider.System));
+        await db.SaveChangesAsync();
+
+        return id;
+    }
+
+    private async Task<Hotstring> FindHotstringWithProfilesAsync(Guid id)
+    {
+        await using AsyncServiceScope scope = fixture.Api.Services.CreateAsyncScope();
+        AppDbContext db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        return await db.Hotstrings
+            .Include(h => h.Profiles)
+            .SingleAsync(h => h.Id == id);
     }
 
     private async Task<Guid> FindHotstringIdAsync(string trigger)

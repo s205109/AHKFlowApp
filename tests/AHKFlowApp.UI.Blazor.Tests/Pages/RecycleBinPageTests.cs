@@ -17,6 +17,7 @@ public sealed class RecycleBinPageTests : BunitContext, IAsyncLifetime
 {
     private readonly IHotstringsApiClient _hotstrings = Substitute.For<IHotstringsApiClient>();
     private readonly IHotkeysApiClient _hotkeys = Substitute.For<IHotkeysApiClient>();
+    private readonly ISnackbar _snackbar = Substitute.For<ISnackbar>();
 
     private static readonly Task<AuthenticationState> AuthenticatedState =
         Task.FromResult(new AuthenticationState(
@@ -27,6 +28,8 @@ public sealed class RecycleBinPageTests : BunitContext, IAsyncLifetime
         Services.AddSingleton(_hotstrings);
         Services.AddSingleton(_hotkeys);
         Services.AddMudServices();
+        // Registered after AddMudServices so this substitute wins over MudBlazor's own snackbar.
+        Services.AddSingleton(_snackbar);
         JSInterop.Mode = JSRuntimeMode.Loose;
     }
 
@@ -169,5 +172,44 @@ public sealed class RecycleBinPageTests : BunitContext, IAsyncLifetime
             _hotkeys.Received(1).RestoreAsync(deleted.Id, Arg.Any<CancellationToken>()));
         cut.WaitForAssertion(() =>
             _hotkeys.Received(2).ListDeletedAsync(Arg.Any<CancellationToken>()));
+    }
+
+    [Fact]
+    public void Restore_WhenResponseCarriesWarnings_ShowsWarningSnackbarNamingTheRule()
+    {
+        DeletedHotstringDto deleted = new(
+            Guid.NewGuid(), "bad1", "text", null, DateTimeOffset.UtcNow);
+        StubDeleted([deleted], []);
+
+        // A Restore that succeeded but came back applying to no profile.
+        HotstringDto restored = new(
+            Id: deleted.Id,
+            ProfileIds: [],
+            AppliesToAllProfiles: false,
+            Trigger: "bad1",
+            Replacement: "text",
+            Description: null,
+            IsEndingCharacterRequired: true,
+            IsTriggerInsideWord: false,
+            CreatedAt: DateTimeOffset.UtcNow,
+            UpdatedAt: DateTimeOffset.UtcNow,
+            CategoryIds: [],
+            RestoreWarnings: ["ContextValue must not contain double-quote characters."]);
+        _hotstrings.RestoreAsync(deleted.Id, Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HotstringDto>.Ok(restored));
+
+        IRenderedComponent<RecycleBin> cut = RenderPage();
+        cut.WaitForAssertion(() => cut.Find("button.restore-item"));
+        cut.Find("button.restore-item").Click();
+
+        cut.WaitForAssertion(() => _snackbar.Received(1).Add(
+            Arg.Is<string>(m => m.Contains("applies to no profile")
+                             && m.Contains("ContextValue must not contain double-quote characters.")),
+            Severity.Warning,
+            Arg.Any<Action<SnackbarOptions>>(), Arg.Any<string>()));
+
+        _snackbar.DidNotReceive().Add(
+            "Hotstring restored.", Severity.Success,
+            Arg.Any<Action<SnackbarOptions>>(), Arg.Any<string>());
     }
 }
