@@ -71,4 +71,4 @@ Design rewrote criteria 1 to 3 and added criteria 4 to 6. The spec says why.
 - This changes app-facing behavior for every new hotstring, so it is never `trivial`.
 - Check the seed catalog and any fixture that relies on the current default before changing it.
 - Spec: `docs/superpowers/specs/2026-10-11-new-hotstring-inside-word-default-design-163.md`
-- Plan: none — Design is still open; Plan writes it.
+- Plan: `docs/superpowers/plans/2026-10-11-new-hotstring-inside-word-default-plan-163.md`
