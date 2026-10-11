@@ -278,6 +278,23 @@ public sealed class NewHotstringCommandTests
             Arg.Any<CancellationToken>());
     }
 
+    // An old script that passes an explicit false asked for the option on. It keeps getting it.
+    [Theory]
+    [InlineData("--no-inside-word", "false")]
+    [InlineData("--no-inside-word:false")]
+    public async Task NoInsideWordExplicitFalse_SendsTrue_AsBefore(params string[] flags)
+    {
+        (IHotstringsApiClient? hs, IProfilesApiClient? profiles) = Fakes();
+
+        (int exit, string _, string _) = await Run(
+            ["hotstring", "new", "-t", "x", "-r", "y", .. flags], hs, profiles);
+
+        exit.Should().Be(0);
+        await hs.Received(1).CreateAsync(
+            Arg.Is<CreateHotstringDto>(d => d.IsTriggerInsideWord),
+            Arg.Any<CancellationToken>());
+    }
+
     [Fact]
     public async Task InsideWord_SendsTrue()
     {
@@ -292,13 +309,17 @@ public sealed class NewHotstringCommandTests
             Arg.Any<CancellationToken>());
     }
 
-    [Fact]
-    public async Task InsideWordWithNoInsideWord_OnText_Exit2_NoApiCall()
+    // Both flags together are an error whatever values they carry.
+    [Theory]
+    [InlineData("--inside-word", "--no-inside-word")]
+    [InlineData("--inside-word", "--no-inside-word", "false")]
+    [InlineData("--inside-word", "false", "--no-inside-word")]
+    public async Task InsideWordWithNoInsideWord_OnText_Exit2_NoApiCall(params string[] flags)
     {
         (IHotstringsApiClient? hs, IProfilesApiClient? profiles) = Fakes();
 
         (int exit, string _, string? stderr) = await Run(
-            ["hotstring", "new", "-t", "x", "-r", "y", "--inside-word", "--no-inside-word"], hs, profiles);
+            ["hotstring", "new", "-t", "x", "-r", "y", .. flags], hs, profiles);
 
         exit.Should().Be(2);
         stderr.Should().Contain("--inside-word cannot be combined with --no-inside-word.");

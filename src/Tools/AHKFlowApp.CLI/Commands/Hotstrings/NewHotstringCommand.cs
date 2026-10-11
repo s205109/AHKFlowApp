@@ -87,7 +87,9 @@ public static class NewHotstringCommand
                 }
 
                 // Raw ignores both flags, as it ignores --no-ending-char: the definition carries its own options.
-                if (rawDefinition is null && parse.GetValue(insideWord) && parse.GetValue(noInsideWord))
+                bool insideWordGiven = parse.GetResult(insideWord) is { Implicit: false };
+                bool noInsideWordGiven = parse.GetResult(noInsideWord) is { Implicit: false };
+                if (rawDefinition is null && insideWordGiven && noInsideWordGiven)
                 {
                     await stderr.WriteLineAsync("--inside-word cannot be combined with --no-inside-word.");
                     return 2;
@@ -144,7 +146,8 @@ public static class NewHotstringCommand
                         ProfileIds: resolvedIds,
                         AppliesToAllProfiles: appliesToAll,
                         IsEndingCharacterRequired: !parse.GetValue(noEndingChar),
-                        IsTriggerInsideWord: parse.GetValue(insideWord),
+                        // An old script's "--no-inside-word false" asked for the option on, so it still gets it.
+                        IsTriggerInsideWord: parse.GetValue(insideWord) || (noInsideWordGiven && !parse.GetValue(noInsideWord)),
                         Delivery: parsedDelivery);
 
                 HotstringDto created = await hotstrings.CreateAsync(input, ct);
