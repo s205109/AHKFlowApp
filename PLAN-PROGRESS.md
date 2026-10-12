@@ -75,6 +75,20 @@ Raw guards:
 
 Spec decision 7 kept the current behavior, so this needs its own item.
 
+## Verify
+
+The five-step Gate passed. The first run failed `CitationFreshness.Tests.ps1` on 4 stale
+citations: Task 1 moved three lines that item 161 cites, and item 163 cited the old default.
+`6584e7e` fixed both, and the rerun of steps 3 and 5 passed all 76 suites. The Coverage step ran
+all 8 test projects, E2E 80 of 80, with every threshold met.
+
+## Document
+
+All six acceptance boxes are ticked. The criterion 5 box says how the two CLI test layers split
+the work. Docs: Task 3 updated `docs/cli/hotstrings.md`, `CHANGELOG.md`, and `changelog.json`.
+`CONTEXT.md` and `docs/development/ahk-v2-syntax.md` name the option but not its default, so
+nothing else needs a change.
+
 ## Resolved: the plan's own citations
 
 The plan and spec cite the tree before the change. After Task 3, 39 of those citations failed

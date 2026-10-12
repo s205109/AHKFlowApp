@@ -26,25 +26,28 @@ removed" and "tests cover the new API" cannot.
 
 Design rewrote criteria 1 to 3 and added criteria 4 to 6. The spec says why.
 
-- [ ] A dialog opened to create a new hotstring shows **Trigger inside words** unticked. A
+- [x] A dialog opened to create a new hotstring shows **Trigger inside words** unticked. A
       dialog opened for a saved hotstring that has the option on still shows it ticked. bUnit
       tests assert both. Browser flows assert the unticked mobile dialog, and a desktop row
       saved without `?`.
-- [ ] A unit test in `tests/AHKFlowApp.UI.Blazor.Tests` asserts that
+- [x] A unit test in `tests/AHKFlowApp.UI.Blazor.Tests` asserts that
       `HotstringEditModel.IsTriggerInsideWord` defaults to `false`.
-- [ ] A comment says the default matches AutoHotkey, at the one default each interface owns:
+- [x] A comment says the default matches AutoHotkey, at the one default each interface owns:
       `HotstringEditModel` in the web UI, `CreateHotstringDto` in the API, and the
       `--inside-word` option in the CLI.
-- [ ] A create request to the API whose JSON leaves out `IsTriggerInsideWord` stores `false`.
+- [x] A create request to the API whose JSON leaves out `IsTriggerInsideWord` stores `false`.
       An API integration test sends that JSON and reads the hotstring back. It also asserts
       that the generated script has no `?` for it, and has `?` for a hotstring created with
       `true`.
-- [ ] `ahkflow hotstring new` stores `false` by default and `true` with `--inside-word`. It
+- [x] `ahkflow hotstring new` stores `false` by default and `true` with `--inside-word`. It
       still accepts `--no-inside-word` and leaves it out of help. A Text create with both flags
       exits with code 2. A Raw create ignores either flag and both together, stores `false`,
       and keeps the definition's own `?`. CLI command tests and CLI integration tests assert
       each of these.
-- [ ] `CHANGELOG.md` has a line under `### Changed` that describes the new default.
+      Ticked as the spec's CLI test section splits it. Command tests assert what the command
+      sends, the help, and the exit code 2. Integration tests assert what is stored. Both
+      layers assert the Raw cases.
+- [x] `CHANGELOG.md` has a line under `### Changed` that describes the new default.
 
 ## Out of scope
 
