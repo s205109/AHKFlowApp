@@ -86,15 +86,12 @@ public sealed class HotstringCliIntegrationTests(SqlContainerFixture sql) : IAsy
     }
 
     [Theory]
-    [InlineData("", false)]
-    [InlineData("--inside-word", true)]
-    public async Task Create_Text_StoresInsideWordFromFlag(string flag, bool expected)
+    [InlineData(false)]
+    [InlineData(true, "--inside-word")]
+    public async Task Create_Text_StoresInsideWordFromFlag(bool expected, params string[] flags)
     {
-        string[] args = flag.Length == 0
-            ? ["hotstring", "new", "-t", "btw", "-r", "by the way"]
-            : ["hotstring", "new", "-t", "btw", "-r", "by the way", flag];
-
-        (int exit, string _, string stderr) = await RunAsync(args);
+        (int exit, string _, string stderr) = await RunAsync(
+            ["hotstring", "new", "-t", "btw", "-r", "by the way", .. flags]);
 
         exit.Should().Be(0, "stderr was: {0}", stderr);
         Hotstring row = await ReadRowAsync("btw");
@@ -106,12 +103,11 @@ public sealed class HotstringCliIntegrationTests(SqlContainerFixture sql) : IAsy
     [Theory]
     [InlineData("--inside-word")]
     [InlineData("--no-inside-word")]
-    [InlineData("--inside-word --no-inside-word")]
-    public async Task Create_Raw_IgnoresInsideWordFlags_StoresFalseAndKeepsDefinition(string flags)
+    [InlineData("--inside-word", "--no-inside-word")]
+    public async Task Create_Raw_IgnoresInsideWordFlags_StoresFalseAndKeepsDefinition(params string[] flags)
     {
-        string[] args = ["hotstring", "new", "--raw", ":?:btw::by the way", .. flags.Split(' ')];
-
-        (int exit, string _, string stderr) = await RunAsync(args);
+        (int exit, string _, string stderr) = await RunAsync(
+            ["hotstring", "new", "--raw", ":?:btw::by the way", .. flags]);
 
         exit.Should().Be(0, "stderr was: {0}", stderr);
         Hotstring row = await ReadRowAsync("btw");

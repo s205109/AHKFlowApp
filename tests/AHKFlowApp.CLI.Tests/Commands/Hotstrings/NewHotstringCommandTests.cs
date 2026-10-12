@@ -347,17 +347,16 @@ public sealed class NewHotstringCommandTests
         await hs.DidNotReceive().CreateAsync(Arg.Any<CreateHotstringDto>(), Arg.Any<CancellationToken>());
     }
 
-    // Review Focus 2 and 3: old scripts combine the two --no- flags, and --inside-word must combine
-    // with --no-ending-char without a false conflict.
+    // Old scripts combine the two --no- flags. --inside-word must not conflict with --no-ending-char.
     [Theory]
-    [InlineData("--no-ending-char --no-inside-word", false)]
-    [InlineData("--no-ending-char --inside-word", true)]
-    public async Task NoEndingChar_CombinesWithInsideWordFlags(string flags, bool expectedInsideWord)
+    [InlineData("--no-inside-word", false)]
+    [InlineData("--inside-word", true)]
+    public async Task NoEndingChar_CombinesWithInsideWordFlags(string insideWordFlag, bool expectedInsideWord)
     {
         (IHotstringsApiClient? hs, IProfilesApiClient? profiles) = Fakes();
 
         (int exit, string _, string _) = await Run(
-            ["hotstring", "new", "-t", "x", "-r", "y", .. flags.Split(' ')], hs, profiles);
+            ["hotstring", "new", "-t", "x", "-r", "y", "--no-ending-char", insideWordFlag], hs, profiles);
 
         exit.Should().Be(0);
         await hs.Received(1).CreateAsync(

@@ -68,8 +68,7 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
         provider.WaitForAssertion(() => IsInsideWordsChecked(provider).Should().BeFalse());
     }
 
-    // A guard, not a red test: it passes before and after the change. It fails if a fix hardcodes
-    // the checkbox to unticked instead of changing the model default.
+    // Fails if the checkbox is hardcoded to unticked instead of bound to the model.
     [Fact]
     public async Task EditMode_SavedWithTriggerInsideWords_StartsTicked()
     {

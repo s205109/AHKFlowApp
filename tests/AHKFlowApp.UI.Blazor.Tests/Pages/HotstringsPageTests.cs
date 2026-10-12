@@ -1105,7 +1105,7 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
     [Fact]
     public Task Page_RawRow_SuppressesOptionGlyphsAndTooltipFlags()
     {
-        // A Raw row created by an older CLI holds IsTriggerInsideWord=true, but its options live in the
+        // A Raw row can hold IsTriggerInsideWord=true from whatever client sent it, but its options live in the
         // verbatim text — the structured flag glyphs ("?") and tooltip flag phrases must not show.
         var dto = new HotstringDto(Guid.NewGuid(), [], true, "~ver", ":*:~ver::\n{\nMsgBox A_AhkVersion\n}",
             null, true, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null, HotstringKind.Raw);

@@ -49,8 +49,7 @@ public sealed class HotstringsEndpointsTests(ApiTestFixture fixture)
         script.Should().NotContain(":?T:btw::");
     }
 
-    // A guard, not a red test: it passes before and after the change. It proves that opting in
-    // still works once the default is off.
+    // Proves that opting in still works now that the default is off.
     [Fact]
     public async Task Post_IsTriggerInsideWordTrue_StoresTrueAndEmitsQuestionMark()
     {
