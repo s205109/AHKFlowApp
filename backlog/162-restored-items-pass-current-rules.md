@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: API (Restore and Revert responses), UI (Recycle Bin and history messages)
 - **Difficulty**: complex
-- **Stage**: 7-document
+- **Stage**: 8-review
 
 ## Summary
 
