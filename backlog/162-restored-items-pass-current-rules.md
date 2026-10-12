@@ -109,7 +109,7 @@ follow-up 1 below, and both pinning tests turn red when it lands.
   cases: `tests/AHKFlowApp.Application.Tests/History/SnapshotRuleCheckTests.cs`
 - The whole recovery sequence, both entities and both scope modes:
   `tests/AHKFlowApp.Application.Tests/History/InertRestoreRecoveryTests.cs`
-- The definition validators refusing exactly what the Update validators refuse, 20 cases across
+- The definition validators refusing exactly what the Update validators refuse, 21 cases across
   both entities: `tests/AHKFlowApp.Application.Tests/Validation/DefinitionRuleParityTests.cs`.
   Criterion 1 names Create and Update, and these cases anchor on Update alone. That covers both,
   because each Create validator holds the same rule list as its Update twin.
@@ -165,14 +165,14 @@ Walking the same route through the edit dialog in a browser is follow-up work.
 
 ### Follow-up work this item leaves behind
 
-A review round raised three things this item does not do. None is filed yet, because the backlog
+Review rounds raised five things this item does not do. None is filed yet, because the backlog
 numbering script picks the next number and a worktree session cannot run it.
 
-1. **Make both brace counters aware of strings and comments.** This is the unticked criterion
-   above. The counters live in `HotstringRules.AddRawKindRules` and `HotkeyRules.BracesBalanced`,
-   and they already refuse a literal brace at Create, so the work changes what Create and Update
-   accept for every Raw row. The two pinning tests in `DefinitionRuleCheckTests` turn red when it
-   lands, which is how that item will know it is done.
+1. **Make both brace counters aware of strings and comments.** This is the cost accepted under
+   criterion 8 above. The counters live in `HotstringRules.AddRawKindRules` and
+   `HotkeyRules.BracesBalanced`, and they already refuse a literal brace at Create, so the work
+   changes what Create and Update accept for every Raw row. The two pinning tests in
+   `DefinitionRuleCheckTests` turn red when it lands, which is how that item will know it is done.
 2. **Walk the repair through the browser.** The browser test stops at the Recycle Bin warning. The
    repair route — open the item, fix the value, choose profiles, save, see it in the script — is
    proven at the Application level only.
@@ -180,3 +180,15 @@ numbering script picks the next number and a worktree session cannot run it.
    response. Nothing persisted records which rules failed, so a page reload loses the list. The
    fix is to recompute the current failures when the Owner opens the item, rather than to store
    messages that can go stale. Consequence 3 of ADR-0021 is the same gap seen from the data side.
+4. **Compose the definition rules in one place.** `HotstringDefinitionValidator`,
+   `CreateHotstringCommandValidator` and `UpdateHotstringCommandValidator` share every rule
+   implementation but build the list three times, and the hotkey trio does the same. One shared
+   composition method, with the profile-association rules added separately, would make the three
+   lists impossible to drift apart. `DefinitionRuleParityTests` guards the definition side against
+   Update only, so a rule added to Create alone stays invisible. That is the gap this follow-up
+   closes, and it is why the parity suite does not try to cover Create as well.
+5. **Name the restored row in the Recycle Bin warning.** The warning says which entity type came
+   back applying to no profile, not which row. An Owner who restores two rows that fail the same
+   rule reads two warnings that look alike, and both rows have already left the Recycle Bin. The
+   fix puts `row.Name` in the message, and its test restores two rows rather than one. That
+   message is app-facing wording, which is never a trivial change in this repository.
