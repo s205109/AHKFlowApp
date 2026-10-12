@@ -59,7 +59,7 @@ Design rewrote criteria 1 to 3 and added criteria 4 to 6. The spec says why.
   a Raw definition with no `?` convert to **Trigger inside words off**, which is correct. That
   leaves two ways to reach a Text hotstring disagreeing with each other: created fresh gives on,
   converted from Raw gives off.
-- The default lives here: (`src/Frontend/AHKFlowApp.UI.Blazor/Validation/HotstringEditModel.cs:30`, "public bool IsTriggerInsideWord { get; set; } = true;").
+- The default lives here: (`src/Frontend/AHKFlowApp.UI.Blazor/Validation/HotstringEditModel.cs:30`, "public bool IsTriggerInsideWord { get; set; } = true;"). <!-- citation-check:ignore — records the pre-fix tree. This item's fix removed the true default, so line 30 now holds the comment above the property. -->
   It carries no comment saying why.
 - The domain record sets no default for the field at all:
   (`src/Backend/AHKFlowApp.Domain/Entities/HotstringDefinition.cs:22`, "bool IsTriggerInsideWord,").
