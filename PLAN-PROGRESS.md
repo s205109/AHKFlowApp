@@ -63,10 +63,17 @@ Skipped on purpose:
 - Shared helpers for the checkbox read, the profile preview, and the older inline row reads
   would touch code outside this branch.
 
-Follow-up for the human to decide: both create and update handlers store the client's option
-flags for Raw rows, though ADR 0002 says those columns are ignored. A server-side fix would
-remove the Raw guards in the UI. Spec decision 7 kept the current behavior, so it needs its own
-item.
+Follow-up for the human to decide, as a separate proposal: both create and update handlers store
+the client's option flags for Raw rows, though ADR 0002 says those columns are ignored. The
+server could normalize those flags on every Raw write. That alone would not let the UI drop its
+Raw guards:
+
+- Rows saved before the fix still hold the old flags. Without a data fix for them, removing the
+  Raw check in `OptionGlyphs` would show misleading glyphs.
+- The Raw branch in `OptionsTooltip` also adds the script warning. It must stay, whatever the
+  flags hold.
+
+Spec decision 7 kept the current behavior, so this needs its own item.
 
 ## Resolved: the plan's own citations
 
