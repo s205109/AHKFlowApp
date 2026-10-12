@@ -1,6 +1,7 @@
 using System.Reflection;
 using AHKFlowApp.API.Controllers;
 using FluentAssertions;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Routing;
 using Xunit;
@@ -28,5 +29,24 @@ public sealed class ProducesResponseTypeCoverageTests
         offenders.Should().BeEmpty(
             "every controller action must carry an explicit method-level [ProducesResponseType] " +
             "with a 2xx status code; Swashbuckle's inferred 200 is not a substitute");
+    }
+
+    // Backlog 162 gave both Revert actions a new outcome: a stored Snapshot that the current
+    // rules refuse returns Result.Invalid, which maps to 400. A generated client reading
+    // /openapi has no 400 branch unless the action declares one, so a refused Revert would
+    // reach it as an unhandled status.
+    [Theory]
+    [InlineData(typeof(HotstringsController))]
+    [InlineData(typeof(HotkeysController))]
+    public void RevertAction_DeclaresBadRequest(Type controller)
+    {
+        MethodInfo revert = controller
+            .GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
+            .Single(m => m.Name == "Revert");
+
+        revert.GetCustomAttributes<ProducesResponseTypeAttribute>()
+            .Select(attr => attr.StatusCode)
+            .Should().Contain(StatusCodes.Status400BadRequest,
+                "a Revert refused by the definition rule check returns 400");
     }
 }

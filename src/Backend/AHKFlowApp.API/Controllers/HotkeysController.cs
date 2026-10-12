@@ -151,6 +151,7 @@ public sealed class HotkeysController(
     /// <summary>Revert a hotkey to a saved version. Returns the updated representation.</summary>
     [HttpPost("{id:guid}/history/{version:int}/revert")]
     [ProducesResponseType(typeof(HotkeyDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
     public async Task<ActionResult<HotkeyDto>> Revert(Guid id, int version, CancellationToken ct) =>

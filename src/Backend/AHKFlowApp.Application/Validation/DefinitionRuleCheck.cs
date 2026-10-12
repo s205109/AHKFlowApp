@@ -16,8 +16,12 @@ namespace AHKFlowApp.Application.Validation;
 /// </summary>
 internal static class DefinitionRuleCheck
 {
-    // Built once. A FluentValidation validator holds only rule definitions and is safe to reuse,
-    // which is why AddValidatorsFromAssembly can register them as singletons.
+    // Built once. A FluentValidation validator holds only rule definitions after construction —
+    // the expression selectors are compiled in the constructor and the rule bodies read static
+    // readonly state — so reusing one instance across concurrent calls is safe. Per-call state
+    // lives on ValidationContext, not on the validator. Neither validator is registered in DI:
+    // DependencyInjection.cs calls AddValidatorsFromAssembly without includeInternalTypes, and
+    // both of these are internal, so these two fields are the only instances.
     private static readonly HotstringDefinitionValidator s_hotstring = new();
     private static readonly HotkeyDefinitionValidator s_hotkey = new();
 

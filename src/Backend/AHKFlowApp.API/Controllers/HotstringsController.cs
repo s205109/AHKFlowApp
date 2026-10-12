@@ -141,6 +141,7 @@ public sealed class HotstringsController(
     /// <summary>Revert a hotstring to a saved version. Returns the updated representation.</summary>
     [HttpPost("{id:guid}/history/{version:int}/revert")]
     [ProducesResponseType(typeof(HotstringDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
     public async Task<ActionResult<HotstringDto>> Revert(Guid id, int version, CancellationToken ct) =>

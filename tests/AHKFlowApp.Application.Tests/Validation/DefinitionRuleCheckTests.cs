@@ -1,3 +1,5 @@
+using AHKFlowApp.Application.DTOs;
+using AHKFlowApp.Application.Services;
 using AHKFlowApp.Application.Validation;
 using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Domain.Enums;
@@ -108,6 +110,31 @@ public sealed class DefinitionRuleCheckTests
         DefinitionRuleCheck.Check(dt)
             .Select(f => f.ErrorMessage)
             .Should().Contain("DateTimeFormat is required.");
+    }
+
+    // A legacy Kind=Script body holding AHK's own literal-brace idiom. The brace counter in
+    // AddRawKindRules is deliberately string-unaware (decision D12), so it reads this as
+    // unbalanced even though AHK accepts it. This test pins which way that goes for a stored
+    // Snapshot, because the answer decides whether an Owner can repair the item afterwards.
+    // ADR-0021 records the consequence.
+    [Fact]
+    public void Check_LegacyScriptBodyWithLiteralBrace_PinsTheNaiveBraceCounter()
+    {
+#pragma warning disable CS0618 // Script is read only from stored legacy snapshots, never new payloads.
+        HotstringSnapshot legacy = new(
+            Trigger: "lb", Replacement: "Send \"{{}\"", Description: null,
+            AppliesToAllProfiles: true,
+            IsEndingCharacterRequired: false, IsTriggerInsideWord: false,
+            ProfileIds: [], CategoryIds: [],
+            CreatedAt: DateTimeOffset.UnixEpoch, UpdatedAt: DateTimeOffset.UnixEpoch,
+            Kind: HotstringKind.Script);
+#pragma warning restore CS0618
+
+        ValidationError[] failures = DefinitionRuleCheck.Check(
+            ScriptToRawComposer.ToDefinition(legacy));
+
+        failures.Select(f => f.ErrorMessage).Should()
+            .Contain("Raw definition must have balanced braces.");
     }
 
     private static HotkeyDefinition RunDefinition(string key = "n") =>

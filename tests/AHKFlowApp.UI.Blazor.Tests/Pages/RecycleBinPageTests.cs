@@ -212,4 +212,131 @@ public sealed class RecycleBinPageTests : BunitContext, IAsyncLifetime
             "Hotstring restored.", Severity.Success,
             Arg.Any<Action<SnackbarOptions>>(), Arg.Any<string>());
     }
+
+    // The warning is the only place an Owner ever sees why the item came back inert: nothing
+    // persisted records it, so a toast that dismisses itself after five seconds loses the one
+    // copy. It stays up until they close it.
+    [Fact]
+    public void Restore_WhenResponseCarriesWarnings_KeepsTheWarningUpUntilDismissed()
+    {
+        DeletedHotstringDto deleted = new(
+            Guid.NewGuid(), "bad2", "text", null, DateTimeOffset.UtcNow);
+        StubDeleted([deleted], []);
+        _hotstrings.RestoreAsync(deleted.Id, Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HotstringDto>.Ok(RestoredWithWarnings(deleted.Id, "bad2")));
+
+        IRenderedComponent<RecycleBin> cut = RenderPage();
+        cut.WaitForAssertion(() => cut.Find("button.restore-item"));
+        cut.Find("button.restore-item").Click();
+
+        cut.WaitForAssertion(() => _snackbar.Received(1).Add(
+            Arg.Any<string>(), Severity.Warning,
+            Arg.Is<Action<SnackbarOptions>>(configure => RequiresInteraction(configure)),
+            Arg.Any<string>()));
+    }
+
+    // Two failed rules in one message. Every rule message already ends in a period, so joining
+    // them with "; " would read "...whitespace.; ContextValue...".
+    [Fact]
+    public void Restore_WithTwoWarnings_JoinsThemWithoutAStraySemicolon()
+    {
+        DeletedHotstringDto deleted = new(
+            Guid.NewGuid(), "bad3", "text", null, DateTimeOffset.UtcNow);
+        StubDeleted([deleted], []);
+        _hotstrings.RestoreAsync(deleted.Id, Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HotstringDto>.Ok(RestoredWithWarnings(
+                deleted.Id,
+                "bad3",
+                "Trigger must not have leading or trailing whitespace.",
+                "ContextValue must not contain double-quote characters.")));
+
+        IRenderedComponent<RecycleBin> cut = RenderPage();
+        cut.WaitForAssertion(() => cut.Find("button.restore-item"));
+        cut.Find("button.restore-item").Click();
+
+        cut.WaitForAssertion(() => _snackbar.Received(1).Add(
+            Arg.Is<string>(m => m.Contains("whitespace. ContextValue") && !m.Contains(".;")),
+            Severity.Warning,
+            Arg.Any<Action<SnackbarOptions>>(), Arg.Any<string>()));
+    }
+
+    // The hotkey half of the same page code. Without this, returning null from
+    // RestoreHotkeyAsync's warnings expression breaks nothing.
+    [Fact]
+    public void RestoreHotkey_WhenResponseCarriesWarnings_ShowsWarningSnackbarNamingTheRule()
+    {
+        DeletedHotkeyDto deleted = new(
+            Guid.NewGuid(), "Open Notepad", "N", true, false, false, false, DateTimeOffset.UtcNow);
+        StubDeleted([], [deleted]);
+
+        HotkeyDto restored = new(
+            deleted.Id,
+            [],
+            false,
+            deleted.Description,
+            "NotAKeyName",
+            deleted.Ctrl,
+            deleted.Alt,
+            deleted.Shift,
+            deleted.Win,
+            HotkeyActionKind.Run,
+            null,
+            null,
+            "notepad.exe",
+            RunTargetKind.Application,
+            null,
+            null,
+            null,
+            null,
+            null,
+            DateTimeOffset.UtcNow,
+            DateTimeOffset.UtcNow,
+            [],
+            ["Key must be a known key name (for example a, F5, Escape, Numpad0)."]);
+        _hotkeys.RestoreAsync(deleted.Id, Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HotkeyDto>.Ok(restored));
+
+        IRenderedComponent<RecycleBin> cut = RenderPage();
+        cut.WaitForAssertion(() => cut.Find("button.restore-item"));
+        cut.Find("button.restore-item").Click();
+
+        cut.WaitForAssertion(() => _snackbar.Received(1).Add(
+            Arg.Is<string>(m => m.Contains("Hotkey restored, but it applies to no profile")
+                             && m.Contains("Key must be a known key name")),
+            Severity.Warning,
+            Arg.Any<Action<SnackbarOptions>>(), Arg.Any<string>()));
+
+        _snackbar.DidNotReceive().Add(
+            "Hotkey restored.", Severity.Success,
+            Arg.Any<Action<SnackbarOptions>>(), Arg.Any<string>());
+    }
+
+    private static HotstringDto RestoredWithWarnings(Guid id, string trigger, params string[] warnings) =>
+        new(
+            Id: id,
+            ProfileIds: [],
+            AppliesToAllProfiles: false,
+            Trigger: trigger,
+            Replacement: "text",
+            Description: null,
+            IsEndingCharacterRequired: true,
+            IsTriggerInsideWord: false,
+            CreatedAt: DateTimeOffset.UtcNow,
+            UpdatedAt: DateTimeOffset.UtcNow,
+            CategoryIds: [],
+            RestoreWarnings: warnings.Length > 0
+                ? warnings
+                : ["ContextValue must not contain double-quote characters."]);
+
+    // Runs the page's own options callback and reports what it set, so the assertion reads the
+    // real configuration rather than trusting that a callback was passed at all.
+    private static bool RequiresInteraction(Action<SnackbarOptions>? configure)
+    {
+        if (configure is null)
+            return false;
+
+        SnackbarOptions options = new(Severity.Warning, new SnackbarConfiguration());
+        configure(options);
+        return options.RequireInteraction == true;
+    }
 }

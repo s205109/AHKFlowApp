@@ -71,6 +71,23 @@ for a new item, so the exception would quietly become the rule for most items.
 4. **The rules now have a second caller.** A rule tightened for Create and Update immediately
    governs Restore and Revert as well. That is the point of the decision, and it means a future
    tightening can refuse a Revert that worked the day before.
+5. **For one family of stored rows, the edit dialog is not a way out.** The decision above rests on
+   the Owner repairing the item in the edit dialog. That holds for a value the Owner can retype, such
+   as a window context or a Key. It does not hold when the rule that failed is the brace counter in
+   `AddRawKindRules`, which decision D12 keeps deliberately unaware of strings and comments. A legacy
+   `Kind=Script` body that sends a literal brace, such as `Send "{{}"`, composes into a Raw
+   definition the counter reads as unbalanced, even though AutoHotkey accepts it. Before this
+   decision that row restored attached and its generated line was unchanged. Now it comes back
+   applying to no profile, and `UpdateHotstringCommandValidator` runs the same rule, so every save
+   is refused while the body stays as it is. The Owner's only routes are rewriting the body into a
+   brace-balanced equivalent or changing the kind to Text and losing the code. A Revert to such a
+   version is refused outright.
+
+   We accepted this rather than drop the brace rule from the Restore and Revert rule set. Dropping
+   it would let Restore accept a definition the edit dialog then refuses forever, which is a worse
+   state than an item the Owner can at least see and rewrite. The behavior is pinned by
+   `DefinitionRuleCheckTests.Check_LegacyScriptBodyWithLiteralBrace_PinsTheNaiveBraceCounter`, so a
+   later change to D12 shows up as a failing test rather than a silent change of outcome.
 
 The honest cost: two code paths answer one question two ways, and a reader has to know why. This
 record is that reason.

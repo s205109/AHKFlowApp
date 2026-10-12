@@ -345,4 +345,81 @@ public sealed class SnapshotRuleCheckTests(HistoryDbFixture fx)
         result.Value.RestoreWarnings.Should().NotBeNullOrEmpty();
         (await db.HotkeyProfiles.CountAsync(j => j.HotkeyId == id)).Should().Be(0);
     }
+
+    // Review Focus 4, hotkey side. The hotkey test above cannot reach the keepProfileScope
+    // guard: its Snapshot says AppliesToAllProfiles true with no ProfileIds, so the link loop
+    // never runs whatever the guard says. Only a Snapshot that named its Profiles takes that
+    // branch, and a hotstring test says nothing about the hotkey handler.
+    [Fact]
+    public async Task RestoreHotkey_FailingSnapshotWithExplicitProfiles_DropsTheLinks()
+    {
+        var owner = Guid.NewGuid();
+        var id = Guid.NewGuid();
+        Profile profile = new ProfileBuilder().WithOwner(owner).Build();
+
+        HotkeySnapshot bad = BadKeySnapshot() with
+        {
+            AppliesToAllProfiles = false,
+            ProfileIds = [profile.Id],
+        };
+
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Profiles.Add(profile);
+            seed.EntityHistories.Add(EntityHistory.Create(
+                owner, TrackedEntityType.Hotkey, id, version: 1, HistoryChangeType.Delete,
+                schemaVersion: 1, JsonSerializer.Serialize(bad), TimeProvider.System));
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        RestoreHotkeyCommandHandler handler = new(
+            db, CurrentUserHelper.For(owner), TimeProvider.System,
+            new EntityHistoryRecorder(db, TimeProvider.System));
+
+        Result<HotkeyDto> result = await handler.ExecuteAsync(new RestoreHotkeyCommand(id), default);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.ProfileIds.Should().BeEmpty();
+        result.Value.AppliesToAllProfiles.Should().BeFalse();
+        result.Value.RestoreWarnings.Should().NotBeNullOrEmpty();
+        (await db.HotkeyProfiles.CountAsync(j => j.HotkeyId == id)).Should().Be(0);
+    }
+
+    // Review Focus 3, hotkey side. A Snapshot whose Profiles were all deleted already restored
+    // with none before this change, and that stays a success with no warnings.
+    [Fact]
+    public async Task RestoreHotkey_ValidSnapshotWhoseProfilesAreGone_SucceedsWithNoWarnings()
+    {
+        var owner = Guid.NewGuid();
+        var id = Guid.NewGuid();
+        var deletedProfileId = Guid.NewGuid();
+
+        HotkeySnapshot good = BadKeySnapshot() with
+        {
+            Key = "n",
+            AppliesToAllProfiles = false,
+            ProfileIds = [deletedProfileId],
+        };
+
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.EntityHistories.Add(EntityHistory.Create(
+                owner, TrackedEntityType.Hotkey, id, version: 1, HistoryChangeType.Delete,
+                schemaVersion: 1, JsonSerializer.Serialize(good), TimeProvider.System));
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        RestoreHotkeyCommandHandler handler = new(
+            db, CurrentUserHelper.For(owner), TimeProvider.System,
+            new EntityHistoryRecorder(db, TimeProvider.System));
+
+        Result<HotkeyDto> result = await handler.ExecuteAsync(new RestoreHotkeyCommand(id), default);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.ProfileIds.Should().BeEmpty();
+        result.Value.RestoreWarnings.Should().BeNullOrEmpty();
+        result.Value.AppliesToAllProfiles.Should().BeFalse("the snapshot said false and it passed the rules");
+    }
 }

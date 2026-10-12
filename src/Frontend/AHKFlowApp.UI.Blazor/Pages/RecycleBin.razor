@@ -167,10 +167,14 @@
             // profile script contains it until the Owner fixes the values named here (ADR-0021).
             if (warnings is { Length: > 0 })
             {
+                // Each rule message already ends in a period, so a single space joins them.
+                // RequireInteraction keeps the message up until the Owner closes it: nothing
+                // persisted records which rules failed, so this toast is the only copy.
                 Snackbar.Add(
-                    $"{row.Type} restored, but it applies to no profile: {string.Join("; ", warnings)} "
+                    $"{row.Type} restored, but it applies to no profile: {string.Join(" ", warnings)} "
                     + "Open it, fix those values, and choose its profiles again.",
-                    Severity.Warning);
+                    Severity.Warning,
+                    options => options.RequireInteraction = true);
             }
             else
             {
