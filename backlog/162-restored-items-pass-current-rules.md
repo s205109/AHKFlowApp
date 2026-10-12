@@ -62,40 +62,57 @@ The second sentence holds. `RestoreCommandTests.cs`, `RevertCommandTests.cs`,
 `HotstringSnapshotCompatibilityTests.cs` and `HotkeySnapshotCompatibilityTests.cs` are all
 unedited on this branch and all pass, which `git diff --name-only` against the merge base shows.
 
-The first sentence does not hold for one family of legacy rows. A legacy `Kind=Script` hotstring
-whose body sends a literal brace, such as `Send "{{}"`, composes into a Raw definition that the
-brace counter in `AddRawKindRules` reads as unbalanced. That counter is deliberately unaware of
-strings and comments, which is decision D12 in the Raw work. Such a row used to restore attached
-and emit an unchanged line. It now comes back applying to no profile, and
-`UpdateHotstringCommandValidator` runs the same rule, so the edit dialog refuses every save while
-the body stays as it is. A Revert to such a version is refused outright.
+The first sentence does not hold for two families of legacy rows. Both fail a brace counter, and
+both counters are deliberately unaware of strings and comments, which is decision D12 in the Raw
+work.
+
+1. A legacy `Kind=Script` hotstring whose body sends a literal brace, such as `Send "{{}"`,
+   composes into a Raw definition that `AddRawKindRules` reads as unbalanced.
+2. A legacy hotkey whose `Action` is `Send` and whose `Parameters` hold `{{}` converts to a Raw
+   hotkey, because `IsValidSendKeysContent` refuses a braced token that holds a second brace. Its
+   body becomes `Send("{{}")`, which `BracesBalanced` reads as unbalanced.
+
+AutoHotkey accepts both forms: `{{}` is how Send types a literal brace. Such a row used to restore
+attached and emit an unchanged line. It now comes back applying to no profile, and
+`UpdateHotstringCommandValidator` or `UpdateHotkeyCommandValidator` runs the same counter, so the
+edit dialog refuses every save while the body stays as it is. A Revert to such a version is refused
+outright.
 
 This is a behavior change the design stage did not weigh, so it is a decision for the human rather
-than a tick. The behavior is pinned by
-`DefinitionRuleCheckTests.Check_LegacyScriptBodyWithLiteralBrace_PinsTheNaiveBraceCounter` and
-recorded as consequence 5 of
+than a tick. Both behaviors are pinned, in `DefinitionRuleCheckTests`:
+`Check_LegacyScriptBodyWithLiteralBrace_PinsTheNaiveBraceCounter` and
+`Check_LegacyHotkeySendWithLiteralBrace_PinsTheNaiveBraceCounter`. The reasoning is consequence 5 of
 [`docs/adr/0021-a-failed-restore-applies-to-no-profile.md`](../docs/adr/0021-a-failed-restore-applies-to-no-profile.md).
-Keeping the behavior was chosen over dropping the brace rule from the Restore and Revert rule set,
-because dropping it would let Restore accept a definition the edit dialog then refuses forever.
+Keeping the behavior was chosen over dropping the brace rules from the Restore and Revert rule set,
+because dropping them would let Restore accept a definition the edit dialog then refuses forever.
+
+The counters are not this item's to change. They already refuse the same body at Create, so an
+Owner cannot write one through the API today either. Making them aware of strings and comments
+needs its own item, because it changes what Create and Update accept for every Raw row.
 
 ### Evidence behind the ticked boxes
 
 - Definition rule check, both entities: `tests/AHKFlowApp.Application.Tests/Validation/DefinitionRuleCheckTests.cs`
 - Revert refusal and the no-history-staged ordering, one theory per entity, plus the four Restore
   cases: `tests/AHKFlowApp.Application.Tests/History/SnapshotRuleCheckTests.cs`
-- The whole recovery sequence, both scope modes: `tests/AHKFlowApp.Application.Tests/History/InertRestoreRecoveryTests.cs`
+- The whole recovery sequence, both entities and both scope modes:
+  `tests/AHKFlowApp.Application.Tests/History/InertRestoreRecoveryTests.cs`
+- The definition validators refusing exactly what the Update validators refuse, 18 cases across
+  both entities: `tests/AHKFlowApp.Application.Tests/Validation/DefinitionRuleParityTests.cs`
 - Revert 400 and Restore 200 over HTTP, one pair per entity:
   `tests/AHKFlowApp.API.Tests/Hotstrings/HotstringHistoryEndpointsTests.cs` and
   `tests/AHKFlowApp.API.Tests/Hotkeys/HotkeyHistoryEndpointsTests.cs`
 - The Recycle Bin warning snackbar, both entities: `tests/AHKFlowApp.UI.Blazor.Tests/Pages/RecycleBinPageTests.cs`
 - The same warning driven in a browser: `tests/AHKFlowApp.E2E.Tests/VersionHistoryFlowTests.cs`
+- The history dialog showing the 400 message after a refused Revert, and staying open behind it,
+  one test per entity: `tests/AHKFlowApp.UI.Blazor.Tests/Components/Hotstrings/HotstringHistoryDialogTests.cs`
+  and `tests/AHKFlowApp.UI.Blazor.Tests/Components/Hotkeys/HotkeyHistoryDialogTests.cs`
 
-One limit on the last ticked box. Its first half is covered by the two files above. Its second half,
-the history dialog showing the 400 message after a refused Revert, was verified by reading the code
-rather than by a new test: both dialogs route a failed Revert through `ApiErrorMessageFactory.Build`
-into an error snackbar, at `src/Frontend/AHKFlowApp.UI.Blazor/Components/Hotstrings/HotstringHistoryDialog.razor:127`
-and `src/Frontend/AHKFlowApp.UI.Blazor/Components/Hotkeys/HotkeyHistoryDialog.razor:120`. That
-plumbing predates this item, and the spec says so under "The UI needs no new error plumbing".
+One limit on the browser evidence. The browser test stops after the Recycle Bin warning and the
+detached state. The repair itself — the Owner fixing the value, choosing profiles again, and the
+item reaching the generated script — is proven at the Application level instead, through
+`ValidatingUseCase` and the real script generator, because that is where the Update rules run.
+Walking the same route through the edit dialog in a browser is follow-up work.
 
 ## Out of scope
 

@@ -192,4 +192,27 @@ public sealed class DefinitionRuleCheckTests
             .Select(f => f.ErrorMessage)
             .Should().Contain("ContextValue must not contain backtick characters.");
     }
+
+    [Fact]
+    public void Check_LegacyHotkeySendWithLiteralBrace_PinsTheNaiveBraceCounter()
+    {
+        // The hotkey twin of the hotstring pin above. "{{}" is how AHK's Send types a literal
+        // brace, so an Owner could store it. IsValidSendKeysContent refuses it, because its
+        // braced token holds a second brace, so the converter takes the Raw arm and builds the
+        // body Send("{{}"). BracesBalanced then counts two opens and one close.
+        HotkeySnapshot legacy = new(
+            Description: "Type a brace", Key: "n",
+            Ctrl: true, Alt: false, Shift: false, Win: false,
+            AppliesToAllProfiles: true,
+            ProfileIds: [], CategoryIds: [],
+            CreatedAt: DateTimeOffset.UnixEpoch, UpdatedAt: DateTimeOffset.UnixEpoch,
+            Action: LegacyHotkeyDefinitionConverter.HotkeyAction.Send,
+            Parameters: "{{}");
+
+        ValidationError[] failures = DefinitionRuleCheck.Check(
+            LegacyHotkeySnapshotConverter.ToDefinition(legacy));
+
+        failures.Select(f => f.ErrorMessage).Should()
+            .Contain("Raw body braces are unbalanced.");
+    }
 }
