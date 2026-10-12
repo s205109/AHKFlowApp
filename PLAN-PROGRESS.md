@@ -40,6 +40,34 @@ Deferred minors, for the human to decide:
 - Two comments are slightly off: `IHotstringsApiClient.cs` says the Raw path "sends no value",
   and `Hotstrings.razor` names only the older CLI as a source of `true` on Raw rows.
 
+## Simplify
+
+Four reviewers read the branch for reuse, simplification, efficiency, and altitude.
+
+- `f318cc9`: a CLI command theory covers a Raw create with `--inside-word`, `--no-inside-word`,
+  and both. This closes the first deferred minor above. Criterion 5 asks for command tests too.
+- `fa7274f`: test theories take `params` arrays instead of split strings. Test comments describe
+  behavior, not review history. The `IHotstringsApiClient.cs` and `Hotstrings.razor` comments
+  now name the real cause. This closes the third deferred minor above.
+- CLI tests passed 64 of 64. The solution built with 0 warnings. `dotnet format` reported no
+  changes.
+
+Skipped on purpose:
+
+- The repeated "matches AutoHotkey" comment stays in three places, because criterion 3 asks for
+  it at each interface.
+- The API test keeps its GET after the POST, because criterion 4 asks it to read the hotstring
+  back.
+- The extra bUnit promote-draft test and the E2E mobile check stay. They are planned
+  deliverables, and the promote test covers the draft path.
+- Shared helpers for the checkbox read, the profile preview, and the older inline row reads
+  would touch code outside this branch.
+
+Follow-up for the human to decide: both create and update handlers store the client's option
+flags for Raw rows, though ADR 0002 says those columns are ignored. A server-side fix would
+remove the Raw guards in the UI. Spec decision 7 kept the current behavior, so it needs its own
+item.
+
 ## Resolved: the plan's own citations
 
 The plan and spec cite the tree before the change. After Task 3, 39 of those citations failed
