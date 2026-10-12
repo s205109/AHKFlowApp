@@ -47,10 +47,6 @@ internal sealed class RestoreHotstringCommandHandler(
         if (snapshot is null)
             return Result.Error("Snapshot could not be read.");
 
-        Guid[] liveProfileIds = await db.Profiles
-            .Where(p => p.OwnerOid == ownerOid && snapshot.ProfileIds.Contains(p.Id))
-            .Select(p => p.Id)
-            .ToArrayAsync(ct);
         Guid[] liveCategoryIds = await db.Categories
             .Where(c => c.OwnerOid == ownerOid && snapshot.CategoryIds.Contains(c.Id))
             .Select(c => c.Id)
@@ -79,6 +75,13 @@ internal sealed class RestoreHotstringCommandHandler(
 
         if (keepProfileScope && !snapshot.AppliesToAllProfiles)
         {
+            // Read here rather than above: this is the only reader, so a Snapshot that failed the
+            // rules, or one that applied to every Profile, does not pay for the round trip.
+            Guid[] liveProfileIds = await db.Profiles
+                .Where(p => p.OwnerOid == ownerOid && snapshot.ProfileIds.Contains(p.Id))
+                .Select(p => p.Id)
+                .ToArrayAsync(ct);
+
             foreach (Guid pid in liveProfileIds)
                 db.HotstringProfiles.Add(HotstringProfile.Create(entity.Id, pid));
         }

@@ -9,19 +9,14 @@ namespace AHKFlowApp.Application.Validation;
 /// The four history handlers call this; nothing else should need it.
 /// <para>
 /// Static, like <c>ScriptToRawComposer</c> and <c>LegacyHotkeySnapshotConverter</c> beside it in
-/// the same call. It is a pure function with no dependency to inject — no database, no clock, no
-/// I/O — and injecting it would add a constructor parameter to four handlers that tests build by
-/// hand in 18 places, including the legacy restore tests backlog 162 must leave untouched.
+/// the same call. It is a pure function with nothing to inject: no database, no clock, no I/O.
 /// </para>
 /// </summary>
 internal static class DefinitionRuleCheck
 {
-    // Built once. A FluentValidation validator holds only rule definitions after construction —
-    // the expression selectors are compiled in the constructor and the rule bodies read static
-    // readonly state — so reusing one instance across concurrent calls is safe. Per-call state
-    // lives on ValidationContext, not on the validator. Neither validator is registered in DI:
-    // DependencyInjection.cs calls AddValidatorsFromAssembly without includeInternalTypes, and
-    // both of these are internal, so these two fields are the only instances.
+    // One instance each, reused across calls. A FluentValidation validator holds only rule
+    // definitions after construction, and per-call state lives on ValidationContext, so sharing
+    // one instance between concurrent calls is safe.
     private static readonly HotstringDefinitionValidator s_hotstring = new();
     private static readonly HotkeyDefinitionValidator s_hotkey = new();
 
