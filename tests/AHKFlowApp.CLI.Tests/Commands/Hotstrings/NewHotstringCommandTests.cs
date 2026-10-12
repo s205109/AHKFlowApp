@@ -59,6 +59,27 @@ public sealed class NewHotstringCommandTests
             Arg.Any<CancellationToken>());
     }
 
+    // A Raw definition carries its own options, so the command ignores both flags for it.
+    [Theory]
+    [InlineData("--inside-word")]
+    [InlineData("--no-inside-word")]
+    [InlineData("--inside-word", "--no-inside-word")]
+    public async Task Raw_IgnoresInsideWordFlags_SendsFalse(params string[] flags)
+    {
+        (IHotstringsApiClient? hs, IProfilesApiClient? profiles) = Fakes();
+
+        (int exit, string _, string _) = await Run(
+            ["hotstring", "new", "--raw", ":?:btw::by the way", .. flags], hs, profiles);
+
+        exit.Should().Be(0);
+        await hs.Received(1).CreateAsync(
+            Arg.Is<CreateHotstringDto>(d =>
+                d.Kind == HotstringKind.Raw
+                && d.Replacement == ":?:btw::by the way"
+                && !d.IsTriggerInsideWord),
+            Arg.Any<CancellationToken>());
+    }
+
     [Fact]
     public async Task Raw_WithTrigger_Exit2_MutuallyExclusive()
     {
@@ -241,14 +262,14 @@ public sealed class NewHotstringCommandTests
     }
 
     [Fact]
-    public async Task DefaultsTrueForFlags()
+    public async Task Defaults_EndingCharOn_InsideWordOff()
     {
         (IHotstringsApiClient? hs, IProfilesApiClient? profiles) = Fakes();
 
         await Run(["hotstring", "new", "-t", "x", "-r", "y"], hs, profiles);
 
         await hs.Received(1).CreateAsync(
-            Arg.Is<CreateHotstringDto>(d => d.IsEndingCharacterRequired && d.IsTriggerInsideWord),
+            Arg.Is<CreateHotstringDto>(d => d.IsEndingCharacterRequired && !d.IsTriggerInsideWord),
             Arg.Any<CancellationToken>());
     }
 
@@ -260,20 +281,100 @@ public sealed class NewHotstringCommandTests
         await Run(["hotstring", "new", "-t", "x", "-r", "y", "--no-ending-char"], hs, profiles);
 
         await hs.Received(1).CreateAsync(
-            Arg.Is<CreateHotstringDto>(d => !d.IsEndingCharacterRequired && d.IsTriggerInsideWord),
+            Arg.Is<CreateHotstringDto>(d => !d.IsEndingCharacterRequired && !d.IsTriggerInsideWord),
             Arg.Any<CancellationToken>());
     }
 
     [Fact]
-    public async Task NoInsideWord_FlipsFalse()
+    public async Task NoInsideWord_StillAccepted_SendsFalse()
     {
         (IHotstringsApiClient? hs, IProfilesApiClient? profiles) = Fakes();
 
-        await Run(["hotstring", "new", "-t", "x", "-r", "y", "--no-inside-word"], hs, profiles);
+        (int exit, string _, string _) = await Run(
+            ["hotstring", "new", "-t", "x", "-r", "y", "--no-inside-word"], hs, profiles);
 
+        exit.Should().Be(0);
         await hs.Received(1).CreateAsync(
             Arg.Is<CreateHotstringDto>(d => d.IsEndingCharacterRequired && !d.IsTriggerInsideWord),
             Arg.Any<CancellationToken>());
+    }
+
+    // An old script that passes an explicit false asked for the option on. It keeps getting it.
+    [Theory]
+    [InlineData("--no-inside-word", "false")]
+    [InlineData("--no-inside-word:false")]
+    public async Task NoInsideWordExplicitFalse_SendsTrue_AsBefore(params string[] flags)
+    {
+        (IHotstringsApiClient? hs, IProfilesApiClient? profiles) = Fakes();
+
+        (int exit, string _, string _) = await Run(
+            ["hotstring", "new", "-t", "x", "-r", "y", .. flags], hs, profiles);
+
+        exit.Should().Be(0);
+        await hs.Received(1).CreateAsync(
+            Arg.Is<CreateHotstringDto>(d => d.IsTriggerInsideWord),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task InsideWord_SendsTrue()
+    {
+        (IHotstringsApiClient? hs, IProfilesApiClient? profiles) = Fakes();
+
+        (int exit, string _, string _) = await Run(
+            ["hotstring", "new", "-t", "x", "-r", "y", "--inside-word"], hs, profiles);
+
+        exit.Should().Be(0);
+        await hs.Received(1).CreateAsync(
+            Arg.Is<CreateHotstringDto>(d => d.IsEndingCharacterRequired && d.IsTriggerInsideWord),
+            Arg.Any<CancellationToken>());
+    }
+
+    // Both flags together are an error whatever values they carry.
+    [Theory]
+    [InlineData("--inside-word", "--no-inside-word")]
+    [InlineData("--inside-word", "--no-inside-word", "false")]
+    [InlineData("--inside-word", "false", "--no-inside-word")]
+    public async Task InsideWordWithNoInsideWord_OnText_Exit2_NoApiCall(params string[] flags)
+    {
+        (IHotstringsApiClient? hs, IProfilesApiClient? profiles) = Fakes();
+
+        (int exit, string _, string? stderr) = await Run(
+            ["hotstring", "new", "-t", "x", "-r", "y", .. flags], hs, profiles);
+
+        exit.Should().Be(2);
+        stderr.Should().Contain("--inside-word cannot be combined with --no-inside-word.");
+        await hs.DidNotReceive().CreateAsync(Arg.Any<CreateHotstringDto>(), Arg.Any<CancellationToken>());
+    }
+
+    // Old scripts combine the two --no- flags. --inside-word must not conflict with --no-ending-char.
+    [Theory]
+    [InlineData("--no-inside-word", false)]
+    [InlineData("--inside-word", true)]
+    public async Task NoEndingChar_CombinesWithInsideWordFlags(string insideWordFlag, bool expectedInsideWord)
+    {
+        (IHotstringsApiClient? hs, IProfilesApiClient? profiles) = Fakes();
+
+        (int exit, string _, string _) = await Run(
+            ["hotstring", "new", "-t", "x", "-r", "y", "--no-ending-char", insideWordFlag], hs, profiles);
+
+        exit.Should().Be(0);
+        await hs.Received(1).CreateAsync(
+            Arg.Is<CreateHotstringDto>(d =>
+                !d.IsEndingCharacterRequired && d.IsTriggerInsideWord == expectedInsideWord),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Help_ListsInsideWord_HidesNoInsideWord()
+    {
+        (IHotstringsApiClient? hs, IProfilesApiClient? profiles) = Fakes();
+
+        (int exit, string? stdout, string _) = await Run(["hotstring", "new", "--help"], hs, profiles);
+
+        exit.Should().Be(0);
+        stdout.Should().Contain("--inside-word").And.Contain("Trigger inside words too (default: off).");
+        stdout.Should().NotContain("--no-inside-word");
     }
 
     [Fact]

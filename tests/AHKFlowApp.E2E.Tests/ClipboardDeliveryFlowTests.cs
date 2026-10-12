@@ -44,7 +44,8 @@ public sealed class ClipboardDeliveryFlowTests(StackFixtureB fixture) : IAsyncLi
 
         Assert.Equal(1, CountOccurrences(script, "AhkFlow_PasteReplacement(text, endChar := \"\")"));
         Assert.Contains("AhkFlow_PasteReplacement(", script, StringComparison.Ordinal);
-        Assert.Contains(":X?:longclip::AhkFlow_PasteReplacement(", script, StringComparison.Ordinal);
+        // No ? option: a new hotstring starts with Trigger inside words off.
+        Assert.Contains(":X:longclip::AhkFlow_PasteReplacement(", script, StringComparison.Ordinal);
     }
 
     private static int CountOccurrences(string value, string search)

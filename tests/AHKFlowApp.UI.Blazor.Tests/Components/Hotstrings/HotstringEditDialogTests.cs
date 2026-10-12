@@ -61,6 +61,31 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
+    public async Task CreateMode_TriggerInsideWordsCheckbox_StartsUnticked()
+    {
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(new HotstringEditModel());
+
+        provider.WaitForAssertion(() => IsInsideWordsChecked(provider).Should().BeFalse());
+    }
+
+    // Fails if the checkbox is hardcoded to unticked instead of bound to the model.
+    [Fact]
+    public async Task EditMode_SavedWithTriggerInsideWords_StartsTicked()
+    {
+        HotstringEditModel saved = new()
+        {
+            Id = Guid.NewGuid(),
+            Trigger = "btw",
+            Replacement = "by the way",
+            IsTriggerInsideWord = true,
+        };
+
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(saved);
+
+        provider.WaitForAssertion(() => IsInsideWordsChecked(provider).Should().BeTrue());
+    }
+
+    [Fact]
     public async Task EditMode_PrefillsFieldsFromItem()
     {
         HotstringEditModel item = new()
@@ -1665,6 +1690,9 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
 
         return provider;
     }
+
+    private static bool IsInsideWordsChecked(IRenderedComponent<MudDialogProvider> provider) =>
+        ((AngleSharp.Html.Dom.IHtmlInputElement)provider.Find("input[data-test=\"inside-words-checkbox\"]")).IsChecked;
 
     private static Task SelectFormatAsync(IRenderedComponent<MudDialogProvider> provider, string format) =>
         provider.InvokeAsync(() =>

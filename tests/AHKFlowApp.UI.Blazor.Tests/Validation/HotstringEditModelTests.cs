@@ -39,6 +39,14 @@ public sealed class HotstringEditModelTests
     }
 
     [Fact]
+    public void New_IsTriggerInsideWord_DefaultsToFalse()
+    {
+        var model = new HotstringEditModel();
+
+        model.IsTriggerInsideWord.Should().BeFalse();
+    }
+
+    [Fact]
     public void ToCreateDto_MapsAllFields()
     {
         var profileId = Guid.NewGuid();
@@ -82,7 +90,8 @@ public sealed class HotstringEditModelTests
             ProfileIds = [profileId],
             CategoryIds = [categoryId],
             IsEndingCharacterRequired = true,
-            IsTriggerInsideWord = false
+            // Not the default, so the test fails if Clone() stops copying the field.
+            IsTriggerInsideWord = true
         };
 
         HotstringEditModel clone = model.Clone();

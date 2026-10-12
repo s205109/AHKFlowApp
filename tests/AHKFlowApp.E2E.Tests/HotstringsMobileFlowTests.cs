@@ -97,6 +97,10 @@ public sealed class HotstringsMobileFlowTests(StackFixtureC fixture) : IAsyncLif
         await page.WaitForSelectorAsync(".hotstring-edit-dialog");
         await page.WaitForSelectorAsync(".hotstring-edit-dialog input[data-test=\"trigger-input\"]");
         await page.WaitForSelectorAsync(".hotstring-edit-dialog textarea[data-test=\"replacement-input\"]");
+
+        // A new hotstring starts with Trigger inside words off, as in AutoHotkey.
+        await Assertions.Expect(page.Locator(".hotstring-edit-dialog input[data-test=\"inside-words-checkbox\"]"))
+            .Not.ToBeCheckedAsync();
     }
 
     [Fact]

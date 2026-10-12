@@ -29,6 +29,9 @@ public sealed class HotstringsCrudFlowTests(StackFixtureC fixture) : IAsyncLifet
 
         await page.WaitForSelectorAsync("text=Hotstring created.");
         await page.WaitForSelectorAsync("tbody tr:has-text(\"btw\")");
+        // A new hotstring starts with Trigger inside words off, so the saved row shows no ? glyph.
+        // After a create, the page reloads the grid from the API, so this reads the saved value.
+        await Assertions.Expect(page.Locator("tbody tr:has-text(\"btw\") .option-glyphs")).ToHaveTextAsync("");
 
         Assert.True(await page.IsVisibleAsync("text=by the way"));
 

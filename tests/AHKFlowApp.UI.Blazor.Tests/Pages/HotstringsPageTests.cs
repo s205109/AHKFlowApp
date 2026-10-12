@@ -569,6 +569,29 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
+    public Task Page_PromoteDraft_DialogShowsTriggerInsideWordsUnticked()
+    {
+        StubList(Page());
+
+        Render<MudPopoverProvider>();
+        IRenderedComponent<MudDialogProvider> provider = Render<MudDialogProvider>();
+        IRenderedComponent<Hotstrings> cut = Render<Hotstrings>(p => p.AddCascadingValue(AuthenticatedState));
+
+        cut.WaitForAssertion(() => cut.Find("button.add-hotstring"));
+        cut.Find("button.add-hotstring").Click();
+
+        cut.WaitForAssertion(() => cut.Find("input[data-test=\"trigger-input\"]"));
+        cut.Find("input[data-test=\"trigger-input\"]").Input("btw");
+        cut.Find("button.promote-edit").Click();
+
+        // The promoted dialog starts from the draft, and the draft starts from the model default.
+        provider.WaitForAssertion(() =>
+            ((AngleSharp.Html.Dom.IHtmlInputElement)provider.Find(
+                ".hotstring-edit-dialog input[data-test=\"inside-words-checkbox\"]")).IsChecked.Should().BeFalse());
+        return Task.CompletedTask;
+    }
+
+    [Fact]
     public async Task Page_WhenAnyToggleIsReenabled_ClearsSpecificProfilesBeforeCreate()
     {
         ProfileDto work = new(Guid.NewGuid(), "Work", false, "header text", "footer text", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
@@ -1082,7 +1105,7 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
     [Fact]
     public Task Page_RawRow_SuppressesOptionGlyphsAndTooltipFlags()
     {
-        // IsTriggerInsideWord=true is the CLI/default for a Raw row, but its options live in the
+        // A Raw row can hold IsTriggerInsideWord=true from whatever client sent it, but its options live in the
         // verbatim text — the structured flag glyphs ("?") and tooltip flag phrases must not show.
         var dto = new HotstringDto(Guid.NewGuid(), [], true, "~ver", ":*:~ver::\n{\nMsgBox A_AhkVersion\n}",
             null, true, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null, HotstringKind.Raw);

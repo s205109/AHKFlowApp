@@ -51,7 +51,7 @@ removed" and "tests cover the new API" cannot.
 - **Where this came from.** Architecture review in session
   https://claude.ai/code/session_01EPTqaHBB9hCJgYiHcDySQe, candidate 5.
 - Suspected cause at filing time:
-  - `RawDefinition.Decompose` counts `* ? C O` as expressible, so no discard warning shows: (`src/Frontend/AHKFlowApp.UI.Blazor/Helpers/RawDefinition.cs:64`, "private static readonly HashSet<string> ExpressibleOptions =").
+  - `RawDefinition.Decompose` counts `* ? C O` as expressible, so no discard warning shows: (`src/Frontend/AHKFlowApp.UI.Blazor/Helpers/RawDefinition.cs:62`, "private static readonly HashSet<string> ExpressibleOptions =").
   - `RawDecomposition` carries no values for those Options.
   - The dialog then sets them back to defaults: (`src/Frontend/AHKFlowApp.UI.Blazor/Components/Hotstrings/HotstringEditDialog.razor:476`, "Item.IsCaseSensitive = false;"). <!-- citation-check:ignore — records the pre-fix tree. This item's fix deleted that line, so line 476 now holds the corrected assignment. -->
 - The only dialog test for this switch, `KindToggle_RawToText_DecomposesDefinitionIntoFields`,
@@ -64,14 +64,14 @@ The suspected cause is correct, and it has two halves.
 
 1. `Decompose` drops the four Options on the floor. It splits the Option tokens into
    expressible and unexpressible, and then keeps only the unexpressible ones:
-   (`src/Frontend/AHKFlowApp.UI.Blazor/Helpers/RawDefinition.cs:174`, "List<string> unexpressible = ").
+   (`src/Frontend/AHKFlowApp.UI.Blazor/Helpers/RawDefinition.cs:172`, "List<string> unexpressible = ").
    `RawDecomposition` has no field that could carry the values of `*`, `?`, `C`, and `O`.
 2. The dialog writes the four fields back to the new-item defaults of `HotstringEditModel`,
    whatever the Raw definition said:
    (`src/Frontend/AHKFlowApp.UI.Blazor/Components/Hotstrings/HotstringEditDialog.razor:479`, "Item.IsTriggerInsideWord = true;"). <!-- citation-check:ignore — records the pre-fix tree. This item's fix deleted that line, so line 479 now reads the decomposed value. -->
 
 The correct mapping is already written down, in the other direction, in `Compose`:
-(`src/Frontend/AHKFlowApp.UI.Blazor/Helpers/RawDefinition.cs:84`, "if (!isEndingCharacterRequired) options += ").
+(`src/Frontend/AHKFlowApp.UI.Blazor/Helpers/RawDefinition.cs:82`, "if (!isEndingCharacterRequired) options += ").
 `Decompose` has to invert it.
 
 ### Reproduction at Pickup

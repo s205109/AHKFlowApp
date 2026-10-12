@@ -7,8 +7,11 @@ actual CLI surface and how each hotstring kind renders in `list` output.
 
 - `ahkflow hotstring new` — creates a **Text** hotstring, or a **Raw** hotstring with `--raw`.
   - **Text:** `--trigger`/`-t` and exactly one of `--replacement`/`-r` or
-    `--replacement-file <path>`; `--profile`/`-p` is repeatable; `--no-ending-char` and
-    `--no-inside-word` flip the two boolean options (both default to their "on" behavior).
+    `--replacement-file <path>`; `--profile`/`-p` is repeatable. `--no-ending-char` turns off the
+    ending-character requirement, which is on by default. `--inside-word` lets the hotstring
+    trigger inside other words too. That option is off by default, as in AutoHotkey. The older
+    `--no-inside-word` is still accepted and keeps the default. It cannot be combined with
+    `--inside-word`.
     `--replacement-file` reads the complete file as UTF-8, which is the recommended way to send a
     long or multiline replacement without running into the Windows command-line length limit.
   - **Delivery:** `--delivery auto|hotstring|clipboard` controls Text hotstring output and is
@@ -22,7 +25,8 @@ actual CLI surface and how each hotstring kind renders in `list` output.
   - **Raw:** `--raw "<definition>"` sends the entire verbatim AHK v2 definition (e.g.
     `:K1000 SE*:ftw::for the win`); the server derives the trigger and validates it. `--raw` is
     **mutually exclusive** with `--trigger`, `--replacement`, `--replacement-file`, and
-    `--delivery`. `--profile` still applies.
+    `--delivery`. `--profile` still applies. `--raw` ignores `--no-ending-char`, `--inside-word`,
+    and `--no-inside-word`, alone or together, because the definition carries its own options.
   - Date & time and Macro kinds cannot be created via the CLI yet — create them in the web UI,
     then they show up (display-only) in `ahkflow hotstring list`.
 - `ahkflow hotstring list` — lists hotstrings of **all** kinds. Supports `--profile`/`-p`,
