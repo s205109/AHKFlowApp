@@ -16,6 +16,13 @@ namespace AHKFlowApp.Application.Tests.Validation;
 /// and not the other would bring back exactly the gap backlog 162 closed: a value Update refuses
 /// and Restore accepts.
 /// <para>
+/// The comparison anchors on the Update validators, while the acceptance criterion names Create
+/// and Update. That is enough: <c>CreateHotstringCommandValidator</c> and
+/// <c>UpdateHotstringCommandValidator</c> hold the same rule list, and so do
+/// <c>CreateHotkeyCommandValidator</c> and <c>UpdateHotkeyCommandValidator</c>. A rule added to
+/// Create alone would be a different gap, and it is not one these tests claim to catch.
+/// </para>
+/// <para>
 /// These tests compare messages, not identifiers. FluentValidation names the Update side
 /// <c>Input.ContextValue</c>, because the rule reads through the command's DTO, and the definition
 /// side <c>ContextValue</c>. The message is the part both sides must agree on.
@@ -103,14 +110,35 @@ public sealed class DefinitionRuleParityTests
                 Kind = HotstringKind.Raw,
             }),
 
-        "Raw with unbalanced braces" => (true, TextDefinition("ignored", ":*:lb::\nSend \"{{}\"") with
-        {
-            Kind = HotstringKind.Raw,
-        }),
+        // The brace body is opened on its own line on purpose. Without the "{" line the first
+        // line is bare, so ClassifyBody returns its "add a replacement" error and never reaches
+        // ScanBraceBody. Only this shape puts the naive brace counter on the parity axis.
+        "Raw with unbalanced braces" =>
+            (true, TextDefinition("ignored", ":*:lb::\n{\nSend \"{{}\"\n}") with
+            {
+                Kind = HotstringKind.Raw,
+            }),
 
         "Macro with an empty replacement" => (true, TextDefinition("mac", "") with
         {
             Kind = HotstringKind.Macro,
+        }),
+
+        // Fails a rule only AddMacroKindRules adds. The empty-replacement case above fails
+        // ValidReplacement from the Date & time group instead, so without this case the Macro
+        // group could be dropped from one validator and every case would stay green.
+        "Macro with a key token after the cursor" =>
+            (true, TextDefinition("mac", "a{{cursor}}b{{key:Enter}}") with
+            {
+                Kind = HotstringKind.Macro,
+            }),
+
+        // Fails a rule only AddDeliveryRules adds. Every other case leaves Delivery at Auto,
+        // which that group accepts for every kind.
+        "Macro with a non-Auto delivery" => (true, TextDefinition("mac", "hello") with
+        {
+            Kind = HotstringKind.Macro,
+            Delivery = HotstringDelivery.ClipboardPaste,
         }),
 
         _ => throw new ArgumentOutOfRangeException(nameof(name), name, "Unknown case."),
@@ -217,6 +245,8 @@ public sealed class DefinitionRuleParityTests
     [InlineData("Raw whose derived trigger is too long")]
     [InlineData("Raw with unbalanced braces")]
     [InlineData("Macro with an empty replacement")]
+    [InlineData("Macro with a key token after the cursor")]
+    [InlineData("Macro with a non-Auto delivery")]
     public void HotstringDefinitionRules_MatchTheUpdateCommandRules(string caseName)
     {
         (bool expectFailures, HotstringDefinition definition) = HotstringCase(caseName);
