@@ -140,11 +140,13 @@ Walking the same route through the edit dialog in a browser is follow-up work.
 
 - **Where this came from.** Architecture review in session
   https://claude.ai/code/session_01EPTqaHBB9hCJgYiHcDySQe, candidate 4.
-- Evidence at filing time:
-  - Hotstring Restore applies the Snapshot: (`src/Backend/AHKFlowApp.Application/Commands/Hotstrings/RestoreHotstringCommand.cs:63`, "ScriptToRawComposer.ToDefinition(snapshot),").
-  - Hotstring Revert applies the Snapshot: (`src/Backend/AHKFlowApp.Application/Commands/Hotstrings/RevertHotstringCommand.cs:63`, "entity.Update(ScriptToRawComposer.ToDefinition(snapshot), clock);").
-  - Hotkey Restore applies the Snapshot: (`src/Backend/AHKFlowApp.Application/Commands/Hotkeys/RestoreHotkeyCommand.cs:61`, "LegacyHotkeySnapshotConverter.ToDefinition(snapshot),").
-  - Hotkey Revert applies the Snapshot: (`src/Backend/AHKFlowApp.Application/Commands/Hotkeys/RevertHotkeyCommand.cs:61`, "entity.Update(LegacyHotkeySnapshotConverter.ToDefinition(snapshot), clock);").
+- Evidence at filing time. The next four bullets cite the four lines this branch rewrote, so each
+  one carries `citation-check:ignore`. They are the proof the bug was real. Pointing them at the
+  fixed code would delete that proof, and the four bullets below them still check.
+  - Hotstring Restore applies the Snapshot: (`src/Backend/AHKFlowApp.Application/Commands/Hotstrings/RestoreHotstringCommand.cs:63`, "ScriptToRawComposer.ToDefinition(snapshot),"). <!-- citation-check:ignore: this branch rewrote the cited line -->
+  - Hotstring Revert applies the Snapshot: (`src/Backend/AHKFlowApp.Application/Commands/Hotstrings/RevertHotstringCommand.cs:63`, "entity.Update(ScriptToRawComposer.ToDefinition(snapshot), clock);"). <!-- citation-check:ignore: this branch rewrote the cited line -->
+  - Hotkey Restore applies the Snapshot: (`src/Backend/AHKFlowApp.Application/Commands/Hotkeys/RestoreHotkeyCommand.cs:61`, "LegacyHotkeySnapshotConverter.ToDefinition(snapshot),"). <!-- citation-check:ignore: this branch rewrote the cited line -->
+  - Hotkey Revert applies the Snapshot: (`src/Backend/AHKFlowApp.Application/Commands/Hotkeys/RevertHotkeyCommand.cs:61`, "entity.Update(LegacyHotkeySnapshotConverter.ToDefinition(snapshot), clock);"). <!-- citation-check:ignore: this branch rewrote the cited line -->
   - The Window context is written unescaped: (`src/Backend/AHKFlowApp.Application/Services/DefinitionWrapping.cs:75`, "ContextValue has already passed validation").
   - The date format is written unescaped: (`src/Backend/AHKFlowApp.Application/Services/HotstringEmitter.cs:77`, "validation lives elsewhere").
   - The Macro emitter trusts its input: (`src/Backend/AHKFlowApp.Application/Services/HotstringEmitter.cs:85`, "enforced elsewhere (Task 3)").
