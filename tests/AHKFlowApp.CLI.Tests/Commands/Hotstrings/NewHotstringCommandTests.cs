@@ -59,6 +59,27 @@ public sealed class NewHotstringCommandTests
             Arg.Any<CancellationToken>());
     }
 
+    // A Raw definition carries its own options, so the command ignores both flags for it.
+    [Theory]
+    [InlineData("--inside-word")]
+    [InlineData("--no-inside-word")]
+    [InlineData("--inside-word", "--no-inside-word")]
+    public async Task Raw_IgnoresInsideWordFlags_SendsFalse(params string[] flags)
+    {
+        (IHotstringsApiClient? hs, IProfilesApiClient? profiles) = Fakes();
+
+        (int exit, string _, string _) = await Run(
+            ["hotstring", "new", "--raw", ":?:btw::by the way", .. flags], hs, profiles);
+
+        exit.Should().Be(0);
+        await hs.Received(1).CreateAsync(
+            Arg.Is<CreateHotstringDto>(d =>
+                d.Kind == HotstringKind.Raw
+                && d.Replacement == ":?:btw::by the way"
+                && !d.IsTriggerInsideWord),
+            Arg.Any<CancellationToken>());
+    }
+
     [Fact]
     public async Task Raw_WithTrigger_Exit2_MutuallyExclusive()
     {
