@@ -146,3 +146,21 @@ Walking the same route through the edit dialog in a browser is follow-up work.
   whose members match `HotkeyDefinition` field for field.
 - Spec: `docs/superpowers/specs/2026-10-11-restored-items-pass-current-rules-design-162.md`
 - Plan: `docs/superpowers/plans/2026-10-11-restored-items-pass-current-rules-plan-162.md`
+
+### Follow-up work this item leaves behind
+
+A review round raised three things this item does not do. None is filed yet, because the backlog
+numbering script picks the next number and a worktree session cannot run it.
+
+1. **Make both brace counters aware of strings and comments.** This is the unticked criterion
+   above. The counters live in `HotstringRules.AddRawKindRules` and `HotkeyRules.BracesBalanced`,
+   and they already refuse a literal brace at Create, so the work changes what Create and Update
+   accept for every Raw row. The two pinning tests in `DefinitionRuleCheckTests` turn red when it
+   lands, which is how that item will know it is done.
+2. **Walk the repair through the browser.** The browser test stops at the Recycle Bin warning. The
+   repair route — open the item, fix the value, choose profiles, save, see it in the script — is
+   proven at the Application level only.
+3. **Show a detached item why it is detached.** `RestoreWarnings` arrives once, in the Restore
+   response. Nothing persisted records which rules failed, so a page reload loses the list. The
+   fix is to recompute the current failures when the Owner opens the item, rather than to store
+   messages that can go stale. Consequence 3 of ADR-0021 is the same gap seen from the data side.
