@@ -53,4 +53,4 @@ removed" and "tests cover the new API" cannot.
   (`scripts/take-stage-transition.ps1:502`, "add -A -- backlog PLAN-PROGRESS.md").
 - Item 081 built this script, and item 159 extracted its shared spine.
 - Spec: none - a two-file script fix needs no design document.
-- Plan: <path, or "none - reason">
+- Plan: `docs/superpowers/plans/2026-10-12-ship-closes-records-with-no-progress-file-plan-164.md`
