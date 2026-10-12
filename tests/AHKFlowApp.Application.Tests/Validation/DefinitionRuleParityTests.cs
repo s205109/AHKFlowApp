@@ -141,6 +141,14 @@ public sealed class DefinitionRuleParityTests
             Delivery = HotstringDelivery.ClipboardPaste,
         }),
 
+        // Fails the supported-kind rule, which no other case reaches. Restore composes a legacy
+        // Kind=Script Snapshot into Raw before the check, so the unsupported kind that still
+        // arrives at the validators is one the current enum does not name.
+        "a Kind the enum does not name" => (true, TextDefinition("btw", "by the way") with
+        {
+            Kind = (HotstringKind)99,
+        }),
+
         _ => throw new ArgumentOutOfRangeException(nameof(name), name, "Unknown case."),
     };
 
@@ -247,6 +255,7 @@ public sealed class DefinitionRuleParityTests
     [InlineData("Macro with an empty replacement")]
     [InlineData("Macro with a key token after the cursor")]
     [InlineData("Macro with a non-Auto delivery")]
+    [InlineData("a Kind the enum does not name")]
     public void HotstringDefinitionRules_MatchTheUpdateCommandRules(string caseName)
     {
         (bool expectFailures, HotstringDefinition definition) = HotstringCase(caseName);

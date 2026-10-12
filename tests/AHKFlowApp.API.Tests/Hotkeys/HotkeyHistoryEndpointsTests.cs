@@ -155,12 +155,14 @@ public sealed class HotkeyHistoryEndpointsTests(ApiTestFixture fixture)
         var id = Guid.NewGuid();
         using HttpClient client = CreateAuthed(oid);
 
-        // A Delete tombstone, planted directly: the API would refuse to create this Key.
+        // A Delete tombstone, planted directly: the API would refuse to create these values.
+        // Two independent failures on purpose — the unknown Key and the empty Description. One
+        // failure would still pass if the response carried only the first warning.
         await using (AsyncServiceScope scope = _factory.Services.CreateAsyncScope())
         {
             AppDbContext db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             HotkeySnapshot bad = new(
-                Description: "he7 original", Key: "NotAKeyName",
+                Description: "", Key: "NotAKeyName",
                 Ctrl: true, Alt: false, Shift: false, Win: false,
                 AppliesToAllProfiles: true, ProfileIds: [], CategoryIds: [],
                 CreatedAt: DateTimeOffset.UnixEpoch, UpdatedAt: DateTimeOffset.UnixEpoch,
@@ -182,7 +184,10 @@ public sealed class HotkeyHistoryEndpointsTests(ApiTestFixture fixture)
         restored!.Id.Should().Be(id);
         restored.AppliesToAllProfiles.Should().BeFalse();
         restored.ProfileIds.Should().BeEmpty();
-        restored.RestoreWarnings.Should().NotBeNullOrEmpty();
+        restored.RestoreWarnings.Should().HaveCount(2)
+            .And.Contain("Description is required.");
+        restored.RestoreWarnings.Should()
+            .Contain(m => m.StartsWith("Key must be a known key name"));
     }
 
     [Fact]

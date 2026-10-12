@@ -147,12 +147,15 @@ public sealed class HotstringHistoryEndpointsTests(ApiTestFixture fixture)
         var id = Guid.NewGuid();
         using HttpClient client = CreateAuthed(oid);
 
-        // A Delete tombstone, planted directly: the API would refuse to create this value.
+        // A Delete tombstone, planted directly: the API would refuse to create these values.
+        // Two independent failures on purpose — the trailing space in Trigger and the double
+        // quote in ContextValue. One failure would still pass if the response carried only the
+        // first warning.
         await using (AsyncServiceScope scope = _factory.Services.CreateAsyncScope())
         {
             AppDbContext db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
             HotstringSnapshot bad = new(
-                Trigger: "he7", Replacement: "text", Description: null,
+                Trigger: "he7 ", Replacement: "text", Description: null,
                 AppliesToAllProfiles: true,
                 IsEndingCharacterRequired: true, IsTriggerInsideWord: false,
                 ProfileIds: [], CategoryIds: [],
@@ -174,8 +177,9 @@ public sealed class HotstringHistoryEndpointsTests(ApiTestFixture fixture)
         restored!.Id.Should().Be(id);
         restored.AppliesToAllProfiles.Should().BeFalse();
         restored.ProfileIds.Should().BeEmpty();
-        restored.RestoreWarnings.Should()
-            .Contain("ContextValue must not contain double-quote characters.");
+        restored.RestoreWarnings.Should().HaveCount(2)
+            .And.Contain("ContextValue must not contain double-quote characters.")
+            .And.Contain("Trigger must not have leading or trailing whitespace.");
     }
 
     [Fact]
