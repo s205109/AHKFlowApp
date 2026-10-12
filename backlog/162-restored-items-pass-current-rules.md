@@ -51,20 +51,24 @@ removed" and "tests cover the new API" cannot.
 - [x] An integration test in `tests/AHKFlowApp.API.Tests` seeds a Snapshot that a current rule
       refuses, and shows Revert returning 400 with the rule's message and Restore returning 200
       with the Item attached to no Profile.
-- [ ] A legacy Script Snapshot and a legacy Hotkey Snapshot still restore, as ADR-0003 and
+- [x] A legacy Script Snapshot and a legacy Hotkey Snapshot still restore, as ADR-0003 and
       ADR-0005 require. The existing legacy restore tests pass without edits.
 - [x] The Recycle Bin names the failing rules after a Restore that came back applying to no
       profile, and the history dialog shows the 400 message after a refused Revert.
 
-### Why the legacy criterion is not ticked
+### The legacy criterion, and the cost accepted with it
 
 The second sentence holds. `RestoreCommandTests.cs`, `RevertCommandTests.cs`,
 `HotstringSnapshotCompatibilityTests.cs` and `HotkeySnapshotCompatibilityTests.cs` are all
 unedited on this branch and all pass, which `git diff --name-only` against the merge base shows.
 
-The first sentence does not hold for two families of legacy rows. Both fail a brace counter, and
-both counters are deliberately unaware of strings and comments, which is decision D12 in the Raw
-work.
+The first sentence holds for every legacy row. Restore always returns the Item, and
+`LegacyHotkeySnapshotConverter` still runs on every legacy Hotkey row, which is what ADR-0003 and
+ADR-0005 ask for. Neither ADR asks for the restored Item to be attached to a Profile.
+
+Two families of legacy rows come back applying to no profile rather than attached. Both fail a
+brace counter, and both counters are deliberately unaware of strings and comments, which is
+decision D12 in the Raw work.
 
 1. A legacy `Kind=Script` hotstring whose body sends a literal brace, such as `Send "{{}"`,
    composes into a Raw definition that `AddRawKindRules` reads as unbalanced.
@@ -78,8 +82,15 @@ attached and emit an unchanged line. It now comes back applying to no profile, a
 edit dialog refuses every save while the body stays as it is. A Revert to such a version is refused
 outright.
 
-This is a behavior change the design stage did not weigh, so it is a decision for the human rather
-than a tick. Both behaviors are pinned, in `DefinitionRuleCheckTests`:
+**The cost, accepted on 2026-10-12.** An Owner who restores such a row gets the data back, and
+must rewrite the body — or change the kind or action — before the row reaches a Profile script
+again. Three facts make that cost acceptable. The same refusal already runs at Create on `main`,
+so no new row can hold such a body. Only rows written before the Raw and registry work can hold
+one, and their Owners already cannot save an edit to that value either way. The alternative, which
+is dropping the brace rules inside the history path alone, produces the worse state ADR-0021
+names: an Item that Restore accepts and the edit dialog then refuses forever.
+
+Both behaviors are pinned, in `DefinitionRuleCheckTests`:
 `Check_LegacyScriptBodyWithLiteralBrace_PinsTheNaiveBraceCounter` and
 `Check_LegacyHotkeySendWithLiteralBrace_PinsTheNaiveBraceCounter`. The reasoning is consequence 5 of
 [`docs/adr/0021-a-failed-restore-applies-to-no-profile.md`](../docs/adr/0021-a-failed-restore-applies-to-no-profile.md).
@@ -88,7 +99,8 @@ because dropping them would let Restore accept a definition the edit dialog then
 
 The counters are not this item's to change. They already refuse the same body at Create, so an
 Owner cannot write one through the API today either. Making them aware of strings and comments
-needs its own item, because it changes what Create and Update accept for every Raw row.
+needs its own item, because it changes what Create and Update accept for every Raw row. That is
+follow-up 1 below, and both pinning tests turn red when it lands.
 
 ### Evidence behind the ticked boxes
 
@@ -97,8 +109,10 @@ needs its own item, because it changes what Create and Update accept for every R
   cases: `tests/AHKFlowApp.Application.Tests/History/SnapshotRuleCheckTests.cs`
 - The whole recovery sequence, both entities and both scope modes:
   `tests/AHKFlowApp.Application.Tests/History/InertRestoreRecoveryTests.cs`
-- The definition validators refusing exactly what the Update validators refuse, 18 cases across
-  both entities: `tests/AHKFlowApp.Application.Tests/Validation/DefinitionRuleParityTests.cs`
+- The definition validators refusing exactly what the Update validators refuse, 20 cases across
+  both entities: `tests/AHKFlowApp.Application.Tests/Validation/DefinitionRuleParityTests.cs`.
+  Criterion 1 names Create and Update, and these cases anchor on Update alone. That covers both,
+  because each Create validator holds the same rule list as its Update twin.
 - Revert 400 and Restore 200 over HTTP, one pair per entity:
   `tests/AHKFlowApp.API.Tests/Hotstrings/HotstringHistoryEndpointsTests.cs` and
   `tests/AHKFlowApp.API.Tests/Hotkeys/HotkeyHistoryEndpointsTests.cs`
