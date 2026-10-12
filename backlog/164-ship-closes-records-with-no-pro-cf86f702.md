@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: none (internal script code, no UI/API/CLI change)
 - **Difficulty**: moderate
-- **Stage**: 0-intake
+- **Stage**: 1-pickup
 
 ## Summary
 
