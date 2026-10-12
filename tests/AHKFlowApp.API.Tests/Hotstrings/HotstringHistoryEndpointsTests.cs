@@ -1,8 +1,13 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using AHKFlowApp.Application.DTOs;
+using AHKFlowApp.Domain.Entities;
+using AHKFlowApp.Domain.Enums;
+using AHKFlowApp.Infrastructure.Persistence;
 using AHKFlowApp.TestUtilities.Fixtures;
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace AHKFlowApp.API.Tests.Hotstrings;
@@ -99,6 +104,82 @@ public sealed class HotstringHistoryEndpointsTests(ApiTestFixture fixture)
         after.Should().NotContain(d => d.Id == dto.Id);
         HttpResponseMessage history = await client.GetAsync($"/api/v1/hotstrings/{dto.Id}/history");
         history.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
+    public async Task Revert_SnapshotFailsCurrentRules_Returns400WithTheRuleMessage()
+    {
+        var oid = Guid.NewGuid();
+        using HttpClient client = CreateAuthed(oid);
+        HotstringDto dto = await CreateAsync(client, "he6");
+
+        // Plant an Edit Snapshot whose window context carries a double quote. The rule that
+        // forbids it landed after Snapshots started being written, so a stored row can hold one.
+        await using (AsyncServiceScope scope = _factory.Services.CreateAsyncScope())
+        {
+            AppDbContext db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            HotstringSnapshot bad = new(
+                Trigger: "he6", Replacement: "original", Description: null,
+                AppliesToAllProfiles: true,
+                IsEndingCharacterRequired: true, IsTriggerInsideWord: false,
+                ProfileIds: [], CategoryIds: [],
+                CreatedAt: DateTimeOffset.UnixEpoch, UpdatedAt: DateTimeOffset.UnixEpoch,
+                ContextMatchType: WindowMatchType.TitleContains, ContextValue: "a \" b");
+
+            db.EntityHistories.Add(EntityHistory.Create(
+                oid, TrackedEntityType.Hotstring, dto.Id, version: 1, HistoryChangeType.Edit,
+                schemaVersion: 1, JsonSerializer.Serialize(bad), TimeProvider.System));
+            await db.SaveChangesAsync();
+        }
+
+        HttpResponseMessage revert = await client.PostAsync(
+            $"/api/v1/hotstrings/{dto.Id}/history/1/revert", content: null);
+
+        revert.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        string body = await revert.Content.ReadAsStringAsync();
+        body.Should().Contain("ContextValue must not contain double-quote characters.");
+    }
+
+    [Fact]
+    public async Task Restore_SnapshotFailsCurrentRules_Returns200AttachedToNoProfile()
+    {
+        var oid = Guid.NewGuid();
+        var id = Guid.NewGuid();
+        using HttpClient client = CreateAuthed(oid);
+
+        // A Delete tombstone, planted directly: the API would refuse to create these values.
+        // Two independent failures on purpose — the trailing space in Trigger and the double
+        // quote in ContextValue. One failure would still pass if the response carried only the
+        // first warning.
+        await using (AsyncServiceScope scope = _factory.Services.CreateAsyncScope())
+        {
+            AppDbContext db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            HotstringSnapshot bad = new(
+                Trigger: "he7 ", Replacement: "text", Description: null,
+                AppliesToAllProfiles: true,
+                IsEndingCharacterRequired: true, IsTriggerInsideWord: false,
+                ProfileIds: [], CategoryIds: [],
+                CreatedAt: DateTimeOffset.UnixEpoch, UpdatedAt: DateTimeOffset.UnixEpoch,
+                ContextMatchType: WindowMatchType.TitleContains, ContextValue: "a \" b");
+
+            db.EntityHistories.Add(EntityHistory.Create(
+                oid, TrackedEntityType.Hotstring, id, version: 1, HistoryChangeType.Delete,
+                schemaVersion: 1, JsonSerializer.Serialize(bad), TimeProvider.System));
+            await db.SaveChangesAsync();
+        }
+
+        HttpResponseMessage restore = await client.PostAsync(
+            $"/api/v1/hotstrings/{id}/restore", content: null);
+
+        restore.StatusCode.Should().Be(HttpStatusCode.OK);
+        HotstringDto? restored = await restore.Content.ReadFromJsonAsync<HotstringDto>();
+
+        restored!.Id.Should().Be(id);
+        restored.AppliesToAllProfiles.Should().BeFalse();
+        restored.ProfileIds.Should().BeEmpty();
+        restored.RestoreWarnings.Should().HaveCount(2)
+            .And.Contain("ContextValue must not contain double-quote characters.")
+            .And.Contain("Trigger must not have leading or trailing whitespace.");
     }
 
     [Fact]

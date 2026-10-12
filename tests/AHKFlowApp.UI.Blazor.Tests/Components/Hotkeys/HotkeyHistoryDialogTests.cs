@@ -15,13 +15,17 @@ namespace AHKFlowApp.UI.Blazor.Tests.Components.Hotkeys;
 public sealed class HotkeyHistoryDialogTests : BunitContext, IAsyncLifetime
 {
     private readonly IHotkeysApiClient _api = Substitute.For<IHotkeysApiClient>();
+    private readonly ISnackbar _snackbar = Substitute.For<ISnackbar>();
     private readonly Guid _id = Guid.NewGuid();
 
     public HotkeyHistoryDialogTests()
     {
         Services.AddSingleton(_api);
-        Services.AddSingleton(Substitute.For<ISnackbar>());
         Services.AddMudServices();
+
+        // Registered after AddMudServices so this substitute wins, which is what lets a test read
+        // back the message the dialog showed.
+        Services.AddSingleton(_snackbar);
         JSInterop.Mode = JSRuntimeMode.Loose;
     }
 
@@ -184,5 +188,43 @@ public sealed class HotkeyHistoryDialogTests : BunitContext, IAsyncLifetime
         await provider.InvokeAsync(() => provider.Find("button.revert-version").Click());
         provider.WaitForAssertion(() =>
             _api.Received(1).RevertAsync(_id, 1, Arg.Any<CancellationToken>()));
+    }
+
+    [Fact]
+    public async Task Dialog_RevertRefusedByCurrentRules_ShowsTheRuleMessageAndStaysOpen()
+    {
+        // A Revert whose stored Snapshot fails a current rule returns 400 with the rule's own
+        // message (backlog 162). The Owner has to read that message and pick another version, so
+        // the dialog must stay open behind it.
+        StubOneVersion(RunSnapshot());
+        _api.RevertAsync(_id, 1, Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HotkeyDto>.Failure(
+                ApiResultStatus.Validation,
+                new ApiProblemDetails(
+                    Type: null, Title: "One or more validation errors occurred.",
+                    Status: 400, Detail: null, Instance: null,
+                    Errors: new Dictionary<string, string[]>
+                    {
+                        ["Key"] = ["Key must be a known key name."],
+                    })));
+
+        IRenderedComponent<MudDialogProvider> provider = await OpenDialogAsync();
+        provider.WaitForAssertion(() => provider.Markup.Should().Contain("v1"));
+
+        await provider.InvokeAsync(() => provider.Find("button.history-version").Click());
+        provider.WaitForAssertion(() => provider.Markup.Should().Contain("notepad.exe"));
+
+        await provider.InvokeAsync(() => provider.Find("button.revert-version").Click());
+
+        provider.WaitForAssertion(() => _snackbar.Received(1).Add(
+            "Key: Key must be a known key name.",
+            Severity.Error,
+            Arg.Any<Action<SnackbarOptions>>(),
+            Arg.Any<string>()));
+
+        // Still open: a refused Revert leaves the version list where it was, so the Owner can
+        // choose a different version without reopening the dialog.
+        provider.FindAll("button.revert-version").Should().NotBeEmpty(
+            "a refused Revert must not close the dialog");
     }
 }

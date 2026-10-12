@@ -94,7 +94,7 @@ removed" and "tests cover the new API" cannot.
   5. At Verify, the generator, preview, and round-trip tests passed: Fast 116 of 116, Integration
      41 of 41 and 19 of 19. `git diff origin/main...HEAD -- tests/` removes one line, which is a
      comment in `GetHotkeyPreviewQueryTests.cs`, and adds only the new theory.
-  6. (`CONTEXT.md:129`, "**Runtime helper**:") defines the term. `RuntimeHelpers` carries it in its
+  6. (`CONTEXT.md:133`, "**Runtime helper**:") defines the term. `RuntimeHelpers` carries it in its
      name and summary, and `DefinitionWrapping` uses it in its summary.
 - **Document verdict.** Task 2 updated `docs/development/ahk-v2-syntax.md` and the code comments
   that named a moved member. Re-read after Simplify, they match the code. No README, skill, or

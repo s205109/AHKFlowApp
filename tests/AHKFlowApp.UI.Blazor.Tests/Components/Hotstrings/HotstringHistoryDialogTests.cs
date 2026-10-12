@@ -14,13 +14,17 @@ namespace AHKFlowApp.UI.Blazor.Tests.Components.Hotstrings;
 public sealed class HotstringHistoryDialogTests : BunitContext, IAsyncLifetime
 {
     private readonly IHotstringsApiClient _api = Substitute.For<IHotstringsApiClient>();
+    private readonly ISnackbar _snackbar = Substitute.For<ISnackbar>();
     private readonly Guid _id = Guid.NewGuid();
 
     public HotstringHistoryDialogTests()
     {
         Services.AddSingleton(_api);
-        Services.AddSingleton(Substitute.For<ISnackbar>());
         Services.AddMudServices();
+
+        // Registered after AddMudServices so this substitute wins, which is what lets a test read
+        // back the message the dialog showed.
+        Services.AddSingleton(_snackbar);
         JSInterop.Mode = JSRuntimeMode.Loose;
     }
 
@@ -148,5 +152,50 @@ public sealed class HotstringHistoryDialogTests : BunitContext, IAsyncLifetime
         await provider.InvokeAsync(() => provider.Find("button.history-version").Click());
 
         provider.WaitForAssertion(() => provider.Markup.Should().Contain("yyyy-MM-dd (+1 day)"));
+    }
+
+    [Fact]
+    public async Task Dialog_RevertRefusedByCurrentRules_ShowsTheRuleMessageAndStaysOpen()
+    {
+        // A Revert whose stored Snapshot fails a current rule returns 400 with the rule's own
+        // message (backlog 162). The Owner has to read that message and pick another version, so
+        // the dialog must stay open behind it.
+        HotstringSnapshot snapshot = new(
+            "btw", "old text", null, true, true, true, [], [],
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+        _api.GetHistoryAsync(_id, Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HistoryEntryDto[]>.Ok([new(1, HistoryChangeType.Edit, DateTimeOffset.UtcNow)]));
+        _api.GetHistoryVersionAsync(_id, 1, Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HotstringHistoryVersionDto>.Ok(
+                new HotstringHistoryVersionDto(1, HistoryChangeType.Edit, DateTimeOffset.UtcNow, snapshot)));
+        _api.RevertAsync(_id, 1, Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HotstringDto>.Failure(
+                ApiResultStatus.Validation,
+                new ApiProblemDetails(
+                    Type: null, Title: "One or more validation errors occurred.",
+                    Status: 400, Detail: null, Instance: null,
+                    Errors: new Dictionary<string, string[]>
+                    {
+                        ["ContextValue"] = ["ContextValue must not contain double-quote characters."],
+                    })));
+
+        IRenderedComponent<MudDialogProvider> provider = await OpenDialogAsync();
+        provider.WaitForAssertion(() => provider.Markup.Should().Contain("v1"));
+
+        await provider.InvokeAsync(() => provider.Find("button.history-version").Click());
+        provider.WaitForAssertion(() => provider.Markup.Should().Contain("old text"));
+
+        await provider.InvokeAsync(() => provider.Find("button.revert-version").Click());
+
+        provider.WaitForAssertion(() => _snackbar.Received(1).Add(
+            "ContextValue: ContextValue must not contain double-quote characters.",
+            Severity.Error,
+            Arg.Any<Action<SnackbarOptions>>(),
+            Arg.Any<string>()));
+
+        // Still open: a refused Revert leaves the version list where it was, so the Owner can
+        // choose a different version without reopening the dialog.
+        provider.FindAll("button.revert-version").Should().NotBeEmpty(
+            "a refused Revert must not close the dialog");
     }
 }

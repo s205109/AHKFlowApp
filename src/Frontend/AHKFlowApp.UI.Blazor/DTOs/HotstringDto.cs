@@ -22,4 +22,8 @@ public sealed record HotstringDto(
     string? ContextValue = null,
     HotstringDelivery Delivery = HotstringDelivery.Auto,
     bool ReplacementIsTruncated = false,
-    HotstringDelivery EffectiveDelivery = HotstringDelivery.Type);
+    HotstringDelivery EffectiveDelivery = HotstringDelivery.Type,
+    // The rules a Restore's stored snapshot failed, when the item came back applying to no
+    // profile. Null or empty on every other response. The name matches the backend DTO, so
+    // System.Text.Json binds it with no attribute.
+    string[]? RestoreWarnings = null);

@@ -153,7 +153,7 @@
 
         try
         {
-            string? error = row.Type == HotstringType
+            (string? error, string[]? warnings) = row.Type == HotstringType
                 ? await RestoreHotstringAsync(row.Id)
                 : await RestoreHotkeyAsync(row.Id);
 
@@ -163,7 +163,24 @@
                 return;
             }
 
-            Snackbar.Add($"{row.Type} restored.", Severity.Success);
+            // A Restore that failed the current rules comes back applying to no profile, so no
+            // profile script contains it until the Owner fixes the values named here (ADR-0021).
+            if (warnings is { Length: > 0 })
+            {
+                // Each rule message already ends in a period, so a single space joins them.
+                // RequireInteraction keeps the message up until the Owner closes it: nothing
+                // persisted records which rules failed, so this toast is the only copy.
+                Snackbar.Add(
+                    $"{row.Type} restored, but it applies to no profile: {string.Join(" ", warnings)} "
+                    + "Open it, fix those values, and choose its profiles again.",
+                    Severity.Warning,
+                    options => options.RequireInteraction = true);
+            }
+            else
+            {
+                Snackbar.Add($"{row.Type} restored.", Severity.Success);
+            }
+
             await LoadAsync();
         }
         finally
@@ -207,16 +224,20 @@
         }
     }
 
-    private async Task<string?> RestoreHotstringAsync(Guid id)
+    private async Task<(string? Error, string[]? Warnings)> RestoreHotstringAsync(Guid id)
     {
         ApiResult<HotstringDto> result = await Hotstrings.RestoreAsync(id, _cts.Token);
-        return result.IsSuccess ? null : ApiErrorMessageFactory.Build(result.Status, result.Problem);
+        return result.IsSuccess
+            ? (null, result.Value?.RestoreWarnings)
+            : (ApiErrorMessageFactory.Build(result.Status, result.Problem), null);
     }
 
-    private async Task<string?> RestoreHotkeyAsync(Guid id)
+    private async Task<(string? Error, string[]? Warnings)> RestoreHotkeyAsync(Guid id)
     {
         ApiResult<HotkeyDto> result = await Hotkeys.RestoreAsync(id, _cts.Token);
-        return result.IsSuccess ? null : ApiErrorMessageFactory.Build(result.Status, result.Problem);
+        return result.IsSuccess
+            ? (null, result.Value?.RestoreWarnings)
+            : (ApiErrorMessageFactory.Build(result.Status, result.Problem), null);
     }
 
     private static string BusyKey(RecycleBinRow row) => $"{row.Type}:{row.Id}";

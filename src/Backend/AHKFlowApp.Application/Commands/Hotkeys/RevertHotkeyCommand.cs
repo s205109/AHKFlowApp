@@ -4,6 +4,7 @@ using AHKFlowApp.Application.Common;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Application.Mapping;
 using AHKFlowApp.Application.Services;
+using AHKFlowApp.Application.Validation;
 using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Domain.Enums;
 using Ardalis.Result;
@@ -47,6 +48,15 @@ internal sealed class RevertHotkeyCommandHandler(
         if (snapshot is null)
             return Result.Error("Snapshot could not be read.");
 
+        // The converted definition is what the Emitter will read, so it is what the rules judge.
+        HotkeyDefinition definition = LegacyHotkeySnapshotConverter.ToDefinition(snapshot);
+
+        // The rules a new save must pass (backlog 162). This runs BEFORE the recorder: a refused
+        // Revert must leave no Version behind.
+        ValidationError[] failures = DefinitionRuleCheck.Check(definition);
+        if (failures.Length > 0)
+            return Result.Invalid(failures);
+
         EntityHistory historyEntry = await recorder.RecordHotkeyAsync(entity, HistoryChangeType.Edit, ct);
 
         Guid[] liveProfileIds = await db.Profiles
@@ -58,7 +68,7 @@ internal sealed class RevertHotkeyCommandHandler(
             .Select(c => c.Id)
             .ToArrayAsync(ct);
 
-        entity.Update(LegacyHotkeySnapshotConverter.ToDefinition(snapshot), clock);
+        entity.Update(definition, clock);
 
         db.HotkeyProfiles.RemoveRange(entity.Profiles);
         entity.Profiles.Clear();

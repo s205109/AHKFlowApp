@@ -110,6 +110,10 @@ Said of a hotstring or hotkey that belongs to every Profile, including profiles 
 Short form in narrow places: "All profiles". See **Short forms** above.
 _Avoid_: Any, global, shared, all-profiles
 
+**Applies to no profile**:
+Said of a hotstring or hotkey that belongs to no Profile at all, so no Profile script contains it. The Owner still sees it, edits it, and deletes it. The mirror of **Apply to all profiles**. A Restore produces this state when the stored Snapshot fails the rules a new save must pass (see ADR-0021).
+_Avoid_: disabled, inactive, orphaned, quarantined, unscoped
+
 **Category**:
 A user's label for finding and filtering hotstrings and hotkeys; a default set is seeded for each new Owner. Carries no meaning in a generated Profile script.
 _Avoid_: tag, group, folder
