@@ -1,0 +1,1 @@
+Task 1; a9cf9907; red before fix: TimeoutException in both new tests, the Description td intercepts the row checkbox click and the next header th intercepts select-all; green after: 13 of 13 hotkey flow tests; deferrals: none
