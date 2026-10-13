@@ -48,9 +48,9 @@ removed" and "tests cover the new API" cannot.
   `fatal: pathspec 'PLAN-PROGRESS.md' did not match any files`, then
   `REFUSED: The closure commit failed.` The item had already moved to `backlog/done/` and already
   read `Stage: 9-ship`, both uncommitted. I finished that closure by hand in commit `5b9dadcf`.
-- The failing call: (`scripts/take-stage-transition.ps1:445`, "add -A -- backlog PLAN-PROGRESS.md").
+- The failing call, as it stood before this item's fix: (`scripts/take-stage-transition.ps1:445`, "add -A -- backlog PLAN-PROGRESS.md"). That line is gone now, so this records the tree as it was (citation-check:ignore)
 - The same shape in the failure path, which is out of scope above:
-  (`scripts/take-stage-transition.ps1:502`, "add -A -- backlog PLAN-PROGRESS.md").
+  (`scripts/take-stage-transition.ps1:624`, "add -A -- backlog PLAN-PROGRESS.md").
 - Item 081 built this script, and item 159 extracted its shared spine.
 - Spec: none - a two-file script fix needs no design document.
 - Plan: `docs/superpowers/plans/2026-10-12-ship-closes-records-with-no-progress-file-plan-164.md`
