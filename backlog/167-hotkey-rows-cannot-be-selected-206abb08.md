@@ -21,10 +21,10 @@ delete nineteen rows one at a time.
 
 ## Acceptance criteria
 
-- [ ] Clicking the select checkbox on a hotkey row at desktop width selects that row.
-- [ ] With rows selected, the bulk-delete button appears and names the count.
-- [ ] The select column on the hotkeys grid has an explicit width, as the hotstrings grid does.
-- [ ] An E2E flow test selects hotkey rows and bulk-deletes them at desktop viewport, not only at
+- [x] Clicking the select checkbox on a hotkey row at desktop width selects that row.
+- [x] With rows selected, the bulk-delete button appears and names the count.
+- [x] The select column on the hotkeys grid has an explicit width, as the hotstrings grid does.
+- [x] An E2E flow test selects hotkey rows and bulk-deletes them at desktop viewport, not only at
       phone viewport.
 
 ## Out of scope
@@ -51,6 +51,18 @@ delete nineteen rows one at a time.
   where the mobile branch uses its own select mode rather than the grid's select column.
 - Workaround for an owner today: delete hotkeys one row at a time, or use a narrow window. So
   this is S2 and not S1 — nothing is lost, but a shipped feature is unusable on desktop.
-- Worth checking whether any other grid repeats the bare form.
+- No other grid repeats the bare form. A search for `SelectColumn` under `src/` finds only the
+  hotkeys and hotstrings grids, and both now set `HeaderStyle="width:56px"`. A search for
+  `MultiSelection` finds the same two grids, plus a select field and a chip set that are not
+  grids.
+- How the boxes are proven. `HotkeysCrudFlowTests.BulkDelete_OnDesktopViewport_SelectsRowsWithTheirCheckboxes`
+  runs at 1280 by 800 pixels. It ticks two row checkboxes, checks that the button says
+  "Delete 1 selected" and then "Delete 2 selected", and deletes both rows. One of the rows has a
+  200-character description. `SelectAll_OnDesktopViewport_SelectsEveryRowOnThePage` covers the
+  header checkbox, which the same bug also covered. Both tests failed before the fix with a
+  `TimeoutException`, because another cell received the click.
+- The 56-pixel rule in `Pages/Hotkeys.razor.css` stays, the same as in the hotstrings style
+  sheet. It has no effect, because the inline style beats it. Removing it from both grids is a
+  separate cleanup.
 - Spec: none — the fix and its reason are already written down in the hotstrings comment.
 - Plan: `docs/superpowers/plans/2026-10-13-hotkey-rows-cannot-be-selected-plan-167.md`
