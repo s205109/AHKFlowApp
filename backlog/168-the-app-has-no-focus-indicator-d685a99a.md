@@ -10,9 +10,11 @@
 
 ## Summary
 
-No element changes appearance when it takes keyboard focus, anywhere in the app. Icon buttons in
-the app bar and in every data row have no accessible name. There is also no skip link, so
-reaching page content costs thirteen tab presses on every page.
+A nav link does not change appearance when it takes keyboard focus, and no file in the repository
+sets a focus-ring policy. Twenty icon-only buttons have no accessible name: both app-bar buttons,
+and every button on the categories, hotstrings and profiles rows. The hotkeys rows and the
+Recycle Bin rows already name theirs, so the fix follows a pattern the app already uses. There is
+also no skip link, so reaching page content costs fourteen tab presses on every page.
 
 ## User story
 
@@ -21,13 +23,13 @@ button does, so that I can use the app without a mouse.
 
 ## Acceptance criteria
 
-- [ ] A focused control is visibly different from the same control unfocused, on nav links, grid
-      buttons, toolbar buttons and form fields.
+- [ ] A nav link is visibly different focused and unfocused.
+- [ ] The repository states a focus-ring policy in one place, and that policy covers nav links,
+      grid buttons, toolbar buttons and form fields.
 - [ ] The drawer toggle and the dark-mode toggle each have an accessible name, and the dark-mode
       name reflects what pressing it will do.
-- [ ] Every icon-only button in the categories, hotstrings and hotkeys rows has an accessible
-      name that includes its target, as the Recycle Bin rows already do.
-- [ ] The inline `commit-edit`, `cancel-edit` and `promote-edit` controls have accessible names.
+- [ ] Each of the twenty buttons listed under Notes has an accessible name that includes its
+      target, following the pattern the hotkeys rows and the Recycle Bin rows already use.
 - [ ] A skip link reaches the page content, and it becomes visible when it takes focus.
 - [ ] An E2E flow test asserts the accessible name of at least one app-bar button and one row
       button, so the pattern cannot silently regress.
@@ -49,16 +51,37 @@ button does, so that I can use the app without a mouse.
   browser agreed a focus style should show, and still drew nothing. `::before` and `::after` both
   have `content: none` and there is no overlay child, which rules out the way MudBlazor often
   draws focus. A screenshot is saved beside the report as `screenshots/c9-focus-navlink.png`.
-- No file in the repository sets a focus-ring policy. That is part of why this went unnoticed.
+- **The measurement covers one control.** The four checks above were all run on a nav link, so
+  "no focus indicator anywhere in the app" was a generalisation and the summary no longer says it.
+  What supports the wider worry is that no file in the repository sets a focus-ring policy, which
+  is also part of why this went unnoticed. Measure a grid button, a toolbar button and a form
+  field at pickup, and write down what each one does today before changing any CSS.
 - **F6 and F12, the names.** The app bar's two `MudIconButton`s have no `aria-label`, no `Title`
-  and no text, so the accessibility tree shows a button containing only an image. The same holds
-  for two buttons on every categories row, three on every hotstrings and hotkeys row, and the
-  inline edit controls. Read directly, a hotstring row's three buttons return `aria=[NONE]
-  title=[NONE]`.
-- **The app already does this correctly in places**, so the fix is a pattern that exists:
-  the Recycle Bin rows use `aria-label="Restore /ghub"` and `aria-label="Delete /ghub forever"`,
-  the dialog close button says `Close without saving`, and the quickstart buttons say
-  `Copy command`.
+  and no text, so the accessibility tree shows a button containing only an image. Read directly, a
+  hotstring row's three buttons return `aria=[NONE] title=[NONE]`.
+- **The hotkeys rows were already done**, under item 035, whose last acceptance criterion reads
+  "Add accessible names to icon-only controls and mobile row checkbox labels". All six buttons in
+  `Pages/Hotkeys.razor`'s row template carry an `aria-label`, and so do the Recycle Bin rows, the
+  hotkeys mobile list, the hotkeys history dialog, the edit dialog, the code-preview copy button,
+  the quickstart copy button, the known-shortcut use actions, the hotstrings `promote-edit` button
+  and the hotstrings glyph-legend button. The sweep read the hotstrings rows and generalised to
+  both pages, which was wrong. That part of the finding is not new work.
+- **The twenty buttons that still have no accessible name**, counted by reading every
+  `MudIconButton` in the project:
+  - `Layout/MainLayout.razor` — the drawer toggle and the dark-mode toggle.
+  - `Pages/Categories.razor` — `commit-edit`, `cancel-edit`, `start-edit`, `delete`.
+  - `Pages/Hotstrings.razor` — `reload-hotstrings-mobile`, `commit-edit`, `cancel-edit`, `edit`,
+    `show-history`, `delete`.
+  - `Pages/Profiles.razor` — `commit-edit`, `cancel-edit`, `toggle-expand`, `start-edit`,
+    `delete`.
+  - `Components/Hotstrings/HotstringMobileList.razor` — `toggle-select-mode`.
+  - `Components/Hotstrings/HotstringHistoryDialog.razor` — `close-history`.
+  - `Components/Hotstrings/HotstringImportDialog.razor` — `cancel-import`.
+- The pattern to copy is in the same two files twice over. `HotkeyMobileList.razor` names its
+  `toggle-select-mode` button and `HotstringMobileList.razor` does not. `HotkeyHistoryDialog.razor`
+  names its `close-history` button and `HotstringHistoryDialog.razor` does not. So this is the
+  hotkey work never reaching the hotstring side, not a missing decision. `MudIconButton` has no
+  `AriaLabel` parameter, so every existing label rides along through `UserAttributes`.
 - **F28, the skip link.** The real tab order from the top of `/hotstrings` is: two app-bar
   buttons, then all eleven nav links, then Add, Reload and Import at stops 14 to 16. So content
   starts at the fourteenth press, on every page. A search for a link whose text contains "skip"

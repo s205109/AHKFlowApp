@@ -55,8 +55,20 @@ it without having to guess.
   the right field, and the bad value is still stored, which is what makes the repair path work.
 - The message itself also names a property rather than the field's visible label. Item 169 covers
   that wording across the app.
+- **This item asks to revisit an accepted consequence, not to fix an oversight.** ADR-0021
+  Consequence 3 says it plainly: "'Applies to no profile' has two causes that look identical...
+  Nothing persisted tells the two apart. Only the Restore response carries the rule messages." The
+  second cause it names is an owner deleting every profile an item named, which is item 166's
+  other half. So the work here changes a decision the project made on purpose, and it has to amend
+  ADR-0021 or supersede it. Treat the third acceptance criterion above as the point of the item:
+  it asks for exactly the distinction Consequence 3 accepted doing without.
+- The rejected alternative in the same ADR is close to this item and is not the same thing.
+  ADR-0021 rejected "Accept both unchanged, with a warning", because a broken value would then
+  reach the next generated script. This item does not ask for that. It asks for the already-chosen
+  behaviour to leave a record the owner can read later.
 - Related. Item 166 records that a profile delete produces this same state with no warning at
-  all. One path shouts and the other is silent.
+  all. One path shouts and the other is silent. Design the two together: if a restore and a
+  profile delete both need a durable record, one mechanism should serve both.
 - Spec: needed — where the reason lives is a design decision. Options include persisting
   `restoreWarnings` on the item, writing a history entry, or marking the item as needing repair.
 - Plan: none — complex, so Design comes first at pickup.
