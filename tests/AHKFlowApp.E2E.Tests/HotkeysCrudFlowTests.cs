@@ -1,5 +1,8 @@
 using AHKFlowApp.E2E.Tests.Fixtures;
+using AHKFlowApp.Infrastructure.Persistence;
+using AHKFlowApp.TestUtilities.Builders;
 using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Playwright;
 using Xunit;
 
@@ -8,6 +11,13 @@ namespace AHKFlowApp.E2E.Tests;
 [Collection(E2ECollectionB.Name)]
 public sealed class HotkeysCrudFlowTests(StackFixtureB fixture) : IAsyncLifetime
 {
+    // 1280 px is the width the grid's CSS comments are measured at, and it is well above the
+    // 959.95 px breakpoint where the page switches to the mobile list.
+    private static readonly BrowserNewContextOptions DesktopViewport = new()
+    {
+        ViewportSize = new ViewportSize { Width = 1280, Height = 800 },
+    };
+
     public Task InitializeAsync() =>
         fixture.ResetDataAsync();
 
@@ -228,6 +238,65 @@ public sealed class HotkeysCrudFlowTests(StackFixtureB fixture) : IAsyncLifetime
         await Assertions.Expect(page.Locator(".hotkey-edit-dialog")).ToBeVisibleAsync();
     }
 
+    // Backlog 167. MudBlazor's SelectColumn writes an inline width:0% on its header cell. This grid
+    // is table-layout: fixed, so the column collapsed to 0 px and the Description cell covered
+    // every row checkbox. CheckAsync clicks only when the checkbox itself is the hit target, so it
+    // times out while anything covers it. Never pass Force here: Force skips that check. The phone
+    // viewport uses its own select mode and never showed this bug.
+    [Fact]
+    public async Task BulkDelete_OnDesktopViewport_SelectsRowsWithTheirCheckboxes()
+    {
+        // Description is the cell that covered the checkbox, so one row carries the longest
+        // description the database allows: 200 characters.
+        string longDescription = "Macro A " + new string('x', 192);
+        await SeedHotkeysAsync(fixture, (longDescription, "F1"), ("Macro B", "F2"));
+
+        await using IBrowserContext ctx = await fixture.Browser.NewContextAsync(DesktopViewport);
+
+        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/hotkeys");
+
+        // Both branches render into the DOM, and the mobile list has a bulk-delete button of its
+        // own, so every locator here is scoped to the desktop branch.
+        ILocator rowA = page.Locator(".desktop-branch tbody tr", new() { HasTextString = "Macro A" });
+        ILocator rowB = page.Locator(".desktop-branch tbody tr", new() { HasTextString = "Macro B" });
+        ILocator bulkDelete = page.Locator(".desktop-branch button.bulk-delete-hotkeys");
+        await rowA.WaitForAsync();
+        await rowB.WaitForAsync();
+
+        await rowA.Locator("td:first-child input[type=checkbox]").CheckAsync();
+        await Assertions.Expect(bulkDelete).ToContainTextAsync("Delete 1 selected");
+        await rowB.Locator("td:first-child input[type=checkbox]").CheckAsync();
+        await Assertions.Expect(bulkDelete).ToContainTextAsync("Delete 2 selected");
+
+        await bulkDelete.ClickAsync();
+        ILocator dialog = page.Locator("[role=\"dialog\"]");
+        await dialog.WaitForAsync();
+        await dialog.GetByRole(AriaRole.Button, new() { Name = "Delete" }).ClickAsync();
+
+        await page.WaitForSelectorAsync("text=Deleted 2 hotkey");
+        await Assertions.Expect(rowA).ToHaveCountAsync(0);
+        await Assertions.Expect(rowB).ToHaveCountAsync(0);
+    }
+
+    // Backlog 167. The header's select-all checkbox lives in the same column, so the collapsed
+    // width covered it too.
+    [Fact]
+    public async Task SelectAll_OnDesktopViewport_SelectsEveryRowOnThePage()
+    {
+        await SeedHotkeysAsync(fixture, ("Macro A", "F1"), ("Macro B", "F2"));
+
+        await using IBrowserContext ctx = await fixture.Browser.NewContextAsync(DesktopViewport);
+
+        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/hotkeys");
+        await page.Locator(".desktop-branch tbody tr", new() { HasTextString = "Macro A" }).WaitForAsync();
+        await page.Locator(".desktop-branch tbody tr", new() { HasTextString = "Macro B" }).WaitForAsync();
+
+        await page.Locator(".desktop-branch thead th:first-child input[type=checkbox]").CheckAsync();
+
+        await Assertions.Expect(page.Locator(".desktop-branch button.bulk-delete-hotkeys"))
+            .ToContainTextAsync("Delete 2 selected");
+    }
+
     // Fills a MudAutocomplete key picker and commits the typed value by blurring (CoerceValue).
     private static async Task CommitKeyAsync(IPage page, string selector, string key)
     {
@@ -258,5 +327,22 @@ public sealed class HotkeysCrudFlowTests(StackFixtureB fixture) : IAsyncLifetime
         }
 
         (await select.InputValueAsync()).Should().Be(label, "the Run target kind must commit");
+    }
+
+    private static async Task SeedHotkeysAsync(StackFixture fixture, params (string Description, string Key)[] hotkeys)
+    {
+        await using AsyncServiceScope scope = fixture.Api.Services.CreateAsyncScope();
+        AppDbContext db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        foreach ((string description, string key) in hotkeys)
+        {
+            db.Hotkeys.Add(new HotkeyBuilder()
+                .WithOwner(TestAuthHandler.TestOwnerOid)
+                .WithDescription(description)
+                .WithKey(key)
+                .Build());
+        }
+
+        await db.SaveChangesAsync();
     }
 }
