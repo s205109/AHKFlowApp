@@ -31,6 +31,10 @@ profile, so that I do not have to know which directives a script needs.
 - [ ] Editing an existing profile still keeps the header the owner saved.
 - [ ] The item records what an empty header means, and the shipped behaviour matches that record.
       The open question below is the decision, and making it is part of this work.
+- [ ] Every profile that already stores an empty header gets the default header, in every
+      environment. A profile whose header holds any text keeps that text exactly as it is.
+- [ ] A test covers that repair. It proves an empty header is filled, and it proves a header the
+      owner wrote is left alone.
 
 ## Out of scope
 
@@ -72,11 +76,21 @@ profile, so that I do not have to know which directives a script needs.
   preserved all 277 characters.
 - The CLI has no profile command, so the web UI is the only way an owner creates a profile.
   Every owner-created profile is affected.
-- **Open question for Design.** Coercing `""` to the default on the server would stop an owner
-  ever clearing the header on purpose. The alternative is for `ProfileEditModel` to start from
-  `DefaultProfileTemplates` so the owner sees and edits a real template. Decide which before
-  writing code. The acceptance criteria above are written so that either answer can satisfy them:
-  they ask for a default header on a profile the owner did not customise, and they leave what an
-  explicit empty header means to this decision.
-- Spec: none — pick one of the two options above at Design.
+- **Decision, taken at Plan on 2026-10-13.** An empty header means an empty header. The create API
+  keeps the rule it already had: a null header means use the application default, and any supplied
+  string is stored exactly as sent. The server is unchanged. The web UI stops sending an empty
+  string by accident, because the Add form now starts from the default header. The owner sees it,
+  edits it, or clears it on purpose. The alternative, coercing an empty string to the default
+  inside the create handler, was rejected for two reasons. It would make an empty string mean one
+  thing on create and another on update, because the update handler stores what it is given. It
+  would also stop an owner ever creating a profile with an empty header.
+- **Decision, taken at Plan on 2026-10-13.** Profiles the bug already damaged are repaired in this
+  item, by a one-time database migration. Before the fix there was no way to tell a header the bug
+  emptied from one an owner emptied on purpose, and the web UI was the only way an owner could
+  create a profile, so almost every empty header is the bug. The repair fills a header that holds
+  no characters at all, and never touches a header that holds any text. After it runs, an empty
+  header can only come from a deliberate act, which is what the first decision above says it
+  means.
+- Spec: none. The item is `moderate`, so it goes straight to Plan. The two decisions above were
+  taken there.
 - Plan: `docs/superpowers/plans/2026-10-13-profile-default-header-plan-165.md`.
