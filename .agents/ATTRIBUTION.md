@@ -77,6 +77,13 @@ are rewritten to the `mp-` folder names, and long descriptions are trimmed to th
 140-char skill-description budget. Each `SKILL.md` carries a header comment recording the pinned
 commit and update policy (manual-selective-merge).
 
+The upstream versions of these eight skills are blocked in `.claude/settings.json`. Each one has
+a `Skill(mattpocock-skills:<name>)` entry in `permissions.deny`, which stops the agent's `Skill`
+tool. A deny cannot stop a slash command the human types. So a `UserPromptExpansion` hook,
+`.claude/hooks/block-upstream-mp-forks.ps1`, blocks the typed command and names the `mp-` fork.
+When you add or retire a fork, change the deny list and the hook's matcher too.
+`tests/BlockUpstreamMpForksHook.Tests.ps1` fails until both match the `.agents/mp-*` folders.
+
 Upstream's `setup-matt-pocock-skills` was vendored as `mp-setup-matt-pocock-skills`, run once, and
 then deleted. It is a one-time bootstrapper: it asks which issue tracker, which triage labels, and
 which domain-doc layout the repo uses, then writes the answers to `docs/agents/issue-tracker.md`,

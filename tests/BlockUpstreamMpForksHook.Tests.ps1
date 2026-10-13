@@ -81,6 +81,72 @@ try {
         Assert-True ($result.ExitCode -eq 2) "Expected exit 2, got $($result.ExitCode). Stderr: $($result.Stderr)"
         Assert-True ($result.Stderr.Contains('Use the mp- version instead.')) "The message must point at the mp- version. Stderr: $($result.Stderr)"
     }
+
+    # --- The registration in .claude/settings.json ---
+
+    # The fork names come from the .agents/mp-* folders, so a new or retired fork fails these
+    # cases until the deny list and the matcher change with it.
+    $forkNames = @(Get-ChildItem -LiteralPath (Join-Path $repoRoot '.agents') -Directory -Filter 'mp-*' |
+        ForEach-Object { $_.Name.Substring(3) } | Sort-Object)
+    $settings = Get-Content -LiteralPath (Join-Path $repoRoot '.claude/settings.json') -Raw | ConvertFrom-Json
+
+    function Get-BlockerRegistration {
+        if ($null -eq $settings.hooks.PSObject.Properties['UserPromptExpansion']) { return @() }
+        return @($settings.hooks.UserPromptExpansion | ForEach-Object {
+                $group = $_
+                @($group.hooks) | Where-Object {
+                    $_.PSObject.Properties['command'] -and $_.command -eq 'pwsh' -and
+                    $_.PSObject.Properties['args'] -and
+                    @($_.args) -contains '${CLAUDE_PROJECT_DIR}/.claude/hooks/block-upstream-mp-forks.ps1'
+                } | ForEach-Object { [pscustomobject]@{ Matcher = [string]$group.matcher; Hook = $_ } }
+            })
+    }
+
+    function Get-BlockerMatcher {
+        $registrations = @(Get-BlockerRegistration)
+        Assert-True ($registrations.Count -ge 1) '.claude/settings.json registers no UserPromptExpansion hook for block-upstream-mp-forks.ps1.'
+        return $registrations[0].Matcher
+    }
+
+    # The script exits 2 on every path, so the matcher alone decides what is blocked.
+    # -cmatch keeps case, the way the JavaScript regular expression in Claude Code does.
+    Invoke-TestCase 'The matcher accepts every mp- fork' {
+        Assert-True ($forkNames.Count -gt 0) 'Found no .agents/mp-* folders.'
+        $matcher = Get-BlockerMatcher
+        foreach ($name in $forkNames) {
+            Assert-True ("mattpocock-skills:$name" -cmatch $matcher) "The matcher does not match mattpocock-skills:$name. Matcher: $matcher"
+        }
+    }
+
+    Invoke-TestCase 'The matcher rejects every other command' {
+        $matcher = Get-BlockerMatcher
+        $others = @(
+            'mattpocock-skills:handoff'       # kept reachable, backlog 125
+            'mattpocock-skills:wait-what'     # kept reachable, backlog 125
+            'mp-grilling'                     # the local fork
+            'mattpocock-skills:grilling-extra' # proves the $ anchor
+            'x-mattpocock-skills:grilling'    # proves the ^ anchor
+            'Mattpocock-skills:grilling'      # proves case
+            'superpowers:brainstorming'
+        )
+        foreach ($other in $others) {
+            Assert-True (-not ($other -cmatch $matcher)) "The matcher must not match $other. Matcher: $matcher"
+        }
+    }
+
+    Invoke-TestCase 'The deny list names every mp- fork and nothing else from mattpocock-skills' {
+        $denied = @(@($settings.permissions.deny) | ForEach-Object {
+                if ($_ -match '^Skill\(mattpocock-skills:(.+)\)$') { $Matches[1] }
+            } | Sort-Object)
+        $expected = $forkNames -join ', '
+        $actual = $denied -join ', '
+        Assert-True ($actual -eq $expected) "Expected Skill(mattpocock-skills:...) denies for [$expected], found [$actual]."
+    }
+
+    Invoke-TestCase '.claude/settings.json runs the blocker on UserPromptExpansion, once' {
+        $registrations = @(Get-BlockerRegistration)
+        Assert-True ($registrations.Count -eq 1) "Expected one UserPromptExpansion entry for block-upstream-mp-forks.ps1, found $($registrations.Count)."
+    }
 }
 finally {
     Remove-Item -LiteralPath $script:TempRoot -Recurse -Force -ErrorAction SilentlyContinue
