@@ -79,4 +79,4 @@ profile, so that I do not have to know which directives a script needs.
   they ask for a default header on a profile the owner did not customise, and they leave what an
   explicit empty header means to this decision.
 - Spec: none — pick one of the two options above at Design.
-- Plan: none — moderate work, goes straight to Plan at pickup.
+- Plan: `docs/superpowers/plans/2026-10-13-profile-default-header-plan-165.md`.
