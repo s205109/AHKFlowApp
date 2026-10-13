@@ -6,7 +6,7 @@
 - **Type**: Chore
 - **Interfaces**: none (Claude Code settings, hook script)
 - **Difficulty**: moderate
-- **Stage**: 8-review
+- **Stage**: 9-ship
 
 ## Summary
 
