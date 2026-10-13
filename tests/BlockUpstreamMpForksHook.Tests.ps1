@@ -134,6 +134,17 @@ try {
         }
     }
 
+    # The negatives above cannot catch a matcher that names one skill too many, such as a
+    # retired fork. So the matcher's name list must equal the fork names exactly.
+    Invoke-TestCase 'The matcher names every mp- fork and nothing else' {
+        $matcher = Get-BlockerMatcher
+        Assert-True ($matcher -cmatch '^\^mattpocock-skills:\(([a-z0-9|-]+)\)\$$') "The matcher must have the form ^mattpocock-skills:(a|b|...)$. Matcher: $matcher"
+        $named = @($Matches[1].Split('|') | Sort-Object)
+        $expected = $forkNames -join ', '
+        $actual = $named -join ', '
+        Assert-True ($actual -eq $expected) "Expected the matcher to name [$expected], found [$actual]."
+    }
+
     Invoke-TestCase 'The deny list names every mp- fork and nothing else from mattpocock-skills' {
         $denied = @(@($settings.permissions.deny) | ForEach-Object {
                 if ($_ -match '^Skill\(mattpocock-skills:(.+)\)$') { $Matches[1] }
