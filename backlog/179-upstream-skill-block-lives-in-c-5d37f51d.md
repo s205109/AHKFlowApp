@@ -6,7 +6,7 @@
 - **Type**: Chore
 - **Interfaces**: none (Claude Code settings, hook script)
 - **Difficulty**: moderate
-- **Stage**: 1-pickup
+- **Stage**: 3-plan
 
 ## Summary
 
