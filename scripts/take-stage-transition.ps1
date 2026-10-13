@@ -409,25 +409,24 @@ function Invoke-PickupTransition {
 
 # The paths a record commit stages, named one by one, and narrowed to the ones git can match.
 #
-# Two rules are folded in here. First, a branch that never wrote PLAN-PROGRESS.md has no such path
-# on disk and no index entry for it, and git treats a pathspec matching nothing as fatal: the add
-# then stages NOTHING, the commit fails, and Ship has already moved the item and written the Stage.
-# That is backlog 164. Second, the two sides of the move are named rather than the backlog folder,
-# so the closure never stages another item somebody is editing in the same worktree - and the undo
-# never has to put such a change back.
+# Two rules are folded in here. First, a branch that never wrote PLAN-PROGRESS.md has no index
+# entry for it, and git treats a pathspec matching nothing as fatal: the add then stages NOTHING,
+# the commit fails, and Ship has already moved the item and written the Stage. That is backlog 164.
+# Second, the two sides of the move are named rather than the backlog folder, so the closure never
+# stages another item somebody is editing in the same worktree.
 #
-# Either half is enough for the progress pathspec to match. A file on disk matches whether it is
-# tracked or not, and a tracked file matches even once it is gone from disk, which is how a closure
-# stages its own deletion.
+# The index decides, and the working tree never does. A pathspec is matched against the index, so
+# a tracked file matches even once it is gone from disk, which is how a closure stages its own
+# deletion. A file git never tracked matches nothing, on disk or not, and naming it would be the
+# fatal pathspec above. Reading only the index also makes the answer the same before and after the
+# closure deletes the file, so no caller has to get that order right.
 function Get-ClosurePathspec {
     param([string] $Worktree, [string] $From, [string] $To)
 
     $paths = @($From, $To)
 
-    if (Test-Path -LiteralPath (Join-Path $Worktree 'PLAN-PROGRESS.md')) { return $paths + 'PLAN-PROGRESS.md' }
-
-    # ls-files reads the index, which is what a pathspec is matched against. It prints nothing and
-    # exits 0 for a path git does not track, so the output is the answer, not the exit code.
+    # ls-files prints nothing and exits 0 for a path git does not track, so the output is the
+    # answer, not the exit code.
     $tracked = ((& git -C $Worktree ls-files -- PLAN-PROGRESS.md) -join '').Trim()
     if ($tracked) { return $paths + 'PLAN-PROGRESS.md' }
 
@@ -462,15 +461,25 @@ function Undo-RecordClosure {
 
     # Write the snapshot back, rather than move the file and rewrite its Stage line. A rewrite
     # normalizes line endings, adds a final newline the original may not have had, and cannot
-    # repair a file whose own Stage write failed half way. Writing first and removing second means
-    # a failure here leaves two copies rather than none, and the message below says so.
+    # repair a file whose own Stage write failed half way.
+    $itemBack = $false
     try {
         [System.IO.File]::WriteAllBytes($Record.Path, $ItemByte)
-        if ((Test-Path -LiteralPath $Destination) -and ($Destination -ne $Record.Path)) {
-            Remove-Item -LiteralPath $Destination -Force
-        }
+        $itemBack = $true
     } catch {
         $left += "the item is not back at $($Record.RelativePath)"
+    }
+
+    # Write first, remove second, and only once the item is really back. Removing the copy Ship
+    # made after a failed write would leave no copy at all. Two copies is the smaller problem, and
+    # it gets a message of its own: 'the item is not back' would send the human looking for the
+    # wrong thing, and every later transition refuses two items that share one number.
+    if ($itemBack -and (Test-Path -LiteralPath $Destination) -and ($Destination -ne $Record.Path)) {
+        try {
+            Remove-Item -LiteralPath $Destination -Force
+        } catch {
+            $left += "a second copy of the item is still at backlog/done/$(Split-Path -Leaf $Destination)"
+        }
     }
 
     # The snapshot, not the copy in HEAD. The file may have carried uncommitted work, it may not be
@@ -488,7 +497,8 @@ function Undo-RecordClosure {
     }
 
     if ($left.Count -eq 0) {
-        return 'The records are back as they were, so nothing is half closed. Fix the cause and run this again.'
+        return ('The records are back on disk. The three closure paths are unstaged, so a change ' +
+                'you had staged on one of them is not staged now. Fix the cause and run this again.')
     }
 
     return "The records could not all be put back: $($left -join '; '). Repair them by hand."
@@ -552,8 +562,8 @@ function Invoke-ShipTransition {
         Set-ItemStage -Path $destination -Stage $target
         if ($null -ne $progressByte) { Remove-Item -LiteralPath $progress -Force }
 
-        # After the delete, never before it. An untracked progress file that still exists would put
-        # the path in this list, and the delete would then leave the add nothing to match.
+        # The index decides this, not the working tree, so it reads the same here as it would
+        # before the delete above.
         $pathspec = Get-ClosurePathspec -Worktree $Worktree `
                                         -From $record.RelativePath -To "backlog/done/$leaf"
         & git -C $Worktree add -A -- $pathspec

@@ -514,10 +514,9 @@ try {
         'A refused Ship must not flip the pull request'
 
     # --- A branch that never wrote PLAN-PROGRESS.md still closes (backlog 164) ---
-    # The reported run printed "fatal: pathspec 'PLAN-PROGRESS.md' did not match any files" and
-    # then "REFUSED: The closure commit failed.", with the item already moved and the Stage
-    # already written, both uncommitted. git treats a pathspec that matches nothing as fatal and
-    # stages NOTHING, so one 'git add' naming a path that may be absent cannot close such a branch.
+    # git treats a pathspec that matches nothing as fatal and stages NOTHING, so one 'git add'
+    # naming a path that may be absent cannot close such a branch. Ship has already moved the item
+    # and written the Stage by then, and neither is committed. The item has the reported run.
     $sh3 = New-TransitionFixture -Stage '8-review' -Difficulty 'complex' -AsWorktree -AllBoxesTicked
     $shGh3 = New-FakeGh
     Invoke-WithFakeGh -Gh $shGh3 -Action {
@@ -576,8 +575,9 @@ try {
     Assert-Equal '' ((& git -C $sh5.Root status --porcelain) -join '') `
         'A Ship with an empty PLAN-PROGRESS.md must leave the worktree clean'
 
-    # --- The pathspec names a progress path only when git can match one ---
-    # Four states, because the add runs after the delete and each state answers differently.
+    # --- The pathspec names a progress path only when the index holds one ---
+    # Three states, because only the index is read. A file git never tracked is never named,
+    # whether it is on disk or not: naming it would be the fatal pathspec this item exists to fix.
     $psFix = New-TransitionFixture -Stage '8-review' -Difficulty 'complex' -AsWorktree
     $psProgress = Join-Path $psFix.Root 'PLAN-PROGRESS.md'
     $psFrom = 'backlog/081-automate-stage-transitions.md'
@@ -588,13 +588,13 @@ try {
         'No progress path anywhere must give the two item paths alone'
 
     Set-Content -LiteralPath $psProgress -Value '- untracked work' -Encoding utf8
-    Assert-Equal "$psFrom,$psTo,PLAN-PROGRESS.md" (& $psCall) `
-        'A present but untracked progress file must be named'
+    Assert-Equal "$psFrom,$psTo" (& $psCall) `
+        'A progress file on disk that git never tracked must not be named'
 
     & git -C $psFix.Root add -- PLAN-PROGRESS.md *> $null
     & git -C $psFix.Root commit -m 'test: progress file' *> $null
     Assert-Equal "$psFrom,$psTo,PLAN-PROGRESS.md" (& $psCall) `
-        'A tracked and present progress file must be named'
+        'A tracked progress file must be named'
 
     Remove-Item -LiteralPath $psProgress -Force
     Assert-Equal "$psFrom,$psTo,PLAN-PROGRESS.md" (& $psCall) `
@@ -610,10 +610,15 @@ try {
     $udPathspec = @($udRecord.RelativePath, 'backlog/done/081-automate-stage-transitions.md', 'PLAN-PROGRESS.md')
     $udItemByte = Get-FileByte -Path $udRecord.Path
 
-    Assert-True ((Undo-RecordClosure -Worktree $udFix.Root -Record $udRecord -Destination $udDestination `
-                                     -Pathspec $udPathspec -ItemByte $udItemByte -ProgressByte $null) `
-                 -match 'The records are back as they were') `
+    $udOk = Undo-RecordClosure -Worktree $udFix.Root -Record $udRecord -Destination $udDestination `
+                               -Pathspec $udPathspec -ItemByte $udItemByte -ProgressByte $null
+    Assert-True ($udOk -match 'The records are back on disk') `
         'An undo that puts everything back must say so'
+    # And must not overstate it. 'git reset' sends the three closure paths back to HEAD, so a blob
+    # the human had staged on one of them is gone from the index. Saying 'back as they were' hid
+    # that.
+    Assert-True ($udOk -match 'unstaged') `
+        'The success sentence must say the closure paths are unstaged'
 
     # Hold the item open so the write back cannot land. 'Read' share lets the snapshot above be
     # read and still refuses the write, which is the state being tested.
@@ -628,6 +633,23 @@ try {
         'An undo that cannot write the item back must name it'
     Assert-True ($udLeft -match 'Repair them by hand') `
         'A half-done undo must tell the human to repair by hand'
+
+    # A removal that fails is its own problem. The item IS back, and a second copy is left in
+    # backlog/done/, so the message must not say the item is missing.
+    New-Item -ItemType Directory -Path (Join-Path $udFix.Root 'backlog/done') -Force | Out-Null
+    [System.IO.File]::WriteAllBytes($udDestination, $udItemByte)
+    $udDestLock = [System.IO.File]::Open($udDestination, 'Open', 'Read', 'Read')
+    try {
+        $udTwo = Undo-RecordClosure -Worktree $udFix.Root -Record $udRecord -Destination $udDestination `
+                                    -Pathspec $udPathspec -ItemByte $udItemByte -ProgressByte $null
+    } finally {
+        $udDestLock.Dispose()
+    }
+    Assert-True ($udTwo -match 'a second copy of the item is still at backlog/done/081-automate-stage-transitions\.md') `
+        'An undo that cannot remove the copy in backlog/done/ must say there are two'
+    Assert-True ($udTwo -notmatch 'the item is not back') `
+        'Two copies must not be reported as a missing item'
+    Remove-Item -LiteralPath $udDestination -Force
 
     # --- A closure that cannot commit puts every record back (backlog 164) ---
     # Case 1: the tracked progress file, plus an unrelated item that is part staged and part not.
@@ -649,6 +671,9 @@ try {
     $un1Progress = Get-FileByte -Path (Join-Path $un1.Root 'PLAN-PROGRESS.md')
     $un1Other0 = Get-FileByte -Path $un1Other
     $un1Status0 = ((& git -C $un1.Root status --porcelain -- backlog/099-another-item.md) -join '').Trim()
+    # The index entry itself, not just the porcelain letters. Two different staged blobs both
+    # report 'MM', so only the blob id proves the staged content survived the undo untouched.
+    $un1Index0 = ((& git -C $un1.Root ls-files -s -- backlog/099-another-item.md) -join '').Trim()
 
     Block-FixtureCommit -HookDir $un1.HookDir
     $un1Gh = New-FakeGh
@@ -674,6 +699,8 @@ try {
         'A refused closure must not change an unrelated item on disk'
     Assert-Equal $un1Status0 ((& git -C $un1.Root status --porcelain -- backlog/099-another-item.md) -join '').Trim() `
         'A refused closure must leave a part-staged unrelated item exactly as it was'
+    Assert-Equal $un1Index0 ((& git -C $un1.Root ls-files -s -- backlog/099-another-item.md) -join '').Trim() `
+        'A refused closure must leave an unrelated staged blob byte for byte in the index'
     Assert-True ((Get-GhLog -Gh $un1Gh) -notmatch 'pr ready') 'A refused closure must not flip the pull request'
 
     # Case 2: a tracked progress file carrying uncommitted edits. HEAD's copy is not good enough.
@@ -734,8 +761,8 @@ try {
     # The share mode is the whole case. 'Read' lets the closure read the file and still refuses the
     # delete, which is the state being tested. 'None' would refuse the closure's own first read:
     # the run would die before it moved anything, every assertion below would pass with no undo in
-    # the script at all, and the case would be worthless. Review round 2 caught that, and a
-    # prototype then proved this handle lets the read through and still stops the delete.
+    # the script at all, and the case would be worthless. The premise assertion below is what
+    # keeps a future change to the share mode loud instead of quiet.
     $un5 = New-TransitionFixture -Stage '8-review' -Difficulty 'complex' -AsWorktree `
                                  -AllBoxesTicked -WithProgress
     $un5Item = Join-Path $un5.Root 'backlog/081-automate-stage-transitions.md'
@@ -798,7 +825,7 @@ try {
     # suite reads the refusal text, and without this the whole message contract is untested.
     Assert-True ($script:un6Output -match 'The closure could not be staged') `
         'The refusal must name what failed'
-    Assert-True ($script:un6Output -match 'The records are back as they were') `
+    Assert-True ($script:un6Output -match 'The records are back on disk') `
         'The refusal must tell the human the records are back'
 
     # Case 7: bytes a text round trip cannot carry. The progress file is UTF-16 with a byte order
