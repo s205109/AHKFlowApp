@@ -76,6 +76,7 @@
     { "name": "SuiteWorkerCount.Tests.ps1", "jobs": ["suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 1.4 },
     { "name": "LanePool.Tests.ps1", "jobs": ["suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 15.3 },
     { "name": "HandoverRules.Tests.ps1", "jobs": ["suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 0.5 },
-    { "name": "StopNextStepHook.Tests.ps1", "jobs": ["suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 5.5 }
+    { "name": "StopNextStepHook.Tests.ps1", "jobs": ["suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 5.5 },
+    { "name": "BlockUpstreamMpForksHook.Tests.ps1", "jobs": ["suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 3 }
   ]
 }
