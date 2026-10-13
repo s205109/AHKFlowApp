@@ -32,9 +32,12 @@ wrong files.
       the `mp-` fork, including when the payload has no `command_name`.
 - [ ] `tests/BlockUpstreamMpForksHook.Tests.ps1` is listed in `tests/powershell-suites.json`
       and passes.
-- [ ] In a session started inside a worktree, with no `.claude/settings.local.json`, the agent
-      cannot call `Skill(mattpocock-skills:grilling)`, the typed `/mattpocock-skills:grilling` is
-      blocked with a message that names `/mp-grilling`, and `/mp-grilling` still loads.
+- [ ] In a session started inside a worktree, with no `.claude/settings.local.json`, `/hooks`
+      lists this worktree's `.claude/settings.json` registration as the only
+      `UserPromptExpansion` hook. In that session the agent's call to
+      `Skill(mattpocock-skills:grilling)` returns a permission denial, the typed
+      `/mattpocock-skills:grilling` is blocked with a message that names `/mp-grilling`, and
+      `/mp-grilling` still loads.
 
 ## Out of scope
 
