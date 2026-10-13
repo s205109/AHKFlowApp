@@ -43,6 +43,9 @@ public sealed class ProfileCreateDefaultHeaderFlowTests(StackFixtureA fixture) :
         await page.WaitForSelectorAsync("pre.profile-preview-script");
 
         string script = await page.InnerTextAsync("pre.profile-preview-script");
+        // The seeded Default profile emits the same directives, so the rendered name is what
+        // proves this preview belongs to the new profile.
+        Assert.Contains("; Gaming — AHKFlowApp v", script);
         Assert.Contains("#Requires AutoHotkey v2.0", script);
         Assert.Contains("#SingleInstance Force", script);
         Assert.Contains("SendMode \"Input\"", script);

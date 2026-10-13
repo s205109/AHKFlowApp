@@ -554,11 +554,8 @@ public sealed class ProfilesPageTests : BunitContext, IAsyncLifetime
         cut.Find("textarea[data-test=\"profile-header-input\"]").TextContent
             .Should().Contain("#Requires AutoHotkey v2.0");
 
-        // Change, not Input. The header field sets no Immediate, and Immediate defaults to
-        // false, so MudBlazor updates the bound value on Enter or on blur, which is the change
-        // event. An Input call would dispatch oninput, MudBlazor would ignore it, and the
-        // bound value would never move. The name field above keeps Input because it does set
-        // Immediate="true".
+        // Change, not Input. The header field is not Immediate, so MudBlazor updates the bound
+        // value only on the change event.
         cut.Find("textarea[data-test=\"profile-header-input\"]").Change("");
 
         cut.Find("button.commit-edit").Click();
