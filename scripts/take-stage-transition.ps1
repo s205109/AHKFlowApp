@@ -415,11 +415,15 @@ function Invoke-PickupTransition {
 # Second, the two sides of the move are named rather than the backlog folder, so the closure never
 # stages another item somebody is editing in the same worktree.
 #
-# The index decides, and the working tree never does. A pathspec is matched against the index, so
-# a tracked file matches even once it is gone from disk, which is how a closure stages its own
-# deletion. A file git never tracked matches nothing, on disk or not, and naming it would be the
-# fatal pathspec above. Reading only the index also makes the answer the same before and after the
-# closure deletes the file, so no caller has to get that order right.
+# Read the index, and leave the working tree out of it. git matches a pathspec against both, and
+# a path in neither is the fatal case above. Measured: an untracked file still on disk is staged
+# as an add, a tracked file gone from disk is staged as a deletion, and a path that is neither
+# makes the whole add exit 128.
+#
+# So the rule is: name PLAN-PROGRESS.md when git tracks it, and never otherwise. That answer is
+# right on both sides of the closure's delete. After the delete, an untracked file is in neither
+# place, so naming it would be fatal. Before the delete, naming it would stage a file that is
+# about to go. Reading only the index means no caller has to get that order right.
 function Get-ClosurePathspec {
     param([string] $Worktree, [string] $From, [string] $To)
 
@@ -497,8 +501,11 @@ function Undo-RecordClosure {
     }
 
     if ($left.Count -eq 0) {
-        return ('The records are back on disk. The three closure paths are unstaged, so a change ' +
-                'you had staged on one of them is not staged now. Fix the cause and run this again.')
+        # No count here. The pathspec is two paths when git tracks no PLAN-PROGRESS.md, which is
+        # the branch this whole item exists for, and a wrong number sends the human looking for
+        # staged work on a path the closure never named.
+        return ('The records are back on disk. The closure paths are unstaged, so a change you ' +
+                'had staged on one of them is not staged now. Fix the cause and run this again.')
     }
 
     return "The records could not all be put back: $($left -join '; '). Repair them by hand."

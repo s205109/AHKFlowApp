@@ -576,8 +576,9 @@ try {
         'A Ship with an empty PLAN-PROGRESS.md must leave the worktree clean'
 
     # --- The pathspec names a progress path only when the index holds one ---
-    # Three states, because only the index is read. A file git never tracked is never named,
-    # whether it is on disk or not: naming it would be the fatal pathspec this item exists to fix.
+    # Three states, because only the index is read. A file git never tracked is never named. The
+    # closure deletes it first, and a path in neither the index nor the working tree is the fatal
+    # pathspec this item exists to fix.
     $psFix = New-TransitionFixture -Stage '8-review' -Difficulty 'complex' -AsWorktree
     $psProgress = Join-Path $psFix.Root 'PLAN-PROGRESS.md'
     $psFrom = 'backlog/081-automate-stage-transitions.md'
@@ -671,8 +672,9 @@ try {
     $un1Progress = Get-FileByte -Path (Join-Path $un1.Root 'PLAN-PROGRESS.md')
     $un1Other0 = Get-FileByte -Path $un1Other
     $un1Status0 = ((& git -C $un1.Root status --porcelain -- backlog/099-another-item.md) -join '').Trim()
-    # The index entry itself, not just the porcelain letters. Two different staged blobs both
-    # report 'MM', so only the blob id proves the staged content survived the undo untouched.
+    # The index entry itself, not just the porcelain letters. 'MM' says a staged change exists,
+    # not which one. Every mutation tried so far reddens this and the porcelain check together,
+    # so read it as the sharper failure message - it names the blob instead of two letters.
     $un1Index0 = ((& git -C $un1.Root ls-files -s -- backlog/099-another-item.md) -join '').Trim()
 
     Block-FixtureCommit -HookDir $un1.HookDir
@@ -724,12 +726,21 @@ try {
     $un3Progress = Get-FileByte -Path (Join-Path $un3.Root 'PLAN-PROGRESS.md')
     Block-FixtureCommit -HookDir $un3.HookDir
     $un3Gh = New-FakeGh
+    $script:un3Output = ''
     Invoke-WithFakeGh -Gh $un3Gh -Action {
-        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $un3.Root -Item '081' -Edge 'success' -Pr 421 *> $null
+        # Captured, because this is the only refused case whose pathspec is two paths: git never
+        # tracked PLAN-PROGRESS.md, so the closure never names it.
+        $script:un3Output = ((& "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $un3.Root -Item '081' -Edge 'success' -Pr 421 *>&1) -join "`n")
     }
     Assert-True ($script:LastTransitionExit -ne 0) 'A refused closure with an untracked progress file must be refused'
     Assert-True (Test-SameByte -Expected $un3Progress -Actual (Get-FileByte -Path (Join-Path $un3.Root 'PLAN-PROGRESS.md'))) `
         'A refused closure must put back a progress file git never tracked'
+    Assert-True ($script:un3Output -match 'The records are back on disk') `
+        'A two-path closure must still report that the records are back'
+    # The count was hardcoded as 'three'. On this branch the pathspec is two paths, so the human
+    # was sent looking for staged work on a PLAN-PROGRESS.md the closure never named.
+    Assert-True ($script:un3Output -notmatch 'three') `
+        'The refusal must not name a path count the closure did not use'
 
     # Case 4: a zero-byte progress file. 'Get-Content -Raw' answers $null for it, so existence has
     # to travel in its own flag or the file never comes back.
