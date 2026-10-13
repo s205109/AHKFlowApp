@@ -232,7 +232,7 @@
 
     private async Task StartAddAsync()
     {
-        _editing[Guid.Empty] = new ProfileEditModel();
+        _editing[Guid.Empty] = ProfileEditModel.ForNewProfile();
         await ReloadAsync();
     }
 
