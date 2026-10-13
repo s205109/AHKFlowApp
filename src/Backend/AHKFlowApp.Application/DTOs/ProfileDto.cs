@@ -19,8 +19,11 @@ public sealed record ProfileDto(
 
 /// <summary>Payload to create a new profile.</summary>
 /// <param name="Name">Profile name. Must be unique per user.</param>
-/// <param name="HeaderTemplate">Optional header template; falls back to the application default.</param>
-/// <param name="FooterTemplate">Optional footer template; falls back to the application default.</param>
+/// <param name="HeaderTemplate">The header to store. Null means use the application default. Any
+/// other value is stored exactly as sent, including an empty string, which stores an empty
+/// header.</param>
+/// <param name="FooterTemplate">The footer to store. Null means use the application default. Any
+/// other value is stored exactly as sent.</param>
 /// <param name="IsDefault">When true, marks this profile as the user's default and clears the flag on any other.</param>
 public sealed record CreateProfileDto(
     string Name,
