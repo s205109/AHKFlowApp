@@ -14,6 +14,7 @@ using MudBlazor.Services;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using Xunit;
+using DefaultTemplates = AHKFlowApp.UI.Blazor.Constants.DefaultProfileTemplates;
 
 namespace AHKFlowApp.UI.Blazor.Tests.Pages;
 
@@ -511,5 +512,81 @@ public sealed class ProfilesPageTests : BunitContext, IAsyncLifetime
             cut.Markup.Should().Contain("; --- AHKFlow preset: lock-keys-off ---"));
         await _api.DidNotReceive().UpdateAsync(
             Arg.Any<Guid>(), Arg.Any<UpdateProfileDto>(), Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public Task Page_AddAndCommit_SendsTheDefaultHeader()
+    {
+        StubList();
+        _api.CreateAsync(Arg.Any<CreateProfileDto>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<ProfileDto>.Ok(MakeProfile("Personal")));
+
+        IRenderedComponent<Profiles> cut = RenderPage();
+        cut.WaitForAssertion(() => cut.Find("button.add-profile"));
+        cut.Find("button.add-profile").Click();
+
+        cut.WaitForAssertion(() => cut.Find("input[data-test=\"profile-name-input\"]"));
+        cut.Find("input[data-test=\"profile-name-input\"]").Input("Personal");
+        cut.Find("button.commit-edit").Click();
+
+        cut.WaitForAssertion(() => _api.Received(1).CreateAsync(
+            Arg.Is<CreateProfileDto>(d => d.HeaderTemplate == DefaultTemplates.Header),
+            Arg.Any<CancellationToken>()));
+        return Task.CompletedTask;
+    }
+
+    [Fact]
+    public Task Page_AddThenClearTheHeader_SendsTheEmptyHeaderTheOwnerChose()
+    {
+        StubList();
+        _api.CreateAsync(Arg.Any<CreateProfileDto>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<ProfileDto>.Ok(MakeProfile("Bare")));
+
+        IRenderedComponent<Profiles> cut = RenderPage();
+        cut.WaitForAssertion(() => cut.Find("button.add-profile"));
+        cut.Find("button.add-profile").Click();
+
+        cut.WaitForAssertion(() => cut.Find("input[data-test=\"profile-name-input\"]"));
+        cut.Find("input[data-test=\"profile-name-input\"]").Input("Bare");
+
+        // Assert the field starts from the default header before clearing it. A failure here
+        // then says "the form never had the default", not "clearing did not work".
+        cut.Find("textarea[data-test=\"profile-header-input\"]").TextContent
+            .Should().Contain("#Requires AutoHotkey v2.0");
+
+        // Change, not Input. The header field is not Immediate, so MudBlazor updates the bound
+        // value only on the change event.
+        cut.Find("textarea[data-test=\"profile-header-input\"]").Change("");
+
+        cut.Find("button.commit-edit").Click();
+
+        cut.WaitForAssertion(() => _api.Received(1).CreateAsync(
+            Arg.Is<CreateProfileDto>(d => d.HeaderTemplate == ""),
+            Arg.Any<CancellationToken>()));
+        return Task.CompletedTask;
+    }
+
+    [Fact]
+    public Task Page_EditExistingRow_KeepsTheSavedHeader()
+    {
+        ProfileDto saved = new(
+            Guid.NewGuid(), "Work", false, "; my own header", "; my own footer",
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+        StubList(saved);
+        _api.UpdateAsync(Arg.Any<Guid>(), Arg.Any<UpdateProfileDto>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<ProfileDto>.Ok(saved));
+
+        IRenderedComponent<Profiles> cut = RenderPage();
+        cut.WaitForAssertion(() => cut.Find("button.start-edit"));
+        cut.Find("button.start-edit").Click();
+
+        cut.WaitForAssertion(() => cut.Find("button.commit-edit"));
+        cut.Find("button.commit-edit").Click();
+
+        cut.WaitForAssertion(() => _api.Received(1).UpdateAsync(
+            saved.Id,
+            Arg.Is<UpdateProfileDto>(d => d.HeaderTemplate == "; my own header"),
+            Arg.Any<CancellationToken>()));
+        return Task.CompletedTask;
     }
 }

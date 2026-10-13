@@ -44,6 +44,18 @@ SetWorkingDir A_ScriptDir
 SetTitleMatchMode 2
 ```
 
+This text lives in three places. Change it in the first two together, and never in the third:
+
+- `src/Backend/AHKFlowApp.Domain/Constants/DefaultProfileTemplates.cs` is the source. The server
+  stores it when a profile is created with a null header.
+- `src/Frontend/AHKFlowApp.UI.Blazor/Constants/DefaultProfileTemplates.cs` is a copy. The web UI
+  fills the new-profile form from it, because the Blazor project references no backend project.
+  `DefaultProfileTemplatesParityTests` fails the build when the two copies differ.
+- The migration `BackfillEmptyProfileHeaders` holds a frozen copy in T-SQL. It repairs profiles
+  created before backlog 165, and a migration must keep writing the same text forever. If you
+  change the default, its test `BackfillEmptyProfileHeadersTests` fails, because it compares
+  against the live constant. Change that test to expect the old text. Do not change the migration.
+
 Each directive earns its place. Two of them change behaviour, two restate a v2 default, and the
 rest are there to make a generated script predictable to read:
 

@@ -86,6 +86,27 @@ public sealed class CreateProfileCommandHandlerTests(ProfileDbFixture fx)
         result.Value.FooterTemplate.Should().Be("return");
     }
 
+    // Backlog 165 decided that an empty header means an empty header. Only null falls back to the
+    // default. The web UI sends an empty string when the owner clears the header on purpose, so
+    // this reads the stored row back to prove the server keeps it exactly as sent.
+    [Fact]
+    public async Task Creates_profile_with_empty_header_stores_it_exactly()
+    {
+        await using AppDbContext ctx = fx.CreateContext();
+        ICurrentUser user = Substitute.For<ICurrentUser>();
+        user.Oid.Returns(_ownerOid);
+        var sut = new CreateProfileCommandHandler(ctx, user, _clock);
+
+        Result<ProfileDto> result = await sut.ExecuteAsync(
+            new CreateProfileCommand(new CreateProfileDto("Bare", HeaderTemplate: "")),
+            CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        await using AppDbContext verify = fx.CreateContext();
+        Profile stored = await verify.Profiles.SingleAsync(p => p.Id == result.Value.Id);
+        stored.HeaderTemplate.Should().BeEmpty();
+    }
+
     [Fact]
     public async Task Handle_NewProfile_HeaderHoldsNoPresetMarker()
     {

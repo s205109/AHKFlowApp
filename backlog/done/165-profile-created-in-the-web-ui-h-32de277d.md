@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: UI | API
 - **Difficulty**: moderate
-- **Stage**: 1-pickup
+- **Stage**: 9-ship
 
 ## Summary
 
@@ -24,13 +24,17 @@ profile, so that I do not have to know which directives a script needs.
 
 ## Acceptance criteria
 
-- [ ] A profile created in the web UI, without the owner changing its template, generates a script
+- [x] A profile created in the web UI, without the owner changing its template, generates a script
       whose first lines contain `#Requires AutoHotkey v2.0`, `#SingleInstance Force`,
       `SendMode "Input"` and `SetTitleMatchMode 2`.
-- [ ] An integration test covers that case and fails when the default header is not applied.
-- [ ] Editing an existing profile still keeps the header the owner saved.
-- [ ] The item records what an empty header means, and the shipped behaviour matches that record.
+- [x] An integration test covers that case and fails when the default header is not applied.
+- [x] Editing an existing profile still keeps the header the owner saved.
+- [x] The item records what an empty header means, and the shipped behaviour matches that record.
       The open question below is the decision, and making it is part of this work.
+- [x] Every profile that already stores an empty header gets the default header, in every
+      environment. A profile whose header holds any text keeps that text exactly as it is.
+- [x] A test covers that repair. It proves an empty header is filled, and it proves a header the
+      owner wrote is left alone.
 
 ## Out of scope
 
@@ -72,11 +76,40 @@ profile, so that I do not have to know which directives a script needs.
   preserved all 277 characters.
 - The CLI has no profile command, so the web UI is the only way an owner creates a profile.
   Every owner-created profile is affected.
-- **Open question for Design.** Coercing `""` to the default on the server would stop an owner
-  ever clearing the header on purpose. The alternative is for `ProfileEditModel` to start from
-  `DefaultProfileTemplates` so the owner sees and edits a real template. Decide which before
-  writing code. The acceptance criteria above are written so that either answer can satisfy them:
-  they ask for a default header on a profile the owner did not customise, and they leave what an
-  explicit empty header means to this decision.
-- Spec: none — pick one of the two options above at Design.
-- Plan: none — moderate work, goes straight to Plan at pickup.
+- **How two criteria are met, checked at Document on 2026-10-13.**
+  - Criterion 2 is met by the browser test `ProfileCreateDefaultHeaderFlowTests`. It drives the
+    web UI, the API, and SQL Server together, because only the web UI sends the empty header.
+    With the fix removed, both of its cases failed on the missing `#Requires AutoHotkey v2.0`.
+  - Criterion 5 is met by the migration `BackfillEmptyProfileHeaders`. Development applies it at
+    startup. TEST and PROD apply it in the `migrate-db` job of `deploy-api.yml`. So each
+    environment is repaired when it next deploys, not before. The third decision below covers a
+    profile an old browser creates after that.
+- **Decision, taken at Plan on 2026-10-13.** An empty header means an empty header. The create API
+  keeps the rule it already had: a null header means use the application default, and any supplied
+  string is stored exactly as sent. The server is unchanged. The web UI stops sending an empty
+  string by accident, because the Add form now starts from the default header. The owner sees it,
+  edits it, or clears it on purpose. The alternative, coercing an empty string to the default
+  inside the create handler, was rejected for two reasons. It would make an empty string mean one
+  thing on create and another on update, because the update handler stores what it is given. It
+  would also stop an owner ever creating a profile with an empty header.
+- **Decision, taken at Plan on 2026-10-13.** Profiles the bug already damaged are repaired in this
+  item, by a one-time database migration. Before the fix there was no way to tell a header the bug
+  emptied from one an owner emptied on purpose, and the web UI was the only way an owner could
+  create a profile, so almost every empty header is the bug. The repair fills a header that holds
+  no characters at all, and never touches a header that holds any text. After it runs, an empty
+  header comes from a deliberate act, or from a browser still running the old frontend, which the
+  third decision below covers.
+- **Decision, taken at Plan on 2026-10-13.** The rollout gap is accepted, not closed. The repair
+  runs once, at deploy time. The API and the frontend deploy from two separate workflows that run
+  in parallel, and the app is a PWA whose service worker serves cached files. So a browser can
+  still hold the old frontend after the migration ran, and a profile it creates then still stores
+  an empty header. That owner is in the state they were in before this item shipped. They fix it
+  by editing the header, or by making the profile again once their browser has reloaded. The
+  window closes by itself. The two ways to close it cost more than it does: coercing an empty
+  string on the server contradicts the first decision, and a repair that ran on every startup
+  would overwrite every header an owner cleared on purpose. This item adds no recurring repair.
+  When this ships, let the frontend workflow finish before the API workflow's `migrate-db` job
+  runs. That shrinks the window. It does not remove it, and no workflow change is in this item.
+- Spec: none. The item is `moderate`, so it goes straight to Plan. The three decisions above were
+  taken there.
+- Plan: `docs/superpowers/plans/2026-10-13-profile-default-header-plan-165.md`.
