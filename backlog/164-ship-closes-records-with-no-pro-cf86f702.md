@@ -37,9 +37,15 @@ removed" and "tests cover the new API" cannot.
 
 ## Out of scope
 
-- The failure edge out of Ship. It calls `Restore-ProgressFile` first, which either finds the
-  file or restores it from the commit that deleted it, so the same path always exists by the time
-  that call runs.
+- The failure edge out of Ship, with one case named below that this item leaves open. The edge
+  keeps its own wide `git add`, because `Restore-ProgressFile` puts the file back before that
+  line runs.
+- A branch whose `PLAN-PROGRESS.md` git never tracked, once it has shipped. Ship deletes that
+  file and records no deletion, because there is nothing for git to record. The failure edge then
+  finds no commit to restore from and refuses, after it has already flipped the pull request to
+  draft and moved the item out of `backlog/done/`. That is a half-done state. Before this item's
+  fix such a branch could not Ship at all, so the state could not be reached. It needs its own
+  item. Found in review round 3 on 2026-10-13.
 - Every other `git add` in the script. Only the two closure calls name a path that can be absent.
 
 ## Notes / dependencies

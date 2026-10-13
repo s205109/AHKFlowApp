@@ -305,7 +305,9 @@ function Block-FixtureCommit {
 function Get-FileByte {
     param([string] $Path)
     if (-not (Test-Path -LiteralPath $Path)) { return $null }
-    return [System.IO.File]::ReadAllBytes($Path)
+    # The comma matters. A bare 'return [byte[]]' enumerates, and an empty array then enumerates
+    # to nothing, so a zero-byte file would read back as $null and compare unequal to itself.
+    return , [System.IO.File]::ReadAllBytes($Path)
 }
 
 function Test-SameByte {
@@ -550,6 +552,30 @@ try {
     Assert-True ($sh4Touched -notcontains 'PLAN-PROGRESS.md') `
         'A file git never tracked cannot be recorded as deleted'
 
+    # --- An empty PLAN-PROGRESS.md is deleted too, and the deletion is committed ---
+    # Review Focus 4 on the success path. Reading the bytes through an 'if' used as an expression
+    # sends them down the pipeline, which enumerates the array, and an empty array enumerates to
+    # nothing. The variable is then $null, the delete is skipped, and Ship commits the empty
+    # progress file onto the branch that merges into main.
+    $sh5 = New-TransitionFixture -Stage '8-review' -Difficulty 'complex' -AsWorktree `
+                                 -AllBoxesTicked -WithProgress
+    [System.IO.File]::WriteAllBytes((Join-Path $sh5.Root 'PLAN-PROGRESS.md'), [byte[]]::new(0))
+    $shGh5 = New-FakeGh
+    Invoke-WithFakeGh -Gh $shGh5 -Action {
+        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $sh5.Root -Item '081' -Edge 'success' -Pr 421 *> $null
+    }
+    Assert-Equal 0 $script:LastTransitionExit 'A Ship with an empty PLAN-PROGRESS.md must succeed'
+    Assert-True (-not (Test-Path -LiteralPath (Join-Path $sh5.Root 'PLAN-PROGRESS.md'))) `
+        'Ship must delete an empty PLAN-PROGRESS.md too'
+    $sh5Status = @(& git -C $sh5.Root show --name-status --pretty=format: HEAD | Where-Object { $_ })
+    Assert-True ((($sh5Status -join ' ') -match 'D\s+PLAN-PROGRESS\.md')) `
+        'The closure commit must record the deletion of an empty PLAN-PROGRESS.md'
+
+    # The whole worktree, not just backlog/. Scoped to backlog/ this cannot see a progress file
+    # the closure left behind, which is exactly the state above.
+    Assert-Equal '' ((& git -C $sh5.Root status --porcelain) -join '') `
+        'A Ship with an empty PLAN-PROGRESS.md must leave the worktree clean'
+
     # --- The pathspec names a progress path only when git can match one ---
     # Four states, because the add runs after the delete and each state answers differently.
     $psFix = New-TransitionFixture -Stage '8-review' -Difficulty 'complex' -AsWorktree
@@ -573,6 +599,35 @@ try {
     Remove-Item -LiteralPath $psProgress -Force
     Assert-Equal "$psFrom,$psTo,PLAN-PROGRESS.md" (& $psCall) `
         'A tracked progress file deleted from disk must still be named, so its deletion is staged'
+
+    # --- The undo says what it could not put back (backlog 164) ---
+    # No end-to-end case reaches the half-done message. A stale index.lock fails the reset but
+    # stages nothing, so the undo correctly reports success there. The contract is checked here.
+    $udFix = New-TransitionFixture -Stage '8-review' -Difficulty 'complex' -AsWorktree -WithProgress
+    $udRecord = @(Get-BacklogItem -BacklogRoot (Join-Path $udFix.Root 'backlog') |
+                  Where-Object { $_.Key -eq '081' })[0]
+    $udDestination = Join-Path $udFix.Root 'backlog/done/081-automate-stage-transitions.md'
+    $udPathspec = @($udRecord.RelativePath, 'backlog/done/081-automate-stage-transitions.md', 'PLAN-PROGRESS.md')
+    $udItemByte = Get-FileByte -Path $udRecord.Path
+
+    Assert-True ((Undo-RecordClosure -Worktree $udFix.Root -Record $udRecord -Destination $udDestination `
+                                     -Pathspec $udPathspec -ItemByte $udItemByte -ProgressByte $null) `
+                 -match 'The records are back as they were') `
+        'An undo that puts everything back must say so'
+
+    # Hold the item open so the write back cannot land. 'Read' share lets the snapshot above be
+    # read and still refuses the write, which is the state being tested.
+    $udLock = [System.IO.File]::Open($udRecord.Path, 'Open', 'Read', 'Read')
+    try {
+        $udLeft = Undo-RecordClosure -Worktree $udFix.Root -Record $udRecord -Destination $udDestination `
+                                     -Pathspec $udPathspec -ItemByte $udItemByte -ProgressByte $null
+    } finally {
+        $udLock.Dispose()
+    }
+    Assert-True ($udLeft -match 'the item is not back at backlog/081-automate-stage-transitions\.md') `
+        'An undo that cannot write the item back must name it'
+    Assert-True ($udLeft -match 'Repair them by hand') `
+        'A half-done undo must tell the human to repair by hand'
 
     # --- A closure that cannot commit puts every record back (backlog 164) ---
     # Case 1: the tracked progress file, plus an unrelated item that is part staged and part not.
@@ -654,6 +709,8 @@ try {
     $un4 = New-TransitionFixture -Stage '8-review' -Difficulty 'complex' -AsWorktree `
                                  -AllBoxesTicked -WithProgress
     [System.IO.File]::WriteAllBytes((Join-Path $un4.Root 'PLAN-PROGRESS.md'), @())
+    $un4Progress = Join-Path $un4.Root 'PLAN-PROGRESS.md'
+    $un4Progress0 = Get-FileByte -Path $un4Progress
     Block-FixtureCommit -HookDir $un4.HookDir
     $un4Gh = New-FakeGh
     Invoke-WithFakeGh -Gh $un4Gh -Action {
@@ -664,6 +721,11 @@ try {
         'A refused closure must put back an empty progress file'
     Assert-Equal 0 ((Get-Item -LiteralPath (Join-Path $un4.Root 'PLAN-PROGRESS.md')).Length) `
         'The restored empty progress file must still be empty'
+    # Bytes, not just the length. 'return [byte[]]' enumerates on the way out of a function, so an
+    # empty file reads back as $null unless the return is unrolled with a comma. That trap is the
+    # same one that made the closure skip the delete, and this assertion is what catches it.
+    Assert-True (Test-SameByte -Expected $un4Progress0 -Actual (Get-FileByte -Path $un4Progress)) `
+        'A refused closure must put an empty progress file back byte for byte'
 
     # Case 5: a write that fails after the move, before any staging. Another process holds the
     # progress file open, so Remove-Item throws and $ErrorActionPreference = 'Stop' makes it an
@@ -705,8 +767,9 @@ try {
     Assert-True ((Get-GhLog -Gh $un5Gh) -notmatch 'pr ready') 'A failed delete must not flip the pull request'
 
     # Case 6: the staging itself fails. A stale index.lock in this worktree's own git dir makes
-    # 'git add' exit 128 - and the undo's own 'git reset' too. So this case also proves the undo
-    # reports what it could not put back rather than claiming success.
+    # 'git add' exit 128 - and the undo's own 'git reset' too. Nothing was staged, so the undo
+    # looks at the index rather than guessing, and it still reports success. This case reads that
+    # sentence. The half-done sentence is proved by the undo-message case further up.
     $un6 = New-TransitionFixture -Stage '8-review' -Difficulty 'complex' -AsWorktree `
                                  -AllBoxesTicked -WithProgress
     $un6Item = Join-Path $un6.Root 'backlog/081-automate-stage-transitions.md'
@@ -714,9 +777,11 @@ try {
     $un6Lock = Join-Path $un6GitDir 'index.lock'
     $un6Gh = New-FakeGh
     Set-Content -LiteralPath $un6Lock -Value '' -Encoding ascii
+    $script:un6Output = ''
     try {
         Invoke-WithFakeGh -Gh $un6Gh -Action {
-            & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $un6.Root -Item '081' -Edge 'success' -Pr 421 *> $null
+            # '*>&1' and not '*> $null', because this case also reads the refusal text.
+            $script:un6Output = ((& "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $un6.Root -Item '081' -Edge 'success' -Pr 421 *>&1) -join "`n")
         }
     } finally {
         Remove-Item -LiteralPath $un6Lock -Force -ErrorAction SilentlyContinue
@@ -728,6 +793,13 @@ try {
     Assert-True (Test-Path -LiteralPath (Join-Path $un6.Root 'PLAN-PROGRESS.md')) `
         'A failed staging must put PLAN-PROGRESS.md back'
     Assert-True ((Get-GhLog -Gh $un6Gh) -notmatch 'pr ready') 'A failed staging must not flip the pull request'
+    # The sentence the human reads. The reset above failed too, and the undo looked at the index
+    # rather than guessing, found nothing staged, and so reports success. Nothing else in this
+    # suite reads the refusal text, and without this the whole message contract is untested.
+    Assert-True ($script:un6Output -match 'The closure could not be staged') `
+        'The refusal must name what failed'
+    Assert-True ($script:un6Output -match 'The records are back as they were') `
+        'The refusal must tell the human the records are back'
 
     # Case 7: bytes a text round trip cannot carry. The progress file is UTF-16 with a byte order
     # mark, and the item has LF endings and no final newline. Reading text and writing it back

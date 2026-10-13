@@ -529,7 +529,11 @@ function Invoke-ShipTransition {
     # 'there was an empty one'.
     $progress = Join-Path $Worktree 'PLAN-PROGRESS.md'
     $itemByte = [System.IO.File]::ReadAllBytes($record.Path)
-    $progressByte = if (Test-Path -LiteralPath $progress) { [System.IO.File]::ReadAllBytes($progress) } else { $null }
+    # Two statements, not one 'if' expression. An 'if' used as an expression sends its block's
+    # value down the pipeline, which enumerates an array: an empty byte array then becomes $null,
+    # the delete below is skipped, and Ship commits an empty PLAN-PROGRESS.md onto the branch.
+    $progressByte = $null
+    if (Test-Path -LiteralPath $progress) { $progressByte = [System.IO.File]::ReadAllBytes($progress) }
 
     $leaf = Split-Path -Leaf $record.Path
     $destination = Join-Path (Join-Path $Worktree 'backlog/done') $leaf
