@@ -44,17 +44,27 @@ SetWorkingDir A_ScriptDir
 SetTitleMatchMode 2
 ```
 
-Each directive earns its place:
+Each directive earns its place. Two of them change behaviour, two restate a v2 default, and the
+rest are there to make a generated script predictable to read:
 
-- `#Requires AutoHotkey v2.0` — refuses to run under v1, whose syntax is incompatible. Without it a
-  v1 interpreter fails with confusing errors deep in the file rather than at line 1.
-- `#SingleInstance Force` — re-running replaces the running instance instead of prompting.
+- `#Requires AutoHotkey v2.0` — **changes behaviour.** A v1.1.33 or later interpreter reads it and
+  refuses the script. The AutoHotkey launcher reads it too, and picks an interpreter from it. Leave
+  it out and the launcher guesses the version from the script's syntax, then asks the user when the
+  guess fails.
+- `#SingleInstance Force` — **changes behaviour.** Re-running replaces the running instance instead
+  of prompting. This is not the v2 default: the v1-to-v2 changes list says "#SingleInstance prompt
+  behaviour is default for all scripts; #SingleInstance on its own activates Force mode." So
+  removing this line makes a re-run ask the user instead.
 - `#Warn All, Off` — generated code shouldn't lecture the user about warnings they can't fix.
-- `SendMode "Input"` — SendInput is the fastest and most reliable send mode.
+- `SendMode "Input"` — restates the v2 default. The same changes list says "SendMode defaults to
+  Input instead of Event". Kept because SendInput is the fastest and most reliable send mode, and
+  a reader should not have to know the default to see which mode a script uses.
 - `SetWorkingDir A_ScriptDir` — makes any relative path in a `Run` hotkey resolve predictably.
-- `SetTitleMatchMode 2` — "contains" matching. **This one is load-bearing:** `WindowMatchType.TitleContains`
-  emits a bare title substring into `WinActive()`, which only means "contains" under mode 2.
-  Changing this line silently changes what every title-matched hotstring matches.
+- `SetTitleMatchMode 2` — restates the v2 default: "Title matching mode defaults to 2 instead of
+  1". **Keep the line anyway, and never change its value.** `WindowMatchType.TitleContains` emits a
+  bare title substring into `WinActive()`, which only means "contains" under mode 2. So setting it
+  to 1 or 3 silently changes what every title-matched hotstring matches, while deleting it leaves
+  matching exactly as it is. The line is a guard against a later edit, not a requirement.
 
 Header tokens are substituted by `HeaderTokenRenderer`: `{ProfileName}`, `{AppVersion}`,
 `{HotstringCount}`, `{HotkeyCount}`, and `{GeneratedAt}` (accepts a .NET format string after a colon;

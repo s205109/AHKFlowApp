@@ -16,6 +16,9 @@ $suiteRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 . (Join-Path $suiteRoot 'scripts/stage-transition.common.ps1')
 . (Join-Path $suiteRoot 'scripts/backlog-snapshot.common.ps1')
 . (Join-Path $suiteRoot 'scripts/backlog.common.ps1')
+# The driver itself, for the one function a case calls directly. '-AsModule' returns before the
+# script runs anything, so dot-sourcing it defines the functions and performs no transition.
+. (Join-Path $suiteRoot 'scripts/take-stage-transition.ps1') -AsModule
 
 $failures = @()
 $roots = @()
@@ -142,7 +145,8 @@ function New-TransitionFixture {
 
     # The linked plan lives in the acting checkout, untracked, exactly like the real
     # docs/superpowers link. The freeze check reads the working tree, so untracked is enough,
-    # and 'git add -- backlog PLAN-PROGRESS.md' can never sweep it into a commit.
+    # and the closure pathspec - the two sides of the item's move, plus PLAN-PROGRESS.md when git
+    # can match it - can never sweep it into a commit.
     if ($PlanState -ne 'none') {
         $planPath = Join-Path $acting $planName
         New-Item -ItemType Directory -Path (Split-Path -Parent $planPath) -Force | Out-Null
@@ -161,6 +165,9 @@ function New-TransitionFixture {
 
     return [pscustomobject]@{
         Root     = (Resolve-Path -LiteralPath $acting).Path
+        # Where core.hooksPath points. A case that needs a commit to fail writes a pre-commit hook
+        # here, after its own setup commits are safely in.
+        HookDir  = (Join-Path $root '.nohooks')
         Bare     = (Resolve-Path -LiteralPath $bare).Path
         ItemPath = (Join-Path (Resolve-Path -LiteralPath $acting).Path $itemName)
         PlanPath = (Join-Path (Resolve-Path -LiteralPath $acting).Path $planName)
@@ -278,6 +285,37 @@ function Get-FixtureStage {
     $found = @(Get-BacklogItem -BacklogRoot (Join-Path $Root 'backlog') | Where-Object { $_.Key -eq '081' })
     if ($found.Count -ne 1) { return '' }
     return (Get-SingleBacklogStage -Lines (Get-Content -LiteralPath $found[0].Path))
+}
+
+# Make every later commit in a fixture fail. The hook refuses, and git reports the refusal as a
+# non-zero exit code, which is what a closure meets when a real pre-commit hook says no.
+function Block-FixtureCommit {
+    param([string] $HookDir)
+
+    New-Item -ItemType Directory -Path $HookDir -Force | Out-Null
+    $hook = Join-Path $HookDir 'pre-commit'
+    # Backtick-n, not a here-string: sh on Windows rejects a script whose first line ends with a
+    # carriage return, and the refusal would then look like a hook that did not run at all.
+    Set-Content -LiteralPath $hook -Value "#!/bin/sh`necho 'fixture pre-commit refuses' >&2`nexit 1" -Encoding ascii
+    if (-not $IsWindows) { & chmod +x $hook }
+}
+
+# The bytes of a file, or $null when it is not there. Restoration is asserted byte for byte: a
+# substring match cannot tell an exact restore from a close one, and the undo promises exact.
+function Get-FileByte {
+    param([string] $Path)
+    if (-not (Test-Path -LiteralPath $Path)) { return $null }
+    # The comma matters. A bare 'return [byte[]]' enumerates, and an empty array then enumerates
+    # to nothing, so a zero-byte file would read back as $null and compare unequal to itself.
+    return , [System.IO.File]::ReadAllBytes($Path)
+}
+
+function Test-SameByte {
+    param([byte[]] $Expected, [byte[]] $Actual)
+    if ($null -eq $Expected -or $null -eq $Actual) { return $false }
+    if ($Expected.Length -ne $Actual.Length) { return $false }
+    if ($Expected.Length -eq 0) { return $true }
+    return -not (Compare-Object $Expected $Actual -SyncWindow 0)
 }
 
 try {
@@ -450,6 +488,11 @@ try {
     Assert-True (-not (Test-Path -LiteralPath (Join-Path $sh.Root 'PLAN-PROGRESS.md'))) `
         'Ship must delete PLAN-PROGRESS.md'
 
+    # Criterion 2: the deletion is not only on disk, it is in the same commit.
+    $shTouched = @(& git -C $sh.Root show --name-only --pretty=format: HEAD | Where-Object { $_ })
+    Assert-True ($shTouched -contains 'PLAN-PROGRESS.md') `
+        'The closure commit must record the deletion of PLAN-PROGRESS.md'
+
     # The ordering claim, read from the remote rather than from intent.
     $shBranch = (& git -C $sh.Root rev-parse --abbrev-ref HEAD).Trim()
     $remoteHead = (& git -C $sh.Bare rev-parse $shBranch).Trim()
@@ -469,6 +512,359 @@ try {
     # What it must never do is flip one.
     Assert-True (((Get-Content -Raw -LiteralPath $shGh2.Log) -join "`n") -notmatch 'pr ready') `
         'A refused Ship must not flip the pull request'
+
+    # --- A branch that never wrote PLAN-PROGRESS.md still closes (backlog 164) ---
+    # git treats a pathspec that matches nothing as fatal and stages NOTHING, so one 'git add'
+    # naming a path that may be absent cannot close such a branch. Ship has already moved the item
+    # and written the Stage by then, and neither is committed. The item has the reported run.
+    $sh3 = New-TransitionFixture -Stage '8-review' -Difficulty 'complex' -AsWorktree -AllBoxesTicked
+    $shGh3 = New-FakeGh
+    Invoke-WithFakeGh -Gh $shGh3 -Action {
+        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $sh3.Root -Item '081' -Edge 'success' -Pr 421 *> $null
+    }
+    Assert-Equal 0 $script:LastTransitionExit 'A Ship with no PLAN-PROGRESS.md must succeed'
+    Assert-True (Test-Path -LiteralPath (Join-Path $sh3.Root 'backlog/done/081-automate-stage-transitions.md')) `
+        'A Ship with no PLAN-PROGRESS.md must move the item into backlog/done/'
+    Assert-Equal '9-ship' (Get-FixtureStage -Root $sh3.Root) `
+        'A Ship with no PLAN-PROGRESS.md must write 9-ship'
+
+    # One commit holds the move and the Stage, and nothing is left uncommitted.
+    $sh3Touched = @(& git -C $sh3.Root show --name-only --pretty=format: HEAD | Where-Object { $_ })
+    Assert-True (($sh3Touched -join ' ') -match 'backlog/done/081') 'The closure commit must hold the move'
+    Assert-Equal '' ((& git -C $sh3.Root status --porcelain -- backlog) -join '') `
+        'The closure must leave nothing uncommitted under backlog/'
+
+    # --- A progress file that was never committed does not stop the closure either ---
+    # Review Focus 1. The delete runs first, so by the time the pathspec is read this path is in
+    # neither the working tree nor the index - the same fatal state as the case above, reached a
+    # different way. Ship still deletes the file, and commits only the item's move.
+    $sh4 = New-TransitionFixture -Stage '8-review' -Difficulty 'complex' -AsWorktree -AllBoxesTicked
+    Set-Content -LiteralPath (Join-Path $sh4.Root 'PLAN-PROGRESS.md') -Value '- never committed' -Encoding utf8
+    $shGh4 = New-FakeGh
+    Invoke-WithFakeGh -Gh $shGh4 -Action {
+        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $sh4.Root -Item '081' -Edge 'success' -Pr 421 *> $null
+    }
+    Assert-Equal 0 $script:LastTransitionExit 'A Ship with an uncommitted PLAN-PROGRESS.md must succeed'
+    Assert-True (-not (Test-Path -LiteralPath (Join-Path $sh4.Root 'PLAN-PROGRESS.md'))) `
+        'Ship must delete an uncommitted PLAN-PROGRESS.md too'
+    $sh4Touched = @(& git -C $sh4.Root show --name-only --pretty=format: HEAD | Where-Object { $_ })
+    Assert-True ($sh4Touched -notcontains 'PLAN-PROGRESS.md') `
+        'A file git never tracked cannot be recorded as deleted'
+
+    # --- An empty PLAN-PROGRESS.md is deleted too, and the deletion is committed ---
+    # Review Focus 4 on the success path. Reading the bytes through an 'if' used as an expression
+    # sends them down the pipeline, which enumerates the array, and an empty array enumerates to
+    # nothing. The variable is then $null, the delete is skipped, and Ship commits the empty
+    # progress file onto the branch that merges into main.
+    $sh5 = New-TransitionFixture -Stage '8-review' -Difficulty 'complex' -AsWorktree `
+                                 -AllBoxesTicked -WithProgress
+    [System.IO.File]::WriteAllBytes((Join-Path $sh5.Root 'PLAN-PROGRESS.md'), [byte[]]::new(0))
+    $shGh5 = New-FakeGh
+    Invoke-WithFakeGh -Gh $shGh5 -Action {
+        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $sh5.Root -Item '081' -Edge 'success' -Pr 421 *> $null
+    }
+    Assert-Equal 0 $script:LastTransitionExit 'A Ship with an empty PLAN-PROGRESS.md must succeed'
+    Assert-True (-not (Test-Path -LiteralPath (Join-Path $sh5.Root 'PLAN-PROGRESS.md'))) `
+        'Ship must delete an empty PLAN-PROGRESS.md too'
+    $sh5Status = @(& git -C $sh5.Root show --name-status --pretty=format: HEAD | Where-Object { $_ })
+    Assert-True ((($sh5Status -join ' ') -match 'D\s+PLAN-PROGRESS\.md')) `
+        'The closure commit must record the deletion of an empty PLAN-PROGRESS.md'
+
+    # The whole worktree, not just backlog/. Scoped to backlog/ this cannot see a progress file
+    # the closure left behind, which is exactly the state above.
+    Assert-Equal '' ((& git -C $sh5.Root status --porcelain) -join '') `
+        'A Ship with an empty PLAN-PROGRESS.md must leave the worktree clean'
+
+    # --- The pathspec names a progress path only when the index holds one ---
+    # Three states, because only the index is read. A file git never tracked is never named. The
+    # closure deletes it first, and a path in neither the index nor the working tree is the fatal
+    # pathspec this item exists to fix.
+    $psFix = New-TransitionFixture -Stage '8-review' -Difficulty 'complex' -AsWorktree
+    $psProgress = Join-Path $psFix.Root 'PLAN-PROGRESS.md'
+    $psFrom = 'backlog/081-automate-stage-transitions.md'
+    $psTo = 'backlog/done/081-automate-stage-transitions.md'
+    $psCall = { (Get-ClosurePathspec -Worktree $psFix.Root -From $psFrom -To $psTo) -join ',' }
+
+    Assert-Equal "$psFrom,$psTo" (& $psCall) `
+        'No progress path anywhere must give the two item paths alone'
+
+    Set-Content -LiteralPath $psProgress -Value '- untracked work' -Encoding utf8
+    Assert-Equal "$psFrom,$psTo" (& $psCall) `
+        'A progress file on disk that git never tracked must not be named'
+
+    & git -C $psFix.Root add -- PLAN-PROGRESS.md *> $null
+    & git -C $psFix.Root commit -m 'test: progress file' *> $null
+    Assert-Equal "$psFrom,$psTo,PLAN-PROGRESS.md" (& $psCall) `
+        'A tracked progress file must be named'
+
+    Remove-Item -LiteralPath $psProgress -Force
+    Assert-Equal "$psFrom,$psTo,PLAN-PROGRESS.md" (& $psCall) `
+        'A tracked progress file deleted from disk must still be named, so its deletion is staged'
+
+    # --- The undo says what it could not put back (backlog 164) ---
+    # No end-to-end case reaches the half-done message. A stale index.lock fails the reset but
+    # stages nothing, so the undo correctly reports success there. The contract is checked here.
+    $udFix = New-TransitionFixture -Stage '8-review' -Difficulty 'complex' -AsWorktree -WithProgress
+    $udRecord = @(Get-BacklogItem -BacklogRoot (Join-Path $udFix.Root 'backlog') |
+                  Where-Object { $_.Key -eq '081' })[0]
+    $udDestination = Join-Path $udFix.Root 'backlog/done/081-automate-stage-transitions.md'
+    $udPathspec = @($udRecord.RelativePath, 'backlog/done/081-automate-stage-transitions.md', 'PLAN-PROGRESS.md')
+    $udItemByte = Get-FileByte -Path $udRecord.Path
+
+    $udOk = Undo-RecordClosure -Worktree $udFix.Root -Record $udRecord -Destination $udDestination `
+                               -Pathspec $udPathspec -ItemByte $udItemByte -ProgressByte $null
+    Assert-True ($udOk -match 'The records are back on disk') `
+        'An undo that puts everything back must say so'
+    # And must not overstate it. 'git reset' sends the three closure paths back to HEAD, so a blob
+    # the human had staged on one of them is gone from the index. Saying 'back as they were' hid
+    # that.
+    Assert-True ($udOk -match 'unstaged') `
+        'The success sentence must say the closure paths are unstaged'
+
+    # Hold the item open so the write back cannot land. 'Read' share lets the snapshot above be
+    # read and still refuses the write, which is the state being tested.
+    $udLock = [System.IO.File]::Open($udRecord.Path, 'Open', 'Read', 'Read')
+    try {
+        $udLeft = Undo-RecordClosure -Worktree $udFix.Root -Record $udRecord -Destination $udDestination `
+                                     -Pathspec $udPathspec -ItemByte $udItemByte -ProgressByte $null
+    } finally {
+        $udLock.Dispose()
+    }
+    Assert-True ($udLeft -match 'the item is not back at backlog/081-automate-stage-transitions\.md') `
+        'An undo that cannot write the item back must name it'
+    Assert-True ($udLeft -match 'Repair them by hand') `
+        'A half-done undo must tell the human to repair by hand'
+
+    # A removal that fails is its own problem. The item IS back, and a second copy is left in
+    # backlog/done/, so the message must not say the item is missing.
+    New-Item -ItemType Directory -Path (Join-Path $udFix.Root 'backlog/done') -Force | Out-Null
+    [System.IO.File]::WriteAllBytes($udDestination, $udItemByte)
+    $udDestLock = [System.IO.File]::Open($udDestination, 'Open', 'Read', 'Read')
+    try {
+        $udTwo = Undo-RecordClosure -Worktree $udFix.Root -Record $udRecord -Destination $udDestination `
+                                    -Pathspec $udPathspec -ItemByte $udItemByte -ProgressByte $null
+    } finally {
+        $udDestLock.Dispose()
+    }
+    Assert-True ($udTwo -match 'a second copy of the item is still at backlog/done/081-automate-stage-transitions\.md') `
+        'An undo that cannot remove the copy in backlog/done/ must say there are two'
+    Assert-True ($udTwo -notmatch 'the item is not back') `
+        'Two copies must not be reported as a missing item'
+    Remove-Item -LiteralPath $udDestination -Force
+
+    # --- A closure that cannot commit puts every record back (backlog 164) ---
+    # Case 1: the tracked progress file, plus an unrelated item that is part staged and part not.
+    # The index-state contract says the closure stages three named paths and the undo resets those
+    # same three, so this file's index state must survive both.
+    $un1 = New-TransitionFixture -Stage '8-review' -Difficulty 'complex' -AsWorktree `
+                                 -AllBoxesTicked -WithProgress
+    $un1Item = Join-Path $un1.Root 'backlog/081-automate-stage-transitions.md'
+    $un1Other = Join-Path $un1.Root 'backlog/099-another-item.md'
+
+    Set-Content -LiteralPath $un1Other -Value "# 099 - Another item`n`n- **Stage**: 4-execute" -Encoding utf8
+    & git -C $un1.Root add -- backlog/099-another-item.md *> $null
+    & git -C $un1.Root commit -m 'test: a second item' *> $null
+    Add-Content -LiteralPath $un1Other -Value 'staged by the human' -Encoding utf8
+    & git -C $un1.Root add -- backlog/099-another-item.md *> $null
+    Add-Content -LiteralPath $un1Other -Value 'and left unstaged' -Encoding utf8
+
+    $un1Item0 = Get-FileByte -Path $un1Item
+    $un1Progress = Get-FileByte -Path (Join-Path $un1.Root 'PLAN-PROGRESS.md')
+    $un1Other0 = Get-FileByte -Path $un1Other
+    $un1Status0 = ((& git -C $un1.Root status --porcelain -- backlog/099-another-item.md) -join '').Trim()
+    # The index entry itself, not just the porcelain letters. 'MM' says a staged change exists,
+    # not which one. Every mutation tried so far reddens this and the porcelain check together,
+    # so read it as the sharper failure message - it names the blob instead of two letters.
+    $un1Index0 = ((& git -C $un1.Root ls-files -s -- backlog/099-another-item.md) -join '').Trim()
+
+    Block-FixtureCommit -HookDir $un1.HookDir
+    $un1Gh = New-FakeGh
+    Invoke-WithFakeGh -Gh $un1Gh -Action {
+        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $un1.Root -Item '081' -Edge 'success' -Pr 421 *> $null
+    }
+    Assert-True ($script:LastTransitionExit -ne 0) 'A closure whose commit fails must be refused'
+
+    Assert-True (Test-Path -LiteralPath $un1Item) 'A refused closure must put the item back in backlog/'
+    Assert-True (-not (Test-Path -LiteralPath (Join-Path $un1.Root 'backlog/done/081-automate-stage-transitions.md'))) `
+        'A refused closure must leave nothing in backlog/done/'
+    Assert-Equal '8-review' (Get-SingleBacklogStage -Lines (Get-Content -LiteralPath $un1Item)) `
+        'A refused closure must leave the Stage line unchanged'
+    Assert-True (Test-SameByte -Expected $un1Item0 -Actual (Get-FileByte -Path $un1Item)) `
+        'A refused closure must put the item back byte for byte, not rebuild it'
+    Assert-True (Test-SameByte -Expected $un1Progress -Actual (Get-FileByte -Path (Join-Path $un1.Root 'PLAN-PROGRESS.md'))) `
+        'A refused closure must put PLAN-PROGRESS.md back byte for byte'
+    Assert-Equal '' ((& git -C $un1.Root diff --cached --name-only -- backlog/081-automate-stage-transitions.md backlog/done/081-automate-stage-transitions.md PLAN-PROGRESS.md) -join '') `
+        'A refused closure must leave none of its own paths staged'
+
+    # The unrelated file, in both halves: its bytes and its index state.
+    Assert-True (Test-SameByte -Expected $un1Other0 -Actual (Get-FileByte -Path $un1Other)) `
+        'A refused closure must not change an unrelated item on disk'
+    Assert-Equal $un1Status0 ((& git -C $un1.Root status --porcelain -- backlog/099-another-item.md) -join '').Trim() `
+        'A refused closure must leave a part-staged unrelated item exactly as it was'
+    Assert-Equal $un1Index0 ((& git -C $un1.Root ls-files -s -- backlog/099-another-item.md) -join '').Trim() `
+        'A refused closure must leave an unrelated staged blob byte for byte in the index'
+    Assert-True ((Get-GhLog -Gh $un1Gh) -notmatch 'pr ready') 'A refused closure must not flip the pull request'
+
+    # Case 2: a tracked progress file carrying uncommitted edits. HEAD's copy is not good enough.
+    $un2 = New-TransitionFixture -Stage '8-review' -Difficulty 'complex' -AsWorktree `
+                                 -AllBoxesTicked -WithProgress
+    Add-Content -LiteralPath (Join-Path $un2.Root 'PLAN-PROGRESS.md') -Value '- Task 2 half done, never committed'
+    $un2Progress = Get-FileByte -Path (Join-Path $un2.Root 'PLAN-PROGRESS.md')
+    Block-FixtureCommit -HookDir $un2.HookDir
+    $un2Gh = New-FakeGh
+    Invoke-WithFakeGh -Gh $un2Gh -Action {
+        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $un2.Root -Item '081' -Edge 'success' -Pr 421 *> $null
+    }
+    Assert-True ($script:LastTransitionExit -ne 0) 'A refused closure with an edited progress file must be refused'
+    Assert-True (Test-SameByte -Expected $un2Progress -Actual (Get-FileByte -Path (Join-Path $un2.Root 'PLAN-PROGRESS.md'))) `
+        'A refused closure must put back the uncommitted progress text, not the text in HEAD'
+
+    # Case 3: a progress file git never tracked. Nothing can be read back out of git for this one,
+    # so only the text the closure saved before the delete can restore it.
+    $un3 = New-TransitionFixture -Stage '8-review' -Difficulty 'complex' -AsWorktree -AllBoxesTicked
+    Set-Content -LiteralPath (Join-Path $un3.Root 'PLAN-PROGRESS.md') -Value '- never committed' -Encoding utf8
+    $un3Progress = Get-FileByte -Path (Join-Path $un3.Root 'PLAN-PROGRESS.md')
+    Block-FixtureCommit -HookDir $un3.HookDir
+    $un3Gh = New-FakeGh
+    $script:un3Output = ''
+    Invoke-WithFakeGh -Gh $un3Gh -Action {
+        # Captured, because this is the only refused case whose pathspec is two paths: git never
+        # tracked PLAN-PROGRESS.md, so the closure never names it.
+        $script:un3Output = ((& "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $un3.Root -Item '081' -Edge 'success' -Pr 421 *>&1) -join "`n")
+    }
+    Assert-True ($script:LastTransitionExit -ne 0) 'A refused closure with an untracked progress file must be refused'
+    Assert-True (Test-SameByte -Expected $un3Progress -Actual (Get-FileByte -Path (Join-Path $un3.Root 'PLAN-PROGRESS.md'))) `
+        'A refused closure must put back a progress file git never tracked'
+    Assert-True ($script:un3Output -match 'The records are back on disk') `
+        'A two-path closure must still report that the records are back'
+    # The count was hardcoded as 'three'. On this branch the pathspec is two paths, so the human
+    # was sent looking for staged work on a PLAN-PROGRESS.md the closure never named.
+    Assert-True ($script:un3Output -notmatch 'three') `
+        'The refusal must not name a path count the closure did not use'
+
+    # Case 4: a zero-byte progress file. 'Get-Content -Raw' answers $null for it, so existence has
+    # to travel in its own flag or the file never comes back.
+    $un4 = New-TransitionFixture -Stage '8-review' -Difficulty 'complex' -AsWorktree `
+                                 -AllBoxesTicked -WithProgress
+    [System.IO.File]::WriteAllBytes((Join-Path $un4.Root 'PLAN-PROGRESS.md'), @())
+    $un4Progress = Join-Path $un4.Root 'PLAN-PROGRESS.md'
+    $un4Progress0 = Get-FileByte -Path $un4Progress
+    Block-FixtureCommit -HookDir $un4.HookDir
+    $un4Gh = New-FakeGh
+    Invoke-WithFakeGh -Gh $un4Gh -Action {
+        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $un4.Root -Item '081' -Edge 'success' -Pr 421 *> $null
+    }
+    Assert-True ($script:LastTransitionExit -ne 0) 'A refused closure with an empty progress file must be refused'
+    Assert-True (Test-Path -LiteralPath (Join-Path $un4.Root 'PLAN-PROGRESS.md')) `
+        'A refused closure must put back an empty progress file'
+    Assert-Equal 0 ((Get-Item -LiteralPath (Join-Path $un4.Root 'PLAN-PROGRESS.md')).Length) `
+        'The restored empty progress file must still be empty'
+    # Bytes, not just the length. 'return [byte[]]' enumerates on the way out of a function, so an
+    # empty file reads back as $null unless the return is unrolled with a comma. That trap is the
+    # same one that made the closure skip the delete, and this assertion is what catches it.
+    Assert-True (Test-SameByte -Expected $un4Progress0 -Actual (Get-FileByte -Path $un4Progress)) `
+        'A refused closure must put an empty progress file back byte for byte'
+
+    # Case 5: a write that fails after the move, before any staging. Another process holds the
+    # progress file open, so Remove-Item throws and $ErrorActionPreference = 'Stop' makes it an
+    # exception. No git call has run yet at that point.
+    #
+    # The share mode is the whole case. 'Read' lets the closure read the file and still refuses the
+    # delete, which is the state being tested. 'None' would refuse the closure's own first read:
+    # the run would die before it moved anything, every assertion below would pass with no undo in
+    # the script at all, and the case would be worthless. The premise assertion below is what
+    # keeps a future change to the share mode loud instead of quiet.
+    $un5 = New-TransitionFixture -Stage '8-review' -Difficulty 'complex' -AsWorktree `
+                                 -AllBoxesTicked -WithProgress
+    $un5Item = Join-Path $un5.Root 'backlog/081-automate-stage-transitions.md'
+    $un5Item0 = Get-FileByte -Path $un5Item
+    $un5Progress = Get-FileByte -Path (Join-Path $un5.Root 'PLAN-PROGRESS.md')
+    $un5Gh = New-FakeGh
+    $un5Lock = [System.IO.File]::Open((Join-Path $un5.Root 'PLAN-PROGRESS.md'), 'Open', 'Read', 'Read')
+    try {
+        # Prove the premise before trusting the result: the closure's own read must still work.
+        Assert-True ($null -ne (Get-FileByte -Path (Join-Path $un5.Root 'PLAN-PROGRESS.md'))) `
+            'The locked progress file must still be readable, or this case tests nothing'
+
+        Invoke-WithFakeGh -Gh $un5Gh -Action {
+            & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $un5.Root -Item '081' -Edge 'success' -Pr 421 *> $null
+        }
+    } finally {
+        $un5Lock.Dispose()
+    }
+    Assert-True ($script:LastTransitionExit -ne 0) 'A closure that cannot delete the progress file must be refused'
+    Assert-True (Test-Path -LiteralPath $un5Item) 'A failed delete must still put the item back in backlog/'
+    Assert-True (-not (Test-Path -LiteralPath (Join-Path $un5.Root 'backlog/done/081-automate-stage-transitions.md'))) `
+        'A failed delete must leave nothing in backlog/done/'
+    Assert-Equal '8-review' (Get-SingleBacklogStage -Lines (Get-Content -LiteralPath $un5Item)) `
+        'A failed delete must leave the Stage line unchanged'
+    Assert-True (Test-SameByte -Expected $un5Item0 -Actual (Get-FileByte -Path $un5Item)) `
+        'A failed delete must put the item back byte for byte'
+    Assert-True (Test-SameByte -Expected $un5Progress -Actual (Get-FileByte -Path (Join-Path $un5.Root 'PLAN-PROGRESS.md'))) `
+        'A locked progress file must be left exactly as it was'
+    Assert-True ((Get-GhLog -Gh $un5Gh) -notmatch 'pr ready') 'A failed delete must not flip the pull request'
+
+    # Case 6: the staging itself fails. A stale index.lock in this worktree's own git dir makes
+    # 'git add' exit 128 - and the undo's own 'git reset' too. Nothing was staged, so the undo
+    # looks at the index rather than guessing, and it still reports success. This case reads that
+    # sentence. The half-done sentence is proved by the undo-message case further up.
+    $un6 = New-TransitionFixture -Stage '8-review' -Difficulty 'complex' -AsWorktree `
+                                 -AllBoxesTicked -WithProgress
+    $un6Item = Join-Path $un6.Root 'backlog/081-automate-stage-transitions.md'
+    $un6GitDir = ((& git -C $un6.Root rev-parse --absolute-git-dir) -join '').Trim()
+    $un6Lock = Join-Path $un6GitDir 'index.lock'
+    $un6Gh = New-FakeGh
+    Set-Content -LiteralPath $un6Lock -Value '' -Encoding ascii
+    $script:un6Output = ''
+    try {
+        Invoke-WithFakeGh -Gh $un6Gh -Action {
+            # '*>&1' and not '*> $null', because this case also reads the refusal text.
+            $script:un6Output = ((& "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $un6.Root -Item '081' -Edge 'success' -Pr 421 *>&1) -join "`n")
+        }
+    } finally {
+        Remove-Item -LiteralPath $un6Lock -Force -ErrorAction SilentlyContinue
+    }
+    Assert-True ($script:LastTransitionExit -ne 0) 'A closure that cannot stage must be refused'
+    Assert-True (Test-Path -LiteralPath $un6Item) 'A failed staging must still put the item back in backlog/'
+    Assert-Equal '8-review' (Get-SingleBacklogStage -Lines (Get-Content -LiteralPath $un6Item)) `
+        'A failed staging must leave the Stage line unchanged'
+    Assert-True (Test-Path -LiteralPath (Join-Path $un6.Root 'PLAN-PROGRESS.md')) `
+        'A failed staging must put PLAN-PROGRESS.md back'
+    Assert-True ((Get-GhLog -Gh $un6Gh) -notmatch 'pr ready') 'A failed staging must not flip the pull request'
+    # The sentence the human reads. The reset above failed too, and the undo looked at the index
+    # rather than guessing, found nothing staged, and so reports success. Nothing else in this
+    # suite reads the refusal text, and without this the whole message contract is untested.
+    Assert-True ($script:un6Output -match 'The closure could not be staged') `
+        'The refusal must name what failed'
+    Assert-True ($script:un6Output -match 'The records are back on disk') `
+        'The refusal must tell the human the records are back'
+
+    # Case 7: bytes a text round trip cannot carry. The progress file is UTF-16 with a byte order
+    # mark, and the item has LF endings and no final newline. Reading text and writing it back
+    # loses 17 of the progress file's 32 bytes, and rewriting the item's Stage line would give it
+    # CRLF endings and a final newline it never had. Both must come back exactly.
+    $un7 = New-TransitionFixture -Stage '8-review' -Difficulty 'complex' -AsWorktree `
+                                 -AllBoxesTicked -WithProgress
+    $un7Item = Join-Path $un7.Root 'backlog/081-automate-stage-transitions.md'
+    $un7Progress = Join-Path $un7.Root 'PLAN-PROGRESS.md'
+
+    [System.IO.File]::WriteAllBytes($un7Item,
+        [System.Text.UTF8Encoding]::new($false).GetBytes("# 081 - Automate stage transitions`n`n## Metadata`n`n- **Difficulty**: complex`n- **Stage**: 8-review`n`n## Acceptance criteria`n`n- [x] One script performs a transition end to end."))
+    [System.IO.File]::WriteAllBytes($un7Progress,
+        ([byte[]] @(0xFF, 0xFE) + [System.Text.Encoding]::Unicode.GetBytes("- Task 1 done`r`n")))
+
+    $un7Item0 = Get-FileByte -Path $un7Item
+    $un7Progress0 = Get-FileByte -Path $un7Progress
+    Block-FixtureCommit -HookDir $un7.HookDir
+    $un7Gh = New-FakeGh
+    Invoke-WithFakeGh -Gh $un7Gh -Action {
+        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $un7.Root -Item '081' -Edge 'success' -Pr 421 *> $null
+    }
+    Assert-True ($script:LastTransitionExit -ne 0) 'A refused closure on odd bytes must be refused'
+    Assert-True (Test-SameByte -Expected $un7Item0 -Actual (Get-FileByte -Path $un7Item)) `
+        'A refused closure must keep LF endings and a missing final newline in the item'
+    Assert-True (Test-SameByte -Expected $un7Progress0 -Actual (Get-FileByte -Path $un7Progress)) `
+        'A refused closure must keep a UTF-16 progress file and its byte order mark'
 
     # --- A failure edge refuses without its evidence ---
     $fl = New-TransitionFixture -Stage '6-verify' -Difficulty 'complex' -AsWorktree -WithProgress
