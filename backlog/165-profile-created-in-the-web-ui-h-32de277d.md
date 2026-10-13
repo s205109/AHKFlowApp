@@ -89,8 +89,19 @@ profile, so that I do not have to know which directives a script needs.
   emptied from one an owner emptied on purpose, and the web UI was the only way an owner could
   create a profile, so almost every empty header is the bug. The repair fills a header that holds
   no characters at all, and never touches a header that holds any text. After it runs, an empty
-  header can only come from a deliberate act, which is what the first decision above says it
-  means.
-- Spec: none. The item is `moderate`, so it goes straight to Plan. The two decisions above were
+  header comes from a deliberate act, or from a browser still running the old frontend, which the
+  third decision below covers.
+- **Decision, taken at Plan on 2026-10-13.** The rollout gap is accepted, not closed. The repair
+  runs once, at deploy time. The API and the frontend deploy from two separate workflows that run
+  in parallel, and the app is a PWA whose service worker serves cached files. So a browser can
+  still hold the old frontend after the migration ran, and a profile it creates then still stores
+  an empty header. That owner is in the state they were in before this item shipped. They fix it
+  by editing the header, or by making the profile again once their browser has reloaded. The
+  window closes by itself. The two ways to close it cost more than it does: coercing an empty
+  string on the server contradicts the first decision, and a repair that ran on every startup
+  would overwrite every header an owner cleared on purpose. This item adds no recurring repair.
+  When this ships, let the frontend workflow finish before the API workflow's `migrate-db` job
+  runs. That shrinks the window. It does not remove it, and no workflow change is in this item.
+- Spec: none. The item is `moderate`, so it goes straight to Plan. The three decisions above were
   taken there.
 - Plan: `docs/superpowers/plans/2026-10-13-profile-default-header-plan-165.md`.
