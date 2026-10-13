@@ -71,5 +71,15 @@ downloaded scripts are consistent wherever they come from.
   non-ASCII characters, because an editor otherwise has to guess. So the risk is on the editing
   side, not the running side, which is why this is S4. Four seeded hotstrings hold non-ASCII
   replacements.
+- **Split at pickup, one pull request per outcome.** F29 is a defect with one correct answer. The
+  other two are policy decisions about the bytes of a downloaded file, and they should not ride
+  along with a bug fix:
+  1. **One file name.** One rule for the stem, used by the API and the UI, plus the unit test for
+     the truncate-then-trim case and the dead `ahkflow_profile.ahk` fallback. F29. Do this first.
+  2. **One line ending.** Decide LF or CRLF for a downloaded script, then make the generator and
+     the C# literals agree. F30.
+  3. **The byte-order mark.** Write one, or write down why not. F31.
+  Outcomes 2 and 3 both change the bytes an owner's editor sees, so they can ship together if
+  that reads better than two small pull requests. Outcome 1 stays on its own.
 - Spec: none — F29 has one correct answer already written down in the UI's comment.
 - Plan: none — moderate work, goes straight to Plan at pickup.

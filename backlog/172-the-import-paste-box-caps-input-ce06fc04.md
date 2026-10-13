@@ -22,9 +22,11 @@ half of it.
 ## Acceptance criteria
 
 - [ ] The paste box accepts a script up to `HotstringImportRules.MaxScriptLength`.
-- [ ] Input beyond the supported size produces a visible message rather than silent truncation.
+- [ ] A paste larger than `HotstringImportRules.MaxScriptLength` produces a visible message that
+      says the script is too large. It is not cut down to the limit in silence.
 - [ ] The dialog sets its own maximum length rather than inheriting a component default.
-- [ ] A test covers a paste larger than 524,288 characters.
+- [ ] A test covers a paste larger than 524,288 characters, and a second test covers a paste
+      larger than `HotstringImportRules.MaxScriptLength`.
 
 ## Out of scope
 
@@ -42,6 +44,10 @@ half of it.
   itself, so a 1 MiB script is supported.
 - **The cap was never a decision.** The dialog sets no maximum length at all. 524,288 is
   MudBlazor's own default for the field, and it happens to be exactly half the supported size.
+- **Raising the number alone does not fix the defect.** The defect is the silent truncation, and a
+  `maxlength` of 1,048,576 truncates a 2 MiB paste in exactly the same silent way. So the item
+  needs an answer for a paste the server would refuse: say so on screen, and prove it with a test
+  above the server's limit as well as one above MudBlazor's default.
 - The rest of the import feature was the best-built thing the sweep drove. The classifier gets
   every case right, including a duplicate against an earlier row in the same batch, matched
   without case. Only the edges produced findings.

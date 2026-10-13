@@ -21,8 +21,11 @@ text with stray punctuation.
 
 ## Acceptance criteria
 
-- [ ] A changelog entry that holds a backtick span renders as code, with no visible backticks.
+- [ ] The item records what a finished entry should look like on screen, before a renderer is
+      chosen. The two options in the notes below lead to different answers, so this comes first.
 - [ ] The rendered page holds no literal backtick characters.
+- [ ] A command or an identifier in an entry reads as one, by whichever means the decision above
+      chose.
 - [ ] The page escapes anything it does not deliberately render, so a changelog entry cannot
       inject markup.
 
@@ -42,8 +45,11 @@ text with stray punctuation.
   which escapes the text rather than parsing it.
 - The page is `[AllowAnonymous]` and reads the static `wwwroot/changelog.json` rather than calling
   the API, so nothing about this depends on sign-in.
-- Decide whether to render a small markdown subset or to store the entries without markup.
-  Rendering raw HTML from a data file would need escaping care, which is why the third acceptance
-  criterion is there.
+- **Decide the output before the renderer.** Two options, and they do not produce the same page.
+  Render a small markdown subset, and a command appears in a `<code>` element. Store the entries
+  without markup, and the same command appears as plain text with no backticks. Both satisfy "no
+  literal backticks", so the first acceptance criterion asks which one this item wants. Rendering
+  raw HTML from a data file would need escaping care, which is why the last acceptance criterion
+  is there.
 - Spec: none — pick one of the two options above at Plan.
 - Plan: none — moderate work, goes straight to Plan at pickup.

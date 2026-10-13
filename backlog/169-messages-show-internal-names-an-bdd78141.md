@@ -83,6 +83,16 @@ happened and what to do next.
 - Why no test catches F24. `CreateCustomKnownShortcutCommandValidatorTests` drives its cases from
   `BannedTerms` itself and asserts every entry makes an absolute claim. That proves the list is
   internally consistent, never that it is complete.
+- **Split at pickup, one pull request per outcome.** Seven findings sit in this item because they
+  all concern text, not because one change fixes them. Four outcomes, each verifiable on its own:
+  1. **Wording.** Property names out of messages, correct singulars, and the Delivery help text.
+     F17, F20, F15 and F11.
+  2. **What a category delete affects.** The dialog says how many items use that category. F10.
+     This one is a behaviour change, not wording, and it mirrors item 166's delete half.
+  3. **Macro definitions in the Recycle Bin.** Render them the way the grid does. F18.
+  4. **The absolute-claim rule.** Either `ShortcutWording.BannedTerms` refuses a positive claim,
+     or the message stops promising to. F24. This one needs a decision first.
+  Take them in that order. Outcome 1 is the largest and touches the most strings.
 - Spec: none — each fix is small, but agree the vocabulary against `CONTEXT.md` before editing
   strings.
 - Plan: none — moderate work, goes straight to Plan at pickup.

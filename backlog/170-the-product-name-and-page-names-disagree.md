@@ -71,5 +71,13 @@ tells me.
   splitting one. Decide which side moves.
 - No file in the repository states what the manifest name must be, and `CONTEXT.md` does not
   cover the manifest. That part is plain reasonableness, not a sourced rule.
+- **Split at pickup, one pull request per outcome.** The two halves have nothing in common beyond
+  both being text an owner reads:
+  1. **Commands that do not run.** Fix the two quickstart lines, and add the check that proves
+     each printed command exists. F1, the only S2 in this item. Do this one first: a printed
+     command that fails is worse than a name spelled four ways.
+  2. **One product name, one page name.** The four spellings, the Health page's three names, the
+     manifest's `short_name` and `description`, and the F13 decision about action labels. F5, F7,
+     F13 and F25.
 - Spec: none — the only open question is F13, and it is a one-line decision.
 - Plan: none — moderate work, goes straight to Plan at pickup.
