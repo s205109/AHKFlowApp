@@ -24,15 +24,15 @@ wrong files.
 
 ## Acceptance criteria
 
-- [ ] `.claude/settings.json` holds one `Skill(mattpocock-skills:<name>)` entry in
+- [x] `.claude/settings.json` holds one `Skill(mattpocock-skills:<name>)` entry in
       `permissions.deny` for each `.agents/mp-*` fork, and no other `mattpocock-skills` entry.
-- [ ] `.claude/settings.json` registers `.claude/hooks/block-upstream-mp-forks.ps1` under
+- [x] `.claude/settings.json` registers `.claude/hooks/block-upstream-mp-forks.ps1` under
       `UserPromptExpansion`, with a matcher that matches every fork and no other skill.
-- [ ] `.claude/hooks/block-upstream-mp-forks.ps1` is in the repository. It exits 2 and names
+- [x] `.claude/hooks/block-upstream-mp-forks.ps1` is in the repository. It exits 2 and names
       the `mp-` fork, including when the payload has no `command_name`.
-- [ ] `tests/BlockUpstreamMpForksHook.Tests.ps1` is listed in `tests/powershell-suites.json`
+- [x] `tests/BlockUpstreamMpForksHook.Tests.ps1` is listed in `tests/powershell-suites.json`
       and passes.
-- [ ] In a session started inside a worktree, with no `.claude/settings.local.json`, `/hooks`
+- [x] In a session started inside a worktree, with no `.claude/settings.local.json`, `/hooks`
       lists this worktree's `.claude/settings.json` registration as the only
       `UserPromptExpansion` hook. In that session the agent's call to
       `Skill(mattpocock-skills:grilling)` returns a permission denial, the typed
@@ -86,3 +86,10 @@ The worktree had no `.claude/settings.local.json` (`Test-Path` printed `False`).
    carries the plugin scope.
 6. Typed `/mp-grilling` loaded the fork from this worktree's `.claude/skills/mp-grilling`, with
    no block.
+
+The `/hooks` part of the live-check box rests on the human's report in step 3. Step 5 supports
+it: the one block message names the repository's command, not the personal hook.
+
+Document verdict: the rule is already written down in `.agents/ATTRIBUTION.md` and
+`.claude/skills/README.md`, both changed in this branch. No other doc, `CONTEXT.md` term, or skill
+changed meaning.
