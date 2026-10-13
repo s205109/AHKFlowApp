@@ -434,6 +434,66 @@ function Get-ClosurePathspec {
     return $paths
 }
 
+# Reverse the three record writes a closure makes, so a closure that does not land leaves the
+# worktree as Ship found it. Without this, the item sits in backlog/done/ reading 9-ship with
+# nothing committed, and a rerun cannot repair it: the only edge out of 9-ship is 10-cleanup,
+# which this script refuses. Backlog 164 was finished by hand for exactly that reason.
+#
+# Every step is tolerant. A half-done undo must still report what it could not put back, rather
+# than throw a second error over the first one and hide the real cause.
+function Undo-RecordClosure {
+    param(
+        [string] $Worktree, [pscustomobject] $Record, [string] $Destination,
+        [string[]] $Pathspec, [byte[]] $ItemByte, [byte[]] $ProgressByte
+    )
+
+    $left = @()
+
+    # The index first, and only the paths the closure staged. 'git reset' with a pathspec restores
+    # those index entries from HEAD and never touches the working tree, so every other path keeps
+    # the index state it had - including a file that was part staged and part not.
+    & git -C $Worktree reset -q -- $Pathspec
+    if ($LASTEXITCODE -ne 0) {
+        # Look rather than guess. A stale index.lock makes the reset fail even when the add never
+        # staged anything, and reads still work while that lock is there.
+        $staged = ((& git -C $Worktree diff --cached --name-only -- $Pathspec) -join '').Trim()
+        if ($staged) { $left += 'the closure is still staged' }
+    }
+
+    # Write the snapshot back, rather than move the file and rewrite its Stage line. A rewrite
+    # normalizes line endings, adds a final newline the original may not have had, and cannot
+    # repair a file whose own Stage write failed half way. Writing first and removing second means
+    # a failure here leaves two copies rather than none, and the message below says so.
+    try {
+        [System.IO.File]::WriteAllBytes($Record.Path, $ItemByte)
+        if ((Test-Path -LiteralPath $Destination) -and ($Destination -ne $Record.Path)) {
+            Remove-Item -LiteralPath $Destination -Force
+        }
+    } catch {
+        $left += "the item is not back at $($Record.RelativePath)"
+    }
+
+    # The snapshot, not the copy in HEAD. The file may have carried uncommitted work, it may not be
+    # UTF-8, and it may be empty: $null means there was no file, and an array of length 0 means
+    # there was an empty one.
+    if ($null -ne $ProgressByte) {
+        $progress = Join-Path $Worktree 'PLAN-PROGRESS.md'
+        try {
+            if (-not (Test-Path -LiteralPath $progress)) {
+                [System.IO.File]::WriteAllBytes($progress, $ProgressByte)
+            }
+        } catch {
+            $left += 'PLAN-PROGRESS.md was not put back'
+        }
+    }
+
+    if ($left.Count -eq 0) {
+        return 'The records are back as they were, so nothing is half closed. Fix the cause and run this again.'
+    }
+
+    return "The records could not all be put back: $($left -join '; '). Repair them by hand."
+}
+
 function Invoke-ShipTransition {
     param([string] $Worktree, [string] $Item, [pscustomobject] $Context, [int] $Pr, [string] $Note = '')
 
@@ -461,24 +521,54 @@ function Invoke-ShipTransition {
     Invoke-RemotePreflight -Worktree $Worktree -Branch $branch
 
     # Close the records: move the item, delete the progress file, set the Stage. One commit.
-    $destination = Join-Path (Join-Path $Worktree 'backlog/done') (Split-Path -Leaf $record.Path)
-    New-Item -ItemType Directory -Path (Split-Path -Parent $destination) -Force | Out-Null
-    Move-Item -LiteralPath $record.Path -Destination $destination
-    Set-ItemStage -Path $destination -Stage $target
-
+    # Read first, write second. The undo needs both snapshots and both item paths whatever fails
+    # afterwards, and the move is the first write that changes anything.
+    #
+    # Bytes, not text. A text round trip rewrites a UTF-16 file as UTF-8 and drops a byte order
+    # mark, and $null from a byte read means 'there was no file' while an array of length 0 means
+    # 'there was an empty one'.
     $progress = Join-Path $Worktree 'PLAN-PROGRESS.md'
-    if (Test-Path -LiteralPath $progress) { Remove-Item -LiteralPath $progress -Force }
+    $itemByte = [System.IO.File]::ReadAllBytes($record.Path)
+    $progressByte = if (Test-Path -LiteralPath $progress) { [System.IO.File]::ReadAllBytes($progress) } else { $null }
 
-    # After the delete, never before it. An untracked progress file that still exists would put
-    # the path in this list, and the delete would then leave the add nothing to match.
-    $pathspec = Get-ClosurePathspec -Worktree $Worktree `
-                                    -From $record.RelativePath `
-                                    -To "backlog/done/$(Split-Path -Leaf $record.Path)"
-    & git -C $Worktree add -A -- $pathspec
-    $message = "docs: $Item close the records"
-    if ($Note) { $message = "$message, $Note" }
-    & git -C $Worktree commit -m $message
-    if ($LASTEXITCODE -ne 0) { throw 'The closure commit failed.' }
+    $leaf = Split-Path -Leaf $record.Path
+    $destination = Join-Path (Join-Path $Worktree 'backlog/done') $leaf
+
+    # The undo needs a list even when the failure comes before the add, so this starts as all three
+    # paths and the add narrows it. Resetting a path in neither HEAD nor the index exits 0 and
+    # changes nothing, so the wider starting list is safe.
+    $pathspec = @($record.RelativePath, "backlog/done/$leaf", 'PLAN-PROGRESS.md')
+
+    # One try around every write. $ErrorActionPreference is 'Stop', so a failed Move-Item,
+    # Set-ItemStage or Remove-Item throws - and a progress file another process holds open does
+    # exactly that. Undoing only on a git exit code would leave those three failures half closed.
+    try {
+        New-Item -ItemType Directory -Path (Split-Path -Parent $destination) -Force | Out-Null
+        Move-Item -LiteralPath $record.Path -Destination $destination
+        Set-ItemStage -Path $destination -Stage $target
+        if ($null -ne $progressByte) { Remove-Item -LiteralPath $progress -Force }
+
+        # After the delete, never before it. An untracked progress file that still exists would put
+        # the path in this list, and the delete would then leave the add nothing to match.
+        $pathspec = Get-ClosurePathspec -Worktree $Worktree `
+                                        -From $record.RelativePath -To "backlog/done/$leaf"
+        & git -C $Worktree add -A -- $pathspec
+        if ($LASTEXITCODE -ne 0) { throw 'The closure could not be staged.' }
+
+        $message = "docs: $Item close the records"
+        if ($Note) { $message = "$message, $Note" }
+        & git -C $Worktree commit -m $message
+        if ($LASTEXITCODE -ne 0) { throw 'The closure commit failed.' }
+    } catch {
+        $failure = $_.Exception.Message
+        try {
+            $undone = Undo-RecordClosure -Worktree $Worktree -Record $record -Destination $destination `
+                                         -Pathspec $pathspec -ItemByte $itemByte -ProgressByte $progressByte
+        } catch {
+            $undone = "The undo itself failed: $($_.Exception.Message). Repair the records by hand."
+        }
+        throw "$failure $undone"
+    }
 
     # Push BEFORE the flip. A merge of an unpushed closure drops the records.
     & git -C $Worktree push origin $branch
