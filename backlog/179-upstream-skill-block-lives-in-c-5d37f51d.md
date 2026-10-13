@@ -59,3 +59,30 @@ wrong files.
   for the repository copy.
 - Spec: none — moderate work, the personal plan carries the design.
 - Plan: `docs/superpowers/plans/2026-10-13-upstream-skill-block-committed-plan-179.md`
+
+## Live check evidence
+
+Run on 2026-10-13 by the human, in a fresh session started inside this worktree at `554da4d4`.
+The worktree had no `.claude/settings.local.json` (`Test-Path` printed `False`).
+
+1. `claude --version`: `2.1.296 (Claude Code)`.
+2. `/plugin`: `mattpocock-skills` installed and enabled. The human reported a pass and pasted no
+   text.
+3. `/hooks`, `UserPromptExpansion`: one hook, from this worktree's project settings. The human
+   reported a pass and pasted no text. Step 5 supports it: the block message names the
+   repository's exec-form command, not the personal hook path, and only one block message
+   appeared.
+4. Agent `Skill` calls. Both returned the same denial:
+   `Skill(mattpocock-skills:tdd)` (control) → `Error: Skill execution blocked by permission rules`.
+   `Skill(mattpocock-skills:grilling)` → `Error: Skill execution blocked by permission rules`.
+5. Typed `/mattpocock-skills:grilling` was blocked:
+
+   ```text
+   UserPromptExpansion operation blocked by hook:
+   [pwsh -NoProfile -NonInteractive -ExecutionPolicy Bypass -File ${CLAUDE_PROJECT_DIR}/.claude/hooks/block-upstream-mp-forks.ps1]: Blocked in AHKFlowApp. Use /mp-grilling instead of /mattpocock-skills:grilling.
+   ```
+
+   The matcher needs the `mattpocock-skills:` prefix, so this also proves that `command_name`
+   carries the plugin scope.
+6. Typed `/mp-grilling` loaded the fork from this worktree's `.claude/skills/mp-grilling`, with
+   no block.
