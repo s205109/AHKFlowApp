@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: none (internal script code, no UI/API/CLI change)
 - **Difficulty**: moderate
-- **Stage**: 6-verify
+- **Stage**: 7-document
 
 ## Summary
 
