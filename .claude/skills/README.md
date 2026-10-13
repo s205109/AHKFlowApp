@@ -15,12 +15,16 @@ allowlisted entries are removed.
 1. Add or remove `.agents/<skill>/SKILL.md`.
 2. Re-run `scripts/agents/setup-cross-agent-skills.ps1` (or `.sh`).
 
+If the skill is an `mp-` fork, also update the deny list and the matcher in `.claude/settings.json`.
+
 A `post-merge` git hook re-runs the setup automatically when `.agents/` or the
 setup scripts change in a pull/merge.
 
 ## Retiring a skill
 
 Delete the whole `.agents/<name>/` directory, then re-run the setup script.
+
+If the skill is an `mp-` fork, also update the deny list and the matcher in `.claude/settings.json`.
 
 Do not park a skill by renaming `SKILL.md` to something else, and do not move it
 to a disabled folder. No agent loads a directory without a `SKILL.md`. The content

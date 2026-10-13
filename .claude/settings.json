@@ -123,7 +123,15 @@
       "Edit(**/appsettings.Production.json)",
       "Edit(**/appsettings.Staging.json)",
       "Edit(**/*.pfx)",
-      "Edit(**/*.p12)"
+      "Edit(**/*.p12)",
+      "Skill(mattpocock-skills:grilling)",
+      "Skill(mattpocock-skills:grill-me)",
+      "Skill(mattpocock-skills:grill-with-docs)",
+      "Skill(mattpocock-skills:domain-modeling)",
+      "Skill(mattpocock-skills:prototype)",
+      "Skill(mattpocock-skills:research)",
+      "Skill(mattpocock-skills:writing-for-agents)",
+      "Skill(mattpocock-skills:triage)"
     ],
     "defaultMode": "default"
   },
@@ -195,6 +203,20 @@
             "command": "pwsh -NoProfile -NonInteractive -File \"${CLAUDE_PROJECT_DIR}/.claude/hooks/stop-next-step.ps1\"",
             "timeout": 30,
             "statusMessage": "Checking for a Next-step line..."
+          }
+        ]
+      }
+    ],
+    "UserPromptExpansion": [
+      {
+        "matcher": "^mattpocock-skills:(grilling|grill-me|grill-with-docs|domain-modeling|prototype|research|writing-for-agents|triage)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pwsh",
+            "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/.claude/hooks/block-upstream-mp-forks.ps1"],
+            "timeout": 10,
+            "statusMessage": "Checking for a repo fork of this skill"
           }
         ]
       }
