@@ -53,4 +53,4 @@ delete nineteen rows one at a time.
   this is S2 and not S1 — nothing is lost, but a shipped feature is unusable on desktop.
 - Worth checking whether any other grid repeats the bare form.
 - Spec: none — the fix and its reason are already written down in the hotstrings comment.
-- Plan: none — moderate work, goes straight to Plan at pickup.
+- Plan: `docs/superpowers/plans/2026-10-13-hotkey-rows-cannot-be-selected-plan-167.md`
