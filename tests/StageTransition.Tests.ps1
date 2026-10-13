@@ -16,6 +16,9 @@ $suiteRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 . (Join-Path $suiteRoot 'scripts/stage-transition.common.ps1')
 . (Join-Path $suiteRoot 'scripts/backlog-snapshot.common.ps1')
 . (Join-Path $suiteRoot 'scripts/backlog.common.ps1')
+# The driver itself, for the one function a case calls directly. '-AsModule' returns before the
+# script runs anything, so dot-sourcing it defines the functions and performs no transition.
+. (Join-Path $suiteRoot 'scripts/take-stage-transition.ps1') -AsModule
 
 $failures = @()
 $roots = @()
@@ -142,7 +145,8 @@ function New-TransitionFixture {
 
     # The linked plan lives in the acting checkout, untracked, exactly like the real
     # docs/superpowers link. The freeze check reads the working tree, so untracked is enough,
-    # and 'git add -- backlog PLAN-PROGRESS.md' can never sweep it into a commit.
+    # and the closure pathspec - the two sides of the item's move, plus PLAN-PROGRESS.md when git
+    # can match it - can never sweep it into a commit.
     if ($PlanState -ne 'none') {
         $planPath = Join-Path $acting $planName
         New-Item -ItemType Directory -Path (Split-Path -Parent $planPath) -Force | Out-Null
@@ -450,6 +454,11 @@ try {
     Assert-True (-not (Test-Path -LiteralPath (Join-Path $sh.Root 'PLAN-PROGRESS.md'))) `
         'Ship must delete PLAN-PROGRESS.md'
 
+    # Criterion 2: the deletion is not only on disk, it is in the same commit.
+    $shTouched = @(& git -C $sh.Root show --name-only --pretty=format: HEAD | Where-Object { $_ })
+    Assert-True ($shTouched -contains 'PLAN-PROGRESS.md') `
+        'The closure commit must record the deletion of PLAN-PROGRESS.md'
+
     # The ordering claim, read from the remote rather than from intent.
     $shBranch = (& git -C $sh.Root rev-parse --abbrev-ref HEAD).Trim()
     $remoteHead = (& git -C $sh.Bare rev-parse $shBranch).Trim()
@@ -469,6 +478,69 @@ try {
     # What it must never do is flip one.
     Assert-True (((Get-Content -Raw -LiteralPath $shGh2.Log) -join "`n") -notmatch 'pr ready') `
         'A refused Ship must not flip the pull request'
+
+    # --- A branch that never wrote PLAN-PROGRESS.md still closes (backlog 164) ---
+    # The reported run printed "fatal: pathspec 'PLAN-PROGRESS.md' did not match any files" and
+    # then "REFUSED: The closure commit failed.", with the item already moved and the Stage
+    # already written, both uncommitted. git treats a pathspec that matches nothing as fatal and
+    # stages NOTHING, so one 'git add' naming a path that may be absent cannot close such a branch.
+    $sh3 = New-TransitionFixture -Stage '8-review' -Difficulty 'complex' -AsWorktree -AllBoxesTicked
+    $shGh3 = New-FakeGh
+    Invoke-WithFakeGh -Gh $shGh3 -Action {
+        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $sh3.Root -Item '081' -Edge 'success' -Pr 421 *> $null
+    }
+    Assert-Equal 0 $script:LastTransitionExit 'A Ship with no PLAN-PROGRESS.md must succeed'
+    Assert-True (Test-Path -LiteralPath (Join-Path $sh3.Root 'backlog/done/081-automate-stage-transitions.md')) `
+        'A Ship with no PLAN-PROGRESS.md must move the item into backlog/done/'
+    Assert-Equal '9-ship' (Get-FixtureStage -Root $sh3.Root) `
+        'A Ship with no PLAN-PROGRESS.md must write 9-ship'
+
+    # One commit holds the move and the Stage, and nothing is left uncommitted.
+    $sh3Touched = @(& git -C $sh3.Root show --name-only --pretty=format: HEAD | Where-Object { $_ })
+    Assert-True (($sh3Touched -join ' ') -match 'backlog/done/081') 'The closure commit must hold the move'
+    Assert-Equal '' ((& git -C $sh3.Root status --porcelain -- backlog) -join '') `
+        'The closure must leave nothing uncommitted under backlog/'
+
+    # --- A progress file that was never committed does not stop the closure either ---
+    # Review Focus 1. The delete runs first, so by the time the pathspec is read this path is in
+    # neither the working tree nor the index - the same fatal state as the case above, reached a
+    # different way. Ship still deletes the file, and commits only the item's move.
+    $sh4 = New-TransitionFixture -Stage '8-review' -Difficulty 'complex' -AsWorktree -AllBoxesTicked
+    Set-Content -LiteralPath (Join-Path $sh4.Root 'PLAN-PROGRESS.md') -Value '- never committed' -Encoding utf8
+    $shGh4 = New-FakeGh
+    Invoke-WithFakeGh -Gh $shGh4 -Action {
+        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $sh4.Root -Item '081' -Edge 'success' -Pr 421 *> $null
+    }
+    Assert-Equal 0 $script:LastTransitionExit 'A Ship with an uncommitted PLAN-PROGRESS.md must succeed'
+    Assert-True (-not (Test-Path -LiteralPath (Join-Path $sh4.Root 'PLAN-PROGRESS.md'))) `
+        'Ship must delete an uncommitted PLAN-PROGRESS.md too'
+    $sh4Touched = @(& git -C $sh4.Root show --name-only --pretty=format: HEAD | Where-Object { $_ })
+    Assert-True ($sh4Touched -notcontains 'PLAN-PROGRESS.md') `
+        'A file git never tracked cannot be recorded as deleted'
+
+    # --- The pathspec names a progress path only when git can match one ---
+    # Four states, because the add runs after the delete and each state answers differently.
+    $psFix = New-TransitionFixture -Stage '8-review' -Difficulty 'complex' -AsWorktree
+    $psProgress = Join-Path $psFix.Root 'PLAN-PROGRESS.md'
+    $psFrom = 'backlog/081-automate-stage-transitions.md'
+    $psTo = 'backlog/done/081-automate-stage-transitions.md'
+    $psCall = { (Get-ClosurePathspec -Worktree $psFix.Root -From $psFrom -To $psTo) -join ',' }
+
+    Assert-Equal "$psFrom,$psTo" (& $psCall) `
+        'No progress path anywhere must give the two item paths alone'
+
+    Set-Content -LiteralPath $psProgress -Value '- untracked work' -Encoding utf8
+    Assert-Equal "$psFrom,$psTo,PLAN-PROGRESS.md" (& $psCall) `
+        'A present but untracked progress file must be named'
+
+    & git -C $psFix.Root add -- PLAN-PROGRESS.md *> $null
+    & git -C $psFix.Root commit -m 'test: progress file' *> $null
+    Assert-Equal "$psFrom,$psTo,PLAN-PROGRESS.md" (& $psCall) `
+        'A tracked and present progress file must be named'
+
+    Remove-Item -LiteralPath $psProgress -Force
+    Assert-Equal "$psFrom,$psTo,PLAN-PROGRESS.md" (& $psCall) `
+        'A tracked progress file deleted from disk must still be named, so its deletion is staged'
 
     # --- A failure edge refuses without its evidence ---
     $fl = New-TransitionFixture -Stage '6-verify' -Difficulty 'complex' -AsWorktree -WithProgress

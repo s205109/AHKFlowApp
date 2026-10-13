@@ -407,6 +407,33 @@ function Invoke-PickupTransition {
     Write-Host "Item $Item is now at $target, with a draft pull request open."
 }
 
+# The paths a record commit stages, named one by one, and narrowed to the ones git can match.
+#
+# Two rules are folded in here. First, a branch that never wrote PLAN-PROGRESS.md has no such path
+# on disk and no index entry for it, and git treats a pathspec matching nothing as fatal: the add
+# then stages NOTHING, the commit fails, and Ship has already moved the item and written the Stage.
+# That is backlog 164. Second, the two sides of the move are named rather than the backlog folder,
+# so the closure never stages another item somebody is editing in the same worktree - and the undo
+# never has to put such a change back.
+#
+# Either half is enough for the progress pathspec to match. A file on disk matches whether it is
+# tracked or not, and a tracked file matches even once it is gone from disk, which is how a closure
+# stages its own deletion.
+function Get-ClosurePathspec {
+    param([string] $Worktree, [string] $From, [string] $To)
+
+    $paths = @($From, $To)
+
+    if (Test-Path -LiteralPath (Join-Path $Worktree 'PLAN-PROGRESS.md')) { return $paths + 'PLAN-PROGRESS.md' }
+
+    # ls-files reads the index, which is what a pathspec is matched against. It prints nothing and
+    # exits 0 for a path git does not track, so the output is the answer, not the exit code.
+    $tracked = ((& git -C $Worktree ls-files -- PLAN-PROGRESS.md) -join '').Trim()
+    if ($tracked) { return $paths + 'PLAN-PROGRESS.md' }
+
+    return $paths
+}
+
 function Invoke-ShipTransition {
     param([string] $Worktree, [string] $Item, [pscustomobject] $Context, [int] $Pr, [string] $Note = '')
 
@@ -442,7 +469,12 @@ function Invoke-ShipTransition {
     $progress = Join-Path $Worktree 'PLAN-PROGRESS.md'
     if (Test-Path -LiteralPath $progress) { Remove-Item -LiteralPath $progress -Force }
 
-    & git -C $Worktree add -A -- backlog PLAN-PROGRESS.md
+    # After the delete, never before it. An untracked progress file that still exists would put
+    # the path in this list, and the delete would then leave the add nothing to match.
+    $pathspec = Get-ClosurePathspec -Worktree $Worktree `
+                                    -From $record.RelativePath `
+                                    -To "backlog/done/$(Split-Path -Leaf $record.Path)"
+    & git -C $Worktree add -A -- $pathspec
     $message = "docs: $Item close the records"
     if ($Note) { $message = "$message, $Note" }
     & git -C $Worktree commit -m $message
