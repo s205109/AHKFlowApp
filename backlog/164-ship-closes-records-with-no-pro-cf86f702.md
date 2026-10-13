@@ -26,13 +26,13 @@ Write each criterion as state a reader can observe in the repository, not as a c
 "The handler returns `Result.NotFound()` for a missing id" can be checked. "The old check is
 removed" and "tests cover the new API" cannot.
 
-- [ ] A Ship transition on a branch with no `PLAN-PROGRESS.md` ends with the item in
+- [x] A Ship transition on a branch with no `PLAN-PROGRESS.md` ends with the item in
       `backlog/done/`, its Stage line reading `9-ship`, and one commit holding both changes.
-- [ ] A Ship transition on a branch that has a `PLAN-PROGRESS.md` still deletes that file, and
+- [x] A Ship transition on a branch that has a `PLAN-PROGRESS.md` still deletes that file, and
       the same commit records the deletion.
-- [ ] A Ship run that cannot make the closure commit leaves the worktree with no uncommitted
+- [x] A Ship run that cannot make the closure commit leaves the worktree with no uncommitted
       move: the item is back in `backlog/` and its Stage line is unchanged.
-- [ ] `tests/StageTransition.Tests.ps1` holds a case that turns red when the closure stages
+- [x] `tests/StageTransition.Tests.ps1` holds a case that turns red when the closure stages
       `backlog` and `PLAN-PROGRESS.md` in one `git add` call.
 
 ## Out of scope
