@@ -16,7 +16,7 @@ public sealed class CategoriesEndpointsTests(ApiTestFixture fixture)
         _factory.CreateAuthenticatedClient(b => b.WithOid(oid ?? Guid.NewGuid()));
 
     [Fact]
-    public async Task GET_list_seeds_eight_defaults_on_first_call()
+    public async Task GET_list_seeds_all_defaults_on_first_call()
     {
         using HttpClient client = CreateAuthed(Guid.NewGuid());
 
@@ -24,7 +24,7 @@ public sealed class CategoriesEndpointsTests(ApiTestFixture fixture)
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         PagedList<CategoryDto>? body = await response.Content.ReadFromJsonAsync<PagedList<CategoryDto>>();
-        body!.TotalCount.Should().Be(8);
+        body!.TotalCount.Should().Be(SeedCatalogCounts.Categories);
     }
 
     [Fact]
@@ -53,7 +53,7 @@ public sealed class CategoriesEndpointsTests(ApiTestFixture fixture)
         body!.Items.Should().HaveCount(3);
         body.Page.Should().Be(2);
         body.PageSize.Should().Be(3);
-        body.TotalCount.Should().Be(8);
+        body.TotalCount.Should().Be(SeedCatalogCounts.Categories);
     }
 
     [Fact]
@@ -90,13 +90,13 @@ public sealed class CategoriesEndpointsTests(ApiTestFixture fixture)
         // Seed defaults
         PagedList<CategoryDto>? seeded = await (await client.GetAsync("/api/v1/categories"))
             .Content.ReadFromJsonAsync<PagedList<CategoryDto>>();
-        seeded!.TotalCount.Should().Be(8);
+        seeded!.TotalCount.Should().Be(SeedCatalogCounts.Categories);
 
-        // Delete all eight
+        // Delete every default category
         foreach (CategoryDto item in seeded.Items)
             await client.DeleteAsync($"/api/v1/categories/{item.Id}");
 
-        // Get remaining pages too if needed (we seeded exactly 8, page 1 of pageSize=50 covers all)
+        // The default page size is 50, so the first page holds every default category.
         // Now list again — seed marker prevents re-seeding
         PagedList<CategoryDto>? after = await (await client.GetAsync("/api/v1/categories"))
             .Content.ReadFromJsonAsync<PagedList<CategoryDto>>();
