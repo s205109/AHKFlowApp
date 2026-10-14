@@ -57,5 +57,6 @@ that I do not derive an expected value from a stale document.
   states — a clean load, a controlled load, and a stale guard left set.
 - This item could instead be closed inside a housekeeping round, which files no backlog item at
   all. It is filed so the finding is not lost; whoever picks it up may fold it into a round.
+- Follow-up: backlog 181 removes the hard-coded seed counts from `DevSeedEndpointTests.cs`.
 - Spec: none — documentation only.
 - Plan: `docs/superpowers/plans/2026-10-14-documented-seed-counts-and-service-worker-plan-173.md`.
