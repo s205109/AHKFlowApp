@@ -57,4 +57,4 @@ that I do not derive an expected value from a stale document.
 - This item could instead be closed inside a housekeeping round, which files no backlog item at
   all. It is filed so the finding is not lost; whoever picks it up may fold it into a round.
 - Spec: none — documentation only.
-- Plan: none — documentation only, so Execute can start from an inline plan at pickup.
+- Plan: `docs/superpowers/plans/2026-10-14-documented-seed-counts-and-service-worker-plan-173.md`.
