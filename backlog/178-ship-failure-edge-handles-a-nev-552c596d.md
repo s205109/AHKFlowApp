@@ -35,6 +35,8 @@ removed" and "tests cover the new API" cannot.
       the file's last committed content, and an existing test proves it.
 - [ ] On a branch whose history holds another item's deleted `PLAN-PROGRESS.md`, the failure edge
       out of Ship writes none of that item's lines into this item's progress file.
+- [ ] When the failure edge out of Ship cannot push the branch's unpushed commits before it starts,
+      the pull request is still ready and the item is still in `backlog/done/` at `9-ship`.
 
 ## Out of scope
 
@@ -56,6 +58,9 @@ removed" and "tests cover the new API" cannot.
   `a075257d chore: 151 close the records`. So on a real never-tracked branch the edge does not
   refuse. It restores another item's progress file, commits it, and exits 0. A fresh test fixture
   has no such history, which is why only the refusal was seen. The fifth criterion covers this.
+- Found in plan grilling on 2026-10-14: the pre-flight push also runs after the undo. When that
+  push is refused, the pull request is already a draft, and the refusal still says "Nothing was
+  changed." The sixth criterion covers this.
 - Depends on item 164's code. This worktree was created from `0f76c1e8`, before item 164 merged, so
   the branch must take `main` before Execute starts. Done in `24786c7b`.
 - Spec: none — moderate, goes straight to Plan at pickup.
