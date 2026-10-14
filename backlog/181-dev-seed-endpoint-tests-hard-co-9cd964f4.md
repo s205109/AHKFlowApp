@@ -48,8 +48,9 @@ catalogs, so that a catalog change does not break unrelated tests.
   `AHKFlowApp.Application.Tests` and `AHKFlowApp.TestUtilities`. Plan grilling chose a helper in
   `AHKFlowApp.TestUtilities` over a new `InternalsVisibleTo` entry.
 - `DefaultCategories` lives in `AHKFlowApp.Domain` and is public.
-- The search for other seed counts found 30 more failing tests in 9 files, so they joined this
-  item as an Extension, with criterion 4. The plan lists them.
+- The search for other seed counts found 35 more failing tests in 10 files, so they joined this
+  item as an Extension, with criterion 4. Plan review round 1 found 5 of them, which compare
+  category-link totals with row counts. The plan lists them all.
 - Waits on backlog 182: since 2026-10-13, every restore fails with NU1902 and NU1903 on
   `System.Security.Cryptography.Pkcs` and `System.Security.Cryptography.Xml`. The plan's test runs
   work with `-p:NuGetAudit=false`, but the stage push at the end of Execute needs 182's fix on
