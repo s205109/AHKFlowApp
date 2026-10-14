@@ -178,13 +178,25 @@ proof local runs give up.
 
 Only mixed projects use `Category=Integration` in v1. Whole-project SQL/API suites are selected by project instead of traits.
 
-## Browser and PWA tests
+## Browser tests
 
 ```bash
 pwsh .\scripts\test-fast.ps1 -Mode E2E
 ```
 
-E2E mode runs `AHKFlowApp.E2E.Tests`. Use it for browser flows, Playwright-covered UI behavior, mobile viewport behavior, service-worker/PWA behavior, and changes to the E2E fixture or published Blazor output. The script prepares the same shared SQL Server container Integration mode uses, and leaves it running when the run ends. `-FreshSql` replaces it here too. The suite runs in four groups at once, and each group names its own database on that one server.
+E2E mode runs `AHKFlowApp.E2E.Tests`. Use it for browser flows, Playwright-covered UI behavior, mobile viewport behavior, and changes to the E2E fixture or published Blazor output. The script prepares the same shared SQL Server container Integration mode uses, and leaves it running when the run ends. `-FreshSql` replaces it here too. The suite runs in four groups at once, and each group names its own database on that one server.
+
+E2E mode does not test published service-worker caching. The E2E fixture serves the published
+app on `127.0.0.1`. `wwwroot/js/registerServiceWorker.js` turns off service-worker registration
+on four host names: `localhost`, `127.0.0.1`, `::1`, and `[::1]`. On those hosts it unregisters
+existing workers instead. To test published caching through the app's own registration, serve a
+published build from another host name.
+
+A local run can reach the cleanup path instead. After the script unregisters the workers, it
+checks whether a worker still controls the page. If one does, the script reloads the page,
+unless its guard is already set. The guard is the `sessionStorage` key
+`ahkflowapp-local-sw-cleanup-reload`. The script sets the guard just before the reload. It
+clears the guard when no worker controls the page. No E2E test covers the cleanup path today.
 
 A normal E2E run builds the project and its references. Every E2E run clears the Blazor publish folder, then publishes the app again before Playwright starts. That publish compiles and links the current source, so the browser always loads the code in your working tree. `-NoBuild` skips the solution build, but the Blazor publish still runs, so the app under test stays current. The flow classes in one group share that group's API, SPA host and browser, and each test resets mutable database rows before it starts.
 
