@@ -33,6 +33,8 @@ removed" and "tests cover the new API" cannot.
       of Ship, and fails when the edge refuses or leaves a half-done state.
 - [ ] The failure edge out of Ship on a branch whose progress file git did track still restores
       the file's last committed content, and an existing test proves it.
+- [ ] On a branch whose history holds another item's deleted `PLAN-PROGRESS.md`, the failure edge
+      out of Ship writes none of that item's lines into this item's progress file.
 
 ## Out of scope
 
@@ -49,7 +51,12 @@ removed" and "tests cover the new API" cannot.
 - The order is the defect. `Invoke-ShipFailureTransition` runs `gh pr ready --undo` and moves the
   item out of `backlog/done/` before it calls `Restore-ProgressFile`. That function throws "no
   commit on this branch deleted it" when `git log --diff-filter=D` finds nothing.
+- Measured at Plan on 2026-10-14: in this repository the search never comes back empty. Every
+  branch inherits other items' closure commits from `main`, and on this branch it found
+  `a075257d chore: 151 close the records`. So on a real never-tracked branch the edge does not
+  refuse. It restores another item's progress file, commits it, and exits 0. A fresh test fixture
+  has no such history, which is why only the refusal was seen. The fifth criterion covers this.
 - Depends on item 164's code. This worktree was created from `0f76c1e8`, before item 164 merged, so
-  the branch must take `main` before Execute starts.
+  the branch must take `main` before Execute starts. Done in `24786c7b`.
 - Spec: none — moderate, goes straight to Plan at pickup.
-- Plan: none — moderate work, goes straight to Plan at pickup.
+- Plan: `docs/superpowers/plans/2026-10-14-ship-failure-edge-never-tracked-progress-plan-178.md`
