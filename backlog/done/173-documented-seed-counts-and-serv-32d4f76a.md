@@ -6,13 +6,13 @@
 - **Type**: Process / documentation
 - **Interfaces**: none (docs, one XML doc comment that reaches Swagger)
 - **Difficulty**: moderate
-- **Stage**: 1-pickup
+- **Stage**: 9-ship
 
 ## Summary
 
 Two documentation claims are wrong. The seed counts in `README.md` and in `DevController`'s XML
 comment are stale, and the `DevController` one reaches the Swagger page. `testing-workflow.md`
-lists service-worker behaviour as an E2E responsibility, which no local test can cover.
+lists service-worker behaviour as an E2E responsibility, which the E2E setup does not test.
 
 ## User story
 
@@ -21,11 +21,12 @@ that I do not derive an expected value from a stale document.
 
 ## Acceptance criteria
 
-- [ ] `README.md` states the seed counts the catalogs actually produce, or states them as derived
+- [x] `README.md` states the seed counts the catalogs actually produce, or states them as derived
       rather than fixed.
-- [ ] `DevController`'s XML doc comment states the right hotkey count, so Swagger shows it.
-- [ ] `docs/development/testing-workflow.md` says plainly that published service-worker caching
-      is unreachable from a local run, and names what is reachable instead.
+- [x] `DevController`'s XML doc comment states the right hotkey count, so Swagger shows it.
+- [x] `docs/development/testing-workflow.md` says plainly that service-worker registration is
+      disabled on the local host names the script lists, so the E2E setup does not test published
+      service-worker caching. It names what a local run can reach instead.
 
 ## Out of scope
 
@@ -50,11 +51,12 @@ that I do not derive an expected value from a stale document.
   unregisters every service worker when the hostname is `localhost`, `127.0.0.1`, `::1` or
   `[::1]`, because workers destabilise Blazor and MSAL debugging. The real worker is
   `service-worker.published.js`, which only replaces the development no-op at publish time. So
-  published caching is unreachable from an E2E run and from any local drive.
+  an E2E run does not test published caching.
 - What **is** reachable, and the sweep proved it correct: the local cleanup path unregisters the
   worker and reloads the page exactly once, guarded by a `sessionStorage` key, in all three
   states — a clean load, a controlled load, and a stale guard left set.
 - This item could instead be closed inside a housekeeping round, which files no backlog item at
   all. It is filed so the finding is not lost; whoever picks it up may fold it into a round.
+- Follow-up: backlog 181 removes the hard-coded seed counts from `DevSeedEndpointTests.cs`.
 - Spec: none — documentation only.
-- Plan: none — documentation only, so Execute can start from an inline plan at pickup.
+- Plan: `docs/superpowers/plans/2026-10-14-documented-seed-counts-and-service-worker-plan-173.md`.

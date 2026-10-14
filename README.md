@@ -68,11 +68,18 @@ Open http://localhost:5601 in a browser. The app loads as `Local User` with no s
 | API OpenAPI | http://localhost:5600/swagger/v1/swagger.json |
 | SQL Server | localhost:1433 (sa / `Dev!LocalOnly_2026`) |
 
-To populate sample data — 12 hotstrings, 17 hotkeys, and 8 categories in one transaction:
+To populate sample data — the default categories, the sample hotstrings, and the sample hotkeys —
+in one transaction:
 
 ```bash
 curl -X POST http://localhost:5600/api/v1/dev/seed-all
 ```
+
+The response gives the number of categories, hotstrings, and hotkeys the user owns after the seed.
+This page states no fixed counts, because the sample sets change. They live in
+`src/Backend/AHKFlowApp.Domain/Constants/DefaultCategories.cs`,
+`src/Backend/AHKFlowApp.Application/Commands/Dev/HotstringSeedSamples.cs`, and
+`src/Backend/AHKFlowApp.Application/Constants/DefaultHotkeyCatalog.cs`.
 
 Individual seed endpoints (`/dev/hotstrings/seed`, `/dev/hotkeys/seed`, `/dev/categories/seed`) and a
 `?reset=true` query parameter are also available. All `/dev` endpoints return 404 outside Development.

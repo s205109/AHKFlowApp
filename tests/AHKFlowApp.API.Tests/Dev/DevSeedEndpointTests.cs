@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.TestUtilities.Fixtures;
 using FluentAssertions;
@@ -38,6 +39,37 @@ public sealed class DevSeedEndpointTests(ApiTestFixture fixture)
         PagedList<HotkeyDto>? body = await resp.Content.ReadFromJsonAsync<PagedList<HotkeyDto>>();
         body.Should().NotBeNull();
         body!.Items.Should().HaveCount(19);
+    }
+
+    [Fact]
+    public async Task SeedHotkeys_SwaggerSummary_StatesTheSeededCount()
+    {
+        // The summary reaches the Swagger page. Backlog 173 found it saying 17 while the catalog
+        // seeded 19. The count comes from the endpoint, so a catalog change fails this test.
+
+        // Arrange
+        using HttpClient seedClient = _factory.CreateAuthenticatedClient(b => b.WithOid(Guid.NewGuid()));
+        HttpResponseMessage seeded = await seedClient.PostAsync("/api/v1/dev/hotkeys/seed?reset=true", content: null);
+        seeded.StatusCode.Should().Be(HttpStatusCode.OK);
+        PagedList<HotkeyDto>? body = await seeded.Content.ReadFromJsonAsync<PagedList<HotkeyDto>>();
+        int seededCount = body!.Items.Count;
+
+        using HttpClient docClient = _factory.CreateClient();
+
+        // Act
+        await using Stream stream = await docClient.GetStreamAsync("/swagger/v1/swagger.json");
+        using JsonDocument doc = await JsonDocument.ParseAsync(stream);
+
+        // Assert
+        string? summary = doc.RootElement
+            .GetProperty("paths")
+            .GetProperty("/api/v1/dev/hotkeys/seed")
+            .GetProperty("post")
+            .GetProperty("summary")
+            .GetString();
+
+        summary.Should().Contain($"Seeds {seededCount} sample hotkeys",
+            "the XML summary on DevController.SeedHotkeys must state the number of hotkeys the endpoint seeds");
     }
 
     [Fact]
