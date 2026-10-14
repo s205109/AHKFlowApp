@@ -4,7 +4,7 @@
 
 - **Epic**: Development process
 - **Type**: Chore
-- **Interfaces**: none (API test project, one production `.csproj`)
+- **Interfaces**: API docs (one Swagger summary); otherwise test projects only
 - **Difficulty**: moderate
 - **Stage**: 3-plan
 
@@ -27,24 +27,32 @@ catalogs, so that a catalog change does not break unrelated tests.
       `HotstringSeedSamples.All`, or `DefaultHotkeyCatalog.All`.
 - [ ] The DevController summary for the categories seed endpoint is guarded the same way the
       hotkeys summary is, or it no longer states a number.
+- [ ] With one extra row added to each seed catalog, no test in `AHKFlowApp.API.Tests` or
+      `AHKFlowApp.Application.Tests` fails, except the two Swagger summary tests in
+      `DevSeedEndpointTests.cs`.
 
 ## Out of scope
 
-- Changing the seed catalogs themselves.
-- Seed count assertions in other test projects. They can join this item if a search finds any.
+- Changing the seed catalogs themselves. The plan's probe adds a row to each catalog for the length
+  of a test run only.
+- E2E tests. The probe run does not cover them, and a text search found no seed count there.
 
 ## Notes / dependencies
 
 - Found while planning backlog 173, grilling decisions 3 and 6. Item 173 fixed the documented
   counts and added a test that holds the hotkeys summary in Swagger at the endpoint's real count.
-- The hard-coded lines today: 27 (8 categories), 40 (19 hotkeys), 53 to 55, and 69 to 71
-  (8, 16, and 19).
+- The hard-coded lines in `DevSeedEndpointTests.cs`, after `main` was merged in on 2026-10-14:
+  28 (8 categories), 41 (19 hotkeys), 85 to 87, and 101 to 103 (8, 16, and 19).
 - The API test project cannot see the catalogs. `HotstringSeedSamples` and `DefaultHotkeyCatalog`
   are internal to `AHKFlowApp.Application`, and its `.csproj` grants internals only to
-  `AHKFlowApp.Application.Tests` and `AHKFlowApp.TestUtilities`. The fix needs either a new
-  `InternalsVisibleTo` entry for `AHKFlowApp.API.Tests`, or a helper in `AHKFlowApp.TestUtilities`
-  that exposes the counts. Choose one at Design.
-- `DefaultCategories` lives in `AHKFlowApp.Domain` and may already be public. Check before you
-  plan the change.
-- Spec: none yet.
-- Plan: none yet.
+  `AHKFlowApp.Application.Tests` and `AHKFlowApp.TestUtilities`. Plan grilling chose a helper in
+  `AHKFlowApp.TestUtilities` over a new `InternalsVisibleTo` entry.
+- `DefaultCategories` lives in `AHKFlowApp.Domain` and is public.
+- The search for other seed counts found 30 more failing tests in 9 files, so they joined this
+  item as an Extension, with criterion 4. The plan lists them.
+- Waits on backlog 182: since 2026-10-13, every restore fails with NU1902 and NU1903 on
+  `System.Security.Cryptography.Pkcs` and `System.Security.Cryptography.Xml`. The plan's test runs
+  work with `-p:NuGetAudit=false`, but the stage push at the end of Execute needs 182's fix on
+  `main` first.
+- Spec: none — `moderate`, so the item goes from Pickup to Plan.
+- Plan: `docs/superpowers/plans/2026-10-14-dev-seed-test-counts-plan-181.md`.
