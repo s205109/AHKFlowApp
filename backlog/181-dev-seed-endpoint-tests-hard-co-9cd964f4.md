@@ -6,7 +6,7 @@
 - **Type**: Chore
 - **Interfaces**: none (API test project, one production `.csproj`)
 - **Difficulty**: moderate
-- **Stage**: 0-intake
+- **Stage**: 1-pickup
 
 ## Summary
 
