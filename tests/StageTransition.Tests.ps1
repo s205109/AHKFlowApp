@@ -69,6 +69,10 @@ function New-TransitionFixture {
         # Every failure edge needs PLAN-PROGRESS.md to exist, because Task 5 refuses without it.
         # Pass this for any case whose stage is 4-execute or later.
         [switch] $WithProgress,
+        # Another item's PLAN-PROGRESS.md, committed and then deleted by that item's own closure,
+        # on main before this branch starts. Every real branch inherits commits like these, and a
+        # fresh fixture has none, so without this switch no case can see what they do to a lookup.
+        [switch] $WithForeignProgress,
         # The item's linked plan, and whether it carries the freeze directive. 'none' writes no
         # '- Plan:' bullet and no file, which is what every case before the freeze rule used.
         [ValidateSet('none', 'unfrozen', 'frozen')]
@@ -120,6 +124,16 @@ function New-TransitionFixture {
 
     & git -C $root add -A *> $null
     & git -C $root commit -m 'seed' *> $null
+
+    if ($WithForeignProgress) {
+        # Both switches write the same path on the same branch, so the second would erase the first.
+        if ($WithProgress) { throw 'Pass -WithForeignProgress or -WithProgress, not both.' }
+        Set-Content -LiteralPath (Join-Path $root 'PLAN-PROGRESS.md') -Value '- item 999 Task 1 done' -Encoding utf8
+        & git -C $root add -- PLAN-PROGRESS.md *> $null
+        & git -C $root commit -m 'docs: 999 progress' *> $null
+        & git -C $root rm -q -- PLAN-PROGRESS.md *> $null
+        & git -C $root commit -m 'docs: 999 close the records' *> $null
+    }
     & git -C $root remote add origin $bare *> $null
     & git -C $root push -u origin HEAD *> $null
 
@@ -1180,6 +1194,51 @@ try {
     Assert-True (-not (Test-Path -LiteralPath (Join-Path $pf.Root 'PLAN-PROGRESS.md'))) `
         'A Ship failure whose push is refused must not write the progress file back'
     Assert-Equal $pfHead (& git -C $pf.Root rev-parse HEAD).Trim() 'A Ship failure whose push is refused must make no commit'
+
+    # --- A branch that never tracked PLAN-PROGRESS.md can fail out of Ship (backlog 178) ---
+    # Ship deletes an untracked progress file and records nothing, because git has nothing to
+    # record. Run twice. With no other history, the old lookup found no deleted file and refused.
+    # With another item's closure on main, which every real branch inherits, it restored that
+    # item's progress file into this one and exited 0.
+    foreach ($foreign in @($false, $true)) {
+        $label = if ($foreign) { 'with another item''s closure in history' } else { 'with no other history' }
+        $nt = New-TransitionFixture -Stage '8-review' -Difficulty 'complex' -AsWorktree `
+                                    -AllBoxesTicked -WithForeignProgress:$foreign
+        Set-Content -LiteralPath (Join-Path $nt.Root 'PLAN-PROGRESS.md') -Value '- never committed' -Encoding utf8
+        $ntBranch = (& git -C $nt.Root rev-parse --abbrev-ref HEAD).Trim()
+        $ntGh = New-FakeGh
+        Invoke-WithFakeGh -Gh $ntGh -Action {
+            & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $nt.Root -Item '081' -Edge 'success' -Pr 421 *> $null
+        }
+        Assert-Equal 0 $script:LastTransitionExit "The Ship that sets up the never-tracked case must succeed, $label"
+
+        $ntGh2 = New-FakeGh
+        Invoke-WithFakeGh -Gh $ntGh2 -Action {
+            & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $nt.Root -Item '081' -Edge 'failure' -Pr 421 `
+                -Evidence 'CI: 3 checks failed' -RecoveryTask 'Task 7: repair the parity check' *> $null
+        }
+        Assert-Equal 0 $script:LastTransitionExit "A never-tracked Ship failure must succeed, $label"
+        Assert-Equal '6-verify' (Get-FixtureStage -Root $nt.Root) "A never-tracked Ship failure must set 6-verify, $label"
+        Assert-True (Test-Path -LiteralPath $nt.ItemPath) "A never-tracked Ship failure must move the item back, $label"
+        Assert-True (-not (Test-Path -LiteralPath (Join-Path $nt.Root 'backlog/done/081-automate-stage-transitions.md'))) `
+            "A never-tracked Ship failure must leave nothing in backlog/done/, $label"
+
+        # Tolerant on purpose, as in the $f5 case: a missing file must fail these assertions, not
+        # stop the suite with a Get-Content error.
+        $ntProgress = (Get-Content -Raw -LiteralPath (Join-Path $nt.Root 'PLAN-PROGRESS.md') -ErrorAction SilentlyContinue) ?? ''
+        Assert-True ($ntProgress -match '3 checks failed') "The progress file must hold the red evidence, $label"
+        Assert-True ($ntProgress -match 'repair the parity check') "The progress file must hold the recovery task, $label"
+        Assert-True ($ntProgress -notmatch 'item 999') "The progress file must not hold another item's lines, $label"
+
+        Assert-Equal 'PLAN-PROGRESS.md' ((& git -C $nt.Root ls-files -- PLAN-PROGRESS.md) -join '').Trim() `
+            "The reopening commit must track the progress file, $label"
+        Assert-Equal '' ((& git -C $nt.Root status --porcelain) -join '') `
+            "A never-tracked Ship failure must leave nothing uncommitted, $label"
+        Assert-True ((Get-GhLog -Gh $ntGh2) -match 'ready 421 .*--undo') `
+            "A never-tracked Ship failure must convert the pull request back to draft, $label"
+        Assert-Equal (& git -C $nt.Root rev-parse HEAD).Trim() (& git -C $nt.Bare rev-parse $ntBranch).Trim() `
+            "A never-tracked Ship failure must push the reopened records, $label"
+    }
 
     # --- A round Ship failure undoes the ready flip too (finding 4) ---
     $f4 = New-TransitionFixture -Stage '9-ship' -AsWorktree -Branch 'chore/wt-backlog-housekeeping' -NoItem

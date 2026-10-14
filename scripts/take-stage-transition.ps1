@@ -623,7 +623,8 @@ function Invoke-ShipFailureTransition {
     # Every refusal first, then the pre-flight, then the writes, the same order the ordinary path
     # keeps. The undo is the first write, so both of these come before it. A refusal from either
     # leaves the pull request ready and the item in backlog/done/, the state Ship left (backlog 178).
-    $progressText = Get-ShippedProgressText -Worktree $Worktree
+    $leaf = Split-Path -Leaf $record.Path
+    $progressText = Get-ShippedProgressText -Worktree $Worktree -Leaf $leaf
 
     Invoke-RemotePreflight -Worktree $Worktree -Branch $branch
 
@@ -637,7 +638,6 @@ function Invoke-ShipFailureTransition {
 
     # Move the item back out of backlog/done/. A rerun after a half-finished attempt finds it
     # already out, and that is not an error.
-    $leaf = Split-Path -Leaf $record.Path
     if ((Split-Path -Leaf (Split-Path -Parent $record.Path)) -eq 'done') {
         Move-Item -LiteralPath $record.Path -Destination (Join-Path (Join-Path $Worktree 'backlog') $leaf)
     }
@@ -663,22 +663,39 @@ function Invoke-ShipFailureTransition {
 }
 
 # The text PLAN-PROGRESS.md held when the item shipped, read from git and written nowhere. $null
-# means there is nothing to put back. The failure edge calls this before it changes anything, so
-# a refusal here leaves the pull request ready and the item in backlog/done/ (backlog 178).
+# means there is nothing to put back: the file is already on disk, or git did not track one when
+# the item shipped. The failure edge calls this before it changes anything, so a refusal here
+# leaves the pull request ready and the item in backlog/done/ (backlog 178).
+#
+# The source is Ship's own closure commit, found by the item it moved into backlog/done/. A search
+# for the newest commit that deleted PLAN-PROGRESS.md is not enough. Every branch inherits other
+# items' closure commits from main, so on a branch that never tracked the file that search finds
+# another item's closure and restores that item's progress file.
 function Get-ShippedProgressText {
-    param([string] $Worktree)
+    param([string] $Worktree, [string] $Leaf)
 
     # A file already on disk wins. A rerun after a half-finished attempt finds the one it wrote.
+    # This must come before the lookup: an item that never shipped has no closure to find.
     if (Test-Path -LiteralPath (Join-Path $Worktree 'PLAN-PROGRESS.md')) { return $null }
 
-    $deleted = ((& git -C $Worktree log --diff-filter=D --format=%H -1 -- PLAN-PROGRESS.md) -join '').Trim()
-    if (-not $deleted) {
-        throw ('PLAN-PROGRESS.md is gone and no commit on this branch deleted it, so there is ' +
-               'nothing to restore. Write it back by hand and run this again. Nothing was changed.')
+    # The item's file name holds its number, so no other item's commit can match. --no-renames
+    # keeps the move an add of the new path on the call's own terms, whatever git is set to.
+    $closure = ((& git -C $Worktree log -1 --format=%H --no-renames --diff-filter=A -- "backlog/done/$Leaf") -join '').Trim()
+    if ($LASTEXITCODE -ne 0) { throw 'Could not read the history of backlog/done/. Nothing was changed.' }
+    if (-not $closure) {
+        throw ("No commit moved $Leaf into backlog/done/, so there is no Ship to read " +
+               'PLAN-PROGRESS.md back from. Nothing was changed.')
     }
 
-    $text = (& git -C $Worktree show "${deleted}^:PLAN-PROGRESS.md") -join "`n"
-    if ($LASTEXITCODE -ne 0) { throw "Could not read PLAN-PROGRESS.md from $deleted^. Nothing was changed." }
+    $deleted = ((& git -C $Worktree diff-tree --no-commit-id --name-only -r --no-renames --diff-filter=D $closure -- PLAN-PROGRESS.md) -join '').Trim()
+    if ($LASTEXITCODE -ne 0) { throw "Could not read what $closure changed. Nothing was changed." }
+
+    # Ship deletes the file in its closure commit only when git tracked it. No deletion there means
+    # git had nothing to keep, so the failure record starts a new file.
+    if (-not $deleted) { return $null }
+
+    $text = (& git -C $Worktree show "${closure}^:PLAN-PROGRESS.md") -join "`n"
+    if ($LASTEXITCODE -ne 0) { throw "Could not read PLAN-PROGRESS.md from $closure^. Nothing was changed." }
     return $text
 }
 
