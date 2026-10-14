@@ -23,12 +23,12 @@ commit again.
 
 ## Acceptance criteria
 
-- [ ] `dotnet restore AHKFlowApp.slnx` passes with NuGet audit on.
-- [ ] `dotnet list AHKFlowApp.slnx package --vulnerable --include-transitive` reports no
+- [x] `dotnet restore AHKFlowApp.slnx` passes with NuGet audit on.
+- [x] `dotnet list AHKFlowApp.slnx package --vulnerable --include-transitive` reports no
       vulnerable package in any project.
-- [ ] No `NoWarn`, `WarningsNotAsErrors`, or `NuGetAudit` setting in the repository silences NU1902
+- [x] No `NoWarn`, `WarningsNotAsErrors`, or `NuGetAudit` setting in the repository silences NU1902
       or NU1903.
-- [ ] `dotnet format AHKFlowApp.slnx --verify-no-changes` exits 0 on a clean tree, so the Claude
+- [x] `dotnet format AHKFlowApp.slnx --verify-no-changes` exits 0 on a clean tree, so the Claude
       pre-commit format hook lets commits through again.
 
 ## Out of scope
@@ -56,3 +56,7 @@ commit again.
 - Found by the backlog 181 planning session on 2026-10-14.
 - Spec: none. The item is `moderate`, so it goes straight to Plan.
 - Plan: `docs/superpowers/plans/2026-10-14-nuget-audit-cryptography-advisories-plan-182.md`.
+- Checked on 2026-10-15, on this branch. Restore exits 0. All 16 projects report no vulnerable
+  package. A search of the whole repository finds NU1902 and NU1903 only in comments and text, and
+  the only `NoWarn` settings add `CS1591`. Format exits 0 on a clean tree, and the fix commit
+  passed the Claude pre-commit format hook.
