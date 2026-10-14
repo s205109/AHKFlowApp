@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: none (package versions only)
 - **Difficulty**: moderate
-- **Stage**: 4-execute
+- **Stage**: 5-simplify
 
 ## Summary
 
