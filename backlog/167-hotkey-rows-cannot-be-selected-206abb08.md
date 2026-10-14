@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: UI
 - **Difficulty**: moderate
-- **Stage**: 8-review
+- **Stage**: 4-execute
 
 ## Summary
 
