@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: none (package versions only)
 - **Difficulty**: moderate
-- **Stage**: 8-review
+- **Stage**: 9-ship
 
 ## Summary
 
