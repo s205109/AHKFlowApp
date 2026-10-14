@@ -18,6 +18,7 @@ public sealed class SeedHotstringsCommandHandlerTests(HotstringDbFixture fx)
 {
     // Derived from the shared seed set so adding a sample doesn't break every count assertion.
     private static readonly int SampleCount = HotstringSeedSamples.All.Length;
+    private static readonly int LinkCount = HotstringSeedSamples.All.Sum(s => s.Categories.Length);
 
     private static AppEnvironment DevEnv(bool isDev) => new(isDev);
 
@@ -144,7 +145,7 @@ public sealed class SeedHotstringsCommandHandlerTests(HotstringDbFixture fx)
         Result<PagedList<HotstringDto>> result = await handler.ExecuteAsync(new SeedHotstringsCommand(Reset: true), default);
 
         result.Value.Items.Should().HaveCount(SampleCount);
-        result.Value.Items.Sum(h => h.CategoryIds.Length).Should().Be(SampleCount);
+        result.Value.Items.Sum(h => h.CategoryIds.Length).Should().Be(LinkCount);
     }
 
     [Fact]
@@ -166,7 +167,7 @@ public sealed class SeedHotstringsCommandHandlerTests(HotstringDbFixture fx)
 
         Result<PagedList<HotstringDto>> result = await handler.ExecuteAsync(new SeedHotstringsCommand(Reset: false), default);
 
-        result.Value.Items.Sum(h => h.CategoryIds.Length).Should().Be(SampleCount);
+        result.Value.Items.Sum(h => h.CategoryIds.Length).Should().Be(LinkCount);
         result.Value.Items.Single(h => h.Trigger == "recieve").CategoryIds
             .Should().ContainSingle().Which.Should().Be(catByName["Autocorrect"]);
         result.Value.Items.Single(h => h.Trigger == "btw").CategoryIds
@@ -212,7 +213,7 @@ public sealed class SeedHotstringsCommandHandlerTests(HotstringDbFixture fx)
         Result<PagedList<HotstringDto>> result = await handler.ExecuteAsync(new SeedHotstringsCommand(Reset: false), default);
 
         result.Value.Items.Should().HaveCount(SampleCount);
-        result.Value.Items.Sum(h => h.CategoryIds.Length).Should().Be(SampleCount);
+        result.Value.Items.Sum(h => h.CategoryIds.Length).Should().Be(LinkCount);
     }
 
     [Fact]
@@ -235,7 +236,7 @@ public sealed class SeedHotstringsCommandHandlerTests(HotstringDbFixture fx)
 
         await using AppDbContext verify = fx.CreateContext();
         int junctions = await verify.HotstringCategories.CountAsync(hc => hc.Hotstring.OwnerOid == owner);
-        junctions.Should().Be(SampleCount);
+        junctions.Should().Be(LinkCount);
     }
 
     [Fact]
@@ -288,6 +289,6 @@ public sealed class SeedHotstringsCommandHandlerTests(HotstringDbFixture fx)
         Result<PagedList<HotstringDto>> result = await handler.ExecuteAsync(new SeedHotstringsCommand(Reset: false), default);
 
         result.Value.Items.Should().HaveCount(SampleCount);
-        result.Value.Items.Sum(h => h.CategoryIds.Length).Should().Be(SampleCount);
+        result.Value.Items.Sum(h => h.CategoryIds.Length).Should().Be(LinkCount);
     }
 }

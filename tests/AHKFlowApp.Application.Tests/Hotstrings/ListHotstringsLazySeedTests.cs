@@ -3,6 +3,7 @@ using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Application.Queries.Categories;
 using AHKFlowApp.Application.Queries.Hotstrings;
 using AHKFlowApp.Application.Tests.Dev;
+using AHKFlowApp.Domain.Constants;
 using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Infrastructure.Persistence;
 using Ardalis.Result;
@@ -91,7 +92,7 @@ public sealed class ListHotstringsLazySeedTests(HotstringDbFixture fx)
 
         await using AppDbContext ctx2 = fx.CreateContext();
         int categoryCount = await ctx2.Categories.CountAsync(c => c.OwnerOid == owner);
-        categoryCount.Should().Be(8);
+        categoryCount.Should().Be(DefaultCategories.Names.Count);
     }
 
     [Fact]
@@ -209,7 +210,7 @@ public sealed class ListHotstringsLazySeedTests(HotstringDbFixture fx)
     }
 
     // Regression: the hotstrings page loads categories and hotstrings concurrently, so the
-    // categories seeder can commit the shared UserPreference row and the 8 default categories
+    // categories seeder can commit the shared UserPreference row and the default categories
     // between this handler's read and its save. The resulting duplicate-key violation must not
     // be mistaken for "someone else already seeded the hotstrings".
     [Fact]

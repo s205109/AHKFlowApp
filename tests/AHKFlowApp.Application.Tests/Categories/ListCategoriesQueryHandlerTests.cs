@@ -1,6 +1,7 @@
 using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Application.Queries.Categories;
+using AHKFlowApp.Domain.Constants;
 using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Infrastructure.Persistence;
 using Ardalis.Result;
@@ -16,12 +17,6 @@ namespace AHKFlowApp.Application.Tests.Categories;
 [Trait("Category", "Integration")]
 public sealed class ListCategoriesQueryHandlerTests(CategoryDbFixture fx)
 {
-    private static readonly string[] s_expectedDefaults =
-    [
-        "App Launcher", "Autocorrect", "Code", "Communication",
-        "DateTime", "Email", "Symbols", "Window Management",
-    ];
-
     private readonly FakeTimeProvider _clock = new(DateTimeOffset.Parse("2026-05-19T12:00:00Z"));
 
     private ICurrentUser CurrentUser(Guid ownerOid)
@@ -41,8 +36,8 @@ public sealed class ListCategoriesQueryHandlerTests(CategoryDbFixture fx)
         Result<PagedList<CategoryDto>> result = await sut.ExecuteAsync(new ListCategoriesQuery(), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
-        result.Value.TotalCount.Should().Be(8);
-        result.Value.Items.Select(c => c.Name).Order().Should().Equal(s_expectedDefaults);
+        result.Value.TotalCount.Should().Be(DefaultCategories.Names.Count);
+        result.Value.Items.Select(c => c.Name).Should().BeEquivalentTo(DefaultCategories.Names);
 
         UserPreference? pref = await ctx.UserPreferences.FirstOrDefaultAsync(p => p.OwnerOid == owner);
         pref.Should().NotBeNull();
@@ -63,7 +58,7 @@ public sealed class ListCategoriesQueryHandlerTests(CategoryDbFixture fx)
         Result<PagedList<CategoryDto>> result = await sut2.ExecuteAsync(new ListCategoriesQuery(), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
-        result.Value.TotalCount.Should().Be(8);
+        result.Value.TotalCount.Should().Be(DefaultCategories.Names.Count);
     }
 
     [Fact]
@@ -116,7 +111,7 @@ public sealed class ListCategoriesQueryHandlerTests(CategoryDbFixture fx)
         await using AppDbContext ctx = fx.CreateContext();
         var sut = new ListCategoriesQueryHandler(ctx, CurrentUser(owner), _clock);
 
-        // Seed all 8 defaults
+        // Seed the defaults
         await sut.ExecuteAsync(new ListCategoriesQuery(), CancellationToken.None);
 
         // Page 2 of page size 3 (sorted by name) — should return items 4-6
@@ -126,10 +121,15 @@ public sealed class ListCategoriesQueryHandlerTests(CategoryDbFixture fx)
             new ListCategoriesQuery(Page: 2, PageSize: 3), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
-        result.Value.TotalCount.Should().Be(8);
+        result.Value.TotalCount.Should().Be(DefaultCategories.Names.Count);
         result.Value.Items.Should().HaveCount(3);
-        // Items 4-6 alphabetically: Communication, DateTime, Email
-        result.Value.Items.Select(c => c.Name).Should().Equal("Communication", "DateTime", "Email");
+        // Items 4 to 6 of the owner's categories, in the order SQL Server sorts their names.
+        List<string> byName = await ctx2.Categories
+            .Where(c => c.OwnerOid == owner)
+            .OrderBy(c => c.Name)
+            .Select(c => c.Name)
+            .ToListAsync();
+        result.Value.Items.Select(c => c.Name).Should().Equal(byName.Skip(3).Take(3));
     }
 
     [Fact]
@@ -150,7 +150,7 @@ public sealed class ListCategoriesQueryHandlerTests(CategoryDbFixture fx)
 
         // Owner gets their own seeded defaults, not other user's
         result.IsSuccess.Should().BeTrue();
-        result.Value.TotalCount.Should().Be(8);
+        result.Value.TotalCount.Should().Be(DefaultCategories.Names.Count);
         result.Value.Items.Should().OnlyContain(c =>
             ctx.Categories.Any(cat => cat.Id == c.Id && cat.OwnerOid == owner));
     }
