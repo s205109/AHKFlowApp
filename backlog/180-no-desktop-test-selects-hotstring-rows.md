@@ -45,4 +45,4 @@ does not break without anyone noticing.
   shape: no desktop test touches its select column.
 - The new tests belong in `HotstringsCrudFlowTests`, which runs in E2E group C.
 - Spec: none — the hotkeys tests from backlog 167 are the pattern.
-- Plan: none — not yet planned.
+- Plan: `docs/superpowers/plans/2026-10-14-no-desktop-test-selects-hotstring-rows-plan-180.md`
