@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: none (package versions only)
 - **Difficulty**: moderate
-- **Stage**: 6-verify
+- **Stage**: 7-document
 
 ## Summary
 
