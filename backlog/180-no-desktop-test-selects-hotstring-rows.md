@@ -21,17 +21,24 @@ does not break without anyone noticing.
 
 ## Acceptance criteria
 
-- [ ] An E2E flow test runs the hotstrings page at a desktop viewport, ticks two row checkboxes,
+- [x] An E2E flow test runs the hotstrings page at a desktop viewport, ticks two row checkboxes,
       and sees the bulk-delete button say "Delete 2 selected".
-- [ ] The same test, or a second one, ticks the header select-all checkbox at desktop viewport
+      Met by `HotstringsCrudFlowTests.BulkDelete_OnDesktopViewport_SelectsRowsWithTheirCheckboxes`.
+- [x] The same test, or a second one, ticks the header select-all checkbox at desktop viewport
       and sees every row on the page selected.
-- [ ] The new tests never pass `Force` to a Playwright action, so a covered checkbox makes them
+      Met by `HotstringsCrudFlowTests.SelectAll_OnDesktopViewport_SelectsEveryRowOnThePage`.
+- [x] The new tests never pass `Force` to a Playwright action, so a covered checkbox makes them
       fail.
+      Proven on 2026-10-14. With the select column's width removed, both tests failed with a
+      `TimeoutException` at their `CheckAsync`. The Trigger cell took the row click, and the next
+      header cell took the select-all click. The evidence is in `PLAN-PROGRESS.md`.
 
 ## Out of scope
 
 - Any change to `Pages/Hotstrings.razor`. Its select column already has an explicit width.
-- The phone select mode, which `HotstringsMobileFlowTests` already covers.
+- The phone select mode. No E2E test covers it, but the bUnit tests in
+  `HotstringMobileListTests` do: `SelectModeToggle_RevealsCheckboxes` and
+  `BulkDelete_RaisesOnBulkDelete_WithSelectedIds`.
 - Removing the unused 56-pixel rule from the grids' style sheets.
 
 ## Notes / dependencies
