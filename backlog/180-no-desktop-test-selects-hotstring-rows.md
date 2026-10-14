@@ -30,8 +30,10 @@ does not break without anyone noticing.
 - [x] The new tests never pass `Force` to a Playwright action, so a covered checkbox makes them
       fail.
       Proven on 2026-10-14. With the select column's width removed, both tests failed with a
-      `TimeoutException` at their `CheckAsync`. The Trigger cell took the row click, and the next
-      header cell took the select-all click. The evidence is in `PLAN-PROGRESS.md`.
+      `TimeoutException` at their `CheckAsync`: `HotstringsCrudFlowTests.cs:88` for the row tick
+      and `HotstringsCrudFlowTests.cs:124` for the select-all tick. The Trigger cell took the row
+      click, and the next header cell took the select-all click. The progress file that recorded
+      this is deleted at Ship. Read it with `git show deb57afd:PLAN-PROGRESS.md`.
 
 ## Out of scope
 
