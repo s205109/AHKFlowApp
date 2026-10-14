@@ -25,18 +25,27 @@ Write each criterion as state a reader can observe in the repository, not as a c
 "The handler returns `Result.NotFound()` for a missing id" can be checked. "The old check is
 removed" and "tests cover the new API" cannot.
 
-- [ ] On a shipped branch whose `PLAN-PROGRESS.md` git never tracked, the failure edge out of Ship
+- [x] On a shipped branch whose `PLAN-PROGRESS.md` git never tracked, the failure edge out of Ship
       reopens the item at its target stage, with a progress file that holds the failure record.
-- [ ] When the failure edge out of Ship refuses for any reason about the progress file, the pull
+- [x] When the failure edge out of Ship refuses for any reason about the progress file, the pull
       request is still ready and the item is still in `backlog/done/` at `9-ship`.
-- [ ] A test in the PowerShell suites covers a never-tracked progress file on the failure edge out
+- [x] A test in the PowerShell suites covers a never-tracked progress file on the failure edge out
       of Ship, and fails when the edge refuses or leaves a half-done state.
-- [ ] The failure edge out of Ship on a branch whose progress file git did track still restores
+- [x] The failure edge out of Ship on a branch whose progress file git did track still restores
       the file's last committed content, and an existing test proves it.
-- [ ] On a branch whose history holds another item's deleted `PLAN-PROGRESS.md`, the failure edge
+- [x] On a branch whose history holds another item's deleted `PLAN-PROGRESS.md`, the failure edge
       out of Ship writes none of that item's lines into this item's progress file.
-- [ ] When the failure edge out of Ship cannot push the branch's unpushed commits before it starts,
+- [x] When the failure edge out of Ship cannot push the branch's unpushed commits before it starts,
       the pull request is still ready and the item is still in `backlog/done/` at `9-ship`.
+
+How each box was checked, at Document on 2026-10-14:
+
+- Box 2 covers every refusal. `Get-ShippedProgressSource` makes all of them, and the edge calls it
+  before the undo. The `$rf` case proves one of them. The `git restore` after the undo can still
+  fail, but that is a failed write and not a refusal. The plan's `## Known limits` lists it.
+- Box 4 holds byte for byte. Review round 1 found that the old read lost non-ASCII text and CRLF
+  endings, so the edge now restores the file with `git restore`. The `$f5` case and a new
+  byte-exact case prove it. A mutation that always starts a new file turns `$f5` red.
 
 ## Out of scope
 
