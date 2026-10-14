@@ -21,10 +21,10 @@ that I do not derive an expected value from a stale document.
 
 ## Acceptance criteria
 
-- [ ] `README.md` states the seed counts the catalogs actually produce, or states them as derived
+- [x] `README.md` states the seed counts the catalogs actually produce, or states them as derived
       rather than fixed.
-- [ ] `DevController`'s XML doc comment states the right hotkey count, so Swagger shows it.
-- [ ] `docs/development/testing-workflow.md` says plainly that service-worker registration is
+- [x] `DevController`'s XML doc comment states the right hotkey count, so Swagger shows it.
+- [x] `docs/development/testing-workflow.md` says plainly that service-worker registration is
       disabled on the local host names the script lists, so the E2E setup does not test published
       service-worker caching. It names what a local run can reach instead.
 
