@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: none (package versions only)
 - **Difficulty**: moderate
-- **Stage**: 0-intake
+- **Stage**: 1-pickup
 
 ## Summary
 
