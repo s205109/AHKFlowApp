@@ -6,7 +6,7 @@
 - **Type**: Chore
 - **Interfaces**: UI
 - **Difficulty**: moderate
-- **Stage**: 5-simplify
+- **Stage**: 6-verify
 
 ## Summary
 
