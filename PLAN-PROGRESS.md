@@ -10,3 +10,4 @@ PR 433 review thread PRRT_kwDOR18K486sJbpd: SelectAll_OnDesktopViewport_SelectsE
 
 **Recovery task:** R1: after select-all, assert both seeded rows' select checkboxes are checked.
 
+R1; 6a9af057; select-all test now asserts both rows unticked before and ticked after; test-only, no red run (no app behavior change); green: 13 of 13 hotkey flow tests; deferrals: none
