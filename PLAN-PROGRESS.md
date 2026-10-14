@@ -1,0 +1,1 @@
+Task 1; 4027c2be; red: restore exit 1, 46 NU1902/NU1903 errors (Pkcs 9.0.4, 10.0.6, 10.0.10; Xml 10.0.10); green: newest 10.0.x is 10.0.13 for both, restore 0, 16 of 16 not vulnerable, Application Pkcs 10.0.13, no audit setting, format 0, hook 0, Release build 0 warnings, Fast 3055 passed, Integration 687 passed; deferrals: none
