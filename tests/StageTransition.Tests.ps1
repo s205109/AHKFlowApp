@@ -300,6 +300,17 @@ function Block-FixtureCommit {
     if (-not $IsWindows) { & chmod +x $hook }
 }
 
+# Make every later push from a fixture fail, the way this repository's own pre-push checks refuse
+# one. The same hook folder and the same line-ending rule as Block-FixtureCommit above.
+function Block-FixturePush {
+    param([string] $HookDir)
+
+    New-Item -ItemType Directory -Path $HookDir -Force | Out-Null
+    $hook = Join-Path $HookDir 'pre-push'
+    Set-Content -LiteralPath $hook -Value "#!/bin/sh`necho 'fixture pre-push refuses' >&2`nexit 1" -Encoding ascii
+    if (-not $IsWindows) { & chmod +x $hook }
+}
+
 # The bytes of a file, or $null when it is not there. Restoration is asserted byte for byte: a
 # substring match cannot tell an exact restore from a close one, and the undo promises exact.
 function Get-FileByte {
@@ -1107,6 +1118,68 @@ try {
 
     Assert-Equal (& git -C $f5.Root rev-parse HEAD).Trim() (& git -C $f5.Bare rev-parse $f5Branch).Trim() `
         'A Ship failure must push the reopened records'
+
+    # --- A refusal about the progress file changes nothing (backlog 178) ---
+    # The failure edge used to flip the pull request to draft and move the item out of
+    # backlog/done/, and only then look for the progress file. A refusal there left both half
+    # reopened. This item is in backlog/done/, but no commit moved it there, so the edge cannot
+    # read what PLAN-PROGRESS.md held at Ship. It must refuse before it changes anything.
+    $rf = New-TransitionFixture -Stage '9-ship' -Difficulty 'complex' -AsWorktree
+    $rfDone = Join-Path $rf.Root 'backlog/done/081-automate-stage-transitions.md'
+    New-Item -ItemType Directory -Path (Split-Path -Parent $rfDone) -Force | Out-Null
+    Move-Item -LiteralPath $rf.ItemPath -Destination $rfDone
+    $rfHead = (& git -C $rf.Root rev-parse HEAD).Trim()
+    $rfGh = New-FakeGh
+    $script:rfOutput = ''
+    Invoke-WithFakeGh -Gh $rfGh -Action {
+        # '*>&1', because this case also reads the refusal text.
+        $script:rfOutput = ((& "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $rf.Root -Item '081' -Edge 'failure' -Pr 421 `
+            -Evidence 'CI: 1 check failed' -RecoveryTask 'Task 9: fix the check' *>&1) -join "`n")
+    }
+    Assert-True ($script:LastTransitionExit -ne 0) 'A Ship failure that cannot read the progress file must be refused'
+    # The reason, so a refusal for some other cause cannot pass this case by accident.
+    Assert-True ($script:rfOutput -match 'PLAN-PROGRESS\.md') 'The refusal must be about the progress file'
+    Assert-True ($script:rfOutput -match 'Nothing was changed') 'The refusal must say that nothing was changed'
+    Assert-True ((Get-GhLog -Gh $rfGh) -notmatch '--undo') 'A refused Ship failure must leave the pull request ready'
+    Assert-True (Test-Path -LiteralPath $rfDone) 'A refused Ship failure must leave the item in backlog/done/'
+    Assert-True (-not (Test-Path -LiteralPath $rf.ItemPath)) 'A refused Ship failure must not move the item back'
+    Assert-Equal '9-ship' (Get-FixtureStage -Root $rf.Root) 'A refused Ship failure must leave the Stage at 9-ship'
+    Assert-True (-not (Test-Path -LiteralPath (Join-Path $rf.Root 'PLAN-PROGRESS.md'))) `
+        'A refused Ship failure must not write a progress file'
+    Assert-Equal $rfHead (& git -C $rf.Root rev-parse HEAD).Trim() 'A refused Ship failure must make no commit'
+
+    # --- A refused pre-flight push changes nothing either (backlog 178) ---
+    # The pre-flight push ran after the undo, so a refused push left a draft pull request behind a
+    # refusal that said nothing was changed. One commit is unpushed, so the pre-flight has work to
+    # push, and the hook refuses it the way this repository's own pre-push checks can.
+    $pf = New-TransitionFixture -Stage '8-review' -Difficulty 'complex' -AsWorktree -AllBoxesTicked -WithProgress
+    $pfGh = New-FakeGh
+    Invoke-WithFakeGh -Gh $pfGh -Action {
+        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $pf.Root -Item '081' -Edge 'success' -Pr 421 *> $null
+    }
+    Assert-Equal 0 $script:LastTransitionExit 'The Ship that sets up the refused-push case must succeed'
+
+    Set-Content -LiteralPath (Join-Path $pf.Root 'unpushed.txt') -Value 'work' -Encoding utf8
+    & git -C $pf.Root add -- unpushed.txt *> $null
+    & git -C $pf.Root commit -m 'test: unpushed work' *> $null
+    Block-FixturePush -HookDir $pf.HookDir
+    $pfHead = (& git -C $pf.Root rev-parse HEAD).Trim()
+    $pfDone = Join-Path $pf.Root 'backlog/done/081-automate-stage-transitions.md'
+
+    $pfGh2 = New-FakeGh
+    $script:pfOutput = ''
+    Invoke-WithFakeGh -Gh $pfGh2 -Action {
+        $script:pfOutput = ((& "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $pf.Root -Item '081' -Edge 'failure' -Pr 421 `
+            -Evidence 'CI: 2 checks failed' -RecoveryTask 'Task 9: fix the check' *>&1) -join "`n")
+    }
+    Assert-True ($script:LastTransitionExit -ne 0) 'A Ship failure whose push is refused must be refused'
+    Assert-True ($script:pfOutput -match 'pre-flight push failed') 'The refusal must name the refused push'
+    Assert-True ((Get-GhLog -Gh $pfGh2) -notmatch '--undo') 'A Ship failure whose push is refused must leave the pull request ready'
+    Assert-True (Test-Path -LiteralPath $pfDone) 'A Ship failure whose push is refused must leave the item in backlog/done/'
+    Assert-Equal '9-ship' (Get-FixtureStage -Root $pf.Root) 'A Ship failure whose push is refused must leave the Stage at 9-ship'
+    Assert-True (-not (Test-Path -LiteralPath (Join-Path $pf.Root 'PLAN-PROGRESS.md'))) `
+        'A Ship failure whose push is refused must not write the progress file back'
+    Assert-Equal $pfHead (& git -C $pf.Root rev-parse HEAD).Trim() 'A Ship failure whose push is refused must make no commit'
 
     # --- A round Ship failure undoes the ready flip too (finding 4) ---
     $f4 = New-TransitionFixture -Stage '9-ship' -AsWorktree -Branch 'chore/wt-backlog-housekeeping' -NoItem

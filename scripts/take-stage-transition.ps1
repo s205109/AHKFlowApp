@@ -620,6 +620,13 @@ function Invoke-ShipFailureTransition {
     Assert-PrOnBranch -Pr $Pr -Branch $branch
     Assert-BranchNotDiverged -Worktree $Worktree -Branch $branch
 
+    # Every refusal first, then the pre-flight, then the writes, the same order the ordinary path
+    # keeps. The undo is the first write, so both of these come before it. A refusal from either
+    # leaves the pull request ready and the item in backlog/done/, the state Ship left (backlog 178).
+    $progressText = Get-ShippedProgressText -Worktree $Worktree
+
+    Invoke-RemotePreflight -Worktree $Worktree -Branch $branch
+
     # The undo comes first. The target is a pre-Review stage, and Review's entry condition is a
     # draft pull request, so a record written while the pull request is still ready describes a
     # state the workflow cannot resume from.
@@ -627,8 +634,6 @@ function Invoke-ShipFailureTransition {
     if ($LASTEXITCODE -ne 0) {
         throw 'The pull request could not be converted back to draft. Nothing was changed.'
     }
-
-    Invoke-RemotePreflight -Worktree $Worktree -Branch $branch
 
     # Move the item back out of backlog/done/. A rerun after a half-finished attempt finds it
     # already out, and that is not an error.
@@ -638,7 +643,10 @@ function Invoke-ShipFailureTransition {
     }
     $itemPath = Join-Path (Join-Path $Worktree 'backlog') $leaf
 
-    Restore-ProgressFile -Worktree $Worktree
+    # $null writes nothing here, and Add-FailureRecord then creates the file when it is absent.
+    if ($null -ne $progressText) {
+        Set-Content -LiteralPath (Join-Path $Worktree 'PLAN-PROGRESS.md') -Value $progressText -Encoding utf8
+    }
     Add-FailureRecord -Worktree $Worktree -Target $target -Evidence $Evidence -RecoveryTask $RecoveryTask
     Set-ItemStage -Path $itemPath -Stage $target
 
@@ -654,25 +662,24 @@ function Invoke-ShipFailureTransition {
     Write-Host "Item $Item is reopened at $target, and pull request $Pr is a draft again."
 }
 
-# Ship's closure commit deleted PLAN-PROGRESS.md, so the file the failure record belongs in comes
-# back out of git history. The commit that deleted it is the closure commit, and its parent holds
-# the last content the file had.
-function Restore-ProgressFile {
+# The text PLAN-PROGRESS.md held when the item shipped, read from git and written nowhere. $null
+# means there is nothing to put back. The failure edge calls this before it changes anything, so
+# a refusal here leaves the pull request ready and the item in backlog/done/ (backlog 178).
+function Get-ShippedProgressText {
     param([string] $Worktree)
 
-    $progress = Join-Path $Worktree 'PLAN-PROGRESS.md'
-    if (Test-Path -LiteralPath $progress) { return }
+    # A file already on disk wins. A rerun after a half-finished attempt finds the one it wrote.
+    if (Test-Path -LiteralPath (Join-Path $Worktree 'PLAN-PROGRESS.md')) { return $null }
 
     $deleted = ((& git -C $Worktree log --diff-filter=D --format=%H -1 -- PLAN-PROGRESS.md) -join '').Trim()
     if (-not $deleted) {
         throw ('PLAN-PROGRESS.md is gone and no commit on this branch deleted it, so there is ' +
-               'nothing to restore. Write it back by hand and run this again.')
+               'nothing to restore. Write it back by hand and run this again. Nothing was changed.')
     }
 
     $text = (& git -C $Worktree show "${deleted}^:PLAN-PROGRESS.md") -join "`n"
-    if ($LASTEXITCODE -ne 0) { throw "Could not read PLAN-PROGRESS.md from $deleted^." }
-
-    Set-Content -LiteralPath $progress -Value $text -Encoding utf8
+    if ($LASTEXITCODE -ne 0) { throw "Could not read PLAN-PROGRESS.md from $deleted^. Nothing was changed." }
+    return $text
 }
 
 # A housekeeping round files no item, so its record is the 'Stage:' line in its pull request
