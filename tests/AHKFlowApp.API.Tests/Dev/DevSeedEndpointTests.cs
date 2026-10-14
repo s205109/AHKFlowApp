@@ -16,7 +16,7 @@ public sealed class DevSeedEndpointTests(ApiTestFixture fixture)
     private readonly CustomWebApplicationFactory _factory = fixture.Factory;
 
     [Fact]
-    public async Task SeedCategories_Returns200WithEightCategories()
+    public async Task SeedCategories_Returns200WithAllDefaultCategories()
     {
         using HttpClient client = _factory.CreateAuthenticatedClient(b => b.WithOid(Guid.NewGuid()));
 
@@ -25,7 +25,7 @@ public sealed class DevSeedEndpointTests(ApiTestFixture fixture)
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
         List<CategoryDto>? body = await resp.Content.ReadFromJsonAsync<List<CategoryDto>>();
         body.Should().NotBeNull();
-        body!.Should().HaveCount(8);
+        body!.Should().HaveCount(SeedCatalogCounts.Categories);
     }
 
     [Fact]
@@ -38,7 +38,7 @@ public sealed class DevSeedEndpointTests(ApiTestFixture fixture)
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
         PagedList<HotkeyDto>? body = await resp.Content.ReadFromJsonAsync<PagedList<HotkeyDto>>();
         body.Should().NotBeNull();
-        body!.Items.Should().HaveCount(19);
+        body!.Items.Should().HaveCount(SeedCatalogCounts.Hotkeys);
     }
 
     [Fact]
@@ -82,9 +82,9 @@ public sealed class DevSeedEndpointTests(ApiTestFixture fixture)
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
         SeedAllResultDto? result = await resp.Content.ReadFromJsonAsync<SeedAllResultDto>();
         result.Should().NotBeNull();
-        result!.CategoriesCount.Should().Be(8);
-        result.HotstringsCount.Should().Be(16);
-        result.HotkeysCount.Should().Be(19);
+        result!.CategoriesCount.Should().Be(SeedCatalogCounts.Categories);
+        result.HotstringsCount.Should().Be(SeedCatalogCounts.Hotstrings);
+        result.HotkeysCount.Should().Be(SeedCatalogCounts.Hotkeys);
     }
 
     [Fact]
@@ -98,9 +98,9 @@ public sealed class DevSeedEndpointTests(ApiTestFixture fixture)
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
         SeedAllResultDto? result = await resp.Content.ReadFromJsonAsync<SeedAllResultDto>();
         result.Should().NotBeNull();
-        result!.CategoriesCount.Should().Be(8);
-        result.HotstringsCount.Should().Be(16);
-        result.HotkeysCount.Should().Be(19);
+        result!.CategoriesCount.Should().Be(SeedCatalogCounts.Categories);
+        result.HotstringsCount.Should().Be(SeedCatalogCounts.Hotstrings);
+        result.HotkeysCount.Should().Be(SeedCatalogCounts.Hotkeys);
     }
 
     [Fact]
