@@ -288,13 +288,25 @@ public sealed class HotkeysCrudFlowTests(StackFixtureB fixture) : IAsyncLifetime
         await using IBrowserContext ctx = await fixture.Browser.NewContextAsync(DesktopViewport);
 
         IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/hotkeys");
-        await page.Locator(".desktop-branch tbody tr", new() { HasTextString = "Macro A" }).WaitForAsync();
-        await page.Locator(".desktop-branch tbody tr", new() { HasTextString = "Macro B" }).WaitForAsync();
+        ILocator rowA = page.Locator(".desktop-branch tbody tr", new() { HasTextString = "Macro A" });
+        ILocator rowB = page.Locator(".desktop-branch tbody tr", new() { HasTextString = "Macro B" });
+        ILocator checkboxA = rowA.Locator("td:first-child input[type=checkbox]");
+        ILocator checkboxB = rowB.Locator("td:first-child input[type=checkbox]");
+        await rowA.WaitForAsync();
+        await rowB.WaitForAsync();
+
+        // Checking the rows start unticked means the ticks below can only come from select-all.
+        await Assertions.Expect(checkboxA).Not.ToBeCheckedAsync();
+        await Assertions.Expect(checkboxB).Not.ToBeCheckedAsync();
 
         await page.Locator(".desktop-branch thead th:first-child input[type=checkbox]").CheckAsync();
 
         await Assertions.Expect(page.Locator(".desktop-branch button.bulk-delete-hotkeys"))
             .ToContainTextAsync("Delete 2 selected");
+
+        // The count proves the page's selection changed. The row ticks prove the owner can see it.
+        await Assertions.Expect(checkboxA).ToBeCheckedAsync();
+        await Assertions.Expect(checkboxB).ToBeCheckedAsync();
     }
 
     // Fills a MudAutocomplete key picker and commits the typed value by blurring (CoerceValue).
