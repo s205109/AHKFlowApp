@@ -301,27 +301,17 @@ function Get-FixtureStage {
     return (Get-SingleBacklogStage -Lines (Get-Content -LiteralPath $found[0].Path))
 }
 
-# Make every later commit in a fixture fail. The hook refuses, and git reports the refusal as a
-# non-zero exit code, which is what a closure meets when a real pre-commit hook says no.
-function Block-FixtureCommit {
-    param([string] $HookDir)
+# Make every later commit or push in a fixture fail. The hook refuses, and git reports the
+# refusal as a non-zero exit code, which is what a closure meets when a real pre-commit hook says
+# no, and what a pre-flight meets when this repository's own pre-push checks refuse.
+function Block-FixtureHook {
+    param([string] $HookDir, [ValidateSet('pre-commit', 'pre-push')] [string] $Name)
 
     New-Item -ItemType Directory -Path $HookDir -Force | Out-Null
-    $hook = Join-Path $HookDir 'pre-commit'
+    $hook = Join-Path $HookDir $Name
     # Backtick-n, not a here-string: sh on Windows rejects a script whose first line ends with a
     # carriage return, and the refusal would then look like a hook that did not run at all.
-    Set-Content -LiteralPath $hook -Value "#!/bin/sh`necho 'fixture pre-commit refuses' >&2`nexit 1" -Encoding ascii
-    if (-not $IsWindows) { & chmod +x $hook }
-}
-
-# Make every later push from a fixture fail, the way this repository's own pre-push checks refuse
-# one. The same hook folder and the same line-ending rule as Block-FixtureCommit above.
-function Block-FixturePush {
-    param([string] $HookDir)
-
-    New-Item -ItemType Directory -Path $HookDir -Force | Out-Null
-    $hook = Join-Path $HookDir 'pre-push'
-    Set-Content -LiteralPath $hook -Value "#!/bin/sh`necho 'fixture pre-push refuses' >&2`nexit 1" -Encoding ascii
+    Set-Content -LiteralPath $hook -Value "#!/bin/sh`necho 'fixture $Name refuses' >&2`nexit 1" -Encoding ascii
     if (-not $IsWindows) { & chmod +x $hook }
 }
 
@@ -702,7 +692,7 @@ try {
     # so read it as the sharper failure message - it names the blob instead of two letters.
     $un1Index0 = ((& git -C $un1.Root ls-files -s -- backlog/099-another-item.md) -join '').Trim()
 
-    Block-FixtureCommit -HookDir $un1.HookDir
+    Block-FixtureHook -Name 'pre-commit' -HookDir $un1.HookDir
     $un1Gh = New-FakeGh
     Invoke-WithFakeGh -Gh $un1Gh -Action {
         & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $un1.Root -Item '081' -Edge 'success' -Pr 421 *> $null
@@ -735,7 +725,7 @@ try {
                                  -AllBoxesTicked -WithProgress
     Add-Content -LiteralPath (Join-Path $un2.Root 'PLAN-PROGRESS.md') -Value '- Task 2 half done, never committed'
     $un2Progress = Get-FileByte -Path (Join-Path $un2.Root 'PLAN-PROGRESS.md')
-    Block-FixtureCommit -HookDir $un2.HookDir
+    Block-FixtureHook -Name 'pre-commit' -HookDir $un2.HookDir
     $un2Gh = New-FakeGh
     Invoke-WithFakeGh -Gh $un2Gh -Action {
         & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $un2.Root -Item '081' -Edge 'success' -Pr 421 *> $null
@@ -749,7 +739,7 @@ try {
     $un3 = New-TransitionFixture -Stage '8-review' -Difficulty 'complex' -AsWorktree -AllBoxesTicked
     Set-Content -LiteralPath (Join-Path $un3.Root 'PLAN-PROGRESS.md') -Value '- never committed' -Encoding utf8
     $un3Progress = Get-FileByte -Path (Join-Path $un3.Root 'PLAN-PROGRESS.md')
-    Block-FixtureCommit -HookDir $un3.HookDir
+    Block-FixtureHook -Name 'pre-commit' -HookDir $un3.HookDir
     $un3Gh = New-FakeGh
     $script:un3Output = ''
     Invoke-WithFakeGh -Gh $un3Gh -Action {
@@ -774,7 +764,7 @@ try {
     [System.IO.File]::WriteAllBytes((Join-Path $un4.Root 'PLAN-PROGRESS.md'), @())
     $un4Progress = Join-Path $un4.Root 'PLAN-PROGRESS.md'
     $un4Progress0 = Get-FileByte -Path $un4Progress
-    Block-FixtureCommit -HookDir $un4.HookDir
+    Block-FixtureHook -Name 'pre-commit' -HookDir $un4.HookDir
     $un4Gh = New-FakeGh
     Invoke-WithFakeGh -Gh $un4Gh -Action {
         & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $un4.Root -Item '081' -Edge 'success' -Pr 421 *> $null
@@ -880,7 +870,7 @@ try {
 
     $un7Item0 = Get-FileByte -Path $un7Item
     $un7Progress0 = Get-FileByte -Path $un7Progress
-    Block-FixtureCommit -HookDir $un7.HookDir
+    Block-FixtureHook -Name 'pre-commit' -HookDir $un7.HookDir
     $un7Gh = New-FakeGh
     Invoke-WithFakeGh -Gh $un7Gh -Action {
         & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $un7.Root -Item '081' -Edge 'success' -Pr 421 *> $null
@@ -1176,7 +1166,7 @@ try {
     Set-Content -LiteralPath (Join-Path $pf.Root 'unpushed.txt') -Value 'work' -Encoding utf8
     & git -C $pf.Root add -- unpushed.txt *> $null
     & git -C $pf.Root commit -m 'test: unpushed work' *> $null
-    Block-FixturePush -HookDir $pf.HookDir
+    Block-FixtureHook -Name 'pre-push' -HookDir $pf.HookDir
     $pfHead = (& git -C $pf.Root rev-parse HEAD).Trim()
     $pfDone = Join-Path $pf.Root 'backlog/done/081-automate-stage-transitions.md'
 
@@ -1239,6 +1229,39 @@ try {
         Assert-Equal (& git -C $nt.Root rev-parse HEAD).Trim() (& git -C $nt.Bare rev-parse $ntBranch).Trim() `
             "A never-tracked Ship failure must push the reopened records, $label"
     }
+
+    # --- A restored progress file keeps its exact bytes (backlog 178) ---
+    # PowerShell decodes a native command's output with the console code page, which is not UTF-8
+    # by default on Windows. Reading the file back through 'git show' turned an em dash into three
+    # wrong characters and a CRLF into LF. The restore must give back the bytes git holds.
+    $bx = New-TransitionFixture -Stage '8-review' -Difficulty 'complex' -AsWorktree -AllBoxesTicked
+    # No line-ending conversion, so the bytes on disk are the bytes git stores.
+    & git -C $bx.Root config core.autocrlf false
+    $bxPath = Join-Path $bx.Root 'PLAN-PROGRESS.md'
+    [System.IO.File]::WriteAllText($bxPath, "- Task 1 $([char]0x2014) done`r`n- Task 2 caf$([char]0xE9)`r`n",
+                                   [System.Text.UTF8Encoding]::new($false))
+    $bxBytes = Get-FileByte -Path $bxPath
+    & git -C $bx.Root add -- PLAN-PROGRESS.md *> $null
+    & git -C $bx.Root commit -m 'docs: 081 progress' *> $null
+    $bxGh = New-FakeGh
+    Invoke-WithFakeGh -Gh $bxGh -Action {
+        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $bx.Root -Item '081' -Edge 'success' -Pr 421 *> $null
+    }
+    Assert-Equal 0 $script:LastTransitionExit 'The Ship that sets up the exact-bytes case must succeed'
+
+    $bxGh2 = New-FakeGh
+    Invoke-WithFakeGh -Gh $bxGh2 -Action {
+        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $bx.Root -Item '081' -Edge 'failure' -Pr 421 `
+            -Evidence 'CI: 1 check failed' -RecoveryTask 'Task 9: fix the check' *> $null
+    }
+    Assert-Equal 0 $script:LastTransitionExit 'The Ship failure in the exact-bytes case must succeed'
+    # The failure record goes under the restored text, so compare only the front of the file.
+    $bxAfter = Get-FileByte -Path $bxPath
+    $bxFront = if ($null -ne $bxAfter -and $bxAfter.Length -ge $bxBytes.Length) {
+        [byte[]] $bxAfter[0..($bxBytes.Length - 1)]
+    } else { $bxAfter }
+    Assert-True (Test-SameByte -Expected $bxBytes -Actual $bxFront) `
+        'A Ship failure must restore the progress file byte for byte'
 
     # --- A round Ship failure undoes the ready flip too (finding 4) ---
     $f4 = New-TransitionFixture -Stage '9-ship' -AsWorktree -Branch 'chore/wt-backlog-housekeeping' -NoItem
