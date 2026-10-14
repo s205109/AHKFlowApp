@@ -54,5 +54,5 @@ commit again.
 - Backlog 181 waits on this item. Its plan uses `-p:NuGetAudit=false` for local test runs only;
   its stage push needs this fix on `main`.
 - Found by the backlog 181 planning session on 2026-10-14.
-- Spec: none yet.
-- Plan: none yet.
+- Spec: none. The item is `moderate`, so it goes straight to Plan.
+- Plan: `docs/superpowers/plans/2026-10-14-nuget-audit-cryptography-advisories-plan-182.md`.
