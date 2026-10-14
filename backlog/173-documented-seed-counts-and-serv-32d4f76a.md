@@ -6,7 +6,7 @@
 - **Type**: Process / documentation
 - **Interfaces**: none (docs, one XML doc comment that reaches Swagger)
 - **Difficulty**: moderate
-- **Stage**: 5-simplify
+- **Stage**: 6-verify
 
 ## Summary
 
