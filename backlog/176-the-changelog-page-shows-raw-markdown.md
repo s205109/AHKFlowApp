@@ -21,12 +21,12 @@ text with stray punctuation.
 
 ## Acceptance criteria
 
-- [ ] The item records what a finished entry should look like on screen, before a renderer is
+- [x] The item records what a finished entry should look like on screen, before a renderer is
       chosen. The two options in the notes below lead to different answers, so this comes first.
-- [ ] The rendered page holds no literal backtick characters.
-- [ ] A command or an identifier in an entry reads as one, by whichever means the decision above
+- [x] The rendered page holds no literal backtick characters.
+- [x] A command or an identifier in an entry reads as one, by whichever means the decision above
       chose.
-- [ ] The page escapes anything it does not deliberately render, so a changelog entry cannot
+- [x] The page escapes anything it does not deliberately render, so a changelog entry cannot
       inject markup.
 
 ## Decision: what a finished entry looks like
