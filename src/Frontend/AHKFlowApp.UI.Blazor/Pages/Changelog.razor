@@ -1,5 +1,6 @@
 @page "/changelog"
 @using AHKFlowApp.UI.Blazor.DTOs
+@using AHKFlowApp.UI.Blazor.Helpers
 @using AHKFlowApp.UI.Blazor.Services
 @using Microsoft.AspNetCore.Authorization
 @attribute [AllowAnonymous]
@@ -50,7 +51,25 @@
                             <MudList T="string" Dense="true" Gutters="false">
                                 @foreach (string item in section.Items)
                                 {
-                                    <MudListItem T="string">@item</MudListItem>
+                                    <MudListItem T="string">
+                                        <span data-test="changelog-item">
+                                            @foreach (ChangelogTextPiece piece in ChangelogText.Split(item))
+                                            {
+                                                if (piece is ChangelogTextPiece.Code codeSpan)
+                                                {
+                                                    <code>@codeSpan.Value</code>
+                                                }
+                                                else if (piece is ChangelogTextPiece.Strong strongSpan)
+                                                {
+                                                    <strong>@strongSpan.Value</strong>
+                                                }
+                                                else if (piece is ChangelogTextPiece.Text plain)
+                                                {
+                                                    @plain.Value
+                                                }
+                                            }
+                                        </span>
+                                    </MudListItem>
                                 }
                             </MudList>
                         </MudStack>
