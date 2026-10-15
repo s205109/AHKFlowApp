@@ -1,0 +1,1 @@
+Task 1; 10d3d18a; committed by a parallel session, reviewed against the plan here, indent fixed in 3312aee6; red: build fails without HotstringImportDialog.MaxScriptLength; green: HotstringImportDialogTests 9 of 9; deferrals: none
