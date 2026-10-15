@@ -51,9 +51,9 @@ catalogs, so that a catalog change does not break unrelated tests.
 - The search for other seed counts found 35 more failing tests in 10 files, so they joined this
   item as an Extension, with criterion 4. Plan review round 1 found 5 of them, which compare
   category-link totals with row counts. The plan lists them all.
-- Waits on backlog 182: since 2026-10-13, every restore fails with NU1902 and NU1903 on
-  `System.Security.Cryptography.Pkcs` and `System.Security.Cryptography.Xml`. The plan's test runs
-  work with `-p:NuGetAudit=false`, but the stage push at the end of Execute needs 182's fix on
-  `main` first.
+- Depended on backlog 182, now resolved. From 2026-10-13, every restore failed with NU1902 and
+  NU1903 on `System.Security.Cryptography.Pkcs` and `System.Security.Cryptography.Xml`. Merge
+  commit `d9cd0051` brought 182's fix from `main` into this branch before Task 1. Test commands no
+  longer need `-p:NuGetAudit=false`.
 - Spec: none — `moderate`, so the item goes from Pickup to Plan.
 - Plan: `docs/superpowers/plans/2026-10-14-dev-seed-test-counts-plan-181.md`.
