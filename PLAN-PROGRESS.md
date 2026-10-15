@@ -1,2 +1,3 @@
 Task 1; 76cacea9; red: CS0246/CS0103 before the helper; green: 19 of 19 ChangelogTextTests; deferrals: none
 Task 2; b03be8d6; red: 4 new ChangelogPageTests ElementNotFoundException; mutation: MarkupString on plain text failed OnSuccess_WritesMarkupInAnEntryAsText at the img assertion; green: 8 of 8 ChangelogPageTests, fast slice 3082 of 3082; deferrals: none
+Task 3; 71b0a9ab; mutation: @item in place of the foreach failed ChangelogPage_RendersEveryEntryInOrder_WithSpansAndNoMarkers at the entry-text Assert.Equal, format check green, 89 others green; green: E2E 90 of 90 (one earlier run lost 2 FirstPageLoadDiagnosticsTests to a 22 s boot-timing flake; both passed alone and in the rerun); deferrals: none
