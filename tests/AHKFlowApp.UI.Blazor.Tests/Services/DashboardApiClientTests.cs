@@ -18,7 +18,7 @@ public sealed class DashboardApiClientTests
         var dto = new DashboardStatsDto(
             new EntityStatsDto(15, 3, Enumerable.Repeat(1, 14).ToArray()),
             new EntityStatsDto(6, 1, Enumerable.Repeat(0, 14).ToArray()),
-            new ProfileStatsDto(5, 2, 1, Enumerable.Repeat(0, 14).ToArray()),
+            new EntityStatsDto(5, 2, Enumerable.Repeat(0, 14).ToArray()),
             Array.Empty<RecentActivityItemDto>());
         var handler = StubHttpMessageHandler.JsonResponse(HttpStatusCode.OK, dto);
 
@@ -26,7 +26,7 @@ public sealed class DashboardApiClientTests
 
         result.IsSuccess.Should().BeTrue();
         result.Value!.Hotstrings.Total.Should().Be(15);
-        result.Value.Profiles.Default.Should().Be(1);
+        result.Value.Profiles.CreatedThisWeek.Should().Be(2);
         handler.LastRequest!.RequestUri!.PathAndQuery.Should().Be("/api/v1/dashboard/stats");
         handler.LastRequest.Method.Should().Be(HttpMethod.Get);
     }

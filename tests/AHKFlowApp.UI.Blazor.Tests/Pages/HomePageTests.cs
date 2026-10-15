@@ -26,7 +26,7 @@ public sealed class HomePageTests : BunitContext, IAsyncLifetime
     private static DashboardStatsDto SampleStats() => new(
         new EntityStatsDto(15, 3, new int[14]),
         new EntityStatsDto(6, 1, new int[14]),
-        new ProfileStatsDto(5, 2, 1, new int[14]),
+        new EntityStatsDto(5, 4, new int[14]),
         [
             new RecentActivityItemDto("hotstring", "created", "yw", DateTimeOffset.UtcNow.AddMinutes(-2)),
         ]);
@@ -55,7 +55,8 @@ public sealed class HomePageTests : BunitContext, IAsyncLifetime
         cut.Markup.Should().Contain("HOTSTRINGS");
         cut.Markup.Should().Contain("15");
         cut.Markup.Should().Contain("+3 this week");
-        cut.Markup.Should().Contain("2 active");
+        cut.Find("[data-test=\"stat-card-profiles\"] [data-test=\"stat-card-footer\"]")
+            .TextContent.Should().Be("+4 this week");
         cut.Markup.Should().Contain("Recent activity");
         cut.Markup.Should().Contain("CLI quickstart");
     }

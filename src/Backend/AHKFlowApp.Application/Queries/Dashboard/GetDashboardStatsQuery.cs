@@ -52,12 +52,12 @@ internal sealed class GetDashboardStatsQueryHandler(
         var hotkeys = new EntityStatsDto(hotkeysTotal, hotkeysThisWeek, BuildBuckets(hotkeyWindow, bucketStart));
 
         int profilesTotal = await db.Profiles.CountAsync(p => p.OwnerOid == ownerOid, ct);
-        int profilesDefault = await db.Profiles.CountAsync(p => p.OwnerOid == ownerOid && p.IsDefault, ct);
+        int profilesThisWeek = await db.Profiles.CountAsync(p => p.OwnerOid == ownerOid && p.CreatedAt >= weekAgo, ct);
         List<DateTimeOffset> profileWindow = await db.Profiles
             .Where(p => p.OwnerOid == ownerOid && p.CreatedAt >= bucketStart)
             .Select(p => p.CreatedAt)
             .ToListAsync(ct);
-        var profiles = new ProfileStatsDto(profilesTotal, profilesTotal - profilesDefault, profilesDefault, BuildBuckets(profileWindow, bucketStart));
+        var profiles = new EntityStatsDto(profilesTotal, profilesThisWeek, BuildBuckets(profileWindow, bucketStart));
 
         IReadOnlyList<RecentActivityItemDto> recent = await BuildRecentActivityAsync(ownerOid, ct);
 

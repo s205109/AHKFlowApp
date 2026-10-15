@@ -61,8 +61,7 @@ public sealed class GetDashboardStatsQueryHandlerTests(DashboardDbFixture fx)
         result.Value.Hotstrings.Total.Should().Be(2);
         result.Value.Hotkeys.Total.Should().Be(1);
         result.Value.Profiles.Total.Should().Be(2);
-        result.Value.Profiles.Default.Should().Be(1);
-        result.Value.Profiles.Active.Should().Be(1);
+        result.Value.Profiles.CreatedThisWeek.Should().Be(2);
     }
 
     [Fact]
@@ -208,5 +207,22 @@ public sealed class GetDashboardStatsQueryHandlerTests(DashboardDbFixture fx)
 
         result.Value.Profiles.Total.Should().Be(1);
         (await ctx.Profiles.AnyAsync(p => p.OwnerOid == _ownerOid && p.Name == "Default")).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Profiles_created_this_week_uses_seven_day_window()
+    {
+        await using AppDbContext ctx = fx.CreateContext();
+        FakeTimeProvider inside = new(_clock.GetUtcNow().AddDays(-2));
+        FakeTimeProvider outside = new(_clock.GetUtcNow().AddDays(-8));
+        ctx.Profiles.AddRange(
+            new ProfileBuilder().WithOwner(_ownerOid).WithName("New").AsDefault(true).WithClock(inside).Build(),
+            new ProfileBuilder().WithOwner(_ownerOid).WithName("Old").AsDefault(false).WithClock(outside).Build());
+        await ctx.SaveChangesAsync();
+
+        Result<DashboardStatsDto> result = await CreateSut(ctx).ExecuteAsync(new GetDashboardStatsQuery(), CancellationToken.None);
+
+        result.Value.Profiles.Total.Should().Be(2);
+        result.Value.Profiles.CreatedThisWeek.Should().Be(1);
     }
 }
