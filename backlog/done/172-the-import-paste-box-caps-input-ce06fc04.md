@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: UI
 - **Difficulty**: moderate
-- **Stage**: 1-pickup
+- **Stage**: 9-ship
 
 ## Summary
 
@@ -21,11 +21,11 @@ half of it.
 
 ## Acceptance criteria
 
-- [ ] The paste box accepts a script up to `HotstringImportRules.MaxScriptLength`.
-- [ ] A paste larger than `HotstringImportRules.MaxScriptLength` produces a visible message that
+- [x] The paste box accepts a script up to `HotstringImportRules.MaxScriptLength`.
+- [x] A paste larger than `HotstringImportRules.MaxScriptLength` produces a visible message that
       says the script is too large. It is not cut down to the limit in silence.
-- [ ] The dialog sets its own maximum length rather than inheriting a component default.
-- [ ] A test covers a paste larger than 524,288 characters, and a second test covers a paste
+- [x] The dialog sets its own maximum length rather than inheriting a component default.
+- [x] A test covers a paste larger than 524,288 characters, and a second test covers a paste
       larger than `HotstringImportRules.MaxScriptLength`.
 
 ## Out of scope
@@ -52,4 +52,4 @@ half of it.
   every case right, including a duplicate against an earlier row in the same batch, matched
   without case. Only the edges produced findings.
 - Spec: none — the fix is to set the limit the server already states.
-- Plan: none — moderate work, goes straight to Plan at pickup.
+- Plan: `docs/superpowers/plans/2026-10-15-import-paste-box-limit-plan-172.md`

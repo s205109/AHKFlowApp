@@ -1,3 +1,4 @@
+using System.Globalization;
 using AHKFlowApp.UI.Blazor.Components.Hotstrings;
 using AHKFlowApp.UI.Blazor.DTOs;
 using AHKFlowApp.UI.Blazor.Services;
@@ -98,6 +99,71 @@ public sealed class HotstringImportDialogTests : BunitContext, IAsyncLifetime
 
         provider.WaitForAssertion(() =>
             provider.Find("button.confirm-import").HasAttribute("disabled").Should().BeTrue());
+    }
+
+    // Backlog 172. bUnit does not apply maxlength, so this pins the attribute itself;
+    // HotstringImportPasteFlowTests proves the browser behaviour.
+    [Fact]
+    public async Task ScriptBox_MaxLength_IsAboveTheServerLimit()
+    {
+        IRenderedComponent<MudDialogProvider> provider = await OpenDialogAsync();
+
+        string? maxLength = provider.Find("textarea[data-test=\"import-script\"]").GetAttribute("maxlength");
+
+        int.Parse(maxLength!, CultureInfo.InvariantCulture)
+            .Should().BeGreaterThan(HotstringImportDialog.MaxScriptLength);
+    }
+
+    [Fact]
+    public async Task PasteAboveLimit_ShowsTooLargeMessageAndDisablesPreview()
+    {
+        IRenderedComponent<MudDialogProvider> provider = await OpenDialogAsync();
+        int length = HotstringImportDialog.MaxScriptLength + 1;
+
+        provider.Find("textarea[data-test=\"import-script\"]").Input(new string('x', length));
+
+        provider.WaitForAssertion(() =>
+        {
+            provider.Find(".import-too-large").TextContent.Should().Contain(
+                "This script is too large to import. It has 1,048,577 characters. The limit is 1,048,576 characters.");
+            provider.Find("button.preview-import").HasAttribute("disabled").Should().BeTrue();
+        });
+    }
+
+    [Fact]
+    public async Task PasteAtLimit_ShowsNoMessageAndPreviewsTheWholeScript()
+    {
+        _api.PreviewImportAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HotstringImportPreviewDto>.Ok(new HotstringImportPreviewDto(
+                [], ReadyCount: 0, WarningCount: 0, DuplicateCount: 0, InvalidCount: 0)));
+        IRenderedComponent<MudDialogProvider> provider = await OpenDialogAsync();
+
+        provider.Find("textarea[data-test=\"import-script\"]")
+            .Input(new string('x', HotstringImportDialog.MaxScriptLength));
+        provider.FindAll(".import-too-large").Should().BeEmpty();
+        await provider.InvokeAsync(() => provider.Find("button.preview-import").Click());
+
+        await _api.Received(1).PreviewImportAsync(
+            Arg.Is<string>(s => s.Length == HotstringImportDialog.MaxScriptLength),
+            Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task CuttingAnOversizedScriptBackToTheLimit_ClearsMessageAndEnablesPreview()
+    {
+        IRenderedComponent<MudDialogProvider> provider = await OpenDialogAsync();
+        provider.Find("textarea[data-test=\"import-script\"]")
+            .Input(new string('x', HotstringImportDialog.MaxScriptLength + 1));
+        provider.WaitForAssertion(() => provider.FindAll(".import-too-large").Should().NotBeEmpty());
+
+        provider.Find("textarea[data-test=\"import-script\"]")
+            .Input(new string('x', HotstringImportDialog.MaxScriptLength));
+
+        provider.WaitForAssertion(() =>
+        {
+            provider.FindAll(".import-too-large").Should().BeEmpty();
+            provider.Find("button.preview-import").HasAttribute("disabled").Should().BeFalse();
+        });
     }
 
     [Fact]

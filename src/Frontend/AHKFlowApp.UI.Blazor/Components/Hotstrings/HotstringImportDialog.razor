@@ -3,6 +3,7 @@
 @using AHKFlowApp.UI.Blazor.Validation
 @using Microsoft.AspNetCore.Components.Forms
 @using MudBlazor
+@using System.Globalization
 @implements IDisposable
 
 <MudDialog Class="hotstring-import-dialog">
@@ -22,7 +23,12 @@
             <MudTextField T="string" @bind-Value="_script" @bind-Value:after="OnScriptChanged"
                           Label="Paste your .ahk script" Lines="8"
                           Variant="Variant.Outlined" Immediate="true"
+                          MaxLength="PasteBoxMaxLength"
                           UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "import-script" })" />
+            @if (_scriptTooLarge)
+            {
+                <MudAlert Class="import-too-large" Severity="Severity.Error">@TooLargeMessage</MudAlert>
+            }
 
             <MudFileUpload T="IBrowserFile" Accept=".ahk,.txt" FilesChanged="OnFileSelectedAsync">
                 <CustomContent>
@@ -45,7 +51,7 @@
 
             <MudButton Class="preview-import" Variant="Variant.Filled" Color="Color.Secondary"
                        StartIcon="@Icons.Material.Filled.Visibility"
-                       Disabled="@(string.IsNullOrWhiteSpace(_script) || _busy)"
+                       Disabled="@(string.IsNullOrWhiteSpace(_script) || _scriptTooLarge || _busy)"
                        OnClick="PreviewAsync">
                 Preview
             </MudButton>
@@ -94,6 +100,14 @@
 
     private const long MaxFileSizeBytes = 1_048_576;
 
+    /// <summary>Mirrors HotstringImportRules.MaxScriptLength on the server.</summary>
+    public const int MaxScriptLength = 1_048_576;
+
+    // The browser cuts a paste at maxlength and shows nothing. MudBlazor's default of 524,288 was
+    // half the server limit (backlog 172). So the box takes any length, and the dialog checks
+    // MaxScriptLength itself and says so on screen.
+    private const int PasteBoxMaxLength = int.MaxValue;
+
     private string _script = "";
     private bool _appliesToAllProfiles = true;
     private List<Guid> _profileIds = [];
@@ -104,6 +118,11 @@
     private readonly CancellationTokenSource _cts = new();
 
     private int _importableCount => _preview is null ? 0 : _preview.ReadyCount + _preview.WarningCount;
+
+    private bool _scriptTooLarge => _script is { Length: > MaxScriptLength };
+
+    private string TooLargeMessage => string.Create(CultureInfo.InvariantCulture,
+        $"This script is too large to import. It has {_script.Length:N0} characters. The limit is {MaxScriptLength:N0} characters.");
 
     protected override void OnParametersSet() =>
         _profileOptions = [.. Profiles.Select(p => new EntityOption(p.Id, p.Name))];
