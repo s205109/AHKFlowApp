@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: UI | API | CLI
 - **Difficulty**: moderate
-- **Stage**: 6-verify
+- **Stage**: 7-document
 
 ## Summary
 
