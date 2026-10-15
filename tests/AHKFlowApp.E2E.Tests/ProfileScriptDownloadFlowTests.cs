@@ -68,9 +68,7 @@ public sealed class ProfileScriptDownloadFlowTests(StackFixtureD fixture) : IAsy
         IDownload download = await page.RunAndWaitForDownloadAsync(() =>
             page.Locator("button.download-profile").First.ClickAsync());
 
-        // The saved name is the 15-character stamp, an underscore, then the API's name.
-        Assert.Matches(new Regex(@"^\d{8}_\d{6}_"), download.SuggestedFilename);
-        Assert.Equal(apiName, download.SuggestedFilename[16..]);
+        AssertStampedApiName(apiName, download);
     }
 
     [Fact]
@@ -104,11 +102,16 @@ public sealed class ProfileScriptDownloadFlowTests(StackFixtureD fixture) : IAsy
         await using FileStream stream = File.OpenRead(zipPath);
         using ZipArchive zip = new(stream, ZipArchiveMode.Read);
 
-        // The single download is the 15-character stamp, an underscore, then the API's name.
-        Assert.Matches(new Regex(@"^\d{8}_\d{6}_"), single.SuggestedFilename);
-        Assert.Equal(apiName, single.SuggestedFilename[16..]);
+        AssertStampedApiName(apiName, single);
         string[] entries = [.. zip.Entries.Select(e => e.Name)];
         Assert.True(entries.Contains(apiName), $"The zip holds {string.Join(", ", entries)}, not {apiName}.");
+    }
+
+    // The saved name is the 15-character stamp, an underscore, then the API's name.
+    private static void AssertStampedApiName(string apiName, IDownload download)
+    {
+        Assert.Matches(new Regex(@"^\d{8}_\d{6}_"), download.SuggestedFilename);
+        Assert.Equal(apiName, download.SuggestedFilename[16..]);
     }
 
     [Fact]
