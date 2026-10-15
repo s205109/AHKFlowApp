@@ -35,33 +35,25 @@ internal sealed class GetDashboardStatsQueryHandler(
         DateTimeOffset weekAgo = now.AddDays(-7);
         DateTimeOffset bucketStart = new DateTimeOffset(now.UtcDateTime.Date, TimeSpan.Zero).AddDays(-(BucketDays - 1));
 
-        int hotstringsTotal = await db.Hotstrings.CountAsync(h => h.OwnerOid == ownerOid, ct);
-        int hotstringsThisWeek = await db.Hotstrings.CountAsync(h => h.OwnerOid == ownerOid && h.CreatedAt >= weekAgo, ct);
-        List<DateTimeOffset> hotstringWindow = await db.Hotstrings
-            .Where(h => h.OwnerOid == ownerOid && h.CreatedAt >= bucketStart)
-            .Select(h => h.CreatedAt)
-            .ToListAsync(ct);
-        var hotstrings = new EntityStatsDto(hotstringsTotal, hotstringsThisWeek, BuildBuckets(hotstringWindow, bucketStart));
-
-        int hotkeysTotal = await db.Hotkeys.CountAsync(h => h.OwnerOid == ownerOid, ct);
-        int hotkeysThisWeek = await db.Hotkeys.CountAsync(h => h.OwnerOid == ownerOid && h.CreatedAt >= weekAgo, ct);
-        List<DateTimeOffset> hotkeyWindow = await db.Hotkeys
-            .Where(h => h.OwnerOid == ownerOid && h.CreatedAt >= bucketStart)
-            .Select(h => h.CreatedAt)
-            .ToListAsync(ct);
-        var hotkeys = new EntityStatsDto(hotkeysTotal, hotkeysThisWeek, BuildBuckets(hotkeyWindow, bucketStart));
-
-        int profilesTotal = await db.Profiles.CountAsync(p => p.OwnerOid == ownerOid, ct);
-        int profilesThisWeek = await db.Profiles.CountAsync(p => p.OwnerOid == ownerOid && p.CreatedAt >= weekAgo, ct);
-        List<DateTimeOffset> profileWindow = await db.Profiles
-            .Where(p => p.OwnerOid == ownerOid && p.CreatedAt >= bucketStart)
-            .Select(p => p.CreatedAt)
-            .ToListAsync(ct);
-        var profiles = new EntityStatsDto(profilesTotal, profilesThisWeek, BuildBuckets(profileWindow, bucketStart));
+        EntityStatsDto hotstrings = await BuildStatsAsync(
+            db.Hotstrings.Where(h => h.OwnerOid == ownerOid).Select(h => h.CreatedAt), weekAgo, bucketStart, ct);
+        EntityStatsDto hotkeys = await BuildStatsAsync(
+            db.Hotkeys.Where(h => h.OwnerOid == ownerOid).Select(h => h.CreatedAt), weekAgo, bucketStart, ct);
+        EntityStatsDto profiles = await BuildStatsAsync(
+            db.Profiles.Where(p => p.OwnerOid == ownerOid).Select(p => p.CreatedAt), weekAgo, bucketStart, ct);
 
         IReadOnlyList<RecentActivityItemDto> recent = await BuildRecentActivityAsync(ownerOid, ct);
 
         return Result.Success(new DashboardStatsDto(hotstrings, hotkeys, profiles, recent));
+    }
+
+    // The bucket window starts 13 days back, so it already holds every row from the past week.
+    private static async Task<EntityStatsDto> BuildStatsAsync(
+        IQueryable<DateTimeOffset> createdAt, DateTimeOffset weekAgo, DateTimeOffset bucketStart, CancellationToken ct)
+    {
+        int total = await createdAt.CountAsync(ct);
+        List<DateTimeOffset> window = await createdAt.Where(d => d >= bucketStart).ToListAsync(ct);
+        return new EntityStatsDto(total, window.Count(d => d >= weekAgo), BuildBuckets(window, bucketStart));
     }
 
     private static IReadOnlyList<int> BuildBuckets(IEnumerable<DateTimeOffset> dates, DateTimeOffset bucketStart)
