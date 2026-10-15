@@ -20,6 +20,9 @@ internal static class ApiExtensions
                               .Contains(origin, StringComparer.OrdinalIgnoreCase))
                       .WithMethods("GET", "POST", "PUT", "DELETE")
                       .WithHeaders("Content-Type", "Authorization")
+                      // The UI names a downloaded script from Content-Disposition. A browser hides
+                      // that header from a page on another origin unless the policy lists it here.
+                      .WithExposedHeaders("Content-Disposition")
                       .AllowCredentials()));
     }
 
