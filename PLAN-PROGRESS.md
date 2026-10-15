@@ -1,2 +1,0 @@
-Task 1; 10d3d18a; committed by a parallel session, reviewed against the plan here, indent fixed in 3312aee6; red: build fails without HotstringImportDialog.MaxScriptLength; green: HotstringImportDialogTests 9 of 9; deferrals: none
-Task 2; 1c69dd21; red with MaxLength removed: both new tests failed at Assert.Equal, Actual 524288; green restored: E2E 89 of 89; deviations: paste via clipboard and Control+V instead of FillAsync (fill took >60 s at 1 MiB with line breaks, a real paste 0.5 s), BuildScript off-by-one fixed after the red run; deferrals: none
