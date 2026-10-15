@@ -121,9 +121,8 @@
 
     private bool _scriptTooLarge => _script is { Length: > MaxScriptLength };
 
-    private string TooLargeMessage =>
-        $"This script is too large to import. It has {_script.Length.ToString("N0", CultureInfo.InvariantCulture)} characters. " +
-        $"The limit is {MaxScriptLength.ToString("N0", CultureInfo.InvariantCulture)} characters.";
+    private string TooLargeMessage => string.Create(CultureInfo.InvariantCulture,
+        $"This script is too large to import. It has {_script.Length:N0} characters. The limit is {MaxScriptLength:N0} characters.");
 
     protected override void OnParametersSet() =>
         _profileOptions = [.. Profiles.Select(p => new EntityOption(p.Id, p.Name))];

@@ -101,9 +101,8 @@ public sealed class HotstringImportDialogTests : BunitContext, IAsyncLifetime
             provider.Find("button.confirm-import").HasAttribute("disabled").Should().BeTrue());
     }
 
-    // Backlog 172. MudBlazor renders maxlength=524288 unless the page sets one, and the browser
-    // cuts a longer paste without a word. bUnit does not apply maxlength, so this pins the
-    // attribute itself; HotstringImportPasteFlowTests proves the browser behaviour.
+    // Backlog 172. bUnit does not apply maxlength, so this pins the attribute itself;
+    // HotstringImportPasteFlowTests proves the browser behaviour.
     [Fact]
     public async Task ScriptBox_MaxLength_IsAboveTheServerLimit()
     {
@@ -123,12 +122,10 @@ public sealed class HotstringImportDialogTests : BunitContext, IAsyncLifetime
 
         provider.Find("textarea[data-test=\"import-script\"]").Input(new string('x', length));
 
-        string expected =
-            $"This script is too large to import. It has {length.ToString("N0", CultureInfo.InvariantCulture)} characters. " +
-            $"The limit is {HotstringImportDialog.MaxScriptLength.ToString("N0", CultureInfo.InvariantCulture)} characters.";
         provider.WaitForAssertion(() =>
         {
-            provider.Find(".import-too-large").TextContent.Should().Contain(expected);
+            provider.Find(".import-too-large").TextContent.Should().Contain(
+                "This script is too large to import. It has 1,048,577 characters. The limit is 1,048,576 characters.");
             provider.Find("button.preview-import").HasAttribute("disabled").Should().BeTrue();
         });
     }
