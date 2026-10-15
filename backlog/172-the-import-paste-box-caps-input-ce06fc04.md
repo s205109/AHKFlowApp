@@ -52,4 +52,4 @@ half of it.
   every case right, including a duplicate against an earlier row in the same batch, matched
   without case. Only the edges produced findings.
 - Spec: none — the fix is to set the limit the server already states.
-- Plan: none — moderate work, goes straight to Plan at pickup.
+- Plan: `docs/superpowers/plans/2026-10-15-import-paste-box-limit-plan-172.md`
