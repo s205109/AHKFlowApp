@@ -32,7 +32,7 @@ public sealed class DevController(
         CancellationToken ct = default) =>
         (await seedHotstrings.ExecuteAsync(new SeedHotstringsCommand(reset), ct)).ToProblemActionResult(this);
 
-    /// <summary>Seeds the eight default categories for the authenticated user. Development only.</summary>
+    /// <summary>Seeds 8 default categories for the authenticated user. Development only.</summary>
     [HttpPost("categories/seed")]
     [ProducesResponseType(typeof(IReadOnlyList<CategoryDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]

@@ -1,8 +1,10 @@
 using AHKFlowApp.Application;
+using AHKFlowApp.Application.Constants;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Application.Queries.Categories;
 using AHKFlowApp.Application.Queries.Hotkeys;
 using AHKFlowApp.Application.Tests.Dev;
+using AHKFlowApp.Domain.Constants;
 using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Infrastructure.Persistence;
 using AHKFlowApp.TestUtilities.Builders;
@@ -20,11 +22,13 @@ namespace AHKFlowApp.Application.Tests.Hotkeys;
 public sealed class ListHotkeysLazySeedTests(HotkeyDbFixture fx)
 {
     private readonly FakeTimeProvider _clock = new(DateTimeOffset.Parse("2026-05-23T10:00:00Z"));
+    // Derived from the catalog, so a catalog change does not break every count assertion.
+    private static readonly int SampleCount = DefaultHotkeyCatalog.All.Count;
     private static readonly AppEnvironment s_dev = new(IsDevelopment: true);
     private static readonly AppEnvironment s_prod = new(IsDevelopment: false);
 
     [Fact]
-    public async Task Handle_FirstCallInDev_Seeds19Hotkeys()
+    public async Task Handle_FirstCallInDev_SeedsAllHotkeys()
     {
         var owner = Guid.NewGuid();
         await using AppDbContext ctx = fx.CreateContext();
@@ -33,7 +37,7 @@ public sealed class ListHotkeysLazySeedTests(HotkeyDbFixture fx)
         Result<PagedList<HotkeyDto>> result = await sut.ExecuteAsync(new ListHotkeysQuery(), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
-        result.Value.TotalCount.Should().Be(19);
+        result.Value.TotalCount.Should().Be(SampleCount);
     }
 
     [Fact]
@@ -64,7 +68,7 @@ public sealed class ListHotkeysLazySeedTests(HotkeyDbFixture fx)
         Result<PagedList<HotkeyDto>> result = await sut2.ExecuteAsync(new ListHotkeysQuery(), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
-        result.Value.TotalCount.Should().Be(19);
+        result.Value.TotalCount.Should().Be(SampleCount);
     }
 
     [Fact]
@@ -91,7 +95,7 @@ public sealed class ListHotkeysLazySeedTests(HotkeyDbFixture fx)
 
         await using AppDbContext ctx2 = fx.CreateContext();
         int categoryCount = await ctx2.Categories.CountAsync(c => c.OwnerOid == owner);
-        categoryCount.Should().Be(8);
+        categoryCount.Should().Be(DefaultCategories.Names.Count);
     }
 
     [Fact]
@@ -113,7 +117,7 @@ public sealed class ListHotkeysLazySeedTests(HotkeyDbFixture fx)
         Result<PagedList<HotkeyDto>> result = await sut.ExecuteAsync(new ListHotkeysQuery(), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
-        result.Value.TotalCount.Should().Be(19);
+        result.Value.TotalCount.Should().Be(SampleCount);
 
         // Marker persisted (the bug: lazy-seed would have detached pref on duplicate-key)
         await using AppDbContext verify = fx.CreateContext();
@@ -176,7 +180,7 @@ public sealed class ListHotkeysLazySeedTests(HotkeyDbFixture fx)
     }
 
     // Regression: the hotkeys page loads categories and hotkeys concurrently, so the categories
-    // seeder can commit the shared UserPreference row and the 8 default categories between this
+    // seeder can commit the shared UserPreference row and the default categories between this
     // handler's read and its save. The resulting duplicate-key violation must not be mistaken
     // for "someone else already seeded the hotkeys".
     [Fact]
@@ -200,10 +204,10 @@ public sealed class ListHotkeysLazySeedTests(HotkeyDbFixture fx)
         int hotkeyCount = await verify.Hotkeys.CountAsync(h => h.OwnerOid == owner);
 
         result.IsSuccess.Should().BeTrue();
-        result.Value.TotalCount.Should().Be(19);
+        result.Value.TotalCount.Should().Be(SampleCount);
         pref!.CategoriesSeededAt.Should().NotBeNull();
         pref.HotkeysSeededAt.Should().NotBeNull();
-        hotkeyCount.Should().Be(19);
+        hotkeyCount.Should().Be(SampleCount);
     }
 
     [Fact]
@@ -230,7 +234,7 @@ public sealed class ListHotkeysLazySeedTests(HotkeyDbFixture fx)
         int hotkeyCount = await verify.Hotkeys.CountAsync(h => h.OwnerOid == owner);
 
         result.IsSuccess.Should().BeTrue();
-        result.Value.TotalCount.Should().Be(19);
-        hotkeyCount.Should().Be(19);
+        result.Value.TotalCount.Should().Be(SampleCount);
+        hotkeyCount.Should().Be(SampleCount);
     }
 }

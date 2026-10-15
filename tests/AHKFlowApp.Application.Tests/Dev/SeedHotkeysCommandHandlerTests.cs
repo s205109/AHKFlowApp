@@ -1,5 +1,6 @@
 using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Application.Commands.Dev;
+using AHKFlowApp.Application.Constants;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Infrastructure.Persistence;
 using Ardalis.Result;
@@ -14,7 +15,9 @@ namespace AHKFlowApp.Application.Tests.Dev;
 [Trait("Category", "Integration")]
 public sealed class SeedHotkeysCommandHandlerTests(DevDbFixture fx)
 {
-    private const int SampleCount = 19;
+    // Derived from the catalog, so a catalog change does not break every count assertion.
+    private static readonly int SampleCount = DefaultHotkeyCatalog.All.Count;
+    private static readonly int LinkCount = DefaultHotkeyCatalog.All.Sum(h => h.Categories.Length);
 
     private readonly Guid _ownerOid = Guid.NewGuid();
     private readonly AppEnvironment _devEnv = new(IsDevelopment: true);
@@ -110,7 +113,7 @@ public sealed class SeedHotkeysCommandHandlerTests(DevDbFixture fx)
         Result<PagedList<HotkeyDto>> result = await Sut(db).ExecuteAsync(new SeedHotkeysCommand(Reset: true), default);
 
         result.Value.Items.Should().HaveCount(SampleCount);
-        result.Value.Items.Sum(h => h.CategoryIds.Length).Should().Be(SampleCount);
+        result.Value.Items.Sum(h => h.CategoryIds.Length).Should().Be(LinkCount);
     }
 
     [Fact]
@@ -129,7 +132,7 @@ public sealed class SeedHotkeysCommandHandlerTests(DevDbFixture fx)
         await using AppDbContext db = fx.CreateContext();
         Result<PagedList<HotkeyDto>> result = await Sut(db).ExecuteAsync(new SeedHotkeysCommand(Reset: false), default);
 
-        result.Value.Items.Sum(h => h.CategoryIds.Length).Should().Be(SampleCount);
+        result.Value.Items.Sum(h => h.CategoryIds.Length).Should().Be(LinkCount);
         result.Value.Items.Single(h => h.Description == "Launch Notepad").CategoryIds
             .Should().ContainSingle().Which.Should().Be(catByName["App Launcher"]);
         result.Value.Items.Single(h => h.Description == "Maximize window").CategoryIds
@@ -167,7 +170,7 @@ public sealed class SeedHotkeysCommandHandlerTests(DevDbFixture fx)
         Result<PagedList<HotkeyDto>> result = await Sut(db).ExecuteAsync(new SeedHotkeysCommand(Reset: false), default);
 
         result.Value.Items.Should().HaveCount(SampleCount);
-        result.Value.Items.Sum(h => h.CategoryIds.Length).Should().Be(SampleCount);
+        result.Value.Items.Sum(h => h.CategoryIds.Length).Should().Be(LinkCount);
     }
 
     [Fact]
@@ -185,7 +188,7 @@ public sealed class SeedHotkeysCommandHandlerTests(DevDbFixture fx)
 
         await using AppDbContext verify = fx.CreateContext();
         int junctions = await verify.HotkeyCategories.CountAsync(hc => hc.Hotkey.OwnerOid == _ownerOid);
-        junctions.Should().Be(SampleCount);
+        junctions.Should().Be(LinkCount);
     }
 
     [Fact]
@@ -211,6 +214,6 @@ public sealed class SeedHotkeysCommandHandlerTests(DevDbFixture fx)
         Result<PagedList<HotkeyDto>> result = await Sut(db).ExecuteAsync(new SeedHotkeysCommand(Reset: false), default);
 
         result.Value.Items.Should().HaveCount(SampleCount);
-        result.Value.Items.Sum(h => h.CategoryIds.Length).Should().Be(SampleCount);
+        result.Value.Items.Sum(h => h.CategoryIds.Length).Should().Be(LinkCount);
     }
 }

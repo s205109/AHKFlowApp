@@ -1,7 +1,9 @@
 using AHKFlowApp.Application;
 using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Application.Commands.Dev;
+using AHKFlowApp.Application.Constants;
 using AHKFlowApp.Application.DTOs;
+using AHKFlowApp.Domain.Constants;
 using AHKFlowApp.Infrastructure.Persistence;
 using Ardalis.Result;
 using FluentAssertions;
@@ -51,14 +53,14 @@ public sealed class SeedAllCommandHandlerTests(DevDbFixture fx)
             .ExecuteAsync(new SeedAllCommand(Reset: false), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
-        result.Value.CategoriesCount.Should().Be(8);
+        result.Value.CategoriesCount.Should().Be(DefaultCategories.Names.Count);
         result.Value.HotstringsCount.Should().Be(HotstringSeedSamples.All.Length);
-        result.Value.HotkeysCount.Should().Be(19);
+        result.Value.HotkeysCount.Should().Be(DefaultHotkeyCatalog.All.Count);
 
         await using AppDbContext verify = fx.CreateContext();
-        // Every sample carries exactly one category, so the junction count tracks the sample count.
-        (await verify.HotstringCategories.CountAsync(hc => hc.Hotstring.OwnerOid == _ownerOid)).Should().Be(HotstringSeedSamples.All.Length);
-        (await verify.HotkeyCategories.CountAsync(hc => hc.Hotkey.OwnerOid == _ownerOid)).Should().Be(19);
+        // One junction row per category name on each catalog row.
+        (await verify.HotstringCategories.CountAsync(hc => hc.Hotstring.OwnerOid == _ownerOid)).Should().Be(HotstringSeedSamples.All.Sum(s => s.Categories.Length));
+        (await verify.HotkeyCategories.CountAsync(hc => hc.Hotkey.OwnerOid == _ownerOid)).Should().Be(DefaultHotkeyCatalog.All.Sum(h => h.Categories.Length));
     }
 
     [Fact]
@@ -78,9 +80,9 @@ public sealed class SeedAllCommandHandlerTests(DevDbFixture fx)
             .ExecuteAsync(new SeedAllCommand(Reset: true), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
-        result.Value.CategoriesCount.Should().Be(8);
+        result.Value.CategoriesCount.Should().Be(DefaultCategories.Names.Count);
         result.Value.HotstringsCount.Should().Be(HotstringSeedSamples.All.Length);
-        result.Value.HotkeysCount.Should().Be(19);
+        result.Value.HotkeysCount.Should().Be(DefaultHotkeyCatalog.All.Count);
     }
 
     [Fact]

@@ -1,6 +1,7 @@
 using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Application.Commands.Dev;
 using AHKFlowApp.Application.DTOs;
+using AHKFlowApp.Domain.Constants;
 using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Infrastructure.Persistence;
 using AHKFlowApp.TestUtilities.Builders;
@@ -29,7 +30,7 @@ public sealed class SeedCategoriesCommandHandlerTests(DevDbFixture fx)
     }
 
     [Fact]
-    public async Task Seed_Inserts_EightDefaultCategories_AndMarksUserPreference()
+    public async Task Seed_Inserts_AllDefaultCategories_AndMarksUserPreference()
     {
         await using AppDbContext ctx = fx.CreateContext();
         var sut = new SeedCategoriesCommandHandler(ctx, User(), _clock, _devEnv);
@@ -37,8 +38,8 @@ public sealed class SeedCategoriesCommandHandlerTests(DevDbFixture fx)
         Result<IReadOnlyList<CategoryDto>> result = await sut.ExecuteAsync(new SeedCategoriesCommand(Reset: false), default);
 
         result.IsSuccess.Should().BeTrue();
-        result.Value.Should().HaveCount(8);
-        (await ctx.Categories.CountAsync(c => c.OwnerOid == _ownerOid)).Should().Be(8);
+        result.Value.Should().HaveCount(DefaultCategories.Names.Count);
+        (await ctx.Categories.CountAsync(c => c.OwnerOid == _ownerOid)).Should().Be(DefaultCategories.Names.Count);
 
         UserPreference? pref = await ctx.UserPreferences.AsNoTracking().FirstOrDefaultAsync(p => p.OwnerOid == _ownerOid);
         pref.Should().NotBeNull();
@@ -56,7 +57,7 @@ public sealed class SeedCategoriesCommandHandlerTests(DevDbFixture fx)
 
         await sut.ExecuteAsync(new SeedCategoriesCommand(Reset: false), default);
 
-        (await ctx.Categories.CountAsync(c => c.OwnerOid == _ownerOid)).Should().Be(8);
+        (await ctx.Categories.CountAsync(c => c.OwnerOid == _ownerOid)).Should().Be(DefaultCategories.Names.Count);
     }
 
     [Fact]
@@ -75,7 +76,7 @@ public sealed class SeedCategoriesCommandHandlerTests(DevDbFixture fx)
         await sut.ExecuteAsync(new SeedCategoriesCommand(Reset: true), default);
 
         List<string> names = await ctx.Categories.Where(c => c.OwnerOid == _ownerOid).Select(c => c.Name).ToListAsync();
-        names.Should().HaveCount(8);
+        names.Should().HaveCount(DefaultCategories.Names.Count);
         names.Should().NotContain(["Custom1", "Custom2"]);
 
         UserPreference pref = await ctx.UserPreferences.AsNoTracking().FirstAsync(p => p.OwnerOid == _ownerOid);
@@ -83,7 +84,7 @@ public sealed class SeedCategoriesCommandHandlerTests(DevDbFixture fx)
     }
 
     [Fact]
-    public async Task Reseed_AfterFullSeed_KeepsEightCategories()
+    public async Task Reseed_AfterFullSeed_KeepsAllDefaultCategories()
     {
         await using AppDbContext ctx = fx.CreateContext();
         var sut = new SeedCategoriesCommandHandler(ctx, User(), _clock, _devEnv);
@@ -93,7 +94,7 @@ public sealed class SeedCategoriesCommandHandlerTests(DevDbFixture fx)
         var sut2 = new SeedCategoriesCommandHandler(ctx2, User(), _clock, _devEnv);
         await sut2.ExecuteAsync(new SeedCategoriesCommand(Reset: true), default);
 
-        (await ctx2.Categories.CountAsync(c => c.OwnerOid == _ownerOid)).Should().Be(8);
+        (await ctx2.Categories.CountAsync(c => c.OwnerOid == _ownerOid)).Should().Be(DefaultCategories.Names.Count);
     }
 
     [Fact]

@@ -16,7 +16,7 @@ public sealed class DevSeedEndpointTests(ApiTestFixture fixture)
     private readonly CustomWebApplicationFactory _factory = fixture.Factory;
 
     [Fact]
-    public async Task SeedCategories_Returns200WithEightCategories()
+    public async Task SeedCategories_Returns200WithAllDefaultCategories()
     {
         using HttpClient client = _factory.CreateAuthenticatedClient(b => b.WithOid(Guid.NewGuid()));
 
@@ -25,7 +25,7 @@ public sealed class DevSeedEndpointTests(ApiTestFixture fixture)
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
         List<CategoryDto>? body = await resp.Content.ReadFromJsonAsync<List<CategoryDto>>();
         body.Should().NotBeNull();
-        body!.Should().HaveCount(8);
+        body!.Should().HaveCount(SeedCatalogCounts.Categories);
     }
 
     [Fact]
@@ -38,37 +38,34 @@ public sealed class DevSeedEndpointTests(ApiTestFixture fixture)
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
         PagedList<HotkeyDto>? body = await resp.Content.ReadFromJsonAsync<PagedList<HotkeyDto>>();
         body.Should().NotBeNull();
-        body!.Items.Should().HaveCount(19);
+        body!.Items.Should().HaveCount(SeedCatalogCounts.Hotkeys);
+    }
+
+    [Fact]
+    public async Task SeedCategories_SwaggerSummary_StatesTheSeededCount()
+    {
+        // Backlog 181. The summary spelled the count as a word, and no test held it.
+
+        // Act
+        string? summary = await ReadSwaggerSummaryAsync("/api/v1/dev/categories/seed");
+
+        // Assert
+        summary.Should().Contain($"Seeds {SeedCatalogCounts.Categories} default categories",
+            "the XML summary on DevController.SeedCategories must state the number of categories the endpoint seeds");
     }
 
     [Fact]
     public async Task SeedHotkeys_SwaggerSummary_StatesTheSeededCount()
     {
         // The summary reaches the Swagger page. Backlog 173 found it saying 17 while the catalog
-        // seeded 19. The count comes from the endpoint, so a catalog change fails this test.
-
-        // Arrange
-        using HttpClient seedClient = _factory.CreateAuthenticatedClient(b => b.WithOid(Guid.NewGuid()));
-        HttpResponseMessage seeded = await seedClient.PostAsync("/api/v1/dev/hotkeys/seed?reset=true", content: null);
-        seeded.StatusCode.Should().Be(HttpStatusCode.OK);
-        PagedList<HotkeyDto>? body = await seeded.Content.ReadFromJsonAsync<PagedList<HotkeyDto>>();
-        int seededCount = body!.Items.Count;
-
-        using HttpClient docClient = _factory.CreateClient();
+        // seeded 19. The count comes from the catalog, so a catalog change fails this test until
+        // the summary is updated.
 
         // Act
-        await using Stream stream = await docClient.GetStreamAsync("/swagger/v1/swagger.json");
-        using JsonDocument doc = await JsonDocument.ParseAsync(stream);
+        string? summary = await ReadSwaggerSummaryAsync("/api/v1/dev/hotkeys/seed");
 
         // Assert
-        string? summary = doc.RootElement
-            .GetProperty("paths")
-            .GetProperty("/api/v1/dev/hotkeys/seed")
-            .GetProperty("post")
-            .GetProperty("summary")
-            .GetString();
-
-        summary.Should().Contain($"Seeds {seededCount} sample hotkeys",
+        summary.Should().Contain($"Seeds {SeedCatalogCounts.Hotkeys} sample hotkeys",
             "the XML summary on DevController.SeedHotkeys must state the number of hotkeys the endpoint seeds");
     }
 
@@ -82,9 +79,9 @@ public sealed class DevSeedEndpointTests(ApiTestFixture fixture)
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
         SeedAllResultDto? result = await resp.Content.ReadFromJsonAsync<SeedAllResultDto>();
         result.Should().NotBeNull();
-        result!.CategoriesCount.Should().Be(8);
-        result.HotstringsCount.Should().Be(16);
-        result.HotkeysCount.Should().Be(19);
+        result!.CategoriesCount.Should().Be(SeedCatalogCounts.Categories);
+        result.HotstringsCount.Should().Be(SeedCatalogCounts.Hotstrings);
+        result.HotkeysCount.Should().Be(SeedCatalogCounts.Hotkeys);
     }
 
     [Fact]
@@ -98,9 +95,9 @@ public sealed class DevSeedEndpointTests(ApiTestFixture fixture)
         resp.StatusCode.Should().Be(HttpStatusCode.OK);
         SeedAllResultDto? result = await resp.Content.ReadFromJsonAsync<SeedAllResultDto>();
         result.Should().NotBeNull();
-        result!.CategoriesCount.Should().Be(8);
-        result.HotstringsCount.Should().Be(16);
-        result.HotkeysCount.Should().Be(19);
+        result!.CategoriesCount.Should().Be(SeedCatalogCounts.Categories);
+        result.HotstringsCount.Should().Be(SeedCatalogCounts.Hotstrings);
+        result.HotkeysCount.Should().Be(SeedCatalogCounts.Hotkeys);
     }
 
     [Fact]
@@ -128,5 +125,19 @@ public sealed class DevSeedEndpointTests(ApiTestFixture fixture)
         HttpResponseMessage resp = await client.PostAsync("/api/v1/dev/seed-all?reset=true", content: null);
 
         resp.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    private async Task<string?> ReadSwaggerSummaryAsync(string path)
+    {
+        using HttpClient client = _factory.CreateClient();
+        await using Stream stream = await client.GetStreamAsync("/swagger/v1/swagger.json");
+        using JsonDocument doc = await JsonDocument.ParseAsync(stream);
+
+        return doc.RootElement
+            .GetProperty("paths")
+            .GetProperty(path)
+            .GetProperty("post")
+            .GetProperty("summary")
+            .GetString();
     }
 }

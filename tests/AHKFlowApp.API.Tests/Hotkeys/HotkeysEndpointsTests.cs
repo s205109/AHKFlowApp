@@ -392,7 +392,7 @@ public sealed class HotkeysEndpointsTests(ApiTestFixture fixture)
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         PagedList<HotkeyDto>? body = await response.Content.ReadFromJsonAsync<PagedList<HotkeyDto>>();
-        body!.TotalCount.Should().Be(24);  // 5 created + 19 lazy-seeded in dev
+        body!.TotalCount.Should().Be(5 + SeedCatalogCounts.Hotkeys);  // 5 created + the lazy seed in dev
         body.Items.Should().HaveCount(2);
         body.Page.Should().Be(2);
     }
