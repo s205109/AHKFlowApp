@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: UI | API
 - **Difficulty**: moderate
-- **Stage**: 7-document
+- **Stage**: 8-review
 
 ## Summary
 
@@ -21,11 +21,11 @@ think the app lost it.
 
 ## Acceptance criteria
 
-- [ ] A brand-new owner's first view of `/` reports the profile count the app guarantees, with no
+- [x] A brand-new owner's first view of `/` reports the profile count the app guarantees, with no
       visit to `/profiles` first.
-- [ ] The profiles card footer uses words that match `CONTEXT.md`, which gives a Profile no
+- [x] The profiles card footer uses words that match `CONTEXT.md`, which gives a Profile no
       active or inactive state.
-- [ ] An integration test asserts the dashboard count for an owner who has never called
+- [x] An integration test asserts the dashboard count for an owner who has never called
       `GET /api/v1/profiles`.
 
 ## Out of scope
