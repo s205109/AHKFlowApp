@@ -7,6 +7,17 @@ public static class AhkFileNaming
     private const int MaxStemLength = 64;
     private const string EmptyFallback = "profile";
 
+    /// <summary>
+    /// Turns a profile name into a file-name stem. Every run of unsafe characters becomes one
+    /// underscore. Only ASCII letters, digits, <c>.</c> and <c>-</c> survive. This is the only copy
+    /// of the rule: the UI and the CLI both save a script under the name the API sends.
+    /// </summary>
+    /// <remarks>
+    /// Leading underscores are trimmed before the cut to 64 characters, and trailing underscores
+    /// after it. Trimming the end before the cut can leave a trailing underscore: a long name may
+    /// collapse to text whose 64th character is an underscore, which the earlier trim never saw.
+    /// Trimming the start first keeps as many real characters as fit.
+    /// </remarks>
     public static string ToSafeStem(string profileName)
     {
         if (string.IsNullOrEmpty(profileName))
@@ -29,13 +40,13 @@ public static class AhkFileNaming
             }
         }
 
-        string collapsed = sb.ToString().Trim('_');
-        if (collapsed.Length == 0)
-            return EmptyFallback;
-
-        return collapsed.Length > MaxStemLength
+        string collapsed = sb.ToString().TrimStart('_');
+        string truncated = collapsed.Length > MaxStemLength
             ? collapsed[..MaxStemLength]
             : collapsed;
+        string trimmed = truncated.TrimEnd('_');
+
+        return trimmed.Length == 0 ? EmptyFallback : trimmed;
     }
 
     public static string FileName(string profileName) =>

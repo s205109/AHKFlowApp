@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using System.Text.RegularExpressions;
 using AHKFlowApp.E2E.Tests.Fixtures;
 using Microsoft.Playwright;
@@ -40,6 +41,77 @@ public sealed class ProfileScriptDownloadFlowTests(StackFixtureD fixture) : IAsy
         // The option letters belong to the hotstring's own defaults, so the assertion starts at
         // the trigger. What matters here is that the file holds this profile's script.
         Assert.Contains("dlflow::downloaded from profiles", script, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task SingleDownload_SavesUnderTheNameTheApiSends()
+    {
+        // Backlog 171. The route answers every single download with a file name that no seeded
+        // profile produces. So the saved name can only come from the API's Content-Disposition
+        // header, never from a profile name the UI turned into a stem itself.
+        const string apiName = "ahkflow_Named_By_The_Route.ahk";
+
+        await using IBrowserContext ctx = await fixture.Browser.NewContextAsync();
+        await ctx.RouteAsync("**/api/v1/downloads/*", route => route.FulfillAsync(new RouteFulfillOptions
+        {
+            Status = 200,
+            ContentType = "text/plain; charset=utf-8",
+            Headers = new Dictionary<string, string>
+            {
+                ["Content-Disposition"] = $"attachment; filename={apiName}",
+            },
+            Body = "; served by the test route",
+        }));
+
+        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/downloads");
+        await page.WaitForSelectorAsync("button.download-profile");
+        IDownload download = await page.RunAndWaitForDownloadAsync(() =>
+            page.Locator("button.download-profile").First.ClickAsync());
+
+        AssertStampedApiName(apiName, download);
+    }
+
+    [Fact]
+    public async Task LongName_SingleDownloadAndZip_UseOneStem()
+    {
+        // Backlog 171. 63 letters, a space, then 'bbb'. The stem's 64th character is the
+        // underscore, which is where the API and the UI used to disagree.
+        string profileName = new string('a', 63) + " bbb";
+        string apiName = "ahkflow_" + new string('a', 63) + ".ahk";
+
+        await using IBrowserContext ctx = await fixture.Browser.NewContextAsync();
+
+        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/profiles");
+        await page.WaitForSelectorAsync("button.add-profile");
+        await page.ClickAsync("button.add-profile");
+        await page.FillAsync("input[data-test=\"profile-name-input\"]", profileName);
+        await page.ClickAsync("button.commit-edit");
+        await page.WaitForSelectorAsync("text=Profile created.");
+
+        await page.GotoAsync($"{fixture.Spa.BaseUrl}/downloads");
+        await page.WaitForSelectorAsync("button.download-profile");
+        // Scope the click to the new profile's row. The seeded profiles have their own rows.
+        ILocator row = page.Locator("tr").Filter(new() { HasTextString = profileName }).First;
+        IDownload single = await page.RunAndWaitForDownloadAsync(() =>
+            row.Locator("button.download-profile").ClickAsync());
+
+        IDownload zipDownload = await page.RunAndWaitForDownloadAsync(() =>
+            page.ClickAsync("button.download-all"));
+        string zipPath = await zipDownload.PathAsync()
+            ?? throw new InvalidOperationException("The zip download produced no file path.");
+        await using FileStream stream = File.OpenRead(zipPath);
+        using ZipArchive zip = new(stream, ZipArchiveMode.Read);
+
+        AssertStampedApiName(apiName, single);
+        string[] entries = [.. zip.Entries.Select(e => e.Name)];
+        Assert.True(entries.Contains(apiName), $"The zip holds {string.Join(", ", entries)}, not {apiName}.");
+    }
+
+    // The saved name is the 15-character stamp, an underscore, then the API's name.
+    private static void AssertStampedApiName(string apiName, IDownload download)
+    {
+        Assert.Matches(new Regex(@"^\d{8}_\d{6}_"), download.SuggestedFilename);
+        Assert.Equal(apiName, download.SuggestedFilename[16..]);
     }
 
     [Fact]

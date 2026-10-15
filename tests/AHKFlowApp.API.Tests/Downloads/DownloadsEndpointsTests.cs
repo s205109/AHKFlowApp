@@ -118,6 +118,24 @@ public sealed class DownloadsEndpointsTests(ApiTestFixture fixture)
     }
 
     [Fact]
+    public async Task GET_per_profile_and_zip_name_one_stem_when_the_cut_lands_on_an_underscore()
+    {
+        // Backlog 171. 63 letters, a space, then 'bbb': the stem's 64th character is the
+        // underscore. Before the fix both names ended in '_.ahk'.
+        string expected = "ahkflow_" + new string('a', 63) + ".ahk";
+        using HttpClient client = CreateAuthed();
+        ProfileDto profile = await CreateProfileAsync(client, new string('a', 63) + " bbb");
+
+        HttpResponseMessage single = await client.GetAsync($"/api/v1/downloads/{profile.Id}");
+        HttpResponseMessage all = await client.GetAsync("/api/v1/downloads/zip");
+
+        single.Content.Headers.ContentDisposition!.FileName.Should().Be(expected);
+        await using Stream stream = await all.Content.ReadAsStreamAsync();
+        using ZipArchive zip = new(stream, ZipArchiveMode.Read);
+        zip.Entries.Select(e => e.Name).Should().Contain(expected);
+    }
+
+    [Fact]
     public async Task GET_zip_with_no_profiles_returns_empty_zip()
     {
         using HttpClient client = CreateAuthed(Guid.NewGuid());

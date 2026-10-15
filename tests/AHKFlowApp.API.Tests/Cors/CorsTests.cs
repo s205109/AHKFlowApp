@@ -38,6 +38,21 @@ public sealed class CorsTests(ApiTestFixture fixture)
         response.Headers.Contains("Access-Control-Allow-Origin").Should().BeFalse();
     }
 
+    [Fact]
+    public async Task Request_FromAllowedOrigin_ExposesContentDisposition()
+    {
+        // Backlog 171. The UI names a downloaded script from Content-Disposition. A browser hides
+        // that header from a page on another origin unless the API lists it as exposed.
+        using WebApplicationFactory<global::Program> factory = WithAllowedOrigin();
+        using HttpClient client = factory.CreateClient();
+
+        HttpResponseMessage response = await SendWithOriginAsync(client, AllowedOrigin);
+
+        response.Headers.TryGetValues("Access-Control-Expose-Headers", out IEnumerable<string>? exposed)
+            .Should().BeTrue();
+        exposed.Should().Contain("Content-Disposition");
+    }
+
     private WebApplicationFactory<global::Program> WithAllowedOrigin() =>
         _factory.WithWebHostBuilder(builder =>
             builder.ConfigureAppConfiguration((_, config) =>
