@@ -6,7 +6,7 @@
 - **Type**: Chore
 - **Interfaces**: API docs (one Swagger summary); otherwise test projects only
 - **Difficulty**: moderate
-- **Stage**: 7-document
+- **Stage**: 8-review
 
 ## Summary
 
