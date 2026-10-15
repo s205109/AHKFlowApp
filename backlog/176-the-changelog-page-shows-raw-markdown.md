@@ -41,6 +41,11 @@ acceptance criterion.
 - All other text appears exactly as `CHANGELOG.md` writes it. The page writes it as text, so a
   `<` in an entry shows as `<` and never becomes markup.
 - A marker without a partner stays on screen as the character it is. The page does not guess.
+- So `CHANGELOG.md` keeps a narrower format than the page can render. The second acceptance
+  criterion says the page shows no backtick, and a marker without a partner would show one. In
+  that format, a code span holds no backtick and no `**`. A `**` span holds no backtick and no
+  `*`. No backtick or `*` appears outside a span. `ChangelogFlowTests` checks the real file
+  against this format, and its failure message names any entry outside it.
 - Why not plain text: `CHANGELOG.md` is the source of `changelog.json`, and GitHub shows
   `CHANGELOG.md` as markdown. Removing the markers from that file makes it worse on GitHub.
   Removing them in the generator loses the difference between a command and a word. The user
