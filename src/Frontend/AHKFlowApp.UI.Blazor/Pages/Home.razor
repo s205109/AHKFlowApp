@@ -54,7 +54,7 @@
                 <StatCard Title="PROFILES"
                           Icon="@MudBlazor.Icons.Material.Outlined.Person"
                           Total="@(_stats?.Profiles.Total ?? 0)"
-                          FooterText="@($"{_stats?.Profiles.Active ?? 0} active · {_stats?.Profiles.Default ?? 0} default")"
+                          FooterText="@($"+{_stats?.Profiles.CreatedThisWeek ?? 0} this week")"
                           DailyBuckets="@(_stats?.Profiles.DailyBuckets ?? new int[14])" />
             }
         </MudItem>

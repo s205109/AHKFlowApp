@@ -31,6 +31,22 @@ public sealed class DashboardEndpointsTests(ApiTestFixture fixture)
     }
 
     [Fact]
+    public async Task GET_stats_counts_the_default_profile_for_an_owner_who_never_listed_profiles()
+    {
+        using HttpClient client = CreateAuthed();
+
+        HttpResponseMessage response = await client.GetAsync("/api/v1/dashboard/stats");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        DashboardStatsDto? dto = await response.Content.ReadFromJsonAsync<DashboardStatsDto>();
+        dto!.Profiles.Total.Should().Be(1);
+
+        // The profiles page must then see the same single profile, not create a second one.
+        List<ProfileDto>? profiles = await client.GetFromJsonAsync<List<ProfileDto>>("/api/v1/profiles");
+        profiles.Should().ContainSingle().Which.Name.Should().Be("Default");
+    }
+
+    [Fact]
     public async Task GET_stats_returns_401_for_unauthenticated_request()
     {
         using HttpClient client = _factory.CreateClient();

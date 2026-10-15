@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: UI | API
 - **Difficulty**: moderate
-- **Stage**: 1-pickup
+- **Stage**: 9-ship
 
 ## Summary
 
@@ -21,11 +21,11 @@ think the app lost it.
 
 ## Acceptance criteria
 
-- [ ] A brand-new owner's first view of `/` reports the profile count the app guarantees, with no
+- [x] A brand-new owner's first view of `/` reports the profile count the app guarantees, with no
       visit to `/profiles` first.
-- [ ] The profiles card footer uses words that match `CONTEXT.md`, which gives a Profile no
+- [x] The profiles card footer uses words that match `CONTEXT.md`, which gives a Profile no
       active or inactive state.
-- [ ] An integration test asserts the dashboard count for an owner who has never called
+- [x] An integration test asserts the dashboard count for an owner who has never called
       `GET /api/v1/profiles`.
 
 ## Out of scope
@@ -59,4 +59,4 @@ think the app lost it.
   categories. So profiles re-seed after a delete and the other three do not. Item 166 records why
   that matters for deletes.
 - Spec: none — the fix is to seed or to count consistently, and to drop the invented word.
-- Plan: none — moderate work, goes straight to Plan at pickup.
+- Plan: `docs/superpowers/plans/2026-10-15-dashboard-profiles-card-plan-174.md`
