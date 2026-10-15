@@ -21,13 +21,13 @@ catalogs, so that a catalog change does not break unrelated tests.
 
 ## Acceptance criteria
 
-- [ ] No test in `tests/AHKFlowApp.API.Tests/Dev/DevSeedEndpointTests.cs` compares a seed count
+- [x] No test in `tests/AHKFlowApp.API.Tests/Dev/DevSeedEndpointTests.cs` compares a seed count
       with a number literal.
-- [ ] Each expected count in that file comes from `DefaultCategories.Names`,
+- [x] Each expected count in that file comes from `DefaultCategories.Names`,
       `HotstringSeedSamples.All`, or `DefaultHotkeyCatalog.All`.
-- [ ] The DevController summary for the categories seed endpoint is guarded the same way the
+- [x] The DevController summary for the categories seed endpoint is guarded the same way the
       hotkeys summary is, or it no longer states a number.
-- [ ] With one extra row added to each seed catalog, no test in `AHKFlowApp.API.Tests` or
+- [x] With one extra row added to each seed catalog, no test in `AHKFlowApp.API.Tests` or
       `AHKFlowApp.Application.Tests` fails, except the two Swagger summary tests in
       `DevSeedEndpointTests.cs`.
 
