@@ -29,10 +29,31 @@ text with stray punctuation.
 - [ ] The page escapes anything it does not deliberately render, so a changelog entry cannot
       inject markup.
 
+## Decision: what a finished entry looks like
+
+Recorded at Plan on 2026-10-15, before the renderer was chosen. This answers the first
+acceptance criterion.
+
+- A command or an identifier appears in a `<code>` element. The backticks around it do not
+  appear. It uses the app's existing `code` style, which other pages already use.
+- Text between `**` markers appears in a `<strong>` element. The asterisks do not appear. One
+  entry has this today: "Trigger inside words".
+- All other text appears exactly as `CHANGELOG.md` writes it. The page writes it as text, so a
+  `<` in an entry shows as `<` and never becomes markup.
+- A marker without a partner stays on screen as the character it is. The page does not guess.
+- Why not plain text: `CHANGELOG.md` is the source of `changelog.json`, and GitHub shows
+  `CHANGELOG.md` as markdown. Removing the markers from that file makes it worse on GitHub.
+  Removing them in the generator loses the difference between a command and a word. The user
+  story asks for identifiers that look like code, and only a `<code>` element does that.
+- Why `**` too: the same list shows literal asterisks around "Trigger inside words". It is the
+  same fault, on the same page, caused by the same line of code.
+
 ## Out of scope
 
 - Generating `changelog.json` from git history.
 - Any other page's rendering.
+- Markdown beyond code spans and `**` spans: links, single `*` or `_` emphasis, and headings
+  inside an entry. `CHANGELOG.md` uses none of them today.
 
 ## Notes / dependencies
 
@@ -51,5 +72,5 @@ text with stray punctuation.
   literal backticks", so the first acceptance criterion asks which one this item wants. Rendering
   raw HTML from a data file would need escaping care, which is why the last acceptance criterion
   is there.
-- Spec: none — pick one of the two options above at Plan.
-- Plan: none — moderate work, goes straight to Plan at pickup.
+- Spec: none — moderate work, and the decision above stands in for a spec.
+- Plan: `docs/superpowers/plans/2026-10-15-changelog-raw-markdown-plan-176.md`
