@@ -58,6 +58,30 @@ public sealed class AhkFileNamingTests
     }
 
     [Fact]
+    public void ToSafeStem_TruncationLandsOnAnUnderscore_LeavesNoTrailingUnderscore()
+    {
+        // Backlog 171. Collapses to 67 characters: 63 'a', then '_', then 'bbb'. The cut to 64
+        // keeps the underscore as the last character, so the trim must run after the cut.
+        string input = new string('a', 63) + " bbb";
+
+        string output = AhkFileNaming.ToSafeStem(input);
+
+        output.Should().Be(new string('a', 63));
+    }
+
+    [Fact]
+    public void ToSafeStem_LongNameWithLeadingUnsafeCharacter_KeepsAll64Letters()
+    {
+        // Backlog 171. Collapses to 65 characters: '_', then 64 'a'. The leading underscore is
+        // trimmed before the cut, so the stem keeps all 64 letters. Cutting first would keep 63.
+        string input = "/" + new string('a', 64);
+
+        string output = AhkFileNaming.ToSafeStem(input);
+
+        output.Should().Be(new string('a', 64));
+    }
+
+    [Fact]
     public void FileName_FormatsAsAhkflowPrefixWithExtension() =>
         AhkFileNaming.FileName("Work").Should().Be("ahkflow_Work.ahk");
 
