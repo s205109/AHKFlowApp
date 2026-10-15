@@ -1,3 +1,4 @@
+using System.Net;
 using AHKFlowApp.UI.Blazor.Services;
 using FluentAssertions;
 using Microsoft.Extensions.Time.Testing;
@@ -8,14 +9,11 @@ using Xunit;
 namespace AHKFlowApp.UI.Blazor.Tests.Services;
 
 /// <summary>
-/// The file-name rules are the reason this service exists, so they are pinned here rather than
-/// through a page. The rules run in one fixed order: collapse unsafe characters, truncate to 64
-/// characters, trim edge underscores, then fall back to "profile" when nothing is left.
+/// The API decides the file name, so this service only puts the timestamp in front of it. The
+/// stem rule is pinned once, by <c>AhkFileNamingTests</c> in the Application tests.
 /// </summary>
 public sealed class ProfileScriptDownloaderTests
 {
-    private const string Stamp = "20260726_140509";
-
     private readonly IDownloadsApiClient _downloads = Substitute.For<IDownloadsApiClient>();
     private readonly IFileSaver _saver = Substitute.For<IFileSaver>();
     private readonly FakeTimeProvider _clock = new(new DateTimeOffset(2026, 7, 26, 14, 5, 9, TimeSpan.Zero));
@@ -24,83 +22,53 @@ public sealed class ProfileScriptDownloaderTests
 
     private static readonly Guid ProfileId = Guid.NewGuid();
 
-    private void StubScript(byte[]? content = null, string contentType = "text/plain; charset=utf-8") =>
+    private void StubScript(
+        string apiFileName = "ahkflow_Work.ahk",
+        byte[]? content = null,
+        string contentType = "text/plain; charset=utf-8") =>
         _downloads.GetProfileScriptAsync(ProfileId, Arg.Any<CancellationToken>())
             .Returns(ApiResult<FileDownload>.Ok(
-                new FileDownload(content ?? [0x41, 0x42], "ahkflow.ahk", contentType)));
+                new FileDownload(content ?? [0x41, 0x42], apiFileName, contentType)));
 
-    private async Task<string> SavedNameForAsync(string profileName)
+    [Fact]
+    public async Task DownloadAsync_Success_SavesUnderTheApiFileNameWithAStamp()
     {
-        StubScript();
-        DownloadOutcome outcome = await CreateSut().DownloadAsync(ProfileId, profileName, CancellationToken.None);
+        // Backlog 171. The UI used to build its own stem from the profile name. Any name the API
+        // sends must come through unchanged, behind the stamp.
+        StubScript(apiFileName: "ahkflow_Named_By_The_Api.ahk");
+
+        DownloadOutcome outcome = await CreateSut().DownloadAsync(ProfileId, CancellationToken.None);
+
         outcome.Saved.Should().BeTrue();
-        return outcome.FileName!;
-    }
-
-    private static string StemOf(string fileName)
-    {
-        const string prefix = $"{Stamp}_ahkflow_";
-        fileName.Should().StartWith(prefix).And.EndWith(".ahk");
-        return fileName[prefix.Length..^".ahk".Length];
+        outcome.FileName.Should().Be("20260726_140509_ahkflow_Named_By_The_Api.ahk");
     }
 
     [Fact]
-    public async Task DownloadAsync_UnsafeCharacters_CollapseToOneUnderscore()
+    public async Task DownloadAsync_ResponseWithoutContentDisposition_SavesUnderTheFallbackName()
     {
-        string name = await SavedNameForAsync("Work   //  Notes");
+        // Backlog 171. A browser hides Content-Disposition from a page on another origin unless the
+        // API exposes it. This runs the real API client, so it proves that the client's fallback
+        // name is the name the owner gets.
+        DownloadsApiClient client = new(new HttpClient(new StubHandler(_ =>
+            new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent([0x41, 0x42]) }))
+        {
+            BaseAddress = new Uri("http://localhost/"),
+        });
+        ProfileScriptDownloader sut = new(client, _saver, _clock);
 
-        StemOf(name).Should().Be("Work_Notes");
-    }
+        DownloadOutcome outcome = await sut.DownloadAsync(ProfileId, CancellationToken.None);
 
-    [Fact]
-    public async Task DownloadAsync_EdgeUnsafeCharacters_AreTrimmed()
-    {
-        string name = await SavedNameForAsync("  Work  ");
-
-        StemOf(name).Should().Be("Work");
-    }
-
-    [Fact]
-    public async Task DownloadAsync_NameWithNoSafeCharacters_FallsBackToProfile()
-    {
-        string name = await SavedNameForAsync("///");
-
-        StemOf(name).Should().Be("profile");
-    }
-
-    [Fact]
-    public async Task DownloadAsync_StemLongerThan64Characters_IsTruncatedTo64()
-    {
-        string name = await SavedNameForAsync(new string('a', 80));
-
-        StemOf(name).Should().Be(new string('a', 64));
-    }
-
-    [Fact]
-    public async Task DownloadAsync_TruncationLandsOnAnUnderscore_LeavesNoTrailingUnderscore()
-    {
-        // Collapses to 65 characters: 63 'a', then '_', then 'x'. Truncating to 64 keeps the
-        // underscore at the end, so the trim has to run after the cut, not before it.
-        string name = await SavedNameForAsync(new string('a', 63) + " x");
-
-        StemOf(name).Should().Be(new string('a', 63));
-    }
-
-    [Fact]
-    public async Task DownloadAsync_DotsAndDashes_SurviveUnchanged()
-    {
-        string name = await SavedNameForAsync("work-v2.1");
-
-        StemOf(name).Should().Be("work-v2.1");
+        outcome.Saved.Should().BeTrue();
+        outcome.FileName.Should().Be("20260726_140509_ahkflow_profile.ahk");
     }
 
     [Fact]
     public async Task DownloadAsync_Success_SavesWithStampedNameAndPayload()
     {
         byte[] content = [0x41, 0x42, 0x43];
-        StubScript(content, "text/plain; charset=utf-8");
+        StubScript(content: content);
 
-        DownloadOutcome outcome = await CreateSut().DownloadAsync(ProfileId, "Work", CancellationToken.None);
+        DownloadOutcome outcome = await CreateSut().DownloadAsync(ProfileId, CancellationToken.None);
 
         outcome.Saved.Should().BeTrue();
         outcome.FileName.Should().Be("20260726_140509_ahkflow_Work.ahk");
@@ -117,7 +85,7 @@ public sealed class ProfileScriptDownloaderTests
         _downloads.GetProfileScriptAsync(ProfileId, Arg.Any<CancellationToken>())
             .Returns(ApiResult<FileDownload>.Failure(ApiResultStatus.NetworkError, null));
 
-        DownloadOutcome outcome = await CreateSut().DownloadAsync(ProfileId, "Work", CancellationToken.None);
+        DownloadOutcome outcome = await CreateSut().DownloadAsync(ProfileId, CancellationToken.None);
 
         outcome.Saved.Should().BeFalse();
         outcome.FileName.Should().BeNull();
@@ -132,7 +100,7 @@ public sealed class ProfileScriptDownloaderTests
         _downloads.GetProfileScriptAsync(ProfileId, Arg.Any<CancellationToken>())
             .Throws(new OperationCanceledException());
 
-        Func<Task> act = async () => _ = await CreateSut().DownloadAsync(ProfileId, "Work", CancellationToken.None);
+        Func<Task> act = async () => _ = await CreateSut().DownloadAsync(ProfileId, CancellationToken.None);
 
         await act.Should().ThrowAsync<OperationCanceledException>();
         await _saver.DidNotReceive().SaveAsync(
@@ -146,8 +114,14 @@ public sealed class ProfileScriptDownloaderTests
         InvalidOperationException boom = new("save failed");
         _saver.SaveAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<byte[]>()).Throws(boom);
 
-        Func<Task> act = async () => _ = await CreateSut().DownloadAsync(ProfileId, "Work", CancellationToken.None);
+        Func<Task> act = async () => _ = await CreateSut().DownloadAsync(ProfileId, CancellationToken.None);
 
         (await act.Should().ThrowAsync<InvalidOperationException>()).Which.Should().BeSameAs(boom);
+    }
+
+    private sealed class StubHandler(Func<HttpRequestMessage, HttpResponseMessage> responder) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+            => Task.FromResult(responder(request));
     }
 }

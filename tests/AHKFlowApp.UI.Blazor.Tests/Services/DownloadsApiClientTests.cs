@@ -32,6 +32,23 @@ public sealed class DownloadsApiClientTests
     }
 
     [Fact]
+    public async Task GetProfileScriptAsync_WithoutContentDisposition_FallsBackToAhkflowProfile()
+    {
+        // Backlog 171. A browser hides Content-Disposition from a page on another origin unless the
+        // API exposes it. The client must still give the file a name.
+        var handler = StubHttpMessageHandler.BinaryResponse(
+            HttpStatusCode.OK,
+            "text/plain; charset=utf-8",
+            Encoding.UTF8.GetBytes("script body"),
+            fileDownloadName: null);
+
+        ApiResult<FileDownload> result = await ClientWith(handler).GetProfileScriptAsync(Guid.NewGuid());
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value!.FileName.Should().Be("ahkflow_profile.ahk");
+    }
+
+    [Fact]
     public async Task GetProfileScriptAsync_OnNotFound_ReturnsNotFoundResult()
     {
         var problem = new ApiProblemDetails(null, "Not Found", 404, "Profile not found", null, null);
@@ -103,11 +120,14 @@ public sealed class DownloadsApiClientTests
         public static StubHttpMessageHandler JsonResponse<T>(HttpStatusCode status, T body) =>
             new(new HttpResponseMessage(status) { Content = JsonContent.Create(body) });
 
-        public static StubHttpMessageHandler BinaryResponse(HttpStatusCode status, string contentType, byte[] body, string fileDownloadName)
+        public static StubHttpMessageHandler BinaryResponse(HttpStatusCode status, string contentType, byte[] body, string? fileDownloadName)
         {
             var content = new ByteArrayContent(body);
             content.Headers.ContentType = MediaTypeHeaderValue.Parse(contentType);
-            content.Headers.ContentDisposition = new ContentDispositionHeaderValue("attachment") { FileName = fileDownloadName };
+            if (fileDownloadName is not null)
+            {
+                content.Headers.ContentDisposition = new ContentDispositionHeaderValue("attachment") { FileName = fileDownloadName };
+            }
             return new(new HttpResponseMessage(status) { Content = content });
         }
 

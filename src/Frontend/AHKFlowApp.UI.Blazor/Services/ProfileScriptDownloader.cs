@@ -1,4 +1,3 @@
-using System.Text;
 using AHKFlowApp.UI.Blazor.Helpers;
 
 namespace AHKFlowApp.UI.Blazor.Services;
@@ -24,9 +23,10 @@ internal sealed record DownloadOutcome
 }
 
 /// <summary>
-/// Fetches a profile's generated script, names the file, and saves it. The Profiles page and the
-/// Downloads page both call this, so the same profile can never download under two different
-/// names. It raises no snackbar, so each page keeps its own wording.
+/// Fetches a profile's generated script and saves it under the name the API chose. The Profiles
+/// page and the Downloads page both call this. The API's stem rule is the only one, so a profile
+/// gets the same stem here as inside the zip. It raises no snackbar, so each page keeps its own
+/// wording.
 /// </summary>
 internal sealed class ProfileScriptDownloader(
     IDownloadsApiClient downloadsApi,
@@ -34,17 +34,17 @@ internal sealed class ProfileScriptDownloader(
     TimeProvider clock)
 {
     /// <summary>
-    /// Saves the profile's script as <c>{timestamp}_ahkflow_{stem}.ahk</c>.
+    /// Saves the profile's script as <c>{timestamp}_{API file name}</c>, for example
+    /// <c>20260726_140509_ahkflow_Work.ahk</c>.
     /// </summary>
     /// <remarks>
+    /// The API sends its file name in the <c>Content-Disposition</c> header. When the response has
+    /// no readable header, the API client falls back to <c>ahkflow_profile.ahk</c>.
     /// Cancellation is not caught here. Every caller must catch
     /// <see cref="OperationCanceledException"/> and show no message. An exception from
     /// <see cref="IFileSaver.SaveAsync"/> also travels out unchanged.
     /// </remarks>
-    internal async Task<DownloadOutcome> DownloadAsync(
-        Guid profileId,
-        string profileName,
-        CancellationToken ct)
+    internal async Task<DownloadOutcome> DownloadAsync(Guid profileId, CancellationToken ct)
     {
         ApiResult<FileDownload> result = await downloadsApi.GetProfileScriptAsync(profileId, ct);
 
@@ -53,42 +53,8 @@ internal sealed class ProfileScriptDownloader(
             return DownloadOutcome.Failure(ApiErrorMessageFactory.Build(result.Status, result.Problem));
         }
 
-        string fileName = $"{DownloadFileNames.Timestamp(clock)}_ahkflow_{SafeStem(profileName)}.ahk";
-        await fileSaver.SaveAsync(fileName, result.Value!.ContentType, result.Value.Content);
+        string fileName = $"{DownloadFileNames.Timestamp(clock)}_{result.Value!.FileName}";
+        await fileSaver.SaveAsync(fileName, result.Value.ContentType, result.Value.Content);
         return DownloadOutcome.Success(fileName);
-    }
-
-    /// <summary>
-    /// Turns a profile name into a file-name stem. Every run of unsafe characters becomes one
-    /// underscore; only ASCII letters, digits, <c>.</c> and <c>-</c> survive.
-    /// </summary>
-    /// <remarks>
-    /// The cut to 64 characters runs before the edge underscores are trimmed. The other order can
-    /// leave a trailing underscore: a long name may collapse to text whose 64th character is the
-    /// underscore, which the earlier trim never saw.
-    /// </remarks>
-    private static string SafeStem(string name)
-    {
-        StringBuilder sb = new(name.Length);
-        bool previousWasUnderscore = false;
-        foreach (char c in name)
-        {
-            bool safe = char.IsAsciiLetterOrDigit(c) || c == '.' || c == '-';
-            if (safe)
-            {
-                sb.Append(c);
-                previousWasUnderscore = false;
-            }
-            else if (!previousWasUnderscore)
-            {
-                sb.Append('_');
-                previousWasUnderscore = true;
-            }
-        }
-
-        string collapsed = sb.ToString();
-        string truncated = collapsed.Length > 64 ? collapsed[..64] : collapsed;
-        string trimmed = truncated.Trim('_');
-        return trimmed.Length == 0 ? "profile" : trimmed;
     }
 }

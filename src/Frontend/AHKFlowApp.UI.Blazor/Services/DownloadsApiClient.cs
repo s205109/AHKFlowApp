@@ -6,6 +6,8 @@ public sealed class DownloadsApiClient(HttpClient httpClient) : ApiClientBase(ht
 {
     private const string BasePath = "api/v1/downloads";
 
+    // The API names the file in Content-Disposition, and the downloader saves under that name. The
+    // fallback covers a response whose header the browser does not show.
     public Task<ApiResult<FileDownload>> GetProfileScriptAsync(Guid profileId, CancellationToken ct = default) =>
         GetFileAsync($"{BasePath}/{profileId}", "ahkflow_profile.ahk", ct);
 

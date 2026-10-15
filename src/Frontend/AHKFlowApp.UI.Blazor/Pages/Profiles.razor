@@ -343,7 +343,7 @@
         _downloadingProfileId = profile.Id;
         try
         {
-            DownloadOutcome outcome = await Downloader.DownloadAsync(profile.Id, profile.Name, _cts.Token);
+            DownloadOutcome outcome = await Downloader.DownloadAsync(profile.Id, _cts.Token);
 
             if (!outcome.Saved)
             {
