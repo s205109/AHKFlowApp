@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: UI | API
 - **Difficulty**: moderate
-- **Stage**: 5-simplify
+- **Stage**: 6-verify
 
 ## Summary
 
