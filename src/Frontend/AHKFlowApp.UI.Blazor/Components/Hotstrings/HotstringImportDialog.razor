@@ -51,7 +51,7 @@
 
             <MudButton Class="preview-import" Variant="Variant.Filled" Color="Color.Secondary"
                        StartIcon="@Icons.Material.Filled.Visibility"
-                        Disabled="@(string.IsNullOrWhiteSpace(_script) || _scriptTooLarge || _busy)"
+                       Disabled="@(string.IsNullOrWhiteSpace(_script) || _scriptTooLarge || _busy)"
                        OnClick="PreviewAsync">
                 Preview
             </MudButton>
