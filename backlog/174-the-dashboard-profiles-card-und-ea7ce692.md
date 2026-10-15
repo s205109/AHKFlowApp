@@ -59,4 +59,4 @@ think the app lost it.
   categories. So profiles re-seed after a delete and the other three do not. Item 166 records why
   that matters for deletes.
 - Spec: none — the fix is to seed or to count consistently, and to drop the invented word.
-- Plan: none — moderate work, goes straight to Plan at pickup.
+- Plan: `docs/superpowers/plans/2026-10-15-dashboard-profiles-card-plan-174.md`
