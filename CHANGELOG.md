@@ -26,3 +26,7 @@ This changelog starts forward-only. Existing releases before this file was intro
 - Generated scripts always emit the `T` (literal text) option for text hotstrings, so replacements are inserted exactly as typed.
 - Existing Text hotstrings with replacements of 200 characters or more now paste through the clipboard by default; shorter replacements continue to be typed. Choose Hotstring delivery to retain the previous behavior for a long replacement.
 - New hotstrings no longer trigger inside words by default, matching AutoHotkey. Turn on **Trigger inside words** in the web UI, or pass `--inside-word` to `ahkflow hotstring new`, to get the old behavior. Hotstrings you already saved keep their setting.
+
+### Fixed
+
+- The changelog page shows commands and names as code, and bold text as bold. It no longer shows the backtick and asterisk characters around them.
