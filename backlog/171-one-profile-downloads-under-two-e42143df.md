@@ -21,11 +21,11 @@ consistent wherever they come from.
 
 ## Acceptance criteria
 
-- [ ] One rule decides a profile's file stem, and both the API and the UI use it.
-- [ ] A profile whose stem has an underscore at character 64 downloads under the same stem from
+- [x] One rule decides a profile's file stem, and both the API and the UI use it.
+- [x] A profile whose stem has an underscore at character 64 downloads under the same stem from
       the single download and from the zip.
-- [ ] A unit test covers the truncate-then-trim case that produces the trailing underscore.
-- [ ] `DownloadsApiClient`'s `ahkflow_profile.ahk` fallback is either reached by some path or
+- [x] A unit test covers the truncate-then-trim case that produces the trailing underscore.
+- [x] `DownloadsApiClient`'s `ahkflow_profile.ahk` fallback is either reached by some path or
       removed.
 
 ## Out of scope
