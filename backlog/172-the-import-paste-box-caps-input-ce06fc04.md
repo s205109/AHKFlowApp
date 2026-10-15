@@ -21,11 +21,11 @@ half of it.
 
 ## Acceptance criteria
 
-- [ ] The paste box accepts a script up to `HotstringImportRules.MaxScriptLength`.
-- [ ] A paste larger than `HotstringImportRules.MaxScriptLength` produces a visible message that
+- [x] The paste box accepts a script up to `HotstringImportRules.MaxScriptLength`.
+- [x] A paste larger than `HotstringImportRules.MaxScriptLength` produces a visible message that
       says the script is too large. It is not cut down to the limit in silence.
-- [ ] The dialog sets its own maximum length rather than inheriting a component default.
-- [ ] A test covers a paste larger than 524,288 characters, and a second test covers a paste
+- [x] The dialog sets its own maximum length rather than inheriting a component default.
+- [x] A test covers a paste larger than 524,288 characters, and a second test covers a paste
       larger than `HotstringImportRules.MaxScriptLength`.
 
 ## Out of scope
