@@ -61,4 +61,4 @@ consistent wherever they come from.
   and 3, the line endings (F30) and the byte-order mark (F31), are policy decisions about the
   bytes of a downloaded file. They moved to backlog 183 at this item's Pickup on 2026-10-15.
 - Spec: none — F29 has one correct answer already written down in the UI's comment.
-- Plan: none — moderate work, goes straight to Plan at pickup.
+- Plan: `docs/superpowers/plans/2026-10-15-one-profile-file-name-plan-171.md`
