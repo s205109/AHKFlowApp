@@ -2,8 +2,6 @@ using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Application.Common;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Application.Mapping;
-using AHKFlowApp.Domain.Constants;
-using AHKFlowApp.Domain.Entities;
 using Ardalis.Result;
 using Microsoft.EntityFrameworkCore;
 
@@ -22,27 +20,7 @@ internal sealed class ListProfilesQueryHandler(
         if (currentUser.Oid is not Guid ownerOid)
             return Result.Unauthorized();
 
-        bool any = await db.Profiles.AnyAsync(p => p.OwnerOid == ownerOid, ct);
-        if (!any)
-        {
-            var seeded = Profile.Create(
-                ownerOid,
-                name: "Default",
-                isDefault: true,
-                headerTemplate: DefaultProfileTemplates.Header,
-                footerTemplate: DefaultProfileTemplates.Footer,
-                clock: clock);
-            db.Profiles.Add(seeded);
-            try
-            {
-                await db.SaveChangesAsync(ct);
-            }
-            catch (DbUpdateException ex) when (ex.IsDuplicateKeyViolation())
-            {
-                // Concurrent first-time list: another request already seeded the default profile.
-                // Fall through to the read query below; no further SaveChanges occurs in this handler.
-            }
-        }
+        await db.EnsureDefaultProfileAsync(ownerOid, clock, ct);
 
         List<ProfileDto> items = await db.Profiles
             .AsNoTracking()

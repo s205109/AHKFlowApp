@@ -6,6 +6,7 @@ using AHKFlowApp.Infrastructure.Persistence;
 using AHKFlowApp.TestUtilities.Builders;
 using Ardalis.Result;
 using FluentAssertions;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Time.Testing;
 using NSubstitute;
 using Xunit;
@@ -147,8 +148,9 @@ public sealed class GetDashboardStatsQueryHandlerTests(DashboardDbFixture fx)
 
         Result<DashboardStatsDto> result = await CreateSut(ctx).ExecuteAsync(new GetDashboardStatsQuery(), CancellationToken.None);
 
-        result.Value.RecentActivity[0].Action.Should().Be("updated");
-        result.Value.RecentActivity[0].Kind.Should().Be("hotstring");
+        // The seeded Default profile is newer, so find the hotstring by kind, not by position.
+        RecentActivityItemDto hotstring = result.Value.RecentActivity.Single(a => a.Kind == "hotstring");
+        hotstring.Action.Should().Be("updated");
     }
 
     [Fact]
@@ -160,6 +162,51 @@ public sealed class GetDashboardStatsQueryHandlerTests(DashboardDbFixture fx)
 
         Result<DashboardStatsDto> result = await CreateSut(ctx).ExecuteAsync(new GetDashboardStatsQuery(), CancellationToken.None);
 
-        result.Value.RecentActivity.Should().BeEmpty();
+        // The only activity this owner has is the Default profile the dashboard created for them.
+        RecentActivityItemDto only = result.Value.RecentActivity.Should().ContainSingle().Subject;
+        only.Kind.Should().Be("profile");
+        only.Label.Should().Be("Default");
+    }
+
+    [Fact]
+    public async Task Seeds_the_default_profile_when_the_owner_has_none()
+    {
+        await using AppDbContext ctx = fx.CreateContext();
+        // Another owner's profile must not count as this owner's.
+        ctx.Profiles.Add(new ProfileBuilder().WithOwner(_otherOid).WithName("Theirs").AsDefault(true).WithClock(_clock).Build());
+        await ctx.SaveChangesAsync();
+
+        Result<DashboardStatsDto> result = await CreateSut(ctx).ExecuteAsync(new GetDashboardStatsQuery(), CancellationToken.None);
+
+        result.IsSuccess.Should().BeTrue();
+        result.Value.Profiles.Total.Should().Be(1);
+        Profile seeded = await ctx.Profiles.AsNoTracking().SingleAsync(p => p.OwnerOid == _ownerOid);
+        seeded.Name.Should().Be("Default");
+        seeded.IsDefault.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Does_not_seed_twice_on_a_second_read()
+    {
+        await using AppDbContext ctx = fx.CreateContext();
+        GetDashboardStatsQueryHandler sut = CreateSut(ctx);
+
+        await sut.ExecuteAsync(new GetDashboardStatsQuery(), CancellationToken.None);
+        Result<DashboardStatsDto> second = await sut.ExecuteAsync(new GetDashboardStatsQuery(), CancellationToken.None);
+
+        second.Value.Profiles.Total.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Does_not_seed_when_the_owner_has_a_profile_that_is_not_the_default()
+    {
+        await using AppDbContext ctx = fx.CreateContext();
+        ctx.Profiles.Add(new ProfileBuilder().WithOwner(_ownerOid).WithName("Work").AsDefault(false).WithClock(_clock).Build());
+        await ctx.SaveChangesAsync();
+
+        Result<DashboardStatsDto> result = await CreateSut(ctx).ExecuteAsync(new GetDashboardStatsQuery(), CancellationToken.None);
+
+        result.Value.Profiles.Total.Should().Be(1);
+        (await ctx.Profiles.AnyAsync(p => p.OwnerOid == _ownerOid && p.Name == "Default")).Should().BeFalse();
     }
 }

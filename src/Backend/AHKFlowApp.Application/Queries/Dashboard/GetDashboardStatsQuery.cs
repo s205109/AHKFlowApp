@@ -1,4 +1,5 @@
 using AHKFlowApp.Application.Abstractions;
+using AHKFlowApp.Application.Common;
 using AHKFlowApp.Application.DTOs;
 using Ardalis.Result;
 using Microsoft.EntityFrameworkCore;
@@ -26,6 +27,9 @@ internal sealed class GetDashboardStatsQueryHandler(
     {
         if (currentUser.Oid is not Guid ownerOid)
             return Result.Unauthorized();
+
+        // Count the profile the app guarantees, even before the owner opens the profiles page.
+        await db.EnsureDefaultProfileAsync(ownerOid, clock, ct);
 
         DateTimeOffset now = clock.GetUtcNow();
         DateTimeOffset weekAgo = now.AddDays(-7);
