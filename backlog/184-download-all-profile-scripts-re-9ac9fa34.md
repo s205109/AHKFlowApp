@@ -20,11 +20,11 @@ I do not have to open another page first to get a working file.
 
 ## Acceptance criteria
 
-- [ ] `GET /api/v1/downloads/zip` for an owner who has never called `GET /api/v1/profiles`
+- [x] `GET /api/v1/downloads/zip` for an owner who has never called `GET /api/v1/profiles`
       returns a zip with one entry, `ahkflow_Default.ahk`.
-- [ ] After that download, `GET /api/v1/profiles` returns that same single Default profile, not a
+- [x] After that download, `GET /api/v1/profiles` returns that same single Default profile, not a
       second one.
-- [ ] No test asserts that the zip for a brand-new owner is empty.
+- [x] No test asserts that the zip for a brand-new owner is empty.
 
 ## Out of scope
 
