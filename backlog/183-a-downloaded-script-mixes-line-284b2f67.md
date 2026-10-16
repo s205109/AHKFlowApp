@@ -57,4 +57,4 @@ control.
   uses a `StreamWriter` with `new UTF8Encoding(encoderShouldEmitUTF8Identifier: false)`. So each
   decision must reach both the single download and the zip.
 - Spec: none — two small decisions, each with its evidence written above.
-- Plan: none — not planned yet. Plan runs when this item is picked up.
+- Plan: `docs/superpowers/plans/2026-10-16-download-line-endings-bom-plan-183.md`
