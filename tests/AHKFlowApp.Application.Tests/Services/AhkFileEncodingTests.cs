@@ -9,15 +9,6 @@ public sealed class AhkFileEncodingTests
     private static readonly byte[] Utf8Bom = [0xEF, 0xBB, 0xBF];
 
     [Fact]
-    public void GetBytes_Script_StartsWithTheByteOrderMark()
-    {
-        byte[] bytes = AhkFileEncoding.GetBytes("; header\n");
-
-        bytes[..3].Should().Equal(Utf8Bom);
-        bytes[3..].Should().Equal(System.Text.Encoding.UTF8.GetBytes("; header\n"));
-    }
-
-    [Fact]
     public void GetBytes_NonAsciiText_WritesUtf8AfterTheMark()
     {
         // The arrow is U+2192, which UTF-8 writes as E2 86 92.

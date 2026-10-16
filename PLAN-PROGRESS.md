@@ -16,3 +16,21 @@ Execution: inline (`superpowers:executing-plans`), one session, progress update 
       `DownloadCliIntegrationTests` 10/10, `HotstringImportDialogTests` 10/10, E2E suite 93/93
       pass; the import test failed under its reader mutation, as planned. The tests were committed
       before the E2E run, because PowerShell needs the exit and re-enter cycle. Deferrals: none.
+
+## Simplify
+
+Four review angles ran: reuse, simplification, efficiency, altitude. Applied:
+
+- Deleted `GetBytes_Script_StartsWithTheByteOrderMark`. `GetBytes_NonAsciiText_WritesUtf8AfterTheMark`
+  already checks the mark, ASCII, and non-ASCII with literal bytes. So Task 2 now has two unit
+  tests, not the three the plan names.
+- Removed the caller list from the `AhkFileEncoding` summary, because it would go stale.
+- Corrected the preview comments in `GetHotstringPreviewQuery` and `GetHotkeyPreviewQuery`. They
+  said the preview matches the download byte for byte. After this branch only the line endings
+  can differ.
+
+Skipped:
+
+- One shared LF helper for the seven `Replace("\r\n", "\n").Replace('\r', '\n')` sites. It touches
+  five files outside this branch and a frontend copy. A candidate for its own item.
+- An LF paste helper in the edit-dialog previews. The plan keeps those snippets out of scope (D5).
