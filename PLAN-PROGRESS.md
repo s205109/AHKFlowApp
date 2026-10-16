@@ -13,3 +13,9 @@ Execution: inline (`superpowers:executing-plans`), one session, progress update 
 - [x] Task 2 — the app-bar buttons name what pressing them does. `ac7f95bc`.
       `KeyboardAccessFlowTests` 2/2 pass; the new test failed first with an empty name, as
       planned. Deferrals: none.
+- [x] Task 3 — the eighteen page and dialog buttons name their target. `9624551e`.
+      `AHKFlowApp.UI.Blazor.Tests` 1049/1049 pass in Release; the nine new tests failed first
+      with a null `aria-label`. `KeyboardAccessFlowTests` 3/3 pass; the row test failed first
+      with an empty name. Deviation: the bUnit project ran directly in Release instead of
+      `test-fast.ps1 -Mode Fast`, because the harness refuses `pwsh` inside the entered
+      worktree. Deferrals: the full Fast slice runs at the Gate.
