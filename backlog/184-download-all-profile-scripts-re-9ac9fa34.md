@@ -42,17 +42,16 @@ I do not have to open another page first to get a working file.
   they are records of the old tree and the citation check skips them.
   - `GenerateAllProfileScriptsQueryHandler` reads the owner's profiles directly: (`src/Backend/AHKFlowApp.Application/Queries/Downloads/GenerateAllProfileScriptsQuery.cs:24`, "List<Profile> profiles = await db.Profiles.AsNoTracking()") <!-- citation-check:ignore — pre-fix line at 20be9b41 -->
   - When it finds none, it returns an empty list: (`src/Backend/AHKFlowApp.Application/Queries/Downloads/GenerateAllProfileScriptsQuery.cs:30`, "return Result.Success<IReadOnlyList<ProfileScript>>([]);") <!-- citation-check:ignore — pre-fix line at 20be9b41 -->
-- Only two handlers call `EnsureDefaultProfileAsync`
-  (`src/Backend/AHKFlowApp.Application/Common/DefaultProfileSeeding.cs:12`,
-  "internal static async Task EnsureDefaultProfileAsync("): `ListProfilesQuery` and
-  `GetDashboardStatsQuery`.
-- The web UI is not affected in practice. The Downloads page lists profiles on load
-  (`src/Frontend/AHKFlowApp.UI.Blazor/Pages/Downloads.razor:95`,
-  "ApiResult<IReadOnlyList<ProfileDto>> result = await ProfilesApi.ListAsync(_cts.Token);"),
-  which seeds the Default profile before the button is enabled. The CLI command
-  `ahkflow download zip` calls the zip endpoint directly, so a new CLI user hits the bug.
-- The existing test `GET_zip_with_no_profiles_returns_empty_zip` asserts the bug as correct
-  behavior. The fix replaces it.
+- Before this fix, only two handlers called `EnsureDefaultProfileAsync`: `ListProfilesQuery` and
+  `GetDashboardStatsQuery`. The method is defined here:
+  - (`src/Backend/AHKFlowApp.Application/Common/DefaultProfileSeeding.cs:12`, "internal static async Task EnsureDefaultProfileAsync(")
+- The web UI is not affected in practice. The Downloads page lists profiles on load, which seeds
+  the Default profile before the button is enabled:
+  - (`src/Frontend/AHKFlowApp.UI.Blazor/Pages/Downloads.razor:95`, "ApiResult<IReadOnlyList<ProfileDto>> result = await ProfilesApi.ListAsync(_cts.Token);")
+- The CLI command `ahkflow download zip` calls the zip endpoint directly, so a new CLI user hits
+  the bug.
+- The old test `GET_zip_with_no_profiles_returns_empty_zip` asserted the bug as correct behavior.
+  The fix replaced it.
 - Spec: none — the fix is one seeding call, the same one backlog 174 added to the dashboard.
 - Plan: none — one added call plus updated tests. The user asked for the change directly on
   2026-10-16.
