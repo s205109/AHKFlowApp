@@ -2,8 +2,12 @@ using System.IO.Compression;
 using System.Net;
 using System.Net.Http.Json;
 using AHKFlowApp.Application.DTOs;
+using AHKFlowApp.Domain.Entities;
+using AHKFlowApp.Infrastructure.Persistence;
 using AHKFlowApp.TestUtilities.Fixtures;
 using FluentAssertions;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace AHKFlowApp.API.Tests.Downloads;
@@ -138,7 +142,8 @@ public sealed class DownloadsEndpointsTests(ApiTestFixture fixture)
     [Fact]
     public async Task GET_zip_holds_the_default_profile_script_for_an_owner_who_never_listed_profiles()
     {
-        using HttpClient client = CreateAuthed();
+        var oid = Guid.NewGuid();
+        using HttpClient client = CreateAuthed(oid);
 
         HttpResponseMessage response = await client.GetAsync("/api/v1/downloads/zip");
 
@@ -147,9 +152,23 @@ public sealed class DownloadsEndpointsTests(ApiTestFixture fixture)
         using ZipArchive zip = new(stream, ZipArchiveMode.Read);
         zip.Entries.Select(e => e.Name).Should().Equal("ahkflow_Default.ahk");
 
-        // The profiles page must then see the same single profile, not create a second one.
+        // The download itself must save the Default profile. Read the row before calling
+        // /profiles, because that call would create the row and hide a download that saved none.
+        List<Profile> saved;
+        await using (AsyncServiceScope scope = _factory.Services.CreateAsyncScope())
+        {
+            AppDbContext db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            saved = await db.Profiles.AsNoTracking().Where(p => p.OwnerOid == oid).ToListAsync();
+        }
+        Profile savedDefault = saved.Should().ContainSingle().Subject;
+        savedDefault.IsDefault.Should().BeTrue();
+
+        // The profiles page must then see that same profile, not create a second one.
         List<ProfileDto>? profiles = await client.GetFromJsonAsync<List<ProfileDto>>("/api/v1/profiles");
-        profiles.Should().ContainSingle().Which.Name.Should().Be("Default");
+        ProfileDto listed = profiles.Should().ContainSingle().Subject;
+        listed.Id.Should().Be(savedDefault.Id);
+        listed.Name.Should().Be("Default");
+        listed.IsDefault.Should().BeTrue();
     }
 
     [Fact]
