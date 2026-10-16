@@ -224,3 +224,19 @@ a.mud-nav-link:focus-visible {
 #main-content:focus {
     outline: none;
 }
+
+/* Skip link (backlog 168). It is the first Tab stop on every page. It waits above the top of the
+   window and moves into view when it takes focus. It must stay global: MudButton renders its own
+   root <button>, which never receives MainLayout's CSS-isolation scope attribute. The button.
+   prefix beats the position rule on .mud-button-root, which MudBlazor.min.css sets later. */
+button.skip-link {
+    position: fixed;
+    top: 8px;
+    left: 8px;
+    z-index: calc(var(--mud-zindex-appbar) + 1);
+    transform: translateY(-200%);
+}
+
+button.skip-link:focus {
+    transform: none;
+}

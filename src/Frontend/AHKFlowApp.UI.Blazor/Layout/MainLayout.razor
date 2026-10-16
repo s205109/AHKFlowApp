@@ -11,6 +11,10 @@
    started: Blazor is running, a route matched, and the layout rendered. It says nothing about
    whether the page's own data has arrived. *@
 <MudLayout data-test="app-shell">
+    @* The first Tab stop on every page. A #main-content link would go to the home page, because
+       the app sets <base href="/" />, so the button moves focus in code instead. *@
+    <MudButton Class="skip-link" Variant="Variant.Filled" Color="Color.Secondary"
+               OnClick="SkipToContentAsync">Skip to main content</MudButton>
     <MudAppBar Elevation="1" Color="Color.Primary">
         <MudIconButton Class="drawer-toggle" Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit"
                        Edge="Edge.Start" OnClick="ToggleDrawer"
@@ -27,7 +31,9 @@
     </MudDrawer>
     <MudMainContent>
         <MudContainer MaxWidth="MaxWidth.False" Class="mt-6">
-            @Body
+            <div id="main-content" tabindex="-1" @ref="_mainContent">
+                @Body
+            </div>
         </MudContainer>
     </MudMainContent>
 </MudLayout>
@@ -37,6 +43,7 @@
 
     private bool _drawerOpen = true;
     private bool _isDarkMode;
+    private ElementReference _mainContent;
 
     protected override async Task OnInitializedAsync()
     {
@@ -54,6 +61,8 @@
     public void Dispose() => Preferences.OnChange -= OnPreferencesChanged;
 
     private void ToggleDrawer() => _drawerOpen = !_drawerOpen;
+
+    private async Task SkipToContentAsync() => await _mainContent.FocusAsync();
 
     private async Task ToggleDarkMode()
     {

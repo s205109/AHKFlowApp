@@ -80,6 +80,32 @@ public sealed class KeyboardAccessFlowTests(StackFixtureB fixture) : IAsyncLifet
         await Assertions.Expect(row.Locator("button.delete")).ToHaveAccessibleNameAsync("Delete btw");
     }
 
+    // Backlog 168. Without a skip link, page content starts at the fourteenth Tab press.
+    [Fact]
+    public async Task SkipLink_FirstTabStop_MovesFocusIntoThePage()
+    {
+        await using IBrowserContext ctx = await fixture.Browser.NewContextAsync(DesktopViewport);
+        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/hotstrings");
+        ILocator add = page.Locator(".desktop-branch button.add-hotstring");
+        ILocator skipLink = page.Locator("button.skip-link");
+        ILocator mainContent = page.Locator("#main-content");
+        await add.WaitForAsync();
+
+        await Assertions.Expect(skipLink).Not.ToBeInViewportAsync();
+
+        await page.Keyboard.PressAsync("Tab");
+        await Assertions.Expect(skipLink).ToBeFocusedAsync();
+        await Assertions.Expect(skipLink).ToBeInViewportAsync();
+        await Assertions.Expect(skipLink).ToHaveAccessibleNameAsync("Skip to main content");
+
+        await page.Keyboard.PressAsync("Enter");
+        await Assertions.Expect(mainContent).ToBeFocusedAsync();
+        await Assertions.Expect(mainContent).ToHaveCSSAsync("outline-style", "none");
+
+        await page.Keyboard.PressAsync("Tab");
+        await Assertions.Expect(add).ToBeFocusedAsync();
+    }
+
     private static async Task AssertRingsAsync(IPage page, ILocator row, string textColour)
     {
         // Real Tab presses prove the nav link is reachable by keyboard. They also put the
