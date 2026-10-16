@@ -136,16 +136,20 @@ public sealed class DownloadsEndpointsTests(ApiTestFixture fixture)
     }
 
     [Fact]
-    public async Task GET_zip_with_no_profiles_returns_empty_zip()
+    public async Task GET_zip_holds_the_default_profile_script_for_an_owner_who_never_listed_profiles()
     {
-        using HttpClient client = CreateAuthed(Guid.NewGuid());
+        using HttpClient client = CreateAuthed();
 
         HttpResponseMessage response = await client.GetAsync("/api/v1/downloads/zip");
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         await using Stream stream = await response.Content.ReadAsStreamAsync();
         using ZipArchive zip = new(stream, ZipArchiveMode.Read);
-        zip.Entries.Should().BeEmpty();
+        zip.Entries.Select(e => e.Name).Should().Equal("ahkflow_Default.ahk");
+
+        // The profiles page must then see the same single profile, not create a second one.
+        List<ProfileDto>? profiles = await client.GetFromJsonAsync<List<ProfileDto>>("/api/v1/profiles");
+        profiles.Should().ContainSingle().Which.Name.Should().Be("Default");
     }
 
     [Fact]
