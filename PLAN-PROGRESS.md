@@ -34,3 +34,20 @@ Skipped:
 - One shared LF helper for the seven `Replace("\r\n", "\n").Replace('\r', '\n')` sites. It touches
   five files outside this branch and a frontend copy. A candidate for its own item.
 - An LF paste helper in the edit-dialog previews. The plan keeps those snippets out of scope (D5).
+
+## Verify
+
+Verification artifacts, run on `a09e7e01` on 2026-10-16, all green:
+
+- `test-fast.ps1 -Mode Fast`: emitted `.ahk` text and the BOM unit tests. Application 1791,
+  UI.Blazor 1041, CLI 197, Domain 44, TestUtilities 14.
+- `test-fast.ps1 -Mode Integration`: the API download tests and the CLI download flows.
+  Application 386, CLI 30, API 254, Infrastructure 27.
+- `test-fast.ps1 -Mode E2E`: `ProfileScriptDownloadFlowTests` saves a real download and checks
+  its bytes. 93 of 93.
+- Diff review: worktree clean, `git diff --check origin/main...HEAD` clean, no package change.
+
+No manual steps. The change emits no new AHK construct, so the text assertions are the contract.
+
+**The Gate has not run.** The human asked to stop after the artifacts. Stage 6 stays open until
+the five-step Gate is green; only then take the success edge to `7-document`.
