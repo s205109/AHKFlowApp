@@ -24,6 +24,7 @@ the emitters are the only thing standing between a user's input and a broken scr
 | Macro token lexing | `src/Backend/AHKFlowApp.Application/Services/MacroTokenParser.cs` |
 | Header/footer tokens | `src/Backend/AHKFlowApp.Application/Services/HeaderTokenRenderer.cs` |
 | Default header | `src/Backend/AHKFlowApp.Domain/Constants/DefaultProfileTemplates.cs` |
+| Downloaded file bytes | `src/Backend/AHKFlowApp.Application/Services/AhkFileEncoding.cs` |
 | Input limits | `src/Backend/AHKFlowApp.Application/Validation/HotstringRules.cs`, `HotkeyRules.cs` |
 
 ## Script skeleton
@@ -91,7 +92,9 @@ groups, global hotkeys, footer. Lines are joined with `\n`. The finished file us
 
 ### The bytes of a downloaded file
 
-A downloaded script uses one line ending, LF.
+A downloaded script uses one line ending, LF, and starts with a UTF-8 byte-order mark (BOM). The
+single download and every zip entry get the same bytes. The web UI and the CLI save those bytes
+unchanged.
 
 **Line endings.** Some stored text holds CRLF. The default header and the paste helper are C# raw
 strings, and a raw string takes its line breaks from the source file. `.gitattributes` checks
@@ -113,6 +116,18 @@ emitter writes them as they are.
 The file uses LF and not CRLF because the generator already joins its lines with LF, and stored Raw
 text is already LF. Only the CRLF text was out of step. The one cost: Notepad from before its 2018
 update shows an LF-only file as a single line.
+
+**Byte-order mark.** `AhkFileEncoding.GetBytes` writes the three bytes `EF BB BF`, then the script
+as UTF-8. AutoHotkey v2 does not need the mark: it reads a script as UTF-8 when no mark is present
+([Script File Codepage](https://www.autohotkey.com/docs/v2/Scripts.htm#cp)). The mark is for the
+owner's editor. The [AutoHotkey FAQ](https://www.autohotkey.com/docs/v2/FAQ.htm#nonascii) says
+"Save the script as UTF-8, preferably with BOM", because without it an editor has to guess the
+encoding. Every file gets the mark, not only files with non-ASCII text.
+
+`Encoding.GetBytes` never writes the mark, so the method adds it. The preview string holds no mark,
+because the mark is added only to the bytes. Code that reads a downloaded file back drops the mark:
+the import dialog's `StreamReader`, `HttpContent.ReadAsStringAsync`, and `File.ReadAllText` all
+detect it. `Encoding.UTF8.GetString` does not, and returns it as the character U+FEFF.
 
 ## Header presets
 
