@@ -34,3 +34,9 @@ Execution: inline (`superpowers:executing-plans`), one session, progress update 
       E2E group totals from the passing run, summed from the TRX file: A 101.22 s, B 102.64 s,
       C 96.16 s, D 75.46 s, plus 41.34 s of fixture tests outside any group. Group B is no
       longer the smallest; group D is. Rebalancing belongs to backlog 155. Deferrals: none.
+
+Verify, 2026-10-17: the Gate's PowerShell slice failed one suite, `BacklogPlanPointer.Tests.ps1`.
+The item's `- Plan:` bullet had no backticks, so the check could not read it. The bullet came
+from the pickup commit `9a429963`, not from this plan's tasks. Fixed inside Verify, because the
+fix is one line of the item record and touches no code. Build, format, Coverage and
+`git diff --check` were green on the first run.
