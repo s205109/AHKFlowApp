@@ -90,4 +90,4 @@ button does, so that I can use the app without a mouse.
 - Fix order matters. A skip link that is hidden until it takes focus only works once F27 is
   fixed, so do the focus indicator first.
 - Spec: none — the work is four known fixes, not a design question.
-- Plan: none — moderate work, goes straight to Plan at pickup.
+- Plan: docs/superpowers/plans/2026-10-16-focus-ring-and-icon-button-names-plan-168.md
