@@ -33,7 +33,7 @@ public sealed class GenerateAllProfileScriptsQueryTests(ScriptGeneratorDbFixture
     {
         ICurrentUser cu = Substitute.For<ICurrentUser>();
         cu.Oid.Returns(oid ?? _ownerOid);
-        return new GenerateAllProfileScriptsQueryHandler(ctx, cu, _generator);
+        return new GenerateAllProfileScriptsQueryHandler(ctx, cu, _generator, TimeProvider.System);
     }
 
     [Fact]
@@ -42,7 +42,7 @@ public sealed class GenerateAllProfileScriptsQueryTests(ScriptGeneratorDbFixture
         await using AppDbContext ctx = fx.CreateContext();
         ICurrentUser cu = Substitute.For<ICurrentUser>();
         cu.Oid.Returns((Guid?)null);
-        GenerateAllProfileScriptsQueryHandler sut = new(ctx, cu, _generator);
+        GenerateAllProfileScriptsQueryHandler sut = new(ctx, cu, _generator, TimeProvider.System);
 
         Result<IReadOnlyList<ProfileScript>> result = await sut.ExecuteAsync(
             new GenerateAllProfileScriptsQuery(), CancellationToken.None);
@@ -52,7 +52,7 @@ public sealed class GenerateAllProfileScriptsQueryTests(ScriptGeneratorDbFixture
     }
 
     [Fact]
-    public async Task Handle_NoProfiles_ReturnsEmptyList()
+    public async Task Handle_NoProfiles_SeedsAndReturnsTheDefaultProfileScript()
     {
         await using AppDbContext ctx = fx.CreateContext();
         var lonelyUser = Guid.NewGuid();
@@ -62,7 +62,11 @@ public sealed class GenerateAllProfileScriptsQueryTests(ScriptGeneratorDbFixture
             new GenerateAllProfileScriptsQuery(), CancellationToken.None);
 
         result.IsSuccess.Should().BeTrue();
-        result.Value.Should().BeEmpty();
+        result.Value.Should().ContainSingle().Which.FileName.Should().Be("ahkflow_Default.ahk");
+
+        await using AppDbContext verify = fx.CreateContext();
+        verify.Profiles.Where(p => p.OwnerOid == lonelyUser).Should().ContainSingle()
+            .Which.IsDefault.Should().BeTrue();
     }
 
     [Fact]
