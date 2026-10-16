@@ -10,3 +10,6 @@ Execution: inline (`superpowers:executing-plans`), one session, progress update 
 - [x] Task 1 — one focus ring policy for nav links, buttons and checkboxes. `983bd4d1`.
       `KeyboardAccessFlowTests` 1/1 pass; it failed first on the nav link, `outline-style` was
       `none`, as planned. Deferrals: none.
+- [x] Task 2 — the app-bar buttons name what pressing them does. `ac7f95bc`.
+      `KeyboardAccessFlowTests` 2/2 pass; the new test failed first with an empty name, as
+      planned. Deferrals: none.
