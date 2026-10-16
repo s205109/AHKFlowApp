@@ -47,6 +47,24 @@ public sealed class KeyboardAccessFlowTests(StackFixtureB fixture) : IAsyncLifet
         await AssertRingsAsync(page, row, textColour: "rgba(255, 255, 255, 0.698)");
     }
 
+    // Backlog 168. Each name says what pressing the button will do, so it changes with the state.
+    [Fact]
+    public async Task AppBarButtons_NameWhatPressingThemDoes()
+    {
+        await using IBrowserContext ctx = await fixture.Browser.NewContextAsync(DesktopViewport);
+        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/hotstrings");
+        ILocator drawerToggle = page.Locator("header button.drawer-toggle");
+        ILocator darkModeToggle = page.Locator("header button.dark-mode-toggle");
+
+        await Assertions.Expect(drawerToggle).ToHaveAccessibleNameAsync("Close navigation menu");
+        await drawerToggle.ClickAsync();
+        await Assertions.Expect(drawerToggle).ToHaveAccessibleNameAsync("Open navigation menu");
+
+        await Assertions.Expect(darkModeToggle).ToHaveAccessibleNameAsync("Switch to dark mode");
+        await darkModeToggle.ClickAsync();
+        await Assertions.Expect(darkModeToggle).ToHaveAccessibleNameAsync("Switch to light mode");
+    }
+
     private static async Task AssertRingsAsync(IPage page, ILocator row, string textColour)
     {
         // Real Tab presses prove the nav link is reachable by keyboard. They also put the
