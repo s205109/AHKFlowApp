@@ -21,8 +21,8 @@ control.
 
 ## Acceptance criteria
 
-- [ ] A downloaded script uses one line ending throughout.
-- [ ] The byte-order mark decision is recorded, either by writing one or by writing down why not.
+- [x] A downloaded script uses one line ending throughout.
+- [x] The byte-order mark decision is recorded, either by writing one or by writing down why not.
 
 ## Out of scope
 
@@ -58,3 +58,33 @@ control.
   decision must reach both the single download and the zip.
 - Spec: none — two small decisions, each with its evidence written above.
 - Plan: `docs/superpowers/plans/2026-10-16-download-line-endings-bom-plan-183.md`
+- **Ticked at Document, 2026-10-16, against `4ccd60cf`.** Evidence for each criterion:
+  1. The line ending is LF. `AhkScriptGenerator.Generate` turns every CRLF and every lone CR in
+     the finished script into LF at
+     (`src/Backend/AHKFlowApp.Application/Services/AhkScriptGenerator.cs:57`, "return string.Join(").
+     The single download, the zip, and the profile preview all call it. The tests:
+     - The generator, for templates and the paste helper:
+       (`tests/AHKFlowApp.Application.Tests/Services/AhkScriptGeneratorTests.cs:1390`, "public void Generate_TemplatesWithCrlfAndLoneCr_EmitsLfOnly()")
+       and (`tests/AHKFlowApp.Application.Tests/Services/AhkScriptGeneratorTests.cs:1408`, "public void Generate_ClipboardHelper_EmitsLfOnly()").
+     - The API, for the single download and for every zip entry:
+       (`tests/AHKFlowApp.API.Tests/Downloads/DownloadsEndpointsTests.cs:185`, "public async Task GET_per_profile_body_is_bom_then_the_script_with_lf_only()")
+       and (`tests/AHKFlowApp.API.Tests/Downloads/DownloadsEndpointsTests.cs:205`, "public async Task GET_zip_every_entry_is_bom_then_its_own_script_with_lf_only()").
+     - The CLI, for a saved file and for standard output:
+       (`tests/AHKFlowApp.CLI.Tests/Integration/DownloadCliIntegrationTests.cs:92`, "public async Task Ahk_Default_WritesFileWithSeededHotstringContent()")
+       and (`tests/AHKFlowApp.CLI.Tests/Integration/DownloadCliIntegrationTests.cs:161`, "public async Task Ahk_OutputDash_WritesBytesToInjectedStream()").
+     - The web UI, for a file the browser saves:
+       (`tests/AHKFlowApp.E2E.Tests/ProfileScriptDownloadFlowTests.cs:17`, "public async Task DownloadFromProfilesPage_SavesThatProfilesScript()").
+
+     The hotstring and hotkey edit dialogs still show the paste helper with CRLF. Those previews
+     are text on screen, not a downloaded script, and the plan keeps them out of scope.
+  2. The decision is to write a byte-order mark. It is recorded in
+     (`docs/development/ahk-v2-syntax.md:120`, "**Byte-order mark.**"), under the section
+     (`docs/development/ahk-v2-syntax.md:93`, "### The bytes of a downloaded file").
+     One method writes it,
+     (`src/Backend/AHKFlowApp.Application/Services/AhkFileEncoding.cs:12`, "public static byte[] GetBytes(string script) =>"),
+     and both download paths call it:
+     (`src/Backend/AHKFlowApp.API/Controllers/DownloadsController.cs:38`, "byte[] bytes = AhkFileEncoding.GetBytes(result.Value.Content);")
+     and (`src/Backend/AHKFlowApp.Application/Queries/Downloads/GenerateAllProfileScriptsZipQuery.cs:41`, "await entryStream.WriteAsync(AhkFileEncoding.GetBytes(script.Content), ct);").
+     The tests in criterion 1 check the mark too. The import dialog drops it when it reads a
+     downloaded file back:
+     (`tests/AHKFlowApp.UI.Blazor.Tests/Components/Hotstrings/HotstringImportDialogTests.cs:209`, "public async Task SelectingFileWithByteOrderMark_PreviewsTheTextWithoutIt()").
