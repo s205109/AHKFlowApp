@@ -58,7 +58,9 @@ control.
   decision must reach both the single download and the zip.
 - Spec: none — two small decisions, each with its evidence written above.
 - Plan: `docs/superpowers/plans/2026-10-16-download-line-endings-bom-plan-183.md`
-- **Ticked at Document, 2026-10-16, against `4ccd60cf`.** Evidence for each criterion:
+- **Ticked at Document, 2026-10-16, against `4ccd60cf`.** At Review the branch merged `main` at
+  `b7a1953b`, and the line numbers below were updated to the merged tree. Evidence for each
+  criterion:
   1. The line ending is LF. `AhkScriptGenerator.Generate` turns every CRLF and every lone CR in
      the finished script into LF at
      (`src/Backend/AHKFlowApp.Application/Services/AhkScriptGenerator.cs:57`, "return string.Join(").
@@ -67,8 +69,8 @@ control.
        (`tests/AHKFlowApp.Application.Tests/Services/AhkScriptGeneratorTests.cs:1390`, "public void Generate_TemplatesWithCrlfAndLoneCr_EmitsLfOnly()")
        and (`tests/AHKFlowApp.Application.Tests/Services/AhkScriptGeneratorTests.cs:1408`, "public void Generate_ClipboardHelper_EmitsLfOnly()").
      - The API, for the single download and for every zip entry:
-       (`tests/AHKFlowApp.API.Tests/Downloads/DownloadsEndpointsTests.cs:185`, "public async Task GET_per_profile_body_is_bom_then_the_script_with_lf_only()")
-       and (`tests/AHKFlowApp.API.Tests/Downloads/DownloadsEndpointsTests.cs:205`, "public async Task GET_zip_every_entry_is_bom_then_its_own_script_with_lf_only()").
+       (`tests/AHKFlowApp.API.Tests/Downloads/DownloadsEndpointsTests.cs:208`, "public async Task GET_per_profile_body_is_bom_then_the_script_with_lf_only()")
+       and (`tests/AHKFlowApp.API.Tests/Downloads/DownloadsEndpointsTests.cs:228`, "public async Task GET_zip_every_entry_is_bom_then_its_own_script_with_lf_only()").
      - The CLI, for a saved file and for standard output:
        (`tests/AHKFlowApp.CLI.Tests/Integration/DownloadCliIntegrationTests.cs:92`, "public async Task Ahk_Default_WritesFileWithSeededHotstringContent()")
        and (`tests/AHKFlowApp.CLI.Tests/Integration/DownloadCliIntegrationTests.cs:161`, "public async Task Ahk_OutputDash_WritesBytesToInjectedStream()").
