@@ -69,3 +69,21 @@ Run on 2026-10-16. All five steps are green on `7e3aabc4`.
 5. `git diff --check origin/main...HEAD`: clean, rerun after the fix.
 
 Verdict: verification artifacts green, Gate green, no manual steps. Success edge to `7-document`.
+
+## Review round 1
+
+One P2 thread on PR #444: the acceptance evidence cited two API test methods at lines 185 and
+205. CI checks the merge result with `main`, where backlog 184 moved them to 208 and 228. Verdict
+CONFIRMED. No code change.
+
+- Merged `main` at `b7a1953b` into the branch (`4616008b`), then updated the two line numbers
+  (`2a150a96`). The plan's citation of `GenerateAllProfileScriptsQuery.cs` moved too, from line 55
+  to 57 (plans-repo `2e2c2ad`). The citation check passes on the repository and on the plan.
+- The Gate on the merged branch is green:
+  - Build, format, and `diff --check` passed.
+  - The PowerShell suites passed 76 of 77. `CiPowerShellSuiteRunner.Tests.ps1` failed on a
+    Windows file lock in a temporary folder ("being used by another process"), then passed alone.
+  - The first Coverage run failed: the Docker engine restarted during it. Every SQL container on
+    the machine exited with code 255 at the same moment. A rerun failed one E2E test on a
+    first-page-load timeout, `HotkeysMobileFlowTests.PhoneViewport_MarkedRowWithTheLongestCombo_KeepsTheTriggerCellInsideItsColumn`.
+    The second rerun was clean, and every per-assembly threshold was met.
