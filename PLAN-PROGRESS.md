@@ -19,3 +19,17 @@ Execution: inline (`superpowers:executing-plans`), one session, progress update 
       with an empty name. Deviation: the bUnit project ran directly in Release instead of
       `test-fast.ps1 -Mode Fast`, because the harness refuses `pwsh` inside the entered
       worktree. Deferrals: the full Fast slice runs at the Gate.
+- [x] Task 4 — a skip link moves focus into the page content. `54d85c3b`.
+      `KeyboardAccessFlowTests` 4/4 pass; the skip link test failed first because no element
+      matched `button.skip-link`. Layout before and after is identical: the same four
+      rectangles, light theme. Deviation: a temporary E2E test took both measurements inside
+      the E2E stack, because the worktree's own API had no database. The test was deleted
+      before the commit.
+      The first whole E2E run failed 96/97: `HotstringsCrudFlowTests` looked up the dialog's
+      `Delete` button by role without a scope, and the row's new `Delete btw` name matched
+      first. Fixed in `566f084a` by scoping the lookup to the dialog, as the other delete tests
+      already do. The second whole run passed 97/97. Both runs used `dotnet test` with a TRX
+      logger, because the harness refuses `pwsh` inside the entered worktree.
+      E2E group totals from the passing run, summed from the TRX file: A 101.22 s, B 102.64 s,
+      C 96.16 s, D 75.46 s, plus 41.34 s of fixture tests outside any group. Group B is no
+      longer the smallest; group D is. Rebalancing belongs to backlog 155. Deferrals: none.
