@@ -51,7 +51,10 @@ public sealed class AhkScriptGenerator(
 
         lines.Add(renderer.Render(profile.FooterTemplate, ctx));
 
-        return string.Join("\n", lines);
+        // A downloaded file uses LF only, so every CRLF and lone CR in stored text becomes LF.
+        // Not ReplaceLineEndings: it also rewrites U+0085, U+2028, U+2029 and form feed, which a
+        // Text hotstring may hold as literal text. ahk-v2-syntax.md says why.
+        return string.Join("\n", lines).Replace("\r\n", "\n").Replace('\r', '\n');
     }
 
     /// <summary>
