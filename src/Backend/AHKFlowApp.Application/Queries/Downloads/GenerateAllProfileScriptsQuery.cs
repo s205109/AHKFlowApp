@@ -1,4 +1,5 @@
 using AHKFlowApp.Application.Abstractions;
+using AHKFlowApp.Application.Common;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Application.Services;
 using AHKFlowApp.Domain.Entities;
@@ -12,7 +13,8 @@ public sealed record GenerateAllProfileScriptsQuery;
 internal sealed class GenerateAllProfileScriptsQueryHandler(
     IAppDbContext db,
     ICurrentUser currentUser,
-    AhkScriptGenerator generator)
+    AhkScriptGenerator generator,
+    TimeProvider clock)
     : IUseCaseHandler<GenerateAllProfileScriptsQuery, Result<IReadOnlyList<ProfileScript>>>
 {
     public async Task<Result<IReadOnlyList<ProfileScript>>> ExecuteAsync(
@@ -21,13 +23,13 @@ internal sealed class GenerateAllProfileScriptsQueryHandler(
         if (currentUser.Oid is not Guid ownerOid)
             return Result.Unauthorized();
 
+        // Include the profile the app guarantees, even before the owner opens the profiles page.
+        await db.EnsureDefaultProfileAsync(ownerOid, clock, ct);
+
         List<Profile> profiles = await db.Profiles.AsNoTracking()
             .Where(p => p.OwnerOid == ownerOid)
             .OrderBy(p => p.Name)
             .ToListAsync(ct);
-
-        if (profiles.Count == 0)
-            return Result.Success<IReadOnlyList<ProfileScript>>([]);
 
         List<Hotstring> allHotstrings = await db.Hotstrings.AsNoTracking()
             .Where(h => h.OwnerOid == ownerOid)
