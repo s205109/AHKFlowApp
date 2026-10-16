@@ -49,5 +49,23 @@ Verification artifacts, run on `a09e7e01` on 2026-10-16, all green:
 
 No manual steps. The change emits no new AHK construct, so the text assertions are the contract.
 
-**The Gate has not run.** The human asked to stop after the artifacts. Stage 6 stays open until
-the five-step Gate is green; only then take the success edge to `7-document`.
+### Gate
+
+Run on 2026-10-16. All five steps are green on `7e3aabc4`.
+
+1. `dotnet build AHKFlowApp.slnx --configuration Release`: 0 errors.
+2. `dotnet format AHKFlowApp.slnx --verify-no-changes`: exit 0.
+3. `test-fast.ps1 -Mode PowerShell`: green after one fix and one rerun.
+   - Run 1 failed `CitationFreshness.Tests.ps1`. This branch had moved lines that four Document-time
+     citations in `backlog/done/160-one-home-for-emitted-runtime-helpers.md` point at, and one
+     citation in the 183 plan. Fixed in `7e3aabc4` (item 160 frozen with `citation-check:ignore`)
+     and plans-repo `78679fb` (plan line number updated).
+   - Run 2 passed 76 of 77 suites, `CitationFreshness.Tests.ps1` included. It failed
+     `MeasureTestModes.Tests.ps1`, "A slow head is discarded and the median is the flat tail": a
+     median of 0.68 s against a 0.5 s threshold. That test times a stub process, so it is
+     sensitive to machine load. It passed in run 1 and again alone on `7e3aabc4`. This branch
+     does not touch the script or the suite.
+4. `test-fast.ps1 -Mode Coverage`: every test passed, and every per-assembly threshold was met.
+5. `git diff --check origin/main...HEAD`: clean, rerun after the fix.
+
+Verdict: verification artifacts green, Gate green, no manual steps. Success edge to `7-document`.
