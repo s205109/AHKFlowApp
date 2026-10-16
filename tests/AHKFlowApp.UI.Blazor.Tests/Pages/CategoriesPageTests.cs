@@ -163,4 +163,38 @@ public sealed class CategoriesPageTests : BunitContext, IAsyncLifetime
         cut.WaitForAssertion(() =>
             _api.Received(1).CreateAsync(Arg.Any<CreateCategoryDto>(), Arg.Any<CancellationToken>()));
     }
+
+    // Backlog 168. Each icon button names the category it acts on.
+    [Fact]
+    public void Row_IconButtons_NameTheirCategory()
+    {
+        StubList(MakeCategory("Work"));
+
+        IRenderedComponent<Categories> cut = RenderPage();
+        cut.WaitForState(() => cut.Markup.Contains("Work"));
+
+        cut.Find("button.start-edit").GetAttribute("aria-label").Should().Be("Edit Work");
+        cut.Find("button.delete").GetAttribute("aria-label").Should().Be("Delete Work");
+
+        cut.Find("button.start-edit").Click();
+        cut.WaitForAssertion(() => cut.Find("button.commit-edit"));
+
+        cut.Find("button.commit-edit").GetAttribute("aria-label").Should().Be("Save Work");
+        cut.Find("button.cancel-edit").GetAttribute("aria-label").Should().Be("Cancel editing Work");
+    }
+
+    // Backlog 168. A new row has no name yet, so its labels fall back to "new category".
+    [Fact]
+    public void NewRow_IconButtons_NameTheNewCategory()
+    {
+        StubList();
+
+        IRenderedComponent<Categories> cut = RenderPage();
+        cut.WaitForAssertion(() => cut.Find("button.add-category"));
+        cut.Find("button.add-category").Click();
+        cut.WaitForAssertion(() => cut.Find("button.commit-edit"));
+
+        cut.Find("button.commit-edit").GetAttribute("aria-label").Should().Be("Save new category");
+        cut.Find("button.cancel-edit").GetAttribute("aria-label").Should().Be("Cancel editing new category");
+    }
 }

@@ -220,4 +220,14 @@ public sealed class HotstringImportDialogTests : BunitContext, IAsyncLifetime
             throw new IOException("Should not be called — the size guard must short-circuit first.");
         }
     }
+
+    // Backlog 168. The back-arrow button has no text, so its label says what it does.
+    [Fact]
+    public async Task CancelButton_NamesWhatItDoes()
+    {
+        IRenderedComponent<MudDialogProvider> provider = await OpenDialogAsync();
+
+        provider.WaitForAssertion(() =>
+            provider.Find("button.cancel-import").GetAttribute("aria-label").Should().Be("Cancel import"));
+    }
 }

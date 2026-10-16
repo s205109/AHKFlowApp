@@ -65,6 +65,21 @@ public sealed class KeyboardAccessFlowTests(StackFixtureB fixture) : IAsyncLifet
         await Assertions.Expect(darkModeToggle).ToHaveAccessibleNameAsync("Switch to light mode");
     }
 
+    // Backlog 168. A row's icon buttons name the hotstring they act on.
+    [Fact]
+    public async Task RowButtons_NameTheirHotstring()
+    {
+        await SeedHotstringAsync(fixture, "btw");
+        await using IBrowserContext ctx = await fixture.Browser.NewContextAsync(DesktopViewport);
+        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/hotstrings");
+        ILocator row = page.Locator(".desktop-branch tbody tr", new() { HasTextString = "btw" });
+        await row.WaitForAsync();
+
+        await Assertions.Expect(row.Locator("button.edit")).ToHaveAccessibleNameAsync("Edit btw");
+        await Assertions.Expect(row.Locator("button.show-history")).ToHaveAccessibleNameAsync("Show history for btw");
+        await Assertions.Expect(row.Locator("button.delete")).ToHaveAccessibleNameAsync("Delete btw");
+    }
+
     private static async Task AssertRingsAsync(IPage page, ILocator row, string textColour)
     {
         // Real Tab presses prove the nav link is reachable by keyboard. They also put the

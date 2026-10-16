@@ -65,9 +65,11 @@
                 <MudTd>
                     @DownloadButton(context)
                     <MudIconButton Class="commit-edit" Icon="@Icons.Material.Filled.Check"
-                                   Color="Color.Success" OnClick="() => CommitEditAsync(context.Id)" />
+                                   Color="Color.Success" OnClick="() => CommitEditAsync(context.Id)"
+                                   UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = $"Save {RowName(context)}" })" />
                     <MudIconButton Class="cancel-edit" Icon="@Icons.Material.Filled.Close"
-                                   Color="Color.Default" OnClick="() => CancelEditAsync(context.Id)" />
+                                   Color="Color.Default" OnClick="() => CancelEditAsync(context.Id)"
+                                   UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = $"Cancel editing {RowName(context)}" })" />
                 </MudTd>
             }
             else
@@ -78,12 +80,15 @@
                 <MudTd>@context.UpdatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</MudTd>
                 <MudTd>
                     <MudIconButton Class="toggle-expand" Icon="@(IsExpanded(context.Id) ? Icons.Material.Filled.ExpandLess : Icons.Material.Filled.ExpandMore)"
-                                   OnClick="() => ToggleExpand(context.Id)" />
+                                   OnClick="() => ToggleExpand(context.Id)"
+                                   UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = $"{(IsExpanded(context.Id) ? "Hide" : "Show")} the header template for {RowName(context)}" })" />
                     @DownloadButton(context)
                     <MudIconButton Class="start-edit" Icon="@Icons.Material.Filled.Edit"
-                                   OnClick="() => StartEdit(context)" />
+                                   OnClick="() => StartEdit(context)"
+                                   UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = $"Edit {RowName(context)}" })" />
                     <MudIconButton Class="delete" Icon="@Icons.Material.Filled.Delete" Color="Color.Error"
-                                   OnClick="() => DeleteAsync(context)" />
+                                   OnClick="() => DeleteAsync(context)"
+                                   UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = $"Delete {RowName(context)}" })" />
                 </MudTd>
             }
         </RowTemplate>
@@ -332,11 +337,11 @@
     private static Dictionary<string, object?> DownloadAttributes(ProfileDto profile) =>
         new() { ["aria-label"] = DownloadName(profile) };
 
-    private static string DownloadName(ProfileDto profile)
-    {
-        string name = string.IsNullOrWhiteSpace(profile.Name) ? "new profile" : profile.Name;
-        return $"Download the {name} script";
-    }
+    private static string DownloadName(ProfileDto profile) => $"Download the {RowName(profile)} script";
+
+    // Names the row in its buttons' labels. A new row has no name yet.
+    private static string RowName(ProfileDto profile) =>
+        string.IsNullOrWhiteSpace(profile.Name) ? "new profile" : profile.Name;
 
     private async Task DownloadScriptAsync(ProfileDto profile)
     {

@@ -589,4 +589,43 @@ public sealed class ProfilesPageTests : BunitContext, IAsyncLifetime
             Arg.Any<CancellationToken>()));
         return Task.CompletedTask;
     }
+
+    // Backlog 168. Each icon button names the profile it acts on.
+    [Fact]
+    public void Row_IconButtons_NameTheirProfile()
+    {
+        StubList(MakeProfile("Work"));
+
+        IRenderedComponent<Profiles> cut = RenderPage();
+        cut.WaitForState(() => cut.Markup.Contains("Work"));
+
+        cut.Find("button.toggle-expand").GetAttribute("aria-label").Should().Be("Show the header template for Work");
+        cut.Find("button.toggle-expand").Click();
+        cut.WaitForAssertion(() =>
+            cut.Find("button.toggle-expand").GetAttribute("aria-label").Should().Be("Hide the header template for Work"));
+
+        cut.Find("button.start-edit").GetAttribute("aria-label").Should().Be("Edit Work");
+        cut.Find("button.delete").GetAttribute("aria-label").Should().Be("Delete Work");
+
+        cut.Find("button.start-edit").Click();
+        cut.WaitForAssertion(() => cut.Find("button.commit-edit"));
+
+        cut.Find("button.commit-edit").GetAttribute("aria-label").Should().Be("Save Work");
+        cut.Find("button.cancel-edit").GetAttribute("aria-label").Should().Be("Cancel editing Work");
+    }
+
+    // Backlog 168. A new row has no name yet, so its labels fall back to "new profile".
+    [Fact]
+    public void NewRow_IconButtons_NameTheNewProfile()
+    {
+        StubList();
+
+        IRenderedComponent<Profiles> cut = RenderPage();
+        cut.WaitForAssertion(() => cut.Find("button.add-profile"));
+        cut.Find("button.add-profile").Click();
+        cut.WaitForAssertion(() => cut.Find("button.commit-edit"));
+
+        cut.Find("button.commit-edit").GetAttribute("aria-label").Should().Be("Save new profile");
+        cut.Find("button.cancel-edit").GetAttribute("aria-label").Should().Be("Cancel editing new profile");
+    }
 }
