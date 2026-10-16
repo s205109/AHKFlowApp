@@ -18,7 +18,8 @@ Execution: inline (`superpowers:executing-plans`), one session, progress update 
       with a null `aria-label`. `KeyboardAccessFlowTests` 3/3 pass; the row test failed first
       with an empty name. Deviation: the bUnit project ran directly in Release instead of
       `test-fast.ps1 -Mode Fast`, because the harness refuses `pwsh` inside the entered
-      worktree. Deferrals: the full Fast slice runs at the Gate.
+      worktree. Deferrals: the full Fast slice runs at the Gate. Closed: the user ran
+      `test-fast.ps1 -Mode Fast` on 2026-10-16, 3090/3090 pass across five projects.
 - [x] Task 4 — a skip link moves focus into the page content. `54d85c3b`.
       `KeyboardAccessFlowTests` 4/4 pass; the skip link test failed first because no element
       matched `button.skip-link`. Layout before and after is identical: the same four
