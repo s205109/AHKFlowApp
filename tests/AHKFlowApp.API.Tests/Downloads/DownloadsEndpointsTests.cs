@@ -1,6 +1,7 @@
 using System.IO.Compression;
 using System.Net;
 using System.Net.Http.Json;
+using System.Text;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Infrastructure.Persistence;
@@ -16,6 +17,7 @@ namespace AHKFlowApp.API.Tests.Downloads;
 public sealed class DownloadsEndpointsTests(ApiTestFixture fixture)
 {
     private readonly CustomWebApplicationFactory _factory = fixture.Factory;
+    private static readonly byte[] Utf8Bom = [0xEF, 0xBB, 0xBF];
 
     private HttpClient CreateAuthed(Guid? oid = null) =>
         _factory.CreateAuthenticatedClient(b => b.WithOid(oid ?? Guid.NewGuid()));
@@ -200,5 +202,59 @@ public sealed class DownloadsEndpointsTests(ApiTestFixture fixture)
         content.Should().StartWith("; Renderer Test v");
         content.Should().Contain("0h 0k");
         content.Should().MatchRegex(@"Generated \d{4}-\d{2}-\d{2}");
+    }
+
+    [Fact]
+    public async Task GET_per_profile_body_is_bom_then_the_script_with_lf_only()
+    {
+        // Backlog 183. The header holds CRLF, a lone CR and a non-ASCII arrow; the footer holds CRLF.
+        // The file must hold the mark, then that text with LF line endings, as UTF-8.
+        string arrow = ((char)0x2192).ToString();
+        using HttpClient client = CreateAuthed();
+        ProfileDto profile = await CreateProfileAsync(client, "Work",
+            headerTemplate: "; one\r\n; two\r; three " + arrow,
+            footerTemplate: "; end\r\n");
+
+        byte[] bytes = await client.GetByteArrayAsync($"/api/v1/downloads/{profile.Id}");
+
+        bytes[..3].Should().Equal(Utf8Bom);
+        string text = Encoding.UTF8.GetString(bytes[3..]);
+        text.Should().StartWith("; one\n; two\n; three " + arrow + "\n");
+        text.Should().EndWith("; end\n");
+        text.Should().NotContain("\r");
+    }
+
+    [Fact]
+    public async Task GET_zip_every_entry_is_bom_then_its_own_script_with_lf_only()
+    {
+        // Backlog 183. The zip writes its entries in its own handler, so it needs its own test. Each
+        // profile gets its own header, so the test can tell the entries apart.
+        using HttpClient client = CreateAuthed();
+        await CreateProfileAsync(client, "Work", headerTemplate: "; work\r\n; crlf", footerTemplate: "");
+        await CreateProfileAsync(client, "Personal", headerTemplate: "; personal\r; lone cr", footerTemplate: "");
+        Dictionary<string, string> expectedStart = new()
+        {
+            ["ahkflow_Work.ahk"] = "; work\n; crlf\n",
+            ["ahkflow_Personal.ahk"] = "; personal\n; lone cr\n",
+        };
+
+        HttpResponseMessage response = await client.GetAsync("/api/v1/downloads/zip");
+
+        await using Stream stream = await response.Content.ReadAsStreamAsync();
+        using ZipArchive zip = new(stream, ZipArchiveMode.Read);
+        zip.Entries.Select(e => e.Name).Should().Contain(expectedStart.Keys);
+        foreach (ZipArchiveEntry entry in zip.Entries)
+        {
+            using MemoryStream copy = new();
+            await using (Stream entryStream = await entry.OpenAsync())
+                await entryStream.CopyToAsync(copy);
+            byte[] bytes = copy.ToArray();
+
+            bytes[..3].Should().Equal(Utf8Bom, "{0} must start with the mark", entry.Name);
+            string text = Encoding.UTF8.GetString(bytes[3..]);
+            text.Should().NotContain("\r", "{0} must use LF only", entry.Name);
+            if (expectedStart.TryGetValue(entry.Name, out string? start))
+                text.Should().StartWith(start, "{0} must hold its own profile's script", entry.Name);
+        }
     }
 }

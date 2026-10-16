@@ -7,8 +7,10 @@ Run once against a real AutoHotkey v2 install before merging `feature/wt-clipboa
 ## Fast path — `acceptance.ahk`
 
 `acceptance.ahk` covers every runtime item in one file. It was produced by the real
-`AhkScriptGenerator`, so it is byte-identical to what a download would emit — no API, UI,
-or database needed. Run it with AutoHotkey v2 and type the triggers into Notepad.
+`AhkScriptGenerator`, so it holds the same text a download would emit — no API, UI, or database
+needed. Only the bytes differ: a download starts with a byte-order mark and uses LF line endings.
+AutoHotkey reads both files the same way. Run it with AutoHotkey v2 and type the triggers into
+Notepad.
 
 **Close your other AutoHotkey scripts first.** A personal hotstring script running in the
 background can swallow these triggers — during the 2026-07-15 pass, triggers silently

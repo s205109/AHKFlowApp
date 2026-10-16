@@ -41,6 +41,12 @@ public sealed class ProfileScriptDownloadFlowTests(StackFixtureD fixture) : IAsy
         // The option letters belong to the hotstring's own defaults, so the assertion starts at
         // the trigger. What matters here is that the file holds this profile's script.
         Assert.Contains("dlflow::downloaded from profiles", script, StringComparison.Ordinal);
+
+        // Backlog 183. The browser saves the API's bytes unchanged: the mark, then LF only. The
+        // seeded profile's header is the CRLF default, so this fails without the fix.
+        byte[] bytes = await File.ReadAllBytesAsync(path);
+        Assert.Equal(new byte[] { 0xEF, 0xBB, 0xBF }, bytes[..3]);
+        Assert.DoesNotContain((byte)'\r', bytes);
     }
 
     [Fact]

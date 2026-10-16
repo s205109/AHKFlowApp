@@ -72,14 +72,14 @@ removed" and "tests cover the new API" cannot.
      decides. The generator asks it at
      (`src/Backend/AHKFlowApp.Application/Services/AhkScriptGenerator.cs:35`, "lines.AddRange(RuntimeHelpers.NeededBy(hsList, hkList));"),
      and the hotstring preview asks it at
-     (`src/Backend/AHKFlowApp.Application/Queries/Hotstrings/GetHotstringPreviewQuery.cs:109`, "RuntimeHelpers.NeededBy([hs], [])").
+     (`src/Backend/AHKFlowApp.Application/Queries/Hotstrings/GetHotstringPreviewQuery.cs:109`, "RuntimeHelpers.NeededBy([hs], [])"). <!-- citation-check:ignore records the tree at Document time, 7ce3961; backlog 183 moved the line -->
      A search for `PasteHelperFunction` in `src/` finds nothing.
   2. (`src/Backend/AHKFlowApp.Application/Services/DefinitionWrapping.cs:14`, "internal static class DefinitionWrapping")
      builds both. The generator calls it at
-     (`src/Backend/AHKFlowApp.Application/Services/AhkScriptGenerator.cs:84`, "lines.AddRange(DefinitionWrapping.InWindowContext(").
+     (`src/Backend/AHKFlowApp.Application/Services/AhkScriptGenerator.cs:84`, "lines.AddRange(DefinitionWrapping.InWindowContext("). <!-- citation-check:ignore records the tree at Document time, 7ce3961; backlog 183 moved the line -->
      Both previews call its `PreviewSnippet`, at
-     (`src/Backend/AHKFlowApp.Application/Queries/Hotstrings/GetHotstringPreviewQuery.cs:108`, "string snippet = DefinitionWrapping.PreviewSnippet(")
-     and (`src/Backend/AHKFlowApp.Application/Queries/Hotkeys/GetHotkeyPreviewQuery.cs:43`, "string snippet = DefinitionWrapping.PreviewSnippet(").
+     (`src/Backend/AHKFlowApp.Application/Queries/Hotstrings/GetHotstringPreviewQuery.cs:108`, "string snippet = DefinitionWrapping.PreviewSnippet(") <!-- citation-check:ignore records the tree at Document time, 7ce3961; backlog 183 moved the line -->
+     and (`src/Backend/AHKFlowApp.Application/Queries/Hotkeys/GetHotkeyPreviewQuery.cs:43`, "string snippet = DefinitionWrapping.PreviewSnippet("). <!-- citation-check:ignore records the tree at Document time, 7ce3961; backlog 183 moved the line -->
      A search for `EmitHotIfOpen`, `HotIfClose`, and `DescriptionCommentLines` in the generator and
      in `Queries/` finds nothing.
   3. A search for `HotstringEmitter.` in `HotkeyEmitter.cs` and `GetHotkeyPreviewQuery.cs` finds

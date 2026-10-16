@@ -24,6 +24,7 @@ the emitters are the only thing standing between a user's input and a broken scr
 | Macro token lexing | `src/Backend/AHKFlowApp.Application/Services/MacroTokenParser.cs` |
 | Header/footer tokens | `src/Backend/AHKFlowApp.Application/Services/HeaderTokenRenderer.cs` |
 | Default header | `src/Backend/AHKFlowApp.Domain/Constants/DefaultProfileTemplates.cs` |
+| Downloaded file bytes | `src/Backend/AHKFlowApp.Application/Services/AhkFileEncoding.cs` |
 | Input limits | `src/Backend/AHKFlowApp.Application/Validation/HotstringRules.cs`, `HotkeyRules.cs` |
 
 ## Script skeleton
@@ -86,7 +87,47 @@ All formatting uses `InvariantCulture` — generated scripts must not vary by se
 
 Body layout, in order: paste helper (only when some hotstring needs it), `; --- Hotstrings ---`,
 hotstring window-context groups, global hotstrings, `; --- Hotkeys ---`, hotkey window-context
-groups, global hotkeys, footer. Lines are joined with `\n`.
+groups, global hotkeys, footer. Lines are joined with `\n`. The finished file uses LF only; see
+[The bytes of a downloaded file](#the-bytes-of-a-downloaded-file).
+
+### The bytes of a downloaded file
+
+A downloaded script uses one line ending, LF, and starts with a UTF-8 byte-order mark (BOM). The
+single download and every zip entry get the same bytes. The web UI and the CLI save those bytes
+unchanged.
+
+**Line endings.** Some stored text holds CRLF. The default header and the paste helper are C# raw
+strings, and a raw string takes its line breaks from the source file. `.gitattributes` checks
+`.cs` files out with CRLF. A header, a footer, or a Raw hotkey body saved through the API can hold
+CRLF or a lone CR too. So `AhkScriptGenerator.Generate` turns every CRLF and every lone CR in the
+finished script into LF. A Raw hotstring definition gets the same rule when it is saved.
+
+This cannot change what a script does. AutoHotkey reads a script file with two flags,
+`EOL_CRLF` and `EOL_ORPHAN_CR`, so it turns CRLF and a lone CR into LF itself. See
+[`source/script.h` line 542](https://github.com/AutoHotkey/AutoHotkey/blob/43e233e771633908dd2f211678980ccc25489ab8/source/script.h#L542)
+and
+[`source/TextIO.h` lines 40 and 41](https://github.com/AutoHotkey/AutoHotkey/blob/43e233e771633908dd2f211678980ccc25489ab8/source/TextIO.h#L40-L41),
+at release `v2.0.30`.
+
+Do not use `string.ReplaceLineEndings` here. It also rewrites NEL (U+0085), LS (U+2028), PS
+(U+2029), and form feed. A Text hotstring can hold those characters as literal text, and the
+emitter writes them as they are.
+
+The file uses LF and not CRLF because the generator already joins its lines with LF, and stored Raw
+text is already LF. Only the CRLF text was out of step. The one cost: Notepad from before its 2018
+update shows an LF-only file as a single line.
+
+**Byte-order mark.** `AhkFileEncoding.GetBytes` writes the three bytes `EF BB BF`, then the script
+as UTF-8. AutoHotkey v2 does not need the mark: it reads a script as UTF-8 when no mark is present
+([Script File Codepage](https://www.autohotkey.com/docs/v2/Scripts.htm#cp)). The mark is for the
+owner's editor. The [AutoHotkey FAQ](https://www.autohotkey.com/docs/v2/FAQ.htm#nonascii) says
+"Save the script as UTF-8, preferably with BOM", because without it an editor has to guess the
+encoding. Every file gets the mark, not only files with non-ASCII text.
+
+`Encoding.GetBytes` never writes the mark, so the method adds it. The preview string holds no mark,
+because the mark is added only to the bytes. Code that reads a downloaded file back drops the mark:
+the import dialog's `StreamReader`, `HttpContent.ReadAsStringAsync`, and `File.ReadAllText` all
+detect it. `Encoding.UTF8.GetString` does not, and returns it as the character U+FEFF.
 
 ## Header presets
 
