@@ -432,4 +432,20 @@ public sealed class HotstringMobileListTests : BunitContext, IAsyncLifetime
             cut.Find(".script-body").TextContent.Should().Be(":*:~ver::\n{\nMsgBox A_AhkVersion\n}");
         });
     }
+
+    // Backlog 168. The select-mode button names what pressing it will do.
+    [Fact]
+    public void ToggleSelectMode_Name_FollowsTheMode()
+    {
+        IRenderedComponent<HotstringMobileList> cut = Render<HotstringMobileList>(p => p
+            .Add(c => c.Items, [Item()])
+            .Add(c => c.Profiles, (IReadOnlyList<ProfileDto>)[])
+            .Add(c => c.Categories, (IReadOnlyList<CategoryDto>)[]));
+
+        cut.Find("button.toggle-select-mode").GetAttribute("aria-label").Should().Be("Select hotstrings");
+
+        cut.Find("button.toggle-select-mode").Click();
+
+        cut.Find("button.toggle-select-mode").GetAttribute("aria-label").Should().Be("Exit select mode");
+    }
 }

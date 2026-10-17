@@ -54,7 +54,8 @@ public sealed class HotstringsCrudFlowTests(StackFixtureC fixture) : IAsyncLifet
 
         await page.ClickAsync("button.delete");
         await page.WaitForSelectorAsync("[role=\"dialog\"]");
-        await page.GetByRole(AriaRole.Button, new() { Name = "Delete" }).Last.ClickAsync();
+        // Scoped to the dialog: the row's own button is named "Delete btw", which also matches.
+        await page.Locator("[role=\"dialog\"]").GetByRole(AriaRole.Button, new() { Name = "Delete" }).ClickAsync();
 
         await page.WaitForSelectorAsync("text=Hotstring deleted.");
         await page.WaitForSelectorAsync("text=No hotstrings yet.");
