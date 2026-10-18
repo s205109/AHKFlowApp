@@ -40,7 +40,7 @@ removed" and "tests cover the new API" cannot.
   right edge is at 1248 px. Its cell and the table container both end at 1240 px. The container
   has `overflow: auto`, so it cuts off whatever sticks out.
 - Likely cause, not yet proven: the Actions column is fixed at 160 px
-  (`src/Frontend/AHKFlowApp.UI.Blazor/Pages/Hotstrings.razor:194`, "width:160px").
+  (`src/Frontend/AHKFlowApp.UI.Blazor/Pages/Hotstrings.razor:194`, "width:160px"). <!-- citation-check:ignore: the line before the fix; the column is now 184 px -->
   It holds three 48 px icon buttons in view mode (`edit`, `show-history`, `delete`) and three in
   edit mode (`commit-edit`, `cancel-edit`, `promote-edit`). That is 144 px of buttons before the
   cell padding. Confirm the cell padding at pickup before changing the width.
