@@ -523,6 +523,39 @@ measurement of the three looked like the tightest. Read the `built` line for col
 pwsh .\scripts\measure-test-modes.ps1 -Soak tests/AHKFlowApp.Infrastructure.Tests -Runs 30
 ```
 
+### Measuring the Gate
+
+`-Mode Gate` times the five steps of the [Gate](#canonical-pre-pr-gate) instead of one test Mode.
+One run is the build, the format check, the PowerShell Mode, the Coverage Mode, and
+`git diff --check`. Each run writes the time of every step into its `run.json`. Each session writes
+a `record.json` with the revision and the median of each step.
+
+There are three cases. Run them in this order:
+
+```bash
+pwsh .\scripts\measure-test-modes.ps1 -Mode Gate -BaseRef HEAD -NoEvidenceReuse
+pwsh .\scripts\measure-test-modes.ps1 -Mode Gate -BaseRef HEAD -Change Docs,Script,Code
+pwsh .\scripts\measure-test-modes.ps1 -Mode Gate -BaseRef HEAD
+```
+
+1. **A full Gate.** `-NoEvidenceReuse` sets `AHKFLOW_GATE_REUSE=off` around each run, so every
+   Suite runs.
+2. **The first Gate after a change.** One preparation run on the unchanged tree saves the evidence.
+   Then, for each change, every run puts that evidence back, appends one line to one file, runs the
+   Gate, and writes the file's original bytes back. `Docs` changes a docs file, `Script` changes a
+   script a Suite loads, and `Code` changes a `.cs` file, so the build and the coverage step run.
+3. **A second Gate with nothing changed.** Each run follows the one before it.
+
+**Pass `-BaseRef HEAD` every time.** The coverage step and `git diff --check` compare the tree
+against this base. With `HEAD`, they see only the fixed change. Against the branch's real base, the
+branch's own diff decides whether coverage runs, so a before and an after measurement would not
+measure the same work.
+
+**The run budget is 1 warm-up and 3 counted runs per case.** Gate Mode uses those numbers when you
+pass no `-WarmUpRuns` or `-Runs`. Case 2 adds the one preparation run. Gate Mode has no settle
+clock, because every run builds, so the tree never ages. It refuses `-SettleSeconds` above 0,
+`-NoBuild`, `-KeepBuildInRun`, and `-Soak`.
+
 ## Trait contract
 
 `Application.Tests` classes using these collections must have `[Trait("Category", "Integration")]`:

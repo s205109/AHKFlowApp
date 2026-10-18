@@ -73,7 +73,7 @@ function New-HarnessFixture {
         -Destination (Join-Path $root 'scripts\test-run-lock.common.ps1')
     Copy-Item -LiteralPath (Join-Path $repoRoot 'scripts\test-results.common.ps1') `
         -Destination (Join-Path $root 'scripts\test-results.common.ps1')
-    foreach ($helper in @('test-lanes.common.ps1', 'suite-worker-count.common.ps1')) {
+    foreach ($helper in @('test-lanes.common.ps1', 'suite-worker-count.common.ps1', 'code-change-filter.common.ps1')) {
         Copy-Item (Join-Path $repoRoot "scripts/$helper") (Join-Path $root "scripts/$helper")
     }
     Copy-Item (Join-Path $PSScriptRoot 'LanePool.Common.ps1') (Join-Path $root 'scripts/LanePool.Common.ps1')
@@ -151,12 +151,19 @@ $stubFolder = Split-Path -Parent $PSCommandPath
 $repoRoot = Split-Path -Parent $stubFolder
 $callsPath = Join-Path $stubFolder 'calls.txt'
 Add-Content -LiteralPath $callsPath -Value ($args -join ' ')
+# One log shared with the test-fast and git stubs, so the Gate cases can read the step order.
+Add-Content -LiteralPath (Join-Path $stubFolder 'steps.txt') -Value ('dotnet ' + ($args -join ' '))
 
 # The owner file, not .test-run.lock. The release step deletes the owner file and deliberately
 # leaves the lock file behind, so the lock file's presence says nothing about who holds it.
 $owner = Test-Path -LiteralPath (Join-Path $repoRoot '.test-run.lock.owner')
 Add-Content -LiteralPath (Join-Path $stubFolder 'signals.txt') `
     -Value ("{0} owner={1} conn={2}" -f $args[0], $owner, $env:AHKFLOW_TEST_SQL_CONNECTION_STRING)
+
+if ($args[0] -eq 'format') {
+    Write-Output 'stub dotnet format'
+    exit 0
+}
 
 if ($args[0] -eq 'build') {
     & (Join-Path $repoRoot 'scripts/lane-observation.ps1') 'build'
@@ -214,11 +221,34 @@ exit 0
 '@
 
     Set-Content -LiteralPath (Join-Path $root 'scripts\test-fast.ps1') -Encoding utf8 -Value @'
-param([string]$Mode, [string]$Configuration, [switch]$NoBuild)
+param([string]$Mode, [string]$Configuration, [switch]$NoBuild, [string]$BaseRef)
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $stubFolder = Join-Path $repoRoot 'stub'
 $callsPath = Join-Path $stubFolder 'testfast-calls.txt'
-Add-Content -LiteralPath $callsPath -Value "Mode=$Mode NoBuild=$NoBuild"
+Add-Content -LiteralPath $callsPath -Value "Mode=$Mode NoBuild=$NoBuild Reuse=$env:AHKFLOW_GATE_REUSE"
+Add-Content -LiteralPath (Join-Path $stubFolder 'steps.txt') -Value "test-fast Mode=$Mode BaseRef=$BaseRef"
+
+# The Gate's PowerShell step. It records what the evidence folder held when it started and
+# whether a fixed change was in the tree, then leaves a file of its own in the evidence folder,
+# the way a real run leaves evidence. The Gate cases read that record.
+if ($Mode -eq 'PowerShell') {
+    $powerShellRun = @(Get-Content -LiteralPath $callsPath | Where-Object { $_ -like 'Mode=PowerShell *' }).Count
+    $evidenceRoot = $env:AHKFLOW_GATE_EVIDENCE_ROOT
+    $held = @(Get-ChildItem -LiteralPath $evidenceRoot -File -ErrorAction SilentlyContinue | ForEach-Object Name | Sort-Object) -join ','
+    $changed = @('docs/development/testing-workflow.md', 'scripts/watch-task.ps1',
+        'src/Backend/AHKFlowApp.Domain/Entities/Category.cs' |
+        Where-Object { (Get-Content -LiteralPath (Join-Path $repoRoot $_) -Raw) -match 'gate-measure' }).Count -gt 0
+    Add-Content -LiteralPath (Join-Path $stubFolder 'evidence-seen.txt') -Value "run=$powerShellRun held=$held changed=$changed"
+    New-Item -ItemType Directory -Path $evidenceRoot -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $evidenceRoot "run-$powerShellRun.txt") -Value 'evidence'
+    $progressFolder = Join-Path $repoRoot 'TestResults/progress'
+    New-Item -ItemType Directory -Path $progressFolder -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $progressFolder 'run-powershell-suites.json') -Value "{ ""run"": $powerShellRun }"
+    $failAt = Join-Path $stubFolder 'fail-powershell.txt'
+    if ((Test-Path -LiteralPath $failAt) -and ((Get-Content -LiteralPath $failAt -Raw).Trim() -eq "$powerShellRun")) {
+        throw 'PowerShell suites failed.'
+    }
+}
 
 $owner = Test-Path -LiteralPath (Join-Path $repoRoot '.test-run.lock.owner')
 Add-Content -LiteralPath (Join-Path $stubFolder 'signals.txt') -Value "test-fast owner=$owner"
@@ -259,6 +289,29 @@ Start-Sleep -Milliseconds $sleep
 }
 '@
 
+    # Gate Mode calls git for the revision and for 'git diff --check'. The stub logs into the
+    # shared step log and answers rev-parse with a fixed commit id. The Gate cases pass -BaseRef,
+    # so nothing asks gh for a pull request base.
+    Set-Content -LiteralPath (Join-Path $root 'stub\git.ps1') -Encoding utf8 -Value @'
+$stubFolder = Split-Path -Parent $PSCommandPath
+Add-Content -LiteralPath (Join-Path $stubFolder 'steps.txt') -Value ('git ' + ($args -join ' '))
+if ($args[0] -eq 'rev-parse') { Write-Output '0123456789abcdef0123456789abcdef01234567' }
+exit 0
+'@
+
+    # The three files Gate Mode's -Change appends a line to. Each has its own line ending, and
+    # the .cs file has a byte order mark, so the restore cases compare real bytes.
+    $changeFiles = @{
+        'docs/development/testing-workflow.md' = [Text.Encoding]::UTF8.GetBytes("# Testing`n`nText.`n")
+        'scripts/watch-task.ps1' = [Text.Encoding]::UTF8.GetBytes("param()`r`nWrite-Host 'watch'`r`n")
+        'src/Backend/AHKFlowApp.Domain/Entities/Category.cs' = [byte[]](0xEF, 0xBB, 0xBF) + [Text.Encoding]::UTF8.GetBytes("namespace X;`r`n")
+    }
+    foreach ($relative in $changeFiles.Keys) {
+        $path = Join-Path $root $relative
+        New-Item -ItemType Directory -Path (Split-Path -Parent $path) -Force | Out-Null
+        [IO.File]::WriteAllBytes($path, $changeFiles[$relative])
+    }
+
     return $root
 }
 
@@ -280,9 +333,13 @@ function Invoke-Harness {
     # value survives; a .cmd shim would split it.
     $previousPath = $env:PATH
     $previousHolder = $env:AHKFLOW_TEST_LANES_HOLDER
+    $previousEvidence = $env:AHKFLOW_GATE_EVIDENCE_ROOT
     if ([string]::IsNullOrWhiteSpace($env:AHKFLOW_TEST_LANES_ROOT) -and
         [string]::IsNullOrWhiteSpace($previousHolder)) { $env:AHKFLOW_TEST_LANES_HOLDER = "$PID" }
     $env:PATH = (Join-Path $Root 'stub') + [System.IO.Path]::PathSeparator + $previousPath
+    # Gate Mode saves and restores the evidence folder. Point it into the fixture, never at the
+    # real TestResults folder of this checkout.
+    $env:AHKFLOW_GATE_EVIDENCE_ROOT = Join-Path $Root 'evidence'
     try {
         $output = & $hostExe -NoProfile -File (Join-Path $Root 'scripts\measure-test-modes.ps1') @Arguments 2>&1 | Out-String
         return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = $output }
@@ -290,7 +347,21 @@ function Invoke-Harness {
     finally {
         $env:PATH = $previousPath
         $env:AHKFLOW_TEST_LANES_HOLDER = $previousHolder
+        $env:AHKFLOW_GATE_EVIDENCE_ROOT = $previousEvidence
     }
+}
+
+function New-GateFixture {
+    # A harness fixture whose test-fast stub does not sleep. Gate Mode calls it twice a run.
+    $root = New-HarnessFixture
+    Set-Content -LiteralPath (Join-Path $root 'stub\sleeps.txt') -Value '0' -Encoding utf8
+    return $root
+}
+
+function Get-GateStepLines {
+    # The step log without the revision lookups, which are not Gate steps.
+    param([string] $Root)
+    @(Get-Content -LiteralPath (Join-Path $Root 'stub\steps.txt') | Where-Object { $_ -notlike 'git rev-parse*' })
 }
 
 Write-Host "Testing $(Join-Path $repoRoot 'scripts\measure-test-modes.ps1')"
@@ -960,6 +1031,188 @@ Invoke-TestCase 'Cancelled admission cleans up in a surviving runspace before an
             }
         }
     } finally { Remove-PinnedLanePool $pool; Remove-HarnessFixture $root }
+}
+
+# Backlog 188. Gate Mode times the five Gate steps, so the record measures what a developer
+# waits for before a pull request goes ready.
+
+Invoke-TestCase 'Gate Mode runs the five Gate steps in order, once per run' {
+    $root = New-GateFixture
+    try {
+        $result = Invoke-Harness -Root $root -Arguments @('-Mode', 'Gate', '-BaseRef', 'main', '-WarmUpRuns', '1', '-Runs', '2')
+        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
+
+        # The base must reach both the coverage step and git diff --check. A measurement that
+        # falls back to the branch's real base counts this branch's own diff.
+        $oneRun = @(
+            'dotnet build AHKFlowApp.slnx --configuration Release',
+            'dotnet format AHKFlowApp.slnx --verify-no-changes',
+            'test-fast Mode=PowerShell BaseRef=',
+            'test-fast Mode=Coverage BaseRef=main',
+            'git diff --check main...HEAD')
+        $expected = @($oneRun + $oneRun + $oneRun)
+        $actual = Get-GateStepLines -Root $root
+        Assert-True (($actual -join "`n") -eq ($expected -join "`n")) `
+            "Expected the five steps three times. Got:`n$($actual -join "`n")"
+    }
+    finally { Remove-HarnessFixture -Root $root }
+}
+
+Invoke-TestCase 'Gate Mode writes the five step times into run.json and their medians into record.json' {
+    $root = New-GateFixture
+    try {
+        $result = Invoke-Harness -Root $root -Arguments @('-Mode', 'Gate', '-BaseRef', 'main', '-WarmUpRuns', '1', '-Runs', '2')
+        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
+
+        $session = @(Get-ChildItem -LiteralPath (Join-Path $root 'TestResults\measure-test-modes\Gate') -Directory)
+        Assert-True ($session.Count -eq 1) "Expected one session folder, got $($session.Count)."
+        $stepNames = 'build,format,powershell,coverage,diff-check'
+        foreach ($runFolder in @(Get-ChildItem -LiteralPath $session[0].FullName -Directory -Filter 'run-*')) {
+            $run = Get-Content -LiteralPath (Join-Path $runFolder.FullName 'run.json') -Raw | ConvertFrom-Json
+            Assert-True ((@($run.Steps.PSObject.Properties.Name) -join ',') -eq $stepNames) `
+                "Expected the steps $stepNames in order, got $(@($run.Steps.PSObject.Properties.Name) -join ',')."
+            $sum = (@($run.Steps.PSObject.Properties.Value) | Measure-Object -Sum).Sum
+            Assert-True ($run.ElapsedSeconds -ge $sum - 0.05) "The total $($run.ElapsedSeconds) must cover the steps, which sum to $sum."
+            Assert-True (Test-Path -LiteralPath (Join-Path $runFolder.FullName 'run-powershell-suites.json')) `
+                "Each run must keep its own copy of the per-Suite times in $($runFolder.Name)."
+        }
+
+        $record = Get-Content -LiteralPath (Join-Path $session[0].FullName 'record.json') -Raw | ConvertFrom-Json
+        Assert-True ($record.Revision -eq '0123456789abcdef0123456789abcdef01234567') "Expected the stub revision, got '$($record.Revision)'."
+        Assert-True ($record.Mode -eq 'Gate') "Expected Mode Gate, got '$($record.Mode)'."
+        Assert-True (@($record.Cases).Count -eq 1) "Expected one case without -Change, got $(@($record.Cases).Count)."
+        Assert-True (@($record.Cases[0].RunSeconds).Count -eq 2) 'The record must keep every counted run total.'
+        Assert-True ((@($record.Cases[0].StepMedians.PSObject.Properties.Name) -join ',') -eq $stepNames) `
+            'The record must hold a median for each step.'
+    }
+    finally { Remove-HarnessFixture -Root $root }
+}
+
+Invoke-TestCase 'Gate Mode with a change restores the changed file to its original bytes' {
+    $root = New-GateFixture
+    try {
+        $paths = @('docs/development/testing-workflow.md', 'scripts/watch-task.ps1', 'src/Backend/AHKFlowApp.Domain/Entities/Category.cs')
+        $before = @{}
+        foreach ($relative in $paths) { $before[$relative] = [IO.File]::ReadAllBytes((Join-Path $root $relative)) }
+
+        $result = Invoke-Harness -Root $root -Arguments @('-Mode', 'Gate', '-BaseRef', 'main', '-Change', 'Docs,Script,Code', '-WarmUpRuns', '1', '-Runs', '1')
+        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
+
+        # The change must really have been in the tree during the timed runs, or the restore
+        # assertion below proves nothing.
+        $seen = @(Get-Content -LiteralPath (Join-Path $root 'stub\evidence-seen.txt'))
+        Assert-True ($seen.Count -eq 7) "Expected 1 preparation and 6 timed runs, got $($seen.Count)."
+        Assert-True ($seen[0] -match 'changed=False') "The preparation run must see the unchanged tree: $($seen[0])"
+        Assert-True (@($seen | Select-Object -Skip 1 | Where-Object { $_ -match 'changed=True' }).Count -eq 6) `
+            "Every timed run must see its change. Seen:`n$($seen -join "`n")"
+
+        foreach ($relative in $paths) {
+            $after = [IO.File]::ReadAllBytes((Join-Path $root $relative))
+            Assert-True ([Convert]::ToBase64String($after) -eq [Convert]::ToBase64String($before[$relative])) `
+                "$relative must hold its original bytes after the session."
+        }
+    }
+    finally { Remove-HarnessFixture -Root $root }
+}
+
+Invoke-TestCase 'Gate Mode with a change restores the file when a step fails' {
+    $root = New-GateFixture
+    try {
+        $relative = 'scripts/watch-task.ps1'
+        $before = [IO.File]::ReadAllBytes((Join-Path $root $relative))
+        # Call 1 is the preparation run, so call 2 is the first run with the change applied.
+        Set-Content -LiteralPath (Join-Path $root 'stub\fail-powershell.txt') -Value '2' -Encoding utf8
+
+        $result = Invoke-Harness -Root $root -Arguments @('-Mode', 'Gate', '-BaseRef', 'main', '-Change', 'Script', '-WarmUpRuns', '1', '-Runs', '1')
+        Assert-True ($result.ExitCode -ne 0) "A failing Gate step must fail the session. Output: $($result.Output)"
+        Assert-True ($result.Output -match 'powershell') "The error must name the failing step. Output: $($result.Output)"
+
+        $seen = @(Get-Content -LiteralPath (Join-Path $root 'stub\evidence-seen.txt'))
+        Assert-True ($seen[-1] -match 'run=2 .*changed=True') "The failing run must have had the change applied: $($seen -join ' | ')"
+        $after = [IO.File]::ReadAllBytes((Join-Path $root $relative))
+        Assert-True ([Convert]::ToBase64String($after) -eq [Convert]::ToBase64String($before)) `
+            "$relative must hold its original bytes after a failed step."
+    }
+    finally { Remove-HarnessFixture -Root $root }
+}
+
+Invoke-TestCase 'Gate Mode with a change restores the prepared evidence before every timed run' {
+    $root = New-GateFixture
+    try {
+        $result = Invoke-Harness -Root $root -Arguments @('-Mode', 'Gate', '-BaseRef', 'main', '-Change', 'Docs', '-WarmUpRuns', '1', '-Runs', '2')
+        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
+
+        # Run 1 is the preparation run. It leaves run-1.txt. Every timed run must start with that
+        # file and nothing else: the marker back, and the file the timed run before it wrote gone.
+        $seen = @(Get-Content -LiteralPath (Join-Path $root 'stub\evidence-seen.txt'))
+        Assert-True ($seen.Count -eq 4) "Expected 1 preparation and 3 timed runs, got $($seen.Count)."
+        foreach ($line in @($seen | Select-Object -Skip 1)) {
+            Assert-True ($line -match 'held=run-1\.txt changed') "A timed run must start from the prepared evidence only: $line"
+        }
+    }
+    finally { Remove-HarnessFixture -Root $root }
+}
+
+Invoke-TestCase 'Gate Mode with -NoEvidenceReuse sets AHKFLOW_GATE_REUSE to off and restores it' {
+    $root = New-GateFixture
+    # In-process, like the connection-string case: a child process's environment never reaches
+    # the parent, so only an in-process run can show the variable restored.
+    $previousPath = $env:PATH
+    $previousReuse = $env:AHKFLOW_GATE_REUSE
+    $previousHolder = $env:AHKFLOW_TEST_LANES_HOLDER
+    $previousEvidence = $env:AHKFLOW_GATE_EVIDENCE_ROOT
+    try {
+        $env:AHKFLOW_TEST_LANES_HOLDER = "$PID"
+        $env:PATH = (Join-Path $root 'stub') + [System.IO.Path]::PathSeparator + $previousPath
+        $env:AHKFLOW_GATE_EVIDENCE_ROOT = Join-Path $root 'evidence'
+        $env:AHKFLOW_GATE_REUSE = 'sentinel-value'
+        & (Join-Path $root 'scripts\measure-test-modes.ps1') -Mode Gate -BaseRef main -NoEvidenceReuse -WarmUpRuns 1 -Runs 1 | Out-Null
+        Assert-True ($env:AHKFLOW_GATE_REUSE -eq 'sentinel-value') `
+            "Expected the sentinel back, got '$($env:AHKFLOW_GATE_REUSE)'."
+
+        $calls = @(Get-Content -LiteralPath (Join-Path $root 'stub\testfast-calls.txt'))
+        Assert-True ($calls.Count -eq 4) "Expected 2 runs of 2 test-fast calls, got $($calls.Count)."
+        Assert-True (@($calls | Where-Object { $_ -match 'Reuse=off$' }).Count -eq 4) `
+            "Every call in every run must see reuse off. Calls: $($calls -join ' | ')"
+    }
+    finally {
+        $env:PATH = $previousPath
+        $env:AHKFLOW_GATE_REUSE = $previousReuse
+        $env:AHKFLOW_TEST_LANES_HOLDER = $previousHolder
+        $env:AHKFLOW_GATE_EVIDENCE_ROOT = $previousEvidence
+        Remove-HarnessFixture -Root $root
+    }
+}
+
+Invoke-TestCase 'Gate Mode refuses a settle clock, -NoBuild, -KeepBuildInRun and -Soak' {
+    $root = New-GateFixture
+    try {
+        # Every Gate run builds, so the tree never ages. A settle clock would add warm-ups up to
+        # the ceiling and break the run budget. The other three describe work Gate Mode never does.
+        foreach ($extra in @(@('-SettleSeconds', '5'), @('-NoBuild'), @('-KeepBuildInRun'), @('-Soak', 'tests/FakeProject'))) {
+            $result = Invoke-Harness -Root $root -Arguments (@('-Mode', 'Gate', '-BaseRef', 'main') + $extra)
+            Assert-True ($result.ExitCode -ne 0) "Gate Mode must refuse $($extra[0]). Output: $($result.Output)"
+            Assert-True ($result.Output -match [regex]::Escape($extra[0])) "The refusal must name $($extra[0]). Output: $($result.Output)"
+        }
+        Assert-True (-not (Test-Path -LiteralPath (Join-Path $root 'stub\steps.txt'))) 'A refused session must run no step.'
+    }
+    finally { Remove-HarnessFixture -Root $root }
+}
+
+Invoke-TestCase 'Gate Mode refuses -Change with -NoEvidenceReuse, and -Change with no warm-up' {
+    $root = New-GateFixture
+    try {
+        # -Change measures the first Gate after a change, which reuse makes different from a full
+        # Gate. With reuse off the two cases measure the same thing. With no warm-up there is no
+        # discarded run on the changed tree.
+        foreach ($extra in @(@('-NoEvidenceReuse'), @('-WarmUpRuns', '0'))) {
+            $result = Invoke-Harness -Root $root -Arguments (@('-Mode', 'Gate', '-BaseRef', 'main', '-Change', 'Docs') + $extra)
+            Assert-True ($result.ExitCode -ne 0) "Gate Mode must refuse -Change with $($extra[0]). Output: $($result.Output)"
+            Assert-True ($result.Output -match [regex]::Escape($extra[0])) "The refusal must name $($extra[0]). Output: $($result.Output)"
+        }
+        Assert-True (-not (Test-Path -LiteralPath (Join-Path $root 'stub\steps.txt'))) 'A refused session must run no step.'
+    }
+    finally { Remove-HarnessFixture -Root $root }
 }
 
 if ($script:Failures.Count -gt 0) {
