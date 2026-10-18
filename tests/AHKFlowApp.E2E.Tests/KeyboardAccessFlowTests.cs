@@ -106,6 +106,31 @@ public sealed class KeyboardAccessFlowTests(StackFixtureB fixture) : IAsyncLifet
         await Assertions.Expect(add).ToBeFocusedAsync();
     }
 
+    // Backlog 186. bUnit proves the aria-label is on the field. Only a browser proves it becomes
+    // the name, for a text input, a textarea, and a checkbox wrapped in an empty <label>.
+    [Fact]
+    public async Task InlineEditFields_NameWhatTheyHold()
+    {
+        await SeedHotstringAsync(fixture, "btw");
+        await using IBrowserContext ctx = await fixture.Browser.NewContextAsync(DesktopViewport);
+        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/hotstrings");
+        ILocator row = page.Locator(".desktop-branch tbody tr", new() { HasTextString = "btw" });
+        await row.WaitForAsync();
+        await row.Locator("button.edit").ClickAsync();
+
+        // Once "btw" moves into an input value, the row's text filter stops matching it.
+        ILocator desktop = page.Locator(".desktop-branch");
+        await Assertions.Expect(desktop.Locator("input[data-test=\"trigger-input\"]")).ToHaveAccessibleNameAsync("Trigger");
+        await Assertions.Expect(desktop.Locator("textarea[data-test=\"replacement-input\"]")).ToHaveAccessibleNameAsync("Replacement");
+
+        // A nav link click keeps the app loaded, so it does not boot a second time.
+        await page.Locator("a.mud-nav-link", new() { HasTextString = "Profiles" }).ClickAsync();
+        await page.Locator("button.add-profile").ClickAsync();
+
+        await Assertions.Expect(page.Locator("input[data-test=\"profile-default-input\"]")).ToHaveAccessibleNameAsync("Default");
+        await Assertions.Expect(page.Locator("textarea[data-test=\"profile-header-input\"]")).ToHaveAccessibleNameAsync("Header template");
+    }
+
     private static async Task AssertRingsAsync(IPage page, ILocator row, string textColour)
     {
         // Real Tab presses prove the nav link is reachable by keyboard. They also put the
