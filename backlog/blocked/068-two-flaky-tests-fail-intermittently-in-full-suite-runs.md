@@ -5,39 +5,29 @@
 - **Epic**: Test reliability
 - **Type**: Bug
 - **Interfaces**: UI | API | CLI (none — test code only)
-- **Stage**: 9-ship
+- **Status**: Blocked since 2026-08-10 — see the section below
+- **Stage**: 4-execute
 
-## Closed — flake A failed again, and backlog 137 fixed it
+## Blocked — waiting for flake A to fail again
 
-The item was blocked until flake A failed a second time. That happened on 2026-09-05, in CI run
-33989354260, attempt 2. The diagnostic this item added named the call site. Its message starts:
+Flake B is fixed and merged. Flake A has one open acceptance box, and no work in this repository
+can tick it. The box asks which call site passed an array to `Assert-True`. Reading the code says
+no call site can do that, and the failure still happened once on 2026-08-08. The only honest way
+to name the line is to see the failure again.
 
-```
-Assert-True needs a boolean. Got [System.Object[]] with 1 value(s) from line 551
-```
+The diagnostic that will name it is already merged, at `tests/WorktreeRemoveHook.Tests.ps1:13-27`.
+It replaces the `[bool]` parameter type with an explicit check. A recurrence now reports the
+runtime type, the values, and the caller's line number.
 
-Line 551 checked the removal diagnostics, which the test had read before the watcher finished
-writing them. Backlog 137 found that cause and fixed it. The test now waits for the outcome line
-(`tests/WorktreeRemoveHook.Tests.ps1:578`, "$outcomeLines = @(Wait-ForOutcomeLine -RepoDir $repo)")
-before it reads the diagnostics
-(`tests/WorktreeRemoveHook.Tests.ps1:585`, "$diagnostics = Get-Content -Raw -LiteralPath (Get-RemovalDiagnosticsPath $repo)").
-The full root cause is in `backlog/done/137-powershell-worktree-suites-fail-13b421fb.md`.
+Do not pick this up as available work. Adding more green runs proves nothing: a diagnostic that
+never fires says nothing about a fault seen once.
 
-Backlog 137 closed on 2026-09-09. From then to 2026-10-18, CI ran 376 times, and 312 runs passed.
-`WorktreeRemoveHook.Tests.ps1` failed in none of the 64 failed runs. A search of their logs found
-no `FAILED: WorktreeRemoveHook` line, which the runner prints when that suite fails.
+**What would unblock it:**
 
-The suite did not run in all 376 runs. The `powershell-suites` job needs the `repo-invariants`
-job, so it was skipped in 40 of the 64 failed runs. It ran in the other 336 runs: the 312 that
-passed, and 24 that failed for other reasons. In the 18 of those 24 where the job itself failed,
-its summary table lists `WorktreeRemoveHook.Tests.ps1` as passed.
-
-The search above read each run's latest attempt. Seven runs passed only on a rerun, so their
-first attempts were read as well. Four failed in other suites. The other three failed in
-`build-test`, and their `powershell-suites` job passed. None of the seven failed
-`WorktreeRemoveHook.Tests.ps1`.
-
-The work had already merged, so this item closed in a housekeeping round on 2026-10-18.
+- The suite fails again, in CI or locally. The new message names the call site. Then fix that call
+  site, tick the last two boxes, and move the file to `backlog/done/`.
+- Or a decision that one unexplained failure, now made locatable, is enough. Then close the item
+  with that reason written down.
 
 ## Summary
 
@@ -152,11 +142,6 @@ whether it is gone.
 
 ### Flake A - not reproduced, every lead ruled out
 
-**Correction, added at closure:** the recurrence in the Closed section proved the second bullet
-below wrong. A `Get-Content -Raw` read of the diagnostics, made while the watcher was still
-writing the file, handed an array to `Assert-True`. The rest of this section is the analysis as
-it was first written.
-
 The suite ran 40 times standalone and passed every time. The full runner
 (`scripts/run-powershell-suites.ps1`, 18 suites) ran 12 times with the diagnostic in place. All 12
 passed and the diagnostic never fired.
@@ -201,31 +186,18 @@ path made one function answer the same script block two different ways. It was r
       ruled out and why it could not be reproduced
 - [x] `KnownShortcutsPageTests.IgnoredUse_OffersRestore_AndCallsIt` no longer races - the fix makes
       the assertion wait for the click handler rather than assuming it finished
-- [x] `WorktreeRemoveHook.Tests.ps1` cannot pass an array to `Assert-True`, and the fix names which
+- [ ] `WorktreeRemoveHook.Tests.ps1` cannot pass an array to `Assert-True`, and the fix names which
       call site did it
-- [x] Both are exercised repeatedly enough to give confidence - run each in its normal full-suite
+- [ ] Both are exercised repeatedly enough to give confidence - run each in its normal full-suite
       context several times in a row and record the results
 
-Criterion 3 is met through backlog 137 and the round that closed this item. The recurrence named
-line 551. Backlog 137 found the cause: the test read the diagnostics after the folder was gone,
-while the watcher was still writing them. Its fix waits for the outcome line, which the watcher
-writes after its last diagnostic on the success path.
+**This item is blocked, not open.** Criterion 3 is not met and is not being claimed. Nothing stops an array
+from reaching `Assert-True`; the change only makes such a call fail with a location instead of
+failing during parameter binding with none. The call site that failed on 2026-08-08 is still
+unknown, and the only honest way to name it is to see it happen again.
 
-Two more reads in the suite had the same early timing. The closing round makes both wait the same
-way (`tests/WorktreeRemoveHook.Tests.ps1:678`, "$null = Wait-ForOutcomeLine -RepoDir $repo") and
-(`tests/WorktreeRemoveHook.Tests.ps1:709`, "$null = Wait-ForOutcomeLine -RepoDir $repo"). The
-suite's other diagnostics reads either wait for the outcome line as well, or follow a refusal or
-an abort. On those paths the hook starts no watcher and has already exited. So on the paths the
-tests drive, no diagnostics read overlaps a write.
-
-This item's unblock note asked for exactly this: "The suite fails again, in CI or locally. The new
-message names the call site. Then fix that call site, tick the last two boxes, and move the file to
-`backlog/done/`." The `Assert-True` type check stays as a safety net. If an array ever arrives
-again, the message names the line.
-
-Criterion 4 is met for both flakes. Flake B has the 50 confidence runs above. Flake A has the CI
-record in the Closed section: after backlog 137 closed, the suite ran in 336 CI runs, each time
-inside a full run of the suite set, and it failed in none of them.
+Criterion 4 is met for flake B and not for flake A. Flake A cannot be closed by green runs: a
+diagnostic that never fires proves nothing about a fault that appeared once.
 
 ## Out of scope
 
