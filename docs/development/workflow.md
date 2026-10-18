@@ -956,7 +956,7 @@ its remaining changes and closes normally.
 ## 6. Linking convention
 
 - Backlog items track planned work. GitHub issues track external reports and discussion.
-- An issue that becomes work gets a backlog item that references the issue.
+- An issue that becomes work gets a backlog item that references the issue. One exception: when the fix passes [the trivial test](#the-trivial-test), it runs in a housekeeping round and files no item. The round pull request then closes the issue with a closing keyword.
 - Every project spec and every project plan carries a backlog number, in its file name and in its heading:
   `docs/superpowers/specs/YYYY-MM-DD-<topic>-design-NNN.md` and
   `docs/superpowers/plans/YYYY-MM-DD-<topic>-plan-NNN.md`. Existing files keep their names.

@@ -1,8 +1,8 @@
-using System.Text;
 using AHKFlowApp.API.Extensions;
 using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Application.Queries.Downloads;
+using AHKFlowApp.Application.Services;
 using Ardalis.Result;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -35,7 +35,7 @@ public sealed class DownloadsController(
         if (!result.IsSuccess)
             return result.ToProblemResult(this);
 
-        byte[] bytes = Encoding.UTF8.GetBytes(result.Value.Content);
+        byte[] bytes = AhkFileEncoding.GetBytes(result.Value.Content);
         return File(bytes, AhkContentType, fileDownloadName: result.Value.FileName);
     }
 

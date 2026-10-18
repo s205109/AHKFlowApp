@@ -1,7 +1,7 @@
 using System.IO.Compression;
-using System.Text;
 using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Application.DTOs;
+using AHKFlowApp.Application.Services;
 using Ardalis.Result;
 
 namespace AHKFlowApp.Application.Queries.Downloads;
@@ -38,8 +38,7 @@ internal sealed class GenerateAllProfileScriptsZipQueryHandler(
                 {
                     ZipArchiveEntry entry = archive.CreateEntry(script.FileName, CompressionLevel.Optimal);
                     using Stream entryStream = await entry.OpenAsync();
-                    using StreamWriter writer = new(entryStream, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-                    await writer.WriteAsync(script.Content);
+                    await entryStream.WriteAsync(AhkFileEncoding.GetBytes(script.Content), ct);
                 }
             }
             zipBytes = ms.ToArray();

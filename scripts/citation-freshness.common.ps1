@@ -62,8 +62,10 @@ function Get-CitationOnLine {
     param([Parameter(Mandatory)][AllowEmptyString()][string] $Line)
 
     $found = [System.Collections.Generic.List[object]]::new()
-    # Neither pattern below can match without a colon, and most lines don't have one.
-    if (-not $Line.Contains(':')) { return $found }
+    # Neither pattern below can match without a colon followed by a digit, and most lines don't
+    # have one. A bare colon is not enough: a 100,000-character line with a few colons used most
+    # of the scan time.
+    if (-not [regex]::IsMatch($Line, ':\d')) { return $found }
 
     $claimed = [System.Collections.Generic.List[object]]::new()
 

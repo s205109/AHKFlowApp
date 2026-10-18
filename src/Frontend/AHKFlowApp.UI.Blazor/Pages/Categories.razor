@@ -53,9 +53,11 @@
                 <MudTd>@(context.Id == Guid.Empty ? "—" : context.UpdatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm"))</MudTd>
                 <MudTd>
                     <MudIconButton Class="commit-edit" Icon="@Icons.Material.Filled.Check"
-                                   Color="Color.Success" OnClick="() => CommitEditAsync(context.Id)" />
+                                   Color="Color.Success" OnClick="() => CommitEditAsync(context.Id)"
+                                   UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = $"Save {RowName(context)}" })" />
                     <MudIconButton Class="cancel-edit" Icon="@Icons.Material.Filled.Close"
-                                   Color="Color.Default" OnClick="() => CancelEditAsync(context.Id)" />
+                                   Color="Color.Default" OnClick="() => CancelEditAsync(context.Id)"
+                                   UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = $"Cancel editing {RowName(context)}" })" />
                 </MudTd>
             }
             else
@@ -65,9 +67,11 @@
                 <MudTd>@context.UpdatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</MudTd>
                 <MudTd>
                     <MudIconButton Class="start-edit" Icon="@Icons.Material.Filled.Edit"
-                                   OnClick="() => StartEdit(context)" />
+                                   OnClick="() => StartEdit(context)"
+                                   UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = $"Edit {RowName(context)}" })" />
                     <MudIconButton Class="delete" Icon="@Icons.Material.Filled.Delete" Color="Color.Error"
-                                   OnClick="() => DeleteAsync(context)" />
+                                   OnClick="() => DeleteAsync(context)"
+                                   UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = $"Delete {RowName(context)}" })" />
                 </MudTd>
             }
         </RowTemplate>
@@ -174,6 +178,10 @@
             await _table.ReloadServerData();
         }
     }
+
+    // Names the row in its buttons' labels. A new row has no name yet.
+    private static string RowName(CategoryDto category) =>
+        string.IsNullOrWhiteSpace(category.Name) ? "new category" : category.Name;
 
     private static string? ValidateName(string? value)
     {

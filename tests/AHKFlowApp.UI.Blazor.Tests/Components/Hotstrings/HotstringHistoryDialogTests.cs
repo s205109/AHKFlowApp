@@ -198,4 +198,17 @@ public sealed class HotstringHistoryDialogTests : BunitContext, IAsyncLifetime
         provider.FindAll("button.revert-version").Should().NotBeEmpty(
             "a refused Revert must not close the dialog");
     }
+
+    // Backlog 168. The back-arrow button has no text, so its label says what it does.
+    [Fact]
+    public async Task CloseButton_NamesWhatItDoes()
+    {
+        _api.GetHistoryAsync(_id, Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HistoryEntryDto[]>.Ok([]));
+
+        IRenderedComponent<MudDialogProvider> provider = await OpenDialogAsync();
+
+        provider.WaitForAssertion(() =>
+            provider.Find("button.close-history").GetAttribute("aria-label").Should().Be("Close history"));
+    }
 }

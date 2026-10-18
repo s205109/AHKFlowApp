@@ -205,6 +205,41 @@ public sealed class HotstringImportDialogTests : BunitContext, IAsyncLifetime
         oversizedFile.StreamOpened.Should().BeFalse();
     }
 
+    [Fact]
+    public async Task SelectingFileWithByteOrderMark_PreviewsTheTextWithoutIt()
+    {
+        // Backlog 183. A downloaded script starts with a UTF-8 byte-order mark. The dialog must send
+        // the preview the text alone, with no U+FEFF in front of the first line.
+        const string script = "::btw::by the way";
+        _api.PreviewImportAsync(Arg.Any<string>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HotstringImportPreviewDto>.Ok(new HotstringImportPreviewDto(
+                [], ReadyCount: 0, WarningCount: 0, DuplicateCount: 0, InvalidCount: 0)));
+        IRenderedComponent<MudDialogProvider> provider = await OpenDialogAsync();
+        IRenderedComponent<MudFileUpload<IBrowserFile>> fileUpload =
+            provider.FindComponent<MudFileUpload<IBrowserFile>>();
+
+        await provider.InvokeAsync(() => fileUpload.Instance.FilesChanged.InvokeAsync(
+            new InMemoryBrowserFile([0xEF, 0xBB, 0xBF, .. System.Text.Encoding.UTF8.GetBytes(script)])));
+        provider.WaitForAssertion(() =>
+            provider.Find("button.preview-import").HasAttribute("disabled").Should().BeFalse());
+        await provider.InvokeAsync(() => provider.Find("button.preview-import").Click());
+
+        await _api.Received(1).PreviewImportAsync(
+            Arg.Is<string>(s => s == script),
+            Arg.Any<CancellationToken>());
+    }
+
+    private sealed class InMemoryBrowserFile(byte[] content) : IBrowserFile
+    {
+        public string Name => "downloaded.ahk";
+        public DateTimeOffset LastModified => new(2026, 10, 16, 0, 0, 0, TimeSpan.Zero);
+        public long Size => content.Length;
+        public string ContentType => "text/plain";
+
+        public Stream OpenReadStream(long maxAllowedSize = 512000, CancellationToken cancellationToken = default) =>
+            new MemoryStream(content);
+    }
+
     private sealed class OversizedBrowserFile : IBrowserFile
     {
         public bool StreamOpened { get; private set; }
@@ -219,5 +254,15 @@ public sealed class HotstringImportDialogTests : BunitContext, IAsyncLifetime
             StreamOpened = true;
             throw new IOException("Should not be called — the size guard must short-circuit first.");
         }
+    }
+
+    // Backlog 168. The back-arrow button has no text, so its label says what it does.
+    [Fact]
+    public async Task CancelButton_NamesWhatItDoes()
+    {
+        IRenderedComponent<MudDialogProvider> provider = await OpenDialogAsync();
+
+        provider.WaitForAssertion(() =>
+            provider.Find("button.cancel-import").GetAttribute("aria-label").Should().Be("Cancel import"));
     }
 }
