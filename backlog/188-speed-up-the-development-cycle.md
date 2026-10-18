@@ -26,8 +26,10 @@ waiting for checks.
 
 Each criterion is refined in the spec. Tick a box only when its words hold literally.
 
-- [ ] A baseline record holds five measures: Gate time, affected-test time, CI critical path, Gate
-      runs per item, and flaky failures.
+- [ ] A baseline record holds five measures: Gate time, affected-test time, CI critical path,
+      Gate-required stage exits per item, and flaky failures.
+- [ ] Each measure has a target that the user approved after the baseline and before any
+      improvement work, and the after record reports each target as met or missed.
 - [ ] An after record of Gate time and affected-test time, taken on the final revision with the
       baseline's method, sits next to the baseline.
 - [ ] A follow-up item carries the before record of the other three measures, and says when their
@@ -66,8 +68,9 @@ Each criterion is refined in the spec. Tick a box only when its words hold liter
 ## Notes / dependencies
 
 - Design decisions: grilling rounds 1 to 5 on 2026-10-18. The spec carries them.
-- The research behind this item was done on 2026-10-17 and 2026-10-18, in a local folder outside
-  the repository. The spec quotes every fact it relies on.
+- The research behind this item was done on 2026-10-17 and 2026-10-18. The three reports the work
+  reads are in the plans repository, in
+  `docs/superpowers/specs/2026-10-18-speed-up-the-development-cycle-research-188/`.
 - PR #451 already shipped two quick fixes: the lane release race in
   `tests/CiPowerShellSuiteRunner.Tests.ps1` and a faster prefilter in
   `scripts/citation-freshness.common.ps1`.
