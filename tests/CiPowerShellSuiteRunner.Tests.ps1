@@ -2267,7 +2267,10 @@ Invoke-TestCase 'Lane one runner admits exactly two of four Workers; off admits 
             Assert-True ((Get-RunLaneCount $pool) -eq $(if ($off) { 0 } else { 2 })) 'Lane locks must match admission.'
             foreach ($item in $started) { Publish-LaneSignal $item.ReleasePath }
             # Release each Suite once. A second write can hit the file while the Suite reads it, and Windows refuses that write.
-            foreach ($item in $fixture.Items) { Wait-LanePath $item.StartPath 20 -Child $child | Out-Null; if (-not (Test-Path -LiteralPath "$($item.ReleasePath).done")) { Publish-LaneSignal $item.ReleasePath } }
+            foreach ($item in $fixture.Items) {
+                Wait-LanePath $item.StartPath 20 -Child $child | Out-Null
+                if (-not (Test-Path -LiteralPath "$($item.ReleasePath).done")) { Publish-LaneSignal $item.ReleasePath }
+            }
             Assert-LaneRunnerCompleted -Fixtures @($fixture) -Children @($child) -Peak $expected -Off:$off
         } finally {
             Stop-LaneChildProcess $child
