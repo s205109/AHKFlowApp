@@ -27,6 +27,16 @@ Backlog 137 closed on 2026-09-09. From then to 2026-10-18, CI ran 376 times, and
 `WorktreeRemoveHook.Tests.ps1` failed in none of the 64 failed runs. A search of their logs found
 no `FAILED: WorktreeRemoveHook` line, which the runner prints when that suite fails.
 
+The suite did not run in all 376 runs. The `powershell-suites` job needs the `repo-invariants`
+job, so it was skipped in 40 of the 64 failed runs. It ran in the other 336 runs: the 312 that
+passed, and 24 that failed for other reasons. In the 18 of those 24 where the job itself failed,
+its summary table lists `WorktreeRemoveHook.Tests.ps1` as passed.
+
+The search above read each run's latest attempt. Seven runs passed only on a rerun, so their
+first attempts were read as well. Four failed in other suites. The other three failed in
+`build-test`, and their `powershell-suites` job passed. None of the seven failed
+`WorktreeRemoveHook.Tests.ps1`.
+
 The work had already merged, so this item closed in a housekeeping round on 2026-10-18.
 
 ## Summary
@@ -142,6 +152,11 @@ whether it is gone.
 
 ### Flake A - not reproduced, every lead ruled out
 
+**Correction, added at closure:** the recurrence in the Closed section proved the second bullet
+below wrong. A `Get-Content -Raw` read of the diagnostics, made while the watcher was still
+writing the file, handed an array to `Assert-True`. The rest of this section is the analysis as
+it was first written.
+
 The suite ran 40 times standalone and passed every time. The full runner
 (`scripts/run-powershell-suites.ps1`, 18 suites) ran 12 times with the diagnostic in place. All 12
 passed and the diagnostic never fired.
@@ -191,14 +206,26 @@ path made one function answer the same script block two different ways. It was r
 - [x] Both are exercised repeatedly enough to give confidence - run each in its normal full-suite
       context several times in a row and record the results
 
-Criterion 3 is met through backlog 137. The recurrence named line 551, and backlog 137 removed the
-early read that handed the array over. This item's unblock note asked for exactly that: name the
-call site, fix it, then tick the last two boxes. The `Assert-True` type check stays, so any new
-array still fails with its line number.
+Criterion 3 is met through backlog 137 and the round that closed this item. The recurrence named
+line 551. Backlog 137 found the cause: the test read the diagnostics after the folder was gone,
+while the watcher was still writing them. Its fix waits for the outcome line, which the watcher
+writes after its last diagnostic on the success path.
+
+Two more reads in the suite had the same early timing. The closing round makes both wait the same
+way (`tests/WorktreeRemoveHook.Tests.ps1:678`, "$null = Wait-ForOutcomeLine -RepoDir $repo") and
+(`tests/WorktreeRemoveHook.Tests.ps1:709`, "$null = Wait-ForOutcomeLine -RepoDir $repo"). The
+suite's other diagnostics reads either wait for the outcome line as well, or follow a refusal or
+an abort. On those paths the hook starts no watcher and has already exited. So on the paths the
+tests drive, no diagnostics read overlaps a write.
+
+This item's unblock note asked for exactly this: "The suite fails again, in CI or locally. The new
+message names the call site. Then fix that call site, tick the last two boxes, and move the file to
+`backlog/done/`." The `Assert-True` type check stays as a safety net. If an array ever arrives
+again, the message names the line.
 
 Criterion 4 is met for both flakes. Flake B has the 50 confidence runs above. Flake A has the CI
-record in the Closed section: every CI run runs the full suite set, and this suite has not failed
-since backlog 137 closed.
+record in the Closed section: after backlog 137 closed, the suite ran in 336 CI runs, each time
+inside a full run of the suite set, and it failed in none of them.
 
 ## Out of scope
 
