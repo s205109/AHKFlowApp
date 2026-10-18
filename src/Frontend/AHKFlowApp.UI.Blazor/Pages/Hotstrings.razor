@@ -220,7 +220,8 @@
     <MudPaper Class="pa-2 mobile-shell">
         <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Class="mb-2">
             <MudIconButton Class="reload-hotstrings-mobile" Icon="@Icons.Material.Filled.Refresh"
-                           OnClick="ReloadAsync" Disabled="@(!_isAuthenticated || _loading)" />
+                           OnClick="ReloadAsync" Disabled="@(!_isAuthenticated || _loading)"
+                           UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = "Reload hotstrings" })" />
             <MudSpacer />
         </MudStack>
 
@@ -1035,9 +1036,11 @@
         @if (IsEditing(item))
         {
             <MudIconButton Class="commit-edit" Icon="@Icons.Material.Filled.Check"
-                           Color="Color.Success" OnClick="() => CommitEditAsync(item)" />
+                           Color="Color.Success" OnClick="() => CommitEditAsync(item)"
+                           UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = $"Save {RowName(item)}" })" />
             <MudIconButton Class="cancel-edit" Icon="@Icons.Material.Filled.Close"
-                           Color="Color.Default" OnClick="CancelEditAsync" />
+                           Color="Color.Default" OnClick="CancelEditAsync"
+                           UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = $"Cancel editing {RowName(item)}" })" />
             <MudIconButton Class="promote-edit" Icon="@Icons.Material.Filled.Tune"
                            OnClick="() => PromoteInlineRowAsync(item)"
                            UserAttributes="@(new Dictionary<string, object?> { ["title"] = "More options / change kind", ["aria-label"] = "More options / change kind" })" />
@@ -1045,13 +1048,20 @@
         else
         {
             <MudIconButton Class="edit" Icon="@Icons.Material.Filled.Edit"
-                           OnClick="() => (item.IsInlineEditable ? StartEditAsync(item) : OpenEditDialogAsync(item))" />
+                           OnClick="() => (item.IsInlineEditable ? StartEditAsync(item) : OpenEditDialogAsync(item))"
+                           UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = $"Edit {RowName(item)}" })" />
             <MudIconButton Class="show-history" Icon="@Icons.Material.Filled.History"
-                           OnClick="() => ShowHistoryAsync(item)" />
+                           OnClick="() => ShowHistoryAsync(item)"
+                           UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = $"Show history for {RowName(item)}" })" />
             <MudIconButton Class="delete" Icon="@Icons.Material.Filled.Delete" Color="Color.Error"
-                           OnClick="() => DeleteAsync(item)" />
+                           OnClick="() => DeleteAsync(item)"
+                           UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = $"Delete {RowName(item)}" })" />
         }
     </text>;
+
+    // Names the row in its buttons' labels, by trigger. A new row has no trigger yet.
+    private static string RowName(HotstringEditModel item) =>
+        string.IsNullOrWhiteSpace(item.Trigger) ? "new hotstring" : item.Trigger;
 
     public void Dispose() { _cts.Cancel(); _cts.Dispose(); }
 }

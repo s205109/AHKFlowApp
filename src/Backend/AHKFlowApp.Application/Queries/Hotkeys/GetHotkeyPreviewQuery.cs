@@ -39,7 +39,8 @@ internal sealed class GetHotkeyPreviewQueryHandler(TimeProvider clock)
         var hk = Hotkey.Create(Guid.Empty, request.Input.ToDefinition(appliesToAllProfiles: true), clock);
 
         // The same Runtime helpers and the same wrapping AhkScriptGenerator uses, so the live preview
-        // matches the downloaded script byte for byte. No hotkey needs a helper today.
+        // shows the same text as the downloaded script. Only the line endings can differ, because
+        // the download uses LF only. No hotkey needs a helper today.
         string snippet = DefinitionWrapping.PreviewSnippet(
             runtimeHelpers: RuntimeHelpers.NeededBy([], [hk]),
             matchType: hk.ContextMatchType,

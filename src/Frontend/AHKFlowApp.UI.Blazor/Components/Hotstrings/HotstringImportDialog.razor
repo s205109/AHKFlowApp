@@ -9,7 +9,8 @@
 <MudDialog Class="hotstring-import-dialog">
     <TitleContent>
         <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="flex-grow-1">
-            <MudIconButton Class="cancel-import" Icon="@Icons.Material.Filled.ArrowBack" OnClick="Cancel" />
+            <MudIconButton Class="cancel-import" Icon="@Icons.Material.Filled.ArrowBack" OnClick="Cancel"
+                           UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = "Cancel import" })" />
             <MudText Typo="Typo.h6">Import hotstrings</MudText>
             <MudButton Class="confirm-import" Color="Color.Primary" Variant="Variant.Filled"
                        Disabled="@(_preview is null || _importableCount == 0 || _busy)"

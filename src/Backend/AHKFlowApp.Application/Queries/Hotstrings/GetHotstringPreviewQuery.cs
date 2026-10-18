@@ -104,7 +104,8 @@ internal sealed class GetHotstringPreviewQueryHandler(TimeProvider clock)
         HotstringDelivery effectiveDelivery = HotstringEmitter.ResolveEffectiveDelivery(hs);
 
         // The same Runtime helpers and the same wrapping AhkScriptGenerator uses, so the live preview
-        // matches the downloaded script byte for byte.
+        // shows the same text as the downloaded script. Only the line endings can differ: the
+        // download uses LF only, and this preview keeps the paste helper's CRLF.
         string snippet = DefinitionWrapping.PreviewSnippet(
             runtimeHelpers: RuntimeHelpers.NeededBy([hs], []),
             matchType: hs.ContextMatchType,

@@ -24,6 +24,7 @@ public sealed class DownloadCliIntegrationTests(SqlContainerFixture sql) : IAsyn
     private CustomWebApplicationFactory _baseFactory = null!;
     private readonly Guid _testUserOid = Guid.NewGuid();
     private readonly string _baseDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+    private static readonly byte[] Utf8Bom = [0xEF, 0xBB, 0xBF];
 
     public Task InitializeAsync()
     {
@@ -57,11 +58,16 @@ public sealed class DownloadCliIntegrationTests(SqlContainerFixture sql) : IAsyn
         return (exit, so.ToString(), se.ToString(), sink.ToArray());
     }
 
-    private async Task<Profile> SeedProfileAsync(string name, bool isDefault = false)
+    private async Task<Profile> SeedProfileAsync(string name, bool isDefault = false, string header = "")
     {
         using IServiceScope scope = _factory.Services.CreateScope();
         AppDbContext db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        Profile p = new ProfileBuilder().WithOwner(_testUserOid).WithName(name).AsDefault(isDefault).Build();
+        Profile p = new ProfileBuilder()
+            .WithOwner(_testUserOid)
+            .WithName(name)
+            .AsDefault(isDefault)
+            .WithHeader(header)
+            .Build();
         db.Profiles.Add(p);
         await db.SaveChangesAsync();
         return p;
@@ -85,7 +91,7 @@ public sealed class DownloadCliIntegrationTests(SqlContainerFixture sql) : IAsyn
     [Fact]
     public async Task Ahk_Default_WritesFileWithSeededHotstringContent()
     {
-        Profile p = await SeedProfileAsync("work");
+        Profile p = await SeedProfileAsync("work", header: "; one\r\n; two\r");
         await SeedHotstringAsync("scoped1", "scoped expansion", p.Id);
         await SeedHotstringAsync("global1", "global expansion");
 
@@ -100,6 +106,14 @@ public sealed class DownloadCliIntegrationTests(SqlContainerFixture sql) : IAsyn
         content.Should().Contain("scoped1").And.Contain("scoped expansion");
         content.Should().Contain("global1").And.Contain("global expansion");
         stdout.Should().Contain("Wrote");
+
+        // Backlog 183. The CLI saves the API's bytes unchanged: the mark, then the script with LF
+        // only. The reported count is the real file length, mark included.
+        byte[] bytes = await File.ReadAllBytesAsync(expected);
+        bytes[..3].Should().Equal(Utf8Bom);
+        bytes.Should().NotContain((byte)'\r');
+        content.Should().StartWith("; one\n; two\n");
+        stdout.Should().Contain($"({bytes.Length} bytes)");
     }
 
     [Fact]
@@ -146,7 +160,7 @@ public sealed class DownloadCliIntegrationTests(SqlContainerFixture sql) : IAsyn
     [Fact]
     public async Task Ahk_OutputDash_WritesBytesToInjectedStream()
     {
-        await SeedProfileAsync("work");
+        await SeedProfileAsync("work", header: "; one\r\n; two\r");
 
         (int exit, string stdout, string _, byte[] stdoutBytes) = await RunAsync(
             ["download", "ahk", "--profile", "work", "-o", "-"]);
@@ -154,6 +168,12 @@ public sealed class DownloadCliIntegrationTests(SqlContainerFixture sql) : IAsyn
         exit.Should().Be(0);
         stdoutBytes.Length.Should().BeGreaterThan(0);
         stdout.Should().BeEmpty();
+
+        // Backlog 183. Standard output gets the same bytes as the file, so a redirect saves the
+        // same file.
+        stdoutBytes[..3].Should().Equal(Utf8Bom);
+        stdoutBytes.Should().NotContain((byte)'\r');
+        Encoding.UTF8.GetString(stdoutBytes[3..]).Should().StartWith("; one\n; two\n");
     }
 
     [Fact]

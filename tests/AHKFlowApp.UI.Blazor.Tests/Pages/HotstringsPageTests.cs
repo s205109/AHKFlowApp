@@ -1155,4 +1155,39 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
             Arg.Is<HotstringListRequest>(r => r.Kind == HotstringKind.DateTime),
             Arg.Any<CancellationToken>()));
     }
+
+    // Backlog 168. Each row icon button names the hotstring it acts on, by its trigger.
+    [Fact]
+    public void Row_IconButtons_NameTheirHotstring()
+    {
+        var dto = new HotstringDto(Guid.NewGuid(), [], true, "btw", "by the way", null, true, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+        StubList(Page(dto));
+
+        IRenderedComponent<Hotstrings> cut = RenderPage();
+        cut.WaitForState(() => cut.Markup.Contains("btw"));
+
+        cut.Find("button.edit").GetAttribute("aria-label").Should().Be("Edit btw");
+        cut.Find("button.show-history").GetAttribute("aria-label").Should().Be("Show history for btw");
+        cut.Find("button.delete").GetAttribute("aria-label").Should().Be("Delete btw");
+        cut.Find("button.reload-hotstrings-mobile").GetAttribute("aria-label").Should().Be("Reload hotstrings");
+
+        cut.Find("button.edit").Click();
+        cut.WaitForAssertion(() => cut.Find("button.commit-edit"));
+
+        cut.Find("button.commit-edit").GetAttribute("aria-label").Should().Be("Save btw");
+        cut.Find("button.cancel-edit").GetAttribute("aria-label").Should().Be("Cancel editing btw");
+    }
+
+    // Backlog 168. A new row has no trigger yet, so its labels fall back to "new hotstring".
+    [Fact]
+    public void NewRow_IconButtons_NameTheNewHotstring()
+    {
+        StubList(Page());
+
+        IRenderedComponent<Hotstrings> cut = RenderPage();
+        StartDraftEdit(cut);
+
+        cut.Find("button.commit-edit").GetAttribute("aria-label").Should().Be("Save new hotstring");
+        cut.Find("button.cancel-edit").GetAttribute("aria-label").Should().Be("Cancel editing new hotstring");
+    }
 }

@@ -1385,4 +1385,53 @@ public sealed class AhkScriptGeneratorTests
             "#n::Run(\"notepad\")\n" +
             "F");
     }
+
+    [Fact]
+    public void Generate_TemplatesWithCrlfAndLoneCr_EmitsLfOnly()
+    {
+        // Backlog 183. A stored template can hold CRLF or a lone CR. The script uses LF only.
+        Profile profile = new ProfileBuilder()
+            .WithHeader("; one\r\n; two\r; three")
+            .WithFooter("; four\r\n")
+            .Build();
+
+        string output = DefaultSut().Generate(profile, [], []);
+
+        output.Should().Be(
+            "; one\n; two\n; three\n" +
+            "; --- Hotstrings ---\n" +
+            "; --- Hotkeys ---\n" +
+            "; four\n");
+    }
+
+    [Fact]
+    public void Generate_ClipboardHelper_EmitsLfOnly()
+    {
+        // Backlog 183. The paste helper is a C# raw string, so its lines end in CRLF in the source.
+        Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
+        Hotstring hs = new HotstringBuilder()
+            .WithTrigger("sig")
+            .WithReplacement("Kind regards")
+            .WithDelivery(HotstringDelivery.ClipboardPaste)
+            .Build();
+
+        string output = DefaultSut().Generate(profile, [hs], []);
+
+        output.Should().Contain("AhkFlow_PasteReplacement(text, endChar := \"\") {\n    saved := ClipboardAll()\n");
+        output.Should().NotContain("\r");
+    }
+
+    [Fact]
+    public void Generate_TextReplacementWithUnicodeSeparators_KeepsThemAsLiteralText()
+    {
+        // Backlog 183. Only CR and LF become LF. A Text replacement may hold NEL, LS, PS or a form
+        // feed as literal text, and the hotstring must stay on one line.
+        string replacement = "a" + (char)0x2028 + "b" + (char)0x0085 + "c" + (char)0x2029 + "d" + (char)0x000C + "e";
+        Profile profile = new ProfileBuilder().WithHeader("H").WithFooter("F").Build();
+        Hotstring hs = new HotstringBuilder().WithTrigger("ls").WithReplacement(replacement).Build();
+
+        string output = DefaultSut().Generate(profile, [hs], []);
+
+        output.Should().Contain(":?T:ls::" + replacement + "\n");
+    }
 }

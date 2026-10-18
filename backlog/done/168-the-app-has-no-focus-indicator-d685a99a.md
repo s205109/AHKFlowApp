@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: UI
 - **Difficulty**: moderate
-- **Stage**: 1-pickup
+- **Stage**: 9-ship
 
 ## Summary
 
@@ -23,16 +23,35 @@ button does, so that I can use the app without a mouse.
 
 ## Acceptance criteria
 
-- [ ] A nav link is visibly different focused and unfocused.
-- [ ] The repository states a focus-ring policy in one place, and that policy covers nav links,
+- [x] A nav link is visibly different focused and unfocused.
+- [x] The repository states a focus-ring policy in one place, and that policy covers nav links,
       grid buttons, toolbar buttons and form fields.
-- [ ] The drawer toggle and the dark-mode toggle each have an accessible name, and the dark-mode
+- [x] The drawer toggle and the dark-mode toggle each have an accessible name, and the dark-mode
       name reflects what pressing it will do.
-- [ ] Each of the twenty buttons listed under Notes has an accessible name that includes its
+- [x] Each of the twenty buttons listed under Notes has an accessible name that includes its
       target, following the pattern the hotkeys rows and the Recycle Bin rows already use.
-- [ ] A skip link reaches the page content, and it becomes visible when it takes focus.
-- [ ] An E2E flow test asserts the accessible name of at least one app-bar button and one row
+- [x] A skip link reaches the page content, and it becomes visible when it takes focus.
+- [x] An E2E flow test asserts the accessible name of at least one app-bar button and one row
       button, so the pattern cannot silently regress.
+
+Evidence for the ticks, written at Document on 2026-10-17:
+
+- Criterion 1: `KeyboardAccessFlowTests.FocusRing_OnKeyboardFocus_DrawsTheRingInBothThemes`
+  checks the nav link has no outline before focus and a 2px solid ring after, in both themes.
+- Criterion 2: the policy is the "Focus ring policy" block at the end of
+  `src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/css/app.css`. It draws a ring on nav links and on
+  every MudBlazor button, which covers grid and toolbar buttons. For form fields it states the
+  rule too, but the rule is different: text fields and selects keep MudBlazor's own 2px underline
+  or border, and get no ring. Pickup measured that underline on 2026-10-16. The block lists form
+  fields under "Not covered", which means "no ring", not "no policy". Read the box with that in
+  mind.
+- Criterion 3: `KeyboardAccessFlowTests.AppBarButtons_NameWhatPressingThemDoes`.
+- Criterion 4: the nine bUnit tests named `*_IconButtons_*`, `ToggleSelectMode_Name_*` and
+  `*_NamesWhatItDoes` cover the eighteen page and dialog buttons; criterion 3's test covers the
+  two app-bar buttons.
+- Criterion 5: `KeyboardAccessFlowTests.SkipLink_FirstTabStop_MovesFocusIntoThePage`.
+- Criterion 6: `KeyboardAccessFlowTests.AppBarButtons_NameWhatPressingThemDoes` and
+  `KeyboardAccessFlowTests.RowButtons_NameTheirHotstring`.
 
 ## Out of scope
 
@@ -90,4 +109,4 @@ button does, so that I can use the app without a mouse.
 - Fix order matters. A skip link that is hidden until it takes focus only works once F27 is
   fixed, so do the focus indicator first.
 - Spec: none — the work is four known fixes, not a design question.
-- Plan: none — moderate work, goes straight to Plan at pickup.
+- Plan: `docs/superpowers/plans/2026-10-16-focus-ring-and-icon-button-names-plan-168.md`

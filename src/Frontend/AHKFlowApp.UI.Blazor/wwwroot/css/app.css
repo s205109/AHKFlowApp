@@ -194,3 +194,49 @@ button.import-hotstring-fab {
 .mud-button-root.blocked-action[aria-disabled="true"]:hover {
     background-color: transparent;
 }
+
+/* Focus ring policy (backlog 168). The one place that decides how a focused control looks.
+   - Covered: nav links, and every MudBlazor button, including the buttons that hold a checkbox
+     or a switch.
+   - Colour: the theme's text colour. In the app bar: the bar's own text colour.
+   - Offset: 2px outside a button. 2px inside a nav link, because the drawer cuts off anything
+     outside it.
+   - Not covered: text fields and selects keep MudBlazor's 2px underline or border. The skip
+     link's target, #main-content, is not a control.
+   - The rules use :focus-visible, so a mouse click shows no ring.
+   - The rules win by specificity. MudBlazor.min.css loads after this file and sets outline: none
+     on a, button and .mud-button-root. */
+a.mud-nav-link:focus-visible,
+.mud-button-root:focus-visible,
+.mud-button-root:has(input:focus-visible) {
+    outline: 2px solid var(--mud-palette-text-primary);
+    outline-offset: 2px;
+}
+
+a.mud-nav-link:focus-visible {
+    outline-offset: -2px;
+}
+
+.mud-appbar .mud-button-root:focus-visible {
+    outline-color: currentColor;
+}
+
+#main-content:focus {
+    outline: none;
+}
+
+/* Skip link (backlog 168). It is the first Tab stop on every page. It waits above the top of the
+   window and moves into view when it takes focus. It must stay global: MudButton renders its own
+   root <button>, which never receives MainLayout's CSS-isolation scope attribute. The button.
+   prefix beats the position rule on .mud-button-root, which MudBlazor.min.css sets later. */
+button.skip-link {
+    position: fixed;
+    top: 8px;
+    left: 8px;
+    z-index: calc(var(--mud-zindex-appbar) + 1);
+    transform: translateY(-200%);
+}
+
+button.skip-link:focus {
+    transform: none;
+}

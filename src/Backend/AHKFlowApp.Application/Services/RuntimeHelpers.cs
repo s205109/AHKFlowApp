@@ -18,8 +18,9 @@ internal static class RuntimeHelpers
 
     // Clipboard Delivery calls this helper. It saves the user's clipboard, pastes the text, and
     // restores the clipboard. The raw string takes its line breaks from this file, and
-    // .gitattributes checks .cs files out with CRLF, so the helper's lines end in CRLF. The
-    // function name comes from ClipboardPasteName, so the name exists once.
+    // .gitattributes checks .cs files out with CRLF, so the helper's lines end in CRLF here.
+    // AhkScriptGenerator turns them into LF in a Profile script. The function name comes from
+    // ClipboardPasteName, so the name exists once.
     public const string ClipboardPasteFunction =
         $$"""
         {{ClipboardPasteName}}(text, endChar := "") {
