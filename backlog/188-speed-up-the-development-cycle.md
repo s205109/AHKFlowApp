@@ -66,5 +66,5 @@ Each criterion is refined in the spec. Tick a box only when its words hold liter
   `scripts/citation-freshness.common.ps1`.
 - Related: backlog 068 (flaky `WorktreeRemoveHook` reads), backlog 187 (UI test events outside
   `InvokeAsync`), spec and plan 126 (the earlier PowerShell suite performance work).
-- Spec: needed — complex, written at Design.
+- Spec: `docs/superpowers/specs/2026-10-18-speed-up-the-development-cycle-design-188.md`
 - Plan: none — complex, so Design comes first at pickup.

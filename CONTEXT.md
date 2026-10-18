@@ -261,6 +261,23 @@ skips the .NET build and tests in CI, and before a push. The local checks still 
 changes a script they use.
 _Avoid_: config-only change, short route, short gate, local gate
 
+**Gate input**:
+A file whose content can change the result of one Gate step or one Suite. A Suite's Gate inputs
+are its own file, every script it loads, and every path it declares. A Suite with no list of Gate
+inputs counts every file as one.
+_Avoid_: dependency, affected file, watch list
+
+**Gate evidence**:
+The stored record that one Gate step or one Suite passed for one exact set of Gate inputs. A later
+Gate run reuses it, instead of running that step or Suite again, while those inputs stay unchanged.
+_Avoid_: cache, gate cache, result cache, green stamp
+
+**Outside review**:
+A review the human starts in a separate terminal, with a model family other than the one doing the
+work, such as OpenCode with an OpenAI model. It reads the same revision as the Claude reviewer, and
+the human pastes its result back into the session.
+_Avoid_: Codex review, second review, external review
+
 **Suite**:
 One `tests/*.Tests.ps1` file. The runner starts each Suite as its own process and runs several at
 once, so one Suite's failure cannot stop another. `tests/powershell-suites.json` lists every Suite.
