@@ -628,4 +628,22 @@ public sealed class ProfilesPageTests : BunitContext, IAsyncLifetime
         cut.Find("button.commit-edit").GetAttribute("aria-label").Should().Be("Save new profile");
         cut.Find("button.cancel-edit").GetAttribute("aria-label").Should().Be("Cancel editing new profile");
     }
+
+    // Backlog 186. A field in a row being edited has no visible label, so its aria-label is its
+    // name. The selector names the input element, so the name sits on the field, not a wrapper.
+    [Fact]
+    public void EditRow_Fields_NameWhatTheyHold()
+    {
+        StubList(MakeProfile("Work"));
+
+        IRenderedComponent<Profiles> cut = RenderPage();
+        cut.WaitForState(() => cut.Markup.Contains("Work"));
+        cut.Find("button.start-edit").Click();
+        cut.WaitForAssertion(() => cut.Find("input[data-test=\"profile-name-input\"]"));
+
+        cut.Find("input[data-test=\"profile-default-input\"]").GetAttribute("aria-label").Should().Be("Default");
+        cut.Find("input[data-test=\"profile-name-input\"]").GetAttribute("aria-label").Should().Be("Name");
+        cut.Find("textarea[data-test=\"profile-header-input\"]").GetAttribute("aria-label").Should().Be("Header template");
+        cut.Find("textarea[data-test=\"profile-footer-input\"]").GetAttribute("aria-label").Should().Be("Footer template");
+    }
 }
