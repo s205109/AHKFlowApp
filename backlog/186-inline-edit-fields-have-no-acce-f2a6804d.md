@@ -52,4 +52,4 @@ removed" and "tests cover the new API" cannot.
 - A visible `Label` would change how a dense row looks. Decide at Plan between `Label` and
   `aria-label`.
 - Spec: none — known fields, one kind of fix.
-- Plan: none — moderate work, goes straight to Plan at pickup.
+- Plan: `docs/superpowers/plans/2026-10-18-inline-edit-field-names-plan-186.md`
