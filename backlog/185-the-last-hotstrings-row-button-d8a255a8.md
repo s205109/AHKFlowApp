@@ -23,9 +23,9 @@ Write each criterion as state a reader can observe in the repository, not as a c
 "The handler returns `Result.NotFound()` for a missing id" can be checked. "The old check is
 removed" and "tests cover the new API" cannot.
 
-- [ ] At a 1280 px window, every button in a hotstrings row sits inside its cell, in view mode
+- [x] At a 1280 px window, every button in a hotstrings row sits inside its cell, in view mode
       and in edit mode.
-- [ ] An E2E flow test asserts that the right edge of the last row button is not past the right
+- [x] An E2E flow test asserts that the right edge of the last row button is not past the right
       edge of its cell, in both modes.
 
 ## Out of scope
