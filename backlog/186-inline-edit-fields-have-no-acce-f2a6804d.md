@@ -25,10 +25,10 @@ Write each criterion as state a reader can observe in the repository, not as a c
 "The handler returns `Result.NotFound()` for a missing id" can be checked. "The old check is
 removed" and "tests cover the new API" cannot.
 
-- [ ] Each field listed under Notes has an accessible name.
-- [ ] Each name matches what a sighted owner reads for that field, such as the column header
+- [x] Each field listed under Notes has an accessible name.
+- [x] Each name matches what a sighted owner reads for that field, such as the column header
       `Trigger` or the section title `Header template`.
-- [ ] A bUnit test asserts the accessible name of each field listed under Notes.
+- [x] A bUnit test asserts the accessible name of each field listed under Notes.
 
 ## Out of scope
 
@@ -56,3 +56,7 @@ removed" and "tests cover the new API" cannot.
   different fix. They are filed as backlog 189.
 - Spec: none — known fields, one kind of fix.
 - Plan: `docs/superpowers/plans/2026-10-18-inline-edit-field-names-plan-186.md`
+- Criterion 3: bUnit cannot compute an accessible name, so each bUnit test asserts the
+  field's `aria-label` attribute, on the `input` or `textarea` element itself. A Playwright test,
+  `KeyboardAccessFlowTests.InlineEditFields_NameWhatTheyHold`, proves that a browser takes that
+  attribute as the name, for a text input, a textarea, and the checkbox.
