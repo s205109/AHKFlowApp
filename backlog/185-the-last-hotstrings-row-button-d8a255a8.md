@@ -45,4 +45,4 @@ removed" and "tests cover the new API" cannot.
   edit mode (`commit-edit`, `cancel-edit`, `promote-edit`). That is 144 px of buttons before the
   cell padding. Confirm the cell padding at pickup before changing the width.
 - Spec: none — a layout fault with a known place to look.
-- Plan: none — moderate work, goes straight to Plan at pickup.
+- Plan: `docs/superpowers/plans/2026-10-18-hotstrings-row-buttons-fit-their-cell-plan-185.md`
