@@ -630,7 +630,7 @@ public sealed class ProfilesPageTests : BunitContext, IAsyncLifetime
     }
 
     // Backlog 186. A field in a row being edited has no visible label, so its aria-label is its
-    // name. The selector names the input element, so the name sits on the field, not a wrapper.
+    // name. The selector names the element, so the name sits on the field, not a wrapper.
     [Fact]
     public void EditRow_Fields_NameWhatTheyHold()
     {
