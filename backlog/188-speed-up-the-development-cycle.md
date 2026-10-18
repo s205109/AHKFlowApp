@@ -26,8 +26,12 @@ waiting for checks.
 
 Each criterion is refined in the spec. Tick a box only when its words hold literally.
 
-- [ ] A baseline record and an after record each hold five measures, measured the same way: Gate
-      time, affected-test time, CI critical path, Gate runs per item, and flaky failures.
+- [ ] A baseline record holds five measures: Gate time, affected-test time, CI critical path, Gate
+      runs per item, and flaky failures.
+- [ ] An after record of Gate time and affected-test time, taken on the final revision with the
+      baseline's method, sits next to the baseline.
+- [ ] A follow-up item carries the before record of the other three measures, and says when their
+      after record is due.
 - [ ] `docs/development/workflow.md` has no Simplify, Verify or Document stage. Execute ends with
       the Gate on the final revision. The other stages keep their numbers.
 - [ ] The Gate reuses a stored green result for a Suite or a step whose inputs did not change, and
