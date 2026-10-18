@@ -13,7 +13,8 @@
 The full Gate is slow again. On 2026-10-17 the 77 PowerShell Suites took 1,736 suite-seconds, about
 twice their committed baselines. This item measures the Gate, cuts and speeds up the slowest
 PowerShell Suites, lets the Gate reuse a Suite result whose inputs did not change, warns when a
-Suite slows down, and stops citation drift from failing CI. Three sibling items, filed at this
+Suite slows down, and makes a citation whose text moved to exactly one other line warn instead of
+fail. Missing or ambiguous citation text still fails. Three sibling items, filed at this
 item's Plan, carry the process change, the memory cleanup and the architecture pilot.
 
 ## User story
@@ -28,12 +29,13 @@ Each criterion is refined in the spec. Tick a box only when its words hold liter
 - [ ] A baseline record holds five measures: Gate time, affected-test time, CI critical path,
       Gate-required stage exits per item, and flaky failures. It also states whether the .NET
       steps are worth an audit item of their own.
-- [ ] Each measure has a target that the user approved after the baseline and before any
-      improvement work, and the after record reports each target as met or missed.
+- [ ] Each of the five measures has a target that the user approved after the baseline and before
+      any improvement work.
 - [ ] An after record of Gate time and affected-test time, taken on the final revision with the
-      baseline's method, sits next to the baseline.
-- [ ] A follow-up item carries the before record of the other three measures, and says when their
-      after record is due.
+      baseline's method and preparation, sits next to the baseline. It reports both targets as met
+      or missed, and a missed target carries the user's decision to accept it or continue.
+- [ ] A follow-up item carries the before record and the targets of the other three measures, and
+      says when each after window starts and when it is ready.
 - [ ] Every audit batch the user approved is applied, and the after record lists what each batch
       removed, merged or sped up.
 - [ ] The four retired research tools, the five Suites that retire whole, the two interval helpers,
@@ -44,9 +46,11 @@ Each criterion is refined in the spec. Tick a box only when its words hold liter
 - [ ] The Gate reuses a stored green result for a PowerShell Suite whose inputs did not change,
       inside one worktree, and runs it again when an input changed. A Suite with no input list
       always runs. Build, format and coverage are not reused.
-- [ ] Each of the ten slowest Suites carries an input list that a script builds, or a written
-      reason in the manifest why it reads everything. A check fails when a stored list differs
-      from the built one.
+- [ ] Every Suite in the audit's candidate set that still exists is marked in the manifest as
+      eligible for reuse, or as not eligible with a one-line reason. The reuse key builds an
+      eligible Suite's input list each time, and an unresolved dependency switches reuse off.
+- [ ] Evidence is written only after a Suite passed and only when no input changed during the run.
+      Unreadable or malformed evidence counts as a miss.
 - [ ] The Gate warns, and does not fail, when a Suite of 5 s or more runs more than 30 percent over
       its committed `baselineSeconds`. A reused result never warns.
 - [ ] The citation check warns when the cited text moved to exactly one other line, and fails when
