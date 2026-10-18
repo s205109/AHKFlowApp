@@ -1,6 +1,8 @@
 using AHKFlowApp.E2E.Tests.Fixtures;
 using AHKFlowApp.Infrastructure.Persistence;
 using AHKFlowApp.TestUtilities.Builders;
+using FluentAssertions;
+using FluentAssertions.Execution;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Playwright;
 using Xunit;
@@ -132,6 +134,42 @@ public sealed class HotstringsCrudFlowTests(StackFixtureC fixture) : IAsyncLifet
         await Assertions.Expect(checkboxB).ToBeCheckedAsync();
     }
 
+    // Backlog 185. Three 48 px buttons did not fit the 160 px Actions column. In view mode the last
+    // one ended 8 px past its cell, and the table container cut it off. In edit mode the third
+    // button dropped to a second line. Every state is measured before any assertion runs, so one
+    // red run shows each state that fails.
+    [Fact]
+    public async Task RowButtons_OnDesktopViewport_SitInsideTheActionsCellOnOneLine()
+    {
+        await SeedHotstringsAsync(fixture, ("btw", "by the way"));
+
+        await using IBrowserContext ctx = await fixture.Browser.NewContextAsync(DesktopViewport);
+
+        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/hotstrings");
+        ILocator row = page.Locator(".desktop-branch tbody tr", new() { HasTextString = "btw" });
+        await row.Locator("button.delete").WaitForAsync();
+        ActionsCellLayout view = await MeasureActionsCellAsync(page, row, "button.delete");
+
+        await row.Locator("button.edit").ClickAsync();
+        ILocator editRow = page.Locator(".desktop-branch tr.edit-row");
+        await editRow.Locator("button.promote-edit").WaitForAsync();
+        ActionsCellLayout edit = await MeasureActionsCellAsync(page, editRow, "button.promote-edit");
+
+        // Add stays off while a row is in edit mode.
+        await editRow.Locator("button.cancel-edit").ClickAsync();
+        await page.Locator(".desktop-branch button.add-hotstring").ClickAsync();
+        ILocator draftRow = page.Locator(".desktop-branch tr.draft-row");
+        await draftRow.Locator("button.promote-edit").WaitForAsync();
+        ActionsCellLayout draft = await MeasureActionsCellAsync(page, draftRow, "button.promote-edit");
+
+        using (new AssertionScope())
+        {
+            AssertInsideItsCellOnOneLine("view mode", view);
+            AssertInsideItsCellOnOneLine("edit mode", edit);
+            AssertInsideItsCellOnOneLine("new row", draft);
+        }
+    }
+
     private static async Task SeedHotstringsAsync(StackFixture fixture, params (string Trigger, string Replacement)[] hotstrings)
     {
         await using AsyncServiceScope scope = fixture.Api.Services.CreateAsyncScope();
@@ -147,5 +185,35 @@ public sealed class HotstringsCrudFlowTests(StackFixtureC fixture) : IAsyncLifet
         }
 
         await db.SaveChangesAsync();
+    }
+
+    private sealed record ActionsCellLayout(LocatorBoundingBoxResult Cell, IReadOnlyList<LocatorBoundingBoxResult> Buttons);
+
+    private static async Task<ActionsCellLayout> MeasureActionsCellAsync(IPage page, ILocator row, string buttonInCell)
+    {
+        ILocator cell = row.Locator("td").Filter(new() { Has = page.Locator(buttonInCell) });
+        LocatorBoundingBoxResult cellBox = await cell.BoundingBoxAsync()
+            ?? throw new InvalidOperationException($"The Actions cell that holds {buttonInCell} is not visible.");
+
+        List<LocatorBoundingBoxResult> buttonBoxes = [];
+        foreach (ILocator button in await cell.Locator("button").AllAsync())
+        {
+            buttonBoxes.Add(await button.BoundingBoxAsync()
+                ?? throw new InvalidOperationException($"A button in the Actions cell that holds {buttonInCell} is not visible."));
+        }
+
+        return new ActionsCellLayout(cellBox, buttonBoxes);
+    }
+
+    private static void AssertInsideItsCellOnOneLine(string state, ActionsCellLayout layout)
+    {
+        layout.Buttons.Should().HaveCount(3, $"{state} shows three row buttons");
+        float cellRight = layout.Cell.X + layout.Cell.Width;
+        foreach (LocatorBoundingBoxResult button in layout.Buttons)
+        {
+            button.X.Should().BeGreaterThanOrEqualTo(layout.Cell.X, $"{state}: a button must not start before its cell");
+            (button.X + button.Width).Should().BeLessThanOrEqualTo(cellRight, $"{state}: a button must not end past its cell");
+            button.Y.Should().BeApproximately(layout.Buttons[0].Y, 0.5f, $"{state}: the row buttons share one line");
+        }
     }
 }
