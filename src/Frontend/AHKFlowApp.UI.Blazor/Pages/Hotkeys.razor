@@ -89,7 +89,7 @@
                                       Error="@(_commitAttempted && ValidateDescription(context.Item.Description) is not null)"
                                       ErrorText="@(_commitAttempted ? ValidateDescription(context.Item.Description) : null)"
                                       Immediate="true" MaxLength="200"
-                                      UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "description-input" })" />
+                                      UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "description-input", ["aria-label"] = "Description" })" />
                     }
                     else
                     {
@@ -864,13 +864,13 @@
         {
             <MudTextField T="string" @bind-Value="edit.RunTarget" Immediate="true"
                           MaxLength="@HotkeyEditModel.RunTargetMaxLength" Placeholder="notepad.exe"
-                          UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "run-target-input" })" />
+                          UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "run-target-input", ["aria-label"] = HotkeyActionDisplay.Label(edit.ActionKind) })" />
         }
         else
         {
             <MudTextField T="string" @bind-Value="edit.Text" Immediate="true"
                           MaxLength="@HotkeyEditModel.TextMaxLength"
-                          UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "text-input" })" />
+                          UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "text-input", ["aria-label"] = HotkeyActionDisplay.Label(edit.ActionKind) })" />
         }
     </text>;
 
