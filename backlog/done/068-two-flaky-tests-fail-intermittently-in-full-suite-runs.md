@@ -5,29 +5,29 @@
 - **Epic**: Test reliability
 - **Type**: Bug
 - **Interfaces**: UI | API | CLI (none — test code only)
-- **Status**: Blocked since 2026-08-10 — see the section below
-- **Stage**: 4-execute
+- **Stage**: 9-ship
 
-## Blocked — waiting for flake A to fail again
+## Closed — flake A failed again, and backlog 137 fixed it
 
-Flake B is fixed and merged. Flake A has one open acceptance box, and no work in this repository
-can tick it. The box asks which call site passed an array to `Assert-True`. Reading the code says
-no call site can do that, and the failure still happened once on 2026-08-08. The only honest way
-to name the line is to see the failure again.
+The item was blocked until flake A failed a second time. That happened on 2026-09-05, in CI run
+33989354260, attempt 2. The diagnostic this item added named the call site. Its message starts:
 
-The diagnostic that will name it is already merged, at `tests/WorktreeRemoveHook.Tests.ps1:13-27`.
-It replaces the `[bool]` parameter type with an explicit check. A recurrence now reports the
-runtime type, the values, and the caller's line number.
+```
+Assert-True needs a boolean. Got [System.Object[]] with 1 value(s) from line 551
+```
 
-Do not pick this up as available work. Adding more green runs proves nothing: a diagnostic that
-never fires says nothing about a fault seen once.
+Line 551 checked the removal diagnostics, which the test had read before the watcher finished
+writing them. Backlog 137 found that cause and fixed it. The test now waits for the outcome line
+(`tests/WorktreeRemoveHook.Tests.ps1:578`, "$outcomeLines = @(Wait-ForOutcomeLine -RepoDir $repo)")
+before it reads the diagnostics
+(`tests/WorktreeRemoveHook.Tests.ps1:585`, "$diagnostics = Get-Content -Raw -LiteralPath (Get-RemovalDiagnosticsPath $repo)").
+The full root cause is in `backlog/done/137-powershell-worktree-suites-fail-13b421fb.md`.
 
-**What would unblock it:**
+Backlog 137 closed on 2026-09-09. From then to 2026-10-18, CI ran 376 times, and 312 runs passed.
+`WorktreeRemoveHook.Tests.ps1` failed in none of the 64 failed runs. A search of their logs found
+no `FAILED: WorktreeRemoveHook` line, which the runner prints when that suite fails.
 
-- The suite fails again, in CI or locally. The new message names the call site. Then fix that call
-  site, tick the last two boxes, and move the file to `backlog/done/`.
-- Or a decision that one unexplained failure, now made locatable, is enough. Then close the item
-  with that reason written down.
+The work had already merged, so this item closed in a housekeeping round on 2026-10-18.
 
 ## Summary
 
@@ -186,18 +186,19 @@ path made one function answer the same script block two different ways. It was r
       ruled out and why it could not be reproduced
 - [x] `KnownShortcutsPageTests.IgnoredUse_OffersRestore_AndCallsIt` no longer races - the fix makes
       the assertion wait for the click handler rather than assuming it finished
-- [ ] `WorktreeRemoveHook.Tests.ps1` cannot pass an array to `Assert-True`, and the fix names which
+- [x] `WorktreeRemoveHook.Tests.ps1` cannot pass an array to `Assert-True`, and the fix names which
       call site did it
-- [ ] Both are exercised repeatedly enough to give confidence - run each in its normal full-suite
+- [x] Both are exercised repeatedly enough to give confidence - run each in its normal full-suite
       context several times in a row and record the results
 
-**This item is blocked, not open.** Criterion 3 is not met and is not being claimed. Nothing stops an array
-from reaching `Assert-True`; the change only makes such a call fail with a location instead of
-failing during parameter binding with none. The call site that failed on 2026-08-08 is still
-unknown, and the only honest way to name it is to see it happen again.
+Criterion 3 is met through backlog 137. The recurrence named line 551, and backlog 137 removed the
+early read that handed the array over. This item's unblock note asked for exactly that: name the
+call site, fix it, then tick the last two boxes. The `Assert-True` type check stays, so any new
+array still fails with its line number.
 
-Criterion 4 is met for flake B and not for flake A. Flake A cannot be closed by green runs: a
-diagnostic that never fires proves nothing about a fault that appeared once.
+Criterion 4 is met for both flakes. Flake B has the 50 confidence runs above. Flake A has the CI
+record in the Closed section: every CI run runs the full suite set, and this suite has not failed
+since backlog 137 closed.
 
 ## Out of scope
 
