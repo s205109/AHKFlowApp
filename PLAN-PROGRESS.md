@@ -1,1 +1,0 @@
-Task 1; 212f83fb; red before fix: view mode delete ends at 1248.1875 past cell 1240, edit mode and new row promote-edit 48 px off the line; green after fix: 8 of 8 E2E, HotstringsPageTests 54 of 54; deferrals: none
