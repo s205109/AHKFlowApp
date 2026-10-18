@@ -673,6 +673,9 @@ try {
     $removed = Wait-ForCondition { -not (Test-Path -LiteralPath $wtPath) }
     Assert-True $removed 'The watcher should still remove the worktree while the old shared helper path is locked.'
 
+    # The watcher writes more diagnostics after the folder is gone, and its outcome line last.
+    # Read only after that line, or the read can run while the watcher still writes (backlog 137).
+    $null = Wait-ForOutcomeLine -RepoDir $repo
     $diagnostics = Get-Content -Raw -LiteralPath (Get-RemovalDiagnosticsPath $repo)
 
     # Without this the test passes when the hook fails before it ever reaches the copy, which is a
@@ -702,6 +705,8 @@ try {
     $removed = Wait-ForCondition { -not (Test-Path -LiteralPath $wtPath) }
     Assert-True $removed 'Merged + clean worktree should be removed by the watcher.'
 
+    # Same reason as the locked-helper case: the outcome line comes after the last diagnostic.
+    $null = Wait-ForOutcomeLine -RepoDir $repo
     $diagnostics = Get-Content -Raw -LiteralPath (Get-RemovalDiagnosticsPath $repo)
     $spawned = [regex]::Match($diagnostics, 'ParamFile=(?<path>.+?)\s*$', 'Multiline')
     Assert-True $spawned.Success "Expected a 'Watcher spawned' line naming the param file. Log: $diagnostics"
