@@ -51,5 +51,8 @@ removed" and "tests cover the new API" cannot.
   `input` itself, or on a wrapper. An `aria-label` on a wrapper names nothing.
 - A visible `Label` would change how a dense row looks. Decide at Plan between `Label` and
   `aria-label`.
+- Found while planning, on 2026-10-18: the profile and category pickers and the hotkey key
+  field in the same rows have no name either. They are shared components, so they need a
+  different fix. They are filed as backlog 189.
 - Spec: none — known fields, one kind of fix.
 - Plan: `docs/superpowers/plans/2026-10-18-inline-edit-field-names-plan-186.md`
