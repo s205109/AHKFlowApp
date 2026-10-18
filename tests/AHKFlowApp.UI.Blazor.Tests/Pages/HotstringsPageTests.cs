@@ -1190,4 +1190,22 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
         cut.Find("button.commit-edit").GetAttribute("aria-label").Should().Be("Save new hotstring");
         cut.Find("button.cancel-edit").GetAttribute("aria-label").Should().Be("Cancel editing new hotstring");
     }
+
+    // Backlog 186. A field in a row being edited has no visible label, so its aria-label is its
+    // name. The selector names the element, so the name sits on the field, not a wrapper.
+    [Fact]
+    public void EditRow_Fields_NameWhatTheyHold()
+    {
+        var dto = new HotstringDto(Guid.NewGuid(), [], true, "btw", "by the way", null, true, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+        StubList(Page(dto));
+
+        IRenderedComponent<Hotstrings> cut = RenderPage();
+        cut.WaitForState(() => cut.Markup.Contains("btw"));
+        cut.Find("button.edit").Click();
+        cut.WaitForAssertion(() => cut.Find("input[data-test=\"trigger-input\"]"));
+
+        cut.Find("input[data-test=\"trigger-input\"]").GetAttribute("aria-label").Should().Be("Trigger");
+        cut.Find("textarea[data-test=\"replacement-input\"]").GetAttribute("aria-label").Should().Be("Replacement");
+        cut.Find("input[data-test=\"description-input\"]").GetAttribute("aria-label").Should().Be("Description");
+    }
 }

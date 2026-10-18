@@ -91,7 +91,7 @@
                                               Error="@(_commitAttempted && ValidateTrigger(context.Item.Trigger) is not null)"
                                               ErrorText="@(_commitAttempted ? ValidateTrigger(context.Item.Trigger) : null)"
                                               Immediate="true" MaxLength="50"
-                                              UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "trigger-input" })" />
+                                              UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "trigger-input", ["aria-label"] = "Trigger" })" />
                             }
                             else
                             {
@@ -109,7 +109,7 @@
                                               ErrorText="@(_commitAttempted ? context.Item.ValidateReplacement(context.Item.Replacement) : null)"
                                               Lines="3"
                                               Immediate="true" MaxLength="@context.Item.ReplacementMaxLength"
-                                              UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "replacement-input" })" />
+                                              UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "replacement-input", ["aria-label"] = "Replacement" })" />
                             }
                             else if (context.Item.Kind == HotstringKind.DateTime)
                             {
@@ -135,7 +135,7 @@
                             {
                                 <MudTextField @bind-Value="context.Item.Description"
                                               Immediate="true" MaxLength="200"
-                                              UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "description-input" })" />
+                                              UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "description-input", ["aria-label"] = "Description" })" />
                             }
                             else
                             {

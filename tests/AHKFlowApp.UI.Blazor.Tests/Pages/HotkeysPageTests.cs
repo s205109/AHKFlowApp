@@ -935,4 +935,16 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
             cut.Find("[data-test=\"template-warning\"]").TextContent
                 .Should().Be("The header template in Work also uses CapsLock. Your hotkey may not fire."));
     }
+
+    // Backlog 186. The action field is named by the chip beside it, so it says what it holds.
+    [Theory]
+    [InlineData(HotkeyActionKind.Run, "run-target-input", "Run")]
+    [InlineData(HotkeyActionKind.SendText, "text-input", "Send text")]
+    public void EditRow_Fields_NameWhatTheyHold(HotkeyActionKind kind, string actionField, string actionName)
+    {
+        IRenderedComponent<Hotkeys> cut = StartInlineEdit(OneHotkeyOfKind(kind));
+
+        cut.Find("input[data-test=\"description-input\"]").GetAttribute("aria-label").Should().Be("Description");
+        cut.Find($"input[data-test=\"{actionField}\"]").GetAttribute("aria-label").Should().Be(actionName);
+    }
 }
