@@ -32,8 +32,9 @@ Each criterion is refined in the spec. Tick a box only when its words hold liter
       the Gate on the final revision. The other stages keep their numbers.
 - [ ] The Gate reuses a stored green result for a Suite or a step whose inputs did not change, and
       runs it again when an input changed. A Suite with no input list always runs.
-- [ ] The ten slowest Suites carry input lists that a script builds, and a check fails when a
-      stored list differs from the built one.
+- [ ] Each of the ten slowest Suites carries an input list that a script builds, or a written
+      reason in the manifest why it reads everything. A check fails when a stored list differs
+      from the built one.
 - [ ] The Gate warns, and does not fail, when a Suite of 5 s or more runs more than 30 percent over
       its history in that checkout, or over its committed baseline when there is no history.
 - [ ] The citation check warns when the cited text moved to exactly one other line, and fails when
@@ -44,8 +45,10 @@ Each criterion is refined in the spec. Tick a box only when its words hold liter
 - [ ] `AGENTS.md` makes the cheapest check that proves the change the default verification
       artifact, and asks every new test to name the regression it prevents.
 - [ ] A saved audit workflow is in `.claude/workflows/`, and a reference file records how to run it.
-- [ ] The four retired research tools, their six Suites, and the interval helpers are gone, and no
-      file outside `docs/adr/` names them.
+- [ ] The four retired research tools, the five Suites that retire whole, the two interval helpers,
+      and the `Get-AhkFlowTrxRunInterval` case in `tests/TrxIntervals.Tests.ps1` are gone. No live
+      doc names them. ADRs, `backlog/done/`, and frozen plans and specs keep their mentions as
+      history.
 - [ ] A written verdict on the architecture pilot exists.
 
 ## Out of scope
