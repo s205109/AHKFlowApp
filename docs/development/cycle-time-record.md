@@ -374,6 +374,57 @@ Refuters run one at a time, in this worktree. That is the default from the plan.
 check rules out copies: each copy is slow to make, takes a port slot and a branch, runs a
 cleanup sweep, stays behind afterwards, and cannot run git.
 
+### Batch 1
+
+The saved workflow is `.claude/workflows/test-audit.js`, with `meta.name` `'test-audit'`. Run
+`wf_de859706-6ad` took 164.5 minutes and 1.72 million subagent tokens, for 5 auditors and 5
+refuters. Every refuter left the worktree clean.
+
+The auditors gave 473 verdicts: 320 KEEP, 92 SPEED UP, 38 MERGE, 17 REMOVE and 6 REWORK. The
+refuters tested all 55 REMOVE and MERGE claims. They upheld 46 and refuted 9.
+
+The user approved the work by group on 2026-10-19, with a limit of about five hours of runs:
+
+- Apply the 46 upheld claims. Drop the 9 refuted ones.
+- Apply the 12 largest SPEED UP proposals that change test code only.
+- Defer the other 80 SPEED UP proposals and the 6 REWORK proposals to a backlog item. Two of the
+  deferred ones need a production refactor: the StageTransition 15-edge loop and the in-process
+  GitHub Actions worker count.
+
+Each Suite ran alone, three times per point. The table gives the median in seconds.
+
+| Suite | Before | After remove and merge | After speed-ups |
+|---|---|---|---|
+| `CiPowerShellSuiteRunner.Tests.ps1` | 117.9 | 111.6 | 104.2 |
+| `StageTransition.Tests.ps1` | 111.3 | 95.7 | 94.0 |
+| `AgentWorktreeGuard.Tests.ps1` | 67.8 | 57.8 | 50.9 |
+| `WorktreeMergedCleanupEligibility.Tests.ps1` | 64.5 | 63.0 | 37.1 |
+| `WatchTask.Tests.ps1` | 66.4 | 56.3 | 44.3 |
+| Total | 444.4 | 384.4 | 330.7 |
+
+The five Suites lost 113.7 seconds, or 25.6 percent. The time is Suite time, run alone. A Gate
+runs Suites in parallel, so its wall-clock saving is smaller.
+
+What changed, per Suite:
+
+- `CiPowerShellSuiteRunner`: 7 driver runs removed and 4 merged into existing cases. Two barrier
+  timeouts are shorter, and the Lane "off" iteration is gone.
+- `StageTransition`: 6 cases merged into existing fixtures. Fixture seeds are cached per seed
+  shape. The cache saved only 1.7 seconds of the 17 the auditor estimated.
+- `AgentWorktreeGuard`: 11 duplicate cases removed and 1 merged. A git probe cache runs around the
+  three long decision loops, the shim loop shares one stub harness, and the no-regression loop
+  keeps one command per tier.
+- `WorktreeMergedCleanupEligibility`: 6 cases removed and 3 merged. Two loops lost a repeated
+  iteration. This Suite gained most from the speed-ups: 25.9 seconds, against an estimate of 11.
+- `WatchTask`: 4 cases removed and 4 merged. The replacement race waits 3 seconds after the
+  replacement prints, not 10. The range checks run in the same process.
+
+Two of the new seams were proved with a mutation. Removing the `-Index` range check fails the
+range case. Removing `git` from the shim's candidate pattern fails all 12 git commands in the
+shim loop. Each commit body names the test that still catches each removed case.
+
+The deferred work is listed in `docs/development/test-audit-deferred.md`.
+
 ## After
 
 Empty until Task 14.
