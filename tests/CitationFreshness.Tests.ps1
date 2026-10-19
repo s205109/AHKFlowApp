@@ -374,7 +374,13 @@ $changedHere = if ($LASTEXITCODE -eq 0 -and $mergeBase) {
     $null
 }
 
-$live = @(Get-CitationProblem -ScanRoot $repoRoot -ResolveRoot $repoRoot -ChangedLine $changedHere)
+# A moved citation only warns here, the way the check itself warns (backlog 188). CI shows each
+# one and stays green; `pwsh ./scripts/check-citation-freshness.ps1 -Fix` rewrites them.
+$liveMoved = [System.Collections.Generic.List[object]]::new()
+$live = @(Get-CitationProblem -ScanRoot $repoRoot -ResolveRoot $repoRoot -ChangedLine $changedHere -Moved $liveMoved)
+foreach ($one in $liveMoved) {
+    Write-Host "WARNING $($one.Where): $($one.Path):$($one.OldStart) moved to line $($one.NewStart)." -ForegroundColor Yellow
+}
 $tier12 = @($live | Where-Object { $_ -notlike '*tier 3*' })
 Assert-True ($tier12.Count -eq 0) `
     "This repository must hold no stale citation, found $($tier12.Count): $($tier12 -join ' | ')"
@@ -408,7 +414,9 @@ function Invoke-Runner {
 $fixture = New-FixtureRepository
 try {
     Add-FixtureFile -Root $fixture -RelativePath 'target.txt' -Lines $targetLines
-    Add-FixtureFile -Root $fixture -RelativePath 'doc.md' -Lines @('broken (`target.txt:99`, "the expected text") here')
+    # The phrase is on no line of the target. A phrase found on one other line is a moved
+    # citation, which only warns (backlog 188).
+    Add-FixtureFile -Root $fixture -RelativePath 'doc.md' -Lines @('broken (`target.txt:99`, "text found on no line") here')
     Complete-FixtureCommit -Root $fixture
 
     $run = Invoke-Runner -Arguments @('-ScanRoot', $fixture, '-ResolveRoot', $fixture, '-NoAdoptionTier')
@@ -428,6 +436,133 @@ try {
 }
 finally {
     Remove-Item -LiteralPath $fixture -Recurse -Force
+}
+
+# --- Citation drift: a moved text warns (backlog 188) ---
+#
+# The typical CitationFreshness failure in CI was a line inserted above a cited line: the text is
+# still in the file, one line lower. That is a warning now, with a command that fixes it. A text
+# that is gone, or that now sits on two lines, is still a problem, because no tool can tell which
+# line the author meant.
+
+$fixture = New-FixtureRepository
+try {
+    Add-FixtureFile -Root $fixture -RelativePath 'target.txt' -Lines $targetLines
+    Add-FixtureFile -Root $fixture -RelativePath 'twice.txt' -Lines @('same words', 'other words', 'same words')
+    Add-FixtureFile -Root $fixture -RelativePath 'doc.md' -Lines @(
+        'moved (`target.txt:2`, "the expected text") here',
+        'past the end (`target.txt:40`, "across two lines") here',
+        'nowhere (`target.txt:2`, "text found on no line") here',
+        'range (`target.txt:1-2`, "the expected text") here',
+        'twice (`twice.txt:2`, "same words") here'
+    )
+    Complete-FixtureCommit -Root $fixture
+
+    $moved = [System.Collections.Generic.List[object]]::new()
+    # A failed call must fail the claims below by name, not end the Suite.
+    try { $problems = @(Get-CitationProblem -ScanRoot $fixture -ResolveRoot $fixture -Moved $moved) }
+    catch { $problems = @("call failed: $($_.Exception.Message)") }
+    $first = @($moved | Where-Object { $_.Where -eq 'doc.md:1' })
+    $second = @($moved | Where-Object { $_.Where -eq 'doc.md:2' })
+
+    Assert-True ($first.Count -eq 1 -and $first[0].OldStart -eq 2 -and $first[0].NewStart -eq 3 -and
+        @($problems | Where-Object { $_ -like 'doc.md:1 *' }).Count -eq 0) `
+        'A cited text that moved to one other line is a warning, not a problem'
+    Assert-True ($first.Count -eq 1 -and $first[0].CitingPath -eq 'doc.md' -and $first[0].CitingLine -eq 1 -and
+        $first[0].Path -eq 'target.txt' -and $first[0].Text -like '*target.txt:2*') `
+        'A moved citation records where it is, what it cites, and its text'
+    Assert-True ($second.Count -eq 1 -and $second[0].OldStart -eq 40 -and $second[0].NewStart -eq 5 -and
+        @($problems | Where-Object { $_ -like 'doc.md:2 *' }).Count -eq 0) `
+        'A cited text that moved past the old end of the file is found the same way'
+    Assert-True (@($problems | Where-Object { $_ -like 'doc.md:3 *' -and $_ -like '*on no line of target.txt*' }).Count -eq 1) `
+        'A cited text found on no line is a problem that says so'
+    Assert-True (@($problems | Where-Object { $_ -like 'doc.md:5 *' -and $_ -like '*on lines 1, 3*' }).Count -eq 1) `
+        'A cited text found on two lines is a problem that names both lines'
+    Assert-True (@($problems | Where-Object { $_ -like 'doc.md:4 *' -and $_ -like '*does not match. The target holds*' }).Count -eq 1 -and
+        @($moved | Where-Object { $_.Where -eq 'doc.md:4' }).Count -eq 0) `
+        'A range citation that no longer matches stays a problem'
+
+    $noList = @(Get-CitationProblem -ScanRoot $fixture -ResolveRoot $fixture)
+    Assert-True (@($noList | Where-Object { $_ -like 'doc.md:1 *' -and $_ -like '*line 3*' }).Count -eq 1) `
+        'A caller that passes no Moved list gets the moved citation as a problem'
+}
+finally {
+    Remove-Item -LiteralPath $fixture -Recurse -Force
+}
+
+$fixture = New-FixtureRepository
+try {
+    Add-FixtureFile -Root $fixture -RelativePath 'target.txt' -Lines $targetLines
+    Add-FixtureFile -Root $fixture -RelativePath 'doc.md' -Lines @('moved (`target.txt:2`, "the expected text") here')
+    Complete-FixtureCommit -Root $fixture
+
+    $run = Invoke-Runner -Arguments @('-ScanRoot', $fixture, '-ResolveRoot', $fixture, '-NoAdoptionTier')
+    Assert-True ($run.ExitCode -eq 0 -and
+        $run.Output -match 'WARNING doc\.md:1: target\.txt:2 moved to line 3\.' -and
+        $run.Output -match 'check-citation-freshness\.ps1.* -Fix' -and
+        $run.Output -match 'RESULT: .*1 warning') `
+        "The check exits 0 on warnings alone and prints the -Fix command. Exit $($run.ExitCode), printed: $($run.Output)"
+}
+finally {
+    Remove-Item -LiteralPath $fixture -Recurse -Force
+}
+
+# -Fix rewrites only files the branch changed. A base commit, then a branch commit that inserts a
+# line at the top of the target and edits one of the two citing files.
+function New-FixFixture {
+    $root = New-FixtureRepository
+    & git -C $root config core.autocrlf false
+    Add-FixtureFile -Root $root -RelativePath 'target.txt' -Lines $targetLines
+    Add-FixtureFile -Root $root -RelativePath 'other.md' -Lines @('see (`target.txt:3`, "the expected text") here')
+    # A CRLF file with a byte order mark, written as bytes so nothing normalizes it.
+    $bom = [byte[]] (0xEF, 0xBB, 0xBF)
+    $text = "intro`r`nsee (``target.txt:3``, `"the expected text`") here`r`n"
+    [System.IO.File]::WriteAllBytes((Join-Path $root 'changed.md'), $bom + [System.Text.Encoding]::UTF8.GetBytes($text))
+    & git -C $root add -- changed.md
+    Complete-FixtureCommit -Root $root -Message 'base'
+    $base = ((& git -C $root rev-parse HEAD) -join '').Trim()
+
+    Add-FixtureFile -Root $root -RelativePath 'target.txt' -Lines (@('a new first line') + $targetLines)
+    $text = "intro, edited on the branch`r`nsee (``target.txt:3``, `"the expected text`") here`r`n"
+    [System.IO.File]::WriteAllBytes((Join-Path $root 'changed.md'), $bom + [System.Text.Encoding]::UTF8.GetBytes($text))
+    & git -C $root add -- changed.md
+    Complete-FixtureCommit -Root $root -Message 'branch'
+    return [pscustomobject]@{ Root = $root; Base = $base; Bom = $bom; BranchText = $text }
+}
+
+$fix = New-FixFixture
+try {
+    $otherBefore = [System.IO.File]::ReadAllBytes((Join-Path $fix.Root 'other.md'))
+    $run = Invoke-Runner -Arguments @('-ScanRoot', $fix.Root, '-ResolveRoot', $fix.Root, '-BaseRef', $fix.Base, '-Fix')
+
+    $changedAfter = [System.IO.File]::ReadAllBytes((Join-Path $fix.Root 'changed.md'))
+    $otherAfter = [System.IO.File]::ReadAllBytes((Join-Path $fix.Root 'other.md'))
+    $expected = $fix.Bom + [System.Text.Encoding]::UTF8.GetBytes($fix.BranchText.Replace('target.txt:3', 'target.txt:4'))
+
+    Assert-True ([Convert]::ToBase64String($otherAfter) -eq [Convert]::ToBase64String($otherBefore) -and
+        $run.Output -match 'NOT FIXED other\.md:1' -and
+        [System.Text.Encoding]::UTF8.GetString($changedAfter).Contains('target.txt:4')) `
+        "-Fix rewrites only files the branch changed and lists the rest. Printed: $($run.Output)"
+    Assert-True ([Convert]::ToBase64String($changedAfter) -eq [Convert]::ToBase64String($expected)) `
+        '-Fix keeps the line endings and the byte order mark'
+    Assert-True ($run.ExitCode -eq 0) "-Fix exits with the result of the check it runs again: one warning left, so 0. Exit $($run.ExitCode)"
+}
+finally {
+    Remove-Item -LiteralPath $fix.Root -Recurse -Force
+}
+
+$fix = New-FixFixture
+try {
+    $before = [System.IO.File]::ReadAllBytes((Join-Path $fix.Root 'changed.md'))
+    # The fixture has no origin/main, so with no -BaseRef there is no base to compare against.
+    $run = Invoke-Runner -Arguments @('-ScanRoot', $fix.Root, '-ResolveRoot', $fix.Root, '-Fix')
+    $after = [System.IO.File]::ReadAllBytes((Join-Path $fix.Root 'changed.md'))
+    Assert-True ($run.ExitCode -eq 1 -and $run.Output -match 'cannot tell which files' -and
+        [Convert]::ToBase64String($after) -eq [Convert]::ToBase64String($before)) `
+        "-Fix with no base ref changes nothing. Exit $($run.ExitCode), printed: $($run.Output)"
+}
+finally {
+    Remove-Item -LiteralPath $fix.Root -Recurse -Force
 }
 
 # --- OnlyPath narrows which files are scanned ---
