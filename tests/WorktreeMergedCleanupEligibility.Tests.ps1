@@ -236,10 +236,10 @@ try {
 
 # --- Test: explicit override cleans over invalid config, without a misleading warning ---
 # The invalid-config warning must fire only when the resolved action is report-only. An
-# explicit -Cleanup (or hook env enable) that legitimately cleans must NOT claim report-only.
+# explicit -Cleanup that legitimately cleans must NOT claim report-only. Hook env enable takes the
+# same warning placement, and the env-overrides-config case below proves it cleans end to end.
 foreach ($override in @(
         @{ Args = @('-Cleanup'); Env = @{}; Label = '-Cleanup' }
-        @{ Args = @('-IsHook'); Env = @{ 'AHKFLOW_WORKTREE_CLEANUP' = '1' }; Label = 'hook env enable' }
     )) {
     $repo = New-WorktreeToolingRepo -ScriptsSource $scriptsDir
     try {
@@ -254,8 +254,10 @@ foreach ($override in @(
     }
 }
 
-# --- Test: config true cleans (hook and non-interactive direct) ----------------
-foreach ($mode in @(@{ Args = @('-IsHook'); Label = 'hook' }, @{ Args = @(); Label = 'direct' })) {
+# --- Test: config true cleans (hook) -------------------------------------------
+# The resolver returns Clean for config true with or without -IsHook, and the resolver rows in
+# WorktreeMergedCleanup.Tests.ps1 pin both. The Sweep suite proves the direct removal path.
+foreach ($mode in @(@{ Args = @('-IsHook'); Label = 'hook' })) {
     $repo = New-WorktreeToolingRepo -ScriptsSource $scriptsDir
     try {
         $target = Add-TestWorktree -RepoDir $repo -BranchName "feat-cfgtrue-$($mode.Label)"
