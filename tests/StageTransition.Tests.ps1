@@ -549,23 +549,6 @@ try {
     Assert-Equal '' ((& git -C $sh3.Root status --porcelain -- backlog) -join '') `
         'The closure must leave nothing uncommitted under backlog/'
 
-    # --- A progress file that was never committed does not stop the closure either ---
-    # Review Focus 1. The delete runs first, so by the time the pathspec is read this path is in
-    # neither the working tree nor the index - the same fatal state as the case above, reached a
-    # different way. Ship still deletes the file, and commits only the item's move.
-    $sh4 = New-TransitionFixture -Stage '8-review' -Difficulty 'complex' -AsWorktree -AllBoxesTicked
-    Set-Content -LiteralPath (Join-Path $sh4.Root 'PLAN-PROGRESS.md') -Value '- never committed' -Encoding utf8
-    $shGh4 = New-FakeGh
-    Invoke-WithFakeGh -Gh $shGh4 -Action {
-        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $sh4.Root -Item '081' -Edge 'success' -Pr 421 *> $null
-    }
-    Assert-Equal 0 $script:LastTransitionExit 'A Ship with an uncommitted PLAN-PROGRESS.md must succeed'
-    Assert-True (-not (Test-Path -LiteralPath (Join-Path $sh4.Root 'PLAN-PROGRESS.md'))) `
-        'Ship must delete an uncommitted PLAN-PROGRESS.md too'
-    $sh4Touched = @(& git -C $sh4.Root show --name-only --pretty=format: HEAD | Where-Object { $_ })
-    Assert-True ($sh4Touched -notcontains 'PLAN-PROGRESS.md') `
-        'A file git never tracked cannot be recorded as deleted'
-
     # --- An empty PLAN-PROGRESS.md is deleted too, and the deletion is committed ---
     # Review Focus 4 on the success path. Reading the bytes through an 'if' used as an expression
     # sends them down the pipeline, which enumerates the array, and an empty array enumerates to
@@ -720,20 +703,6 @@ try {
         'A refused closure must leave an unrelated staged blob byte for byte in the index'
     Assert-True ((Get-GhLog -Gh $un1Gh) -notmatch 'pr ready') 'A refused closure must not flip the pull request'
 
-    # Case 2: a tracked progress file carrying uncommitted edits. HEAD's copy is not good enough.
-    $un2 = New-TransitionFixture -Stage '8-review' -Difficulty 'complex' -AsWorktree `
-                                 -AllBoxesTicked -WithProgress
-    Add-Content -LiteralPath (Join-Path $un2.Root 'PLAN-PROGRESS.md') -Value '- Task 2 half done, never committed'
-    $un2Progress = Get-FileByte -Path (Join-Path $un2.Root 'PLAN-PROGRESS.md')
-    Block-FixtureHook -Name 'pre-commit' -HookDir $un2.HookDir
-    $un2Gh = New-FakeGh
-    Invoke-WithFakeGh -Gh $un2Gh -Action {
-        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $un2.Root -Item '081' -Edge 'success' -Pr 421 *> $null
-    }
-    Assert-True ($script:LastTransitionExit -ne 0) 'A refused closure with an edited progress file must be refused'
-    Assert-True (Test-SameByte -Expected $un2Progress -Actual (Get-FileByte -Path (Join-Path $un2.Root 'PLAN-PROGRESS.md'))) `
-        'A refused closure must put back the uncommitted progress text, not the text in HEAD'
-
     # Case 3: a progress file git never tracked. Nothing can be read back out of git for this one,
     # so only the text the closure saved before the delete can restore it.
     $un3 = New-TransitionFixture -Stage '8-review' -Difficulty 'complex' -AsWorktree -AllBoxesTicked
@@ -857,7 +826,9 @@ try {
     # Case 7: bytes a text round trip cannot carry. The progress file is UTF-16 with a byte order
     # mark, and the item has LF endings and no final newline. Reading text and writing it back
     # loses 17 of the progress file's 32 bytes, and rewriting the item's Stage line would give it
-    # CRLF endings and a final newline it never had. Both must come back exactly.
+    # CRLF endings and a final newline it never had. Both must come back exactly. The progress
+    # file is tracked and edited, so this case also proves the undo puts back the uncommitted
+    # text, not the text in HEAD.
     $un7 = New-TransitionFixture -Stage '8-review' -Difficulty 'complex' -AsWorktree `
                                  -AllBoxesTicked -WithProgress
     $un7Item = Join-Path $un7.Root 'backlog/081-automate-stage-transitions.md'
@@ -883,9 +854,18 @@ try {
 
     # --- A failure edge refuses without its evidence ---
     $fl = New-TransitionFixture -Stage '6-verify' -Difficulty 'complex' -AsWorktree -WithProgress
+    # Review finding 1: the pre-flight push ran before the failure prerequisites were checked, so
+    # a refused transition still pushed whatever the branch was carrying.
+    $flBranch = (& git -C $fl.Root rev-parse --abbrev-ref HEAD).Trim()
+    Set-Content -LiteralPath (Join-Path $fl.Root 'unpushed.txt') -Value 'work' -Encoding utf8
+    & git -C $fl.Root add -A *> $null
+    & git -C $fl.Root commit -m 'unpushed work' *> $null
+    $flRemoteBefore = (& git -C $fl.Bare rev-parse $flBranch).Trim()
 
     & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $fl.Root -Item '081' -Edge 'failure' *> $null
     Assert-True ($LASTEXITCODE -ne 0) 'A failure edge without evidence must be refused'
+    Assert-Equal $flRemoteBefore (& git -C $fl.Bare rev-parse $flBranch).Trim() `
+        'A refused failure edge must not push the branch'
     Assert-Equal '6-verify' (Get-SingleBacklogStage -Lines (Get-Content -LiteralPath $fl.ItemPath)) `
         'A refused failure edge must leave the Stage alone'
 
@@ -938,21 +918,6 @@ try {
 
     # ================= Copilot review round, PR 421 =================
 
-    # --- A failure edge with no evidence must not publish anything (review finding 1) ---
-    # The pre-flight push ran before the failure prerequisites were checked, so a refused
-    # transition still pushed whatever the branch was carrying.
-    $r1 = New-TransitionFixture -Stage '6-verify' -Difficulty 'complex' -AsWorktree -WithProgress
-    $r1Branch = (& git -C $r1.Root rev-parse --abbrev-ref HEAD).Trim()
-    Set-Content -LiteralPath (Join-Path $r1.Root 'unpushed.txt') -Value 'work' -Encoding utf8
-    & git -C $r1.Root add -A *> $null
-    & git -C $r1.Root commit -m 'unpushed work' *> $null
-    $r1RemoteBefore = (& git -C $r1.Bare rev-parse $r1Branch).Trim()
-
-    & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $r1.Root -Item '081' -Edge 'failure' *> $null
-    Assert-True ($LASTEXITCODE -ne 0) 'A failure edge with no evidence must still be refused'
-    Assert-Equal $r1RemoteBefore (& git -C $r1.Bare rev-parse $r1Branch).Trim() `
-        'A refused failure edge must not push the branch'
-
     # --- Ship refuses a pull request number pointing at another branch (review finding 2) ---
     $r2 = New-TransitionFixture -Stage '8-review' -Difficulty 'complex' -AsWorktree -AllBoxesTicked -WithProgress
     $r2Gh = New-FakeGh -HeadRefName 'feature/wt-somebody-else'
@@ -1000,16 +965,6 @@ try {
         'The round body must read 9-ship'
     Assert-True (((Get-Content -Raw -LiteralPath $r6Gh.Log) -join "`n") -match 'pr ready') `
         'A round entering Ship must flip to ready'
-
-    $r6b = New-TransitionFixture -Stage '9-ship' -AsWorktree -Branch 'chore/wt-backlog-housekeeping' -NoItem
-    # -IsDraft 'false' is the merged case: the flip already happened. The draft case is the
-    # resume, and round 2's finding 2 covers it.
-    $r6bGh = New-FakeGh -Body "Stage: 9-ship" -HeadRefName 'chore/wt-backlog-housekeeping' -IsDraft 'false'
-    Invoke-WithFakeGh -Gh $r6bGh -Action {
-        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $r6b.Root -Edge 'success' -Pr 500 *> $null
-    }
-    Assert-True (((Get-Content -Raw -LiteralPath $r6bGh.Log) -join "`n") -notmatch 'pr ready 500\s*$') `
-        'A round leaving Ship must not flip again; it is already ready and merged'
 
     # --- A round failure edge records its evidence in the body (review finding 7) ---
     # workflow.md gives the round the same rule as tracked work, with the pull request body
@@ -1071,18 +1026,6 @@ try {
     Assert-True ((Get-GhLog -Gh $f1Gh) -notmatch 'pr ready') `
         'A Ship refused for an unfrozen plan must not flip the pull request'
 
-    # The same fixture, frozen. The freeze is the only difference, so this proves the refusal
-    # reads the directive rather than the presence of a plan.
-    $f1b = New-TransitionFixture -Stage '8-review' -Difficulty 'complex' -AsWorktree `
-                                 -AllBoxesTicked -WithProgress -PlanState 'frozen'
-    $f1bGh = New-FakeGh
-    Invoke-WithFakeGh -Gh $f1bGh -Action {
-        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $f1b.Root -Item '081' -Edge 'success' -Pr 421 *> $null
-    }
-    Assert-Equal 0 $script:LastTransitionExit 'Ship with a frozen plan must succeed'
-    Assert-True (Test-Path -LiteralPath (Join-Path $f1b.Root 'backlog/done/081-automate-stage-transitions.md')) `
-        'Ship with a frozen plan must move the item'
-
     # --- A tracked Ship failure reopens the records and the pull request (finding 5) ---
     # This edge starts from the state Ship leaves: the item in backlog/done/ and no
     # PLAN-PROGRESS.md. The ordinary path refuses it, because it demands a progress file that
@@ -1090,11 +1033,25 @@ try {
     $f5 = New-TransitionFixture -Stage '8-review' -Difficulty 'complex' -AsWorktree `
                                 -AllBoxesTicked -WithProgress -PlanState 'frozen'
     $f5Branch = (& git -C $f5.Root rev-parse --abbrev-ref HEAD).Trim()
+    # Backlog 178: the restore must give back the bytes git holds. PowerShell decodes a native
+    # command's output with the console code page, so reading the file back through 'git show'
+    # turned an em dash into three wrong characters and a CRLF into LF. No line-ending
+    # conversion here, so the bytes on disk are the bytes git stores.
+    & git -C $f5.Root config core.autocrlf false
+    $f5ProgressPath = Join-Path $f5.Root 'PLAN-PROGRESS.md'
+    [System.IO.File]::WriteAllText($f5ProgressPath, "- Task 1 done $([char]0x2014) caf$([char]0xE9)`r`n- Task 2`r`n",
+                                   [System.Text.UTF8Encoding]::new($false))
+    $f5Bytes = Get-FileByte -Path $f5ProgressPath
+    & git -C $f5.Root add -- PLAN-PROGRESS.md *> $null
+    & git -C $f5.Root commit -m 'docs: 081 progress' *> $null
     $f5Gh = New-FakeGh
     Invoke-WithFakeGh -Gh $f5Gh -Action {
         & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $f5.Root -Item '081' -Edge 'success' -Pr 421 *> $null
     }
     Assert-Equal 0 $script:LastTransitionExit 'The Ship that sets up the failure case must succeed'
+    # $f5 is frozen, so this Ship is also the proof that a frozen plan is not refused.
+    Assert-True (Test-Path -LiteralPath (Join-Path $f5.Root 'backlog/done/081-automate-stage-transitions.md')) `
+        'Ship with a frozen plan must move the item'
 
     $f5Gh2 = New-FakeGh
     Invoke-WithFakeGh -Gh $f5Gh2 -Action {
@@ -1115,6 +1072,13 @@ try {
     Assert-True ($f5Progress -match 'Task 1 done')   'A Ship failure must restore the progress file Ship deleted'
     Assert-True ($f5Progress -match '2 checks failed') 'A Ship failure must record its red evidence'
     Assert-True ($f5Progress -match 'fix the failing parity check') 'A Ship failure must record its recovery task'
+    # The failure record goes under the restored text, so compare only the front of the file.
+    $f5After = Get-FileByte -Path $f5ProgressPath
+    $f5Front = if ($null -ne $f5After -and $f5After.Length -ge $f5Bytes.Length) {
+        [byte[]] $f5After[0..($f5Bytes.Length - 1)]
+    } else { $f5After }
+    Assert-True (Test-SameByte -Expected $f5Bytes -Actual $f5Front) `
+        'A Ship failure must restore the progress file byte for byte'
 
     # The undo comes first: Review can only be re-entered with a draft pull request.
     Assert-True ((Get-GhLog -Gh $f5Gh2) -match 'ready 421 .*--undo') `
@@ -1201,6 +1165,15 @@ try {
             & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $nt.Root -Item '081' -Edge 'success' -Pr 421 *> $null
         }
         Assert-Equal 0 $script:LastTransitionExit "The Ship that sets up the never-tracked case must succeed, $label"
+        if (-not $foreign) {
+            # Review Focus 1. The delete runs first, so the pathspec names a path in neither the
+            # working tree nor the index. Ship still deletes the file and commits only the move.
+            Assert-True (-not (Test-Path -LiteralPath (Join-Path $nt.Root 'PLAN-PROGRESS.md'))) `
+                'Ship must delete an uncommitted PLAN-PROGRESS.md too'
+            $ntTouched = @(& git -C $nt.Root show --name-only --pretty=format: HEAD | Where-Object { $_ })
+            Assert-True ($ntTouched -notcontains 'PLAN-PROGRESS.md') `
+                'A file git never tracked cannot be recorded as deleted'
+        }
 
         $ntGh2 = New-FakeGh
         Invoke-WithFakeGh -Gh $ntGh2 -Action {
@@ -1229,39 +1202,6 @@ try {
         Assert-Equal (& git -C $nt.Root rev-parse HEAD).Trim() (& git -C $nt.Bare rev-parse $ntBranch).Trim() `
             "A never-tracked Ship failure must push the reopened records, $label"
     }
-
-    # --- A restored progress file keeps its exact bytes (backlog 178) ---
-    # PowerShell decodes a native command's output with the console code page, which is not UTF-8
-    # by default on Windows. Reading the file back through 'git show' turned an em dash into three
-    # wrong characters and a CRLF into LF. The restore must give back the bytes git holds.
-    $bx = New-TransitionFixture -Stage '8-review' -Difficulty 'complex' -AsWorktree -AllBoxesTicked
-    # No line-ending conversion, so the bytes on disk are the bytes git stores.
-    & git -C $bx.Root config core.autocrlf false
-    $bxPath = Join-Path $bx.Root 'PLAN-PROGRESS.md'
-    [System.IO.File]::WriteAllText($bxPath, "- Task 1 $([char]0x2014) done`r`n- Task 2 caf$([char]0xE9)`r`n",
-                                   [System.Text.UTF8Encoding]::new($false))
-    $bxBytes = Get-FileByte -Path $bxPath
-    & git -C $bx.Root add -- PLAN-PROGRESS.md *> $null
-    & git -C $bx.Root commit -m 'docs: 081 progress' *> $null
-    $bxGh = New-FakeGh
-    Invoke-WithFakeGh -Gh $bxGh -Action {
-        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $bx.Root -Item '081' -Edge 'success' -Pr 421 *> $null
-    }
-    Assert-Equal 0 $script:LastTransitionExit 'The Ship that sets up the exact-bytes case must succeed'
-
-    $bxGh2 = New-FakeGh
-    Invoke-WithFakeGh -Gh $bxGh2 -Action {
-        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $bx.Root -Item '081' -Edge 'failure' -Pr 421 `
-            -Evidence 'CI: 1 check failed' -RecoveryTask 'Task 9: fix the check' *> $null
-    }
-    Assert-Equal 0 $script:LastTransitionExit 'The Ship failure in the exact-bytes case must succeed'
-    # The failure record goes under the restored text, so compare only the front of the file.
-    $bxAfter = Get-FileByte -Path $bxPath
-    $bxFront = if ($null -ne $bxAfter -and $bxAfter.Length -ge $bxBytes.Length) {
-        [byte[]] $bxAfter[0..($bxBytes.Length - 1)]
-    } else { $bxAfter }
-    Assert-True (Test-SameByte -Expected $bxBytes -Actual $bxFront) `
-        'A Ship failure must restore the progress file byte for byte'
 
     # --- A round Ship failure undoes the ready flip too (finding 4) ---
     $f4 = New-TransitionFixture -Stage '9-ship' -AsWorktree -Branch 'chore/wt-backlog-housekeeping' -NoItem
@@ -1303,6 +1243,8 @@ try {
     Assert-True ($script:LastTransitionExit -ne 0) 'A round leaving Ship must be refused'
     Assert-True ((Get-Content -Raw -LiteralPath $f2bGh.BodyFile) -match '(?m)^Stage: 9-ship\r?$') `
         'A refused round cleanup must leave the body at 9-ship'
+    Assert-True (((Get-Content -Raw -LiteralPath $f2bGh.Log) -join "`n") -notmatch 'pr ready 500\s*$') `
+        'A round leaving Ship must not flip again; it is already ready and merged'
 
     # --- Pickup refuses a pull request it cannot reuse (finding 3) ---
     # 'gh pr list --head' answers with any open pull request for the branch. One already flipped
