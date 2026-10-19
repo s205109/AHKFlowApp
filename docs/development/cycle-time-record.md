@@ -341,6 +341,39 @@ Exclusions:
   `main`. This branch changes `MeasureTestModes.Tests.ps1` itself (Task 1), which does not exclude
   it.
 
+### The refuter's method
+
+The refuters use the `test-value-evidence` skill from the `dotnet-test` plugin. The installed
+copy lacked it until 2026-10-19. `claude plugin update` reported "already at the latest version
+(1.0.0)", because the plugin gained the skill without a new version number. An uninstall and a
+fresh install of `dotnet-test@dotnet-agent-skills` brought it in, at source commit `10d85e25`.
+
+### Isolation check
+
+Run on 2026-10-19: one workflow agent with `isolation: 'worktree'`, asked only to print its
+working directory and `git branch --show-current`.
+
+- Time: 88.9 s for the whole workflow, from 08:59:52. The agent itself did almost nothing.
+- What the copy creates: the `WorktreeCreate` hook runs `scripts/new-worktree.ps1`, so each copy
+  is a full managed worktree.
+  - A worktree at `.claude/worktrees/wf_f47e00c5-410-1`, on a new local branch
+    `fix/wt-wf_f47e00c5-410-1`. The branch was not pushed.
+  - A port slot: API 5610, UI 5611, SQL 14334, with its own database name and Compose project.
+    That was the only free slot below 5612.
+  - A merged-cleanup sweep over all eight other worktrees (09:00:05 to 09:00:08 in
+    `worktree-removal.log`). It kept all eight.
+  - No backlog item, and no change to `backlog/` in the main checkout.
+- What it left behind: the worktree, its branch and its port slot. The workflow did not remove
+  the copy, although the agent changed nothing in it.
+- Inside the copy, `git branch --show-current` was refused. The worktree guard blocks git there,
+  the same way it blocks git in an entered session. A refuter in a copy could not run git.
+
+### Refuter mode
+
+Refuters run one at a time, in this worktree. That is the default from the plan. The isolation
+check rules out copies: each copy is slow to make, takes a port slot and a branch, runs a
+cleanup sweep, stays behind afterwards, and cannot run git.
+
 ## After
 
 Empty until Task 14.
