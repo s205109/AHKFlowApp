@@ -8,7 +8,7 @@ One line per finished task, written after its deliverable commit.
 
 - [x] Task 0 — three sibling items filed (Plan stage)
 - [x] Task 1 — spec and plan frozen; Gate Mode in `scripts/measure-test-modes.ps1`
-- [ ] Task 2 — the baseline record
+- [x] Task 2 — the baseline record
 - [ ] Task 3 — targets (stop S1)
 - [ ] Task 4 — retire the four research tools
 - [ ] Task 5 — prepare the audit (stops S2 and S3)
