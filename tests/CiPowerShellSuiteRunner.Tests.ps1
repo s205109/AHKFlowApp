@@ -746,6 +746,94 @@ Invoke-TestCase 'A single-platform array survives onto the entry' {
     }
 }
 
+# --- reuse, backlog 188 ---
+
+Invoke-TestCase 'A reuse field that is absent reads as null' {
+    $path = New-ManifestFile -Entry @(
+        [ordered]@{ name = 'a.Tests.ps1'; jobs = @('suites'); platform = @('windows', 'linux'); execution = 'parallel'; baselineSeconds = 1 }
+    )
+    try {
+        $entries = @(Read-SuiteManifest -Path $path -DiscoveredName @('a.Tests.ps1'))
+        Assert-True ($entries.Count -eq 1) "Expected one entry, got $($entries.Count)."
+        Assert-True ($null -ne $entries[0].PSObject.Properties['Reuse']) 'The entry must carry a Reuse property.'
+        Assert-True ($null -eq $entries[0].Reuse) 'An absent reuse field must read as $null, never as eligible.'
+    } finally {
+        Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
+    }
+}
+
+Invoke-TestCase 'A reuse eligible value that is not a boolean fails the manifest' {
+    foreach ($bad in @('true', 1, $null)) {
+        $path = New-ManifestFile -Entry @(
+            [ordered]@{ name = 'a.Tests.ps1'; jobs = @('suites'); platform = @('windows', 'linux'); execution = 'parallel'; baselineSeconds = 1; reuse = [ordered]@{ eligible = $bad } }
+        )
+        try {
+            $threw = $false
+            $message = ''
+            try { Read-SuiteManifest -Path $path -DiscoveredName @('a.Tests.ps1') } catch { $threw = $true; $message = $_.Exception.Message }
+            Assert-True $threw "reuse.eligible '$bad' must throw; only a JSON boolean is allowed."
+            Assert-True ($message -match 'eligible') "The message must name the field. Got: $message"
+        } finally {
+            Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+Invoke-TestCase 'A reuse field marked not eligible with no reason fails the manifest' {
+    foreach ($reuse in @([ordered]@{ eligible = $false }, [ordered]@{ eligible = $false; reason = '  ' })) {
+        $path = New-ManifestFile -Entry @(
+            [ordered]@{ name = 'a.Tests.ps1'; jobs = @('suites'); platform = @('windows', 'linux'); execution = 'parallel'; baselineSeconds = 1; reuse = $reuse }
+        )
+        try {
+            $threw = $false
+            $message = ''
+            try { Read-SuiteManifest -Path $path -DiscoveredName @('a.Tests.ps1') } catch { $threw = $true; $message = $_.Exception.Message }
+            Assert-True $threw 'A reuse field that is not eligible must say why.'
+            Assert-True ($message -match 'reason') "The message must ask for a reason. Got: $message"
+        } finally {
+            Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+Invoke-TestCase 'A reuse extra input that climbs out with .. fails the manifest' {
+    foreach ($bad in @('../outside.json', 'tests/../../outside.json', 'tests\x.json', '/etc/x.json', 'C:/x.json')) {
+        $path = New-ManifestFile -Entry @(
+            [ordered]@{ name = 'a.Tests.ps1'; jobs = @('suites'); platform = @('windows', 'linux'); execution = 'parallel'; baselineSeconds = 1; reuse = [ordered]@{ eligible = $true; extraInputs = @($bad) } }
+        )
+        try {
+            $threw = $false
+            $message = ''
+            try { Read-SuiteManifest -Path $path -DiscoveredName @('a.Tests.ps1') } catch { $threw = $true; $message = $_.Exception.Message }
+            Assert-True $threw "Extra input '$bad' must throw; it must be relative, with forward slashes and no .. segment."
+            Assert-True ($message -match [regex]::Escape($bad)) "The message must name the bad path. Got: $message"
+        } finally {
+            Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+Invoke-TestCase 'An eligible reuse field returns its extra inputs in order' {
+    $path = New-ManifestFile -Entry @(
+        [ordered]@{ name = 'a.Tests.ps1'; jobs = @('suites'); platform = @('windows', 'linux'); execution = 'parallel'; baselineSeconds = 1; reuse = [ordered]@{ eligible = $true; extraInputs = @('tests/z.json', 'docs/a.md', 'tests/missing.json') } }
+        [ordered]@{ name = 'b.Tests.ps1'; jobs = @('suites'); platform = @('windows', 'linux'); execution = 'parallel'; baselineSeconds = 1; reuse = [ordered]@{ eligible = $false; reason = 'scans every tracked file' } }
+    )
+    try {
+        $entries = @(Read-SuiteManifest -Path $path -DiscoveredName @('a.Tests.ps1', 'b.Tests.ps1'))
+        $a = $entries | Where-Object { $_.Name -eq 'a.Tests.ps1' }
+        $b = $entries | Where-Object { $_.Name -eq 'b.Tests.ps1' }
+        Assert-True ($a.Reuse.Eligible -is [bool] -and $a.Reuse.Eligible) 'An eligible field must read as the boolean true.'
+        # A path that does not exist is not a manifest error. Task 9 reads it as unresolved.
+        Assert-True ((@($a.Reuse.ExtraInputs) -join ',') -eq 'tests/z.json,docs/a.md,tests/missing.json') `
+            "The extra inputs must keep their order. Got: $(@($a.Reuse.ExtraInputs) -join ',')"
+        Assert-True ($b.Reuse.Eligible -is [bool] -and -not $b.Reuse.Eligible) 'A field that is not eligible must read as the boolean false.'
+        Assert-True ($b.Reuse.Reason -eq 'scans every tracked file') "The reason must survive. Got: $($b.Reuse.Reason)"
+        Assert-True (@($b.Reuse.ExtraInputs).Count -eq 0) 'A field with no extraInputs must give an empty list.'
+    } finally {
+        Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
+    }
+}
+
 Invoke-TestCase 'With no pattern the selection is every suite in the suites job' {
     $entries = @(
         [pscustomobject]@{ Name = 'a.Tests.ps1'; Jobs = @('suites'); Platform = @('windows', 'linux'); Execution = 'parallel'; Reason = $null; BaselineSeconds = 1.0 }
