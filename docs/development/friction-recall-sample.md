@@ -14,25 +14,10 @@ The evidence is committed beside it:
 | `friction-samples/*-sample-2026-08-16.csv` and `.selection.json` | The earlier draw, kept whole. It is the only record of nine flagged asks the transcripts no longer hold |
 | `friction-samples/ledgers/*.csv` | One row per counted item for the four transcript metrics, and one row per in-window CI run |
 
-Redraw either sample with:
-
-```powershell
-pwsh ./scripts/sample-friction-recall.ps1 `
-  -Metric handoffs `
-  -ProjectRoot "$HOME/AHKFlowApp-friction-snapshot-2026-08-21" `
-  -OutputPath docs/development/friction-samples/handoffs-sample.csv `
-  -SampleSize 200 `
-  -ExistingManifest docs/development/friction-samples/handoffs-sample.csv
-```
-
-**Always pass `-ExistingManifest`.** It carries the labels and the row ids across a re-run. It
-does not change which rows are drawn — see "How the draw picks a row" — but without it every
-hand-written label is written out empty, and a hand-written label is the only thing this step
-produces.
-
-**`-ProjectRoot` decides which copy of the transcripts the draw reads.** It defaults to
-`~/.claude/projects`, which is the live folder that retention deletes from. The published figures
-below read the copy named in the next section.
+A sampler script drew both samples. Backlog 188 retired it and its test, and git history keeps
+both. The findings below do not depend on them: the committed files above hold every row and
+every label. The published figures read the copy of the transcripts named in the next section,
+not the live folder that retention deletes from.
 
 ## What changed since 2026-08-16
 
@@ -86,10 +71,10 @@ its own cannot.
 
 ## How the draw picks a row
 
-The sampler hashes the seed and the message key together and takes the 200 lowest hashes
-(`scripts/sample-friction-recall.ps1`). Every unflagged message has the same chance of
-selection, and the same rows stay selected as the transcripts grow, so a hand-written label
-survives a re-run without the label deciding the sample.
+The sampler hashed the seed and the message key together and took the 200 lowest hashes.
+Every unflagged message had the same chance of selection, and the same rows stayed selected as
+the transcripts grew, so a hand-written label survived a re-run without the label deciding the
+sample.
 
 **The draw is uniform, so the interval can be exact.** A Wilson interval is a binomial one: it
 assumes each draw is independent, which is what sampling with replacement gives. This draw takes
@@ -98,10 +83,9 @@ a fixed number of rows without replacement, so the variance of the sample propor
 any step. That switch has a precondition — every row in the population must have had the same
 chance of being drawn — and this draw is the first one in this repository to meet it.
 
-`Get-RecallInterval` in `scripts/sample-friction-recall.ps1` computes the ranges below.
-`tests/FrictionRecallSample.Tests.ps1` checks each bound against the definition rather than
-against the function itself, and it re-derives every published figure from the committed
-manifests, including the totals in
+The sampler's `Get-RecallInterval` computed the ranges below. Its test checked each bound
+against the definition rather than against the function itself, and it re-derived every
+published figure from the committed manifests, including the totals in
 [`072`](../../backlog/done/072-process-wave-2-parity-drift-guard-templates.md).
 
 **The plain Wilson value is stated once beside each range.** Both the population and the method
@@ -289,7 +273,7 @@ were copied on 2026-08-21, five days after the first draw.
 **Both ranges are still ranges.** 200 labels bound a miss rate far better than 60 did, but
 neither figure is a point. A point estimate needs a classifier that reads structure rather than
 wording: a refused tool call, a session that ends on a question. That is wave-3 work, not a patch
-to this script.
+to the sampler.
 
 **The three-week population is not the four-week one.** The window is unchanged, but its first
 week is not in the copy, so every count below is over a smaller base than the 2026-08-16 figures.
