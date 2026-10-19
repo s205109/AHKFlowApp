@@ -296,7 +296,7 @@ Approved by the user on 2026-10-19.
 | 2 | Affected-test time, Docs change | 342.8 s | 90 s or less |
 | 2 | Affected-test time, Script change | 346.3 s | 150 s or less |
 | 2 | Affected-test time, Code change | 513.6 s | 300 s or less |
-| 3 | CI critical path | 771 s | 500 s or less |
+| 3 | CI critical path | 771 s | 450 s or less |
 | 4 | Gate-required stage exits per item | 2 | 2 or less |
 | 5 | Flaky failures per 30 days | 4 | 1 or less |
 
@@ -305,11 +305,41 @@ Approved by the user on 2026-10-19.
 - Measure 4 stays at 2 or less. After the process item merges, the counted stages are `4-execute`
   and `8-review`, so two exits per item remain normal.
 
-.NET verdict: waiting for the user to confirm the proposed "worth an audit item".
+.NET verdict: **worth an audit item**, confirmed by the user on 2026-10-19. Backlog 194 carries
+the .NET test audit.
 
 ## Audit
 
-Empty until Tasks 5 to 7.
+### Candidate set
+
+Picked on 2026-10-19: the ten slowest Suites from the ranking under `## Before`, less the
+exclusions.
+
+Batch 1:
+
+1. `CiPowerShellSuiteRunner.Tests.ps1` (177.4 s)
+2. `StageTransition.Tests.ps1` (169.9 s)
+3. `AgentWorktreeGuard.Tests.ps1` (111.5 s)
+4. `WorktreeMergedCleanupEligibility.Tests.ps1` (102.1 s)
+5. `WatchTask.Tests.ps1` (85.2 s)
+
+Batch 2:
+
+6. `MeasureTestModes.Tests.ps1` (84.7 s)
+7. `WorktreeMergedCleanupSweep.Tests.ps1` (78.8 s)
+8. `WorktreeMergedCleanup.Tests.ps1` (71.9 s)
+9. `WorktreeSweepRemoteBase.Tests.ps1` (65.3 s)
+10. `BacklogStaleOpen.Tests.ps1` (57.2 s)
+
+Exclusions:
+
+- `WorktreeRemoveHook.Tests.ps1` (rank 8, 72.6 s): backlog 068 is still open, in
+  `backlog/blocked/`.
+- The five Suites Task 4 retired. None of them was in the top ten.
+- Unmerged branches: no remote branch changes any candidate. The check ran
+  `git log origin/main..<branch> -- tests/<Suite>` over the six remote branches other than
+  `main`. This branch changes `MeasureTestModes.Tests.ps1` itself (Task 1), which does not exclude
+  it.
 
 ## After
 
