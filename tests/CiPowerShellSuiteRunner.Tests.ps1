@@ -361,7 +361,7 @@ Invoke-TestCase 'A run over the repository''s own tests folder saves its timings
         New-Item -ItemType Directory -Path (Join-Path $fakeRepo 'tests') -Force | Out-Null
         New-Item -ItemType Directory -Path (Join-Path $fakeRepo 'markers') -Force | Out-Null
 
-        foreach ($name in @('run-powershell-suites.ps1', 'progress.common.ps1', 'progress.parallel.ps1', 'powershell-suites.common.ps1', 'suite-worker-count.common.ps1', 'test-lanes.common.ps1')) {
+        foreach ($name in @('run-powershell-suites.ps1', 'progress.common.ps1', 'progress.parallel.ps1', 'powershell-suites.common.ps1', 'suite-worker-count.common.ps1', 'test-lanes.common.ps1', 'gate-evidence.common.ps1')) {
             Copy-Item -LiteralPath (Join-Path $repoRoot "scripts/$name") -Destination (Join-Path $fakeRepo "scripts/$name")
         }
 
@@ -1517,7 +1517,7 @@ Invoke-TestCase 'A targeted run keeps the stored timings of every suite it did n
         New-Item -ItemType Directory -Path (Join-Path $fakeRepo 'tests') -Force | Out-Null
         New-Item -ItemType Directory -Path (Join-Path $fakeRepo 'markers') -Force | Out-Null
 
-        foreach ($name in @('run-powershell-suites.ps1', 'progress.common.ps1', 'progress.parallel.ps1', 'powershell-suites.common.ps1', 'suite-worker-count.common.ps1', 'test-lanes.common.ps1')) {
+        foreach ($name in @('run-powershell-suites.ps1', 'progress.common.ps1', 'progress.parallel.ps1', 'powershell-suites.common.ps1', 'suite-worker-count.common.ps1', 'test-lanes.common.ps1', 'gate-evidence.common.ps1')) {
             Copy-Item -LiteralPath (Join-Path $repoRoot "scripts/$name") -Destination (Join-Path $fakeRepo "scripts/$name")
         }
 
@@ -1575,7 +1575,7 @@ function New-StoringRepoFixture {
         foreach ($folder in @('scripts', 'tests', 'markers', 'TestResults/progress')) {
             New-Item -ItemType Directory -Path (Join-Path $repo $folder) -Force | Out-Null
         }
-        foreach ($name in @('run-powershell-suites.ps1', 'progress.common.ps1', 'progress.parallel.ps1', 'powershell-suites.common.ps1', 'suite-worker-count.common.ps1', 'test-lanes.common.ps1')) {
+        foreach ($name in @('run-powershell-suites.ps1', 'progress.common.ps1', 'progress.parallel.ps1', 'powershell-suites.common.ps1', 'suite-worker-count.common.ps1', 'test-lanes.common.ps1', 'gate-evidence.common.ps1')) {
             Copy-Item -LiteralPath (Join-Path $repoRoot "scripts/$name") -Destination (Join-Path $repo "scripts/$name")
         }
 

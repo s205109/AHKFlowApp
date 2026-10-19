@@ -383,6 +383,209 @@ Invoke-TestCase 'The evidence root is the override when set, else TestResults/ga
     finally { $env:AHKFLOW_GATE_EVIDENCE_ROOT = $previous }
 }
 
+# --- The runner reuses evidence -----------------------------------------------
+#
+# Each scenario runs scripts/run-powershell-suites.ps1 as a child over a folder of fake Suites.
+# A fake Suite appends one line to its own counter file each time it runs. The counter files end in
+# .count, an extension the resolver does not follow, so a Suite's own writes never change its key.
+
+$script:HostExe = [System.Diagnostics.Process]::GetCurrentProcess().Path
+$script:Runner = Join-Path $repoRoot 'scripts\run-powershell-suites.ps1'
+
+function ConvertTo-ScriptLiteral {
+    param([string] $Value)
+    return "'" + $Value.Replace("'", "''") + "'"
+}
+
+function New-GateFixture {
+    # Suites: name -> @{ Reuse = $null or a hashtable; Body = extra lines }.
+    param([System.Collections.IDictionary] $Suite)
+    $root = New-TempRoot
+    $tests = Join-Path $root 'tests'
+    New-Item -ItemType Directory -Path $tests, (Join-Path $root 'counters') -Force | Out-Null
+
+    $entries = foreach ($name in $Suite.Keys) {
+        $counter = Join-Path (Join-Path $root 'counters') ($name -replace '\.Tests\.ps1$', '.count')
+        $lines = @("Add-Content -LiteralPath $(ConvertTo-ScriptLiteral $counter) -Value 'ran'") + @($Suite[$name]['Body'])
+        Set-Content -LiteralPath (Join-Path $tests $name) -Value ($lines -join [Environment]::NewLine) -Encoding utf8
+
+        $entry = [ordered]@{ name = $name; jobs = @('suites'); platform = @('windows', 'linux'); execution = 'parallel'; baselineSeconds = $null }
+        if ($null -ne $Suite[$name]['Reuse']) { $entry['reuse'] = $Suite[$name]['Reuse'] }
+        $entry
+    }
+    Set-Content -LiteralPath (Join-Path $tests 'powershell-suites.json') -Value (([ordered]@{ suites = @($entries) }) | ConvertTo-Json -Depth 6) -Encoding utf8
+    return $root
+}
+
+function Get-RunCount {
+    param([string] $Root, [string] $Name)
+    $counter = Join-Path (Join-Path $Root 'counters') ($Name -replace '\.Tests\.ps1$', '.count')
+    if (-not (Test-Path -LiteralPath $counter)) { return 0 }
+    return @(Get-Content -LiteralPath $counter).Count
+}
+
+function Get-GateLogLine {
+    param([string] $Root)
+    $log = Join-Path $Root 'gate-log.jsonl'
+    if (-not (Test-Path -LiteralPath $log)) { return , @() }
+    return , @(Get-Content -LiteralPath $log | Where-Object { $_.Trim() } | ForEach-Object { $_ | ConvertFrom-Json })
+}
+
+function Invoke-GateRunner {
+    <#
+      Runs the real runner over the fixture's tests folder. The child must not reach the real Lane
+      pool, the real job summary, the real evidence, or a GitHub Actions setting inherited from CI,
+      which would switch reuse off in every scenario.
+    #>
+    param([string] $Root, [switch] $Gate, [hashtable] $Environment = @{})
+    $names = @('AHKFLOW_TEST_LANES_HOLDER', 'GITHUB_STEP_SUMMARY', 'GITHUB_ACTIONS', 'AHKFLOW_GATE_REUSE', 'AHKFLOW_GATE_EVIDENCE_ROOT')
+    $saved = @{}
+    foreach ($name in $names) { $saved[$name] = [Environment]::GetEnvironmentVariable($name) }
+    try {
+        if ([string]::IsNullOrWhiteSpace($env:AHKFLOW_TEST_LANES_ROOT) -and [string]::IsNullOrWhiteSpace($saved['AHKFLOW_TEST_LANES_HOLDER'])) {
+            $env:AHKFLOW_TEST_LANES_HOLDER = [string]$PID
+        }
+        $env:GITHUB_STEP_SUMMARY = Join-Path $Root 'summary.md'
+        $env:GITHUB_ACTIONS = $null
+        $env:AHKFLOW_GATE_REUSE = $null
+        $env:AHKFLOW_GATE_EVIDENCE_ROOT = Join-Path $Root 'evidence'
+        foreach ($key in $Environment.Keys) { [Environment]::SetEnvironmentVariable($key, $Environment[$key]) }
+
+        $arguments = @('-NoProfile', '-File', $script:Runner, '-SuiteRoot', (Join-Path $Root 'tests'))
+        if ($Gate) { $arguments += '-Gate' }
+        $output = & $script:HostExe @arguments 2>&1 | Out-String
+        return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = $output }
+    }
+    finally {
+        foreach ($name in $names) { [Environment]::SetEnvironmentVariable($name, $saved[$name]) }
+    }
+}
+
+# Scenario A: one eligible Suite, one with no reuse field. Three Gate runs, with an edit before the
+# third.
+$a = New-GateFixture -Suite ([ordered]@{
+        'Quick.Tests.ps1' = @{ Reuse = [ordered]@{ eligible = $true } }
+        'Plain.Tests.ps1' = @{ Reuse = $null }
+    })
+$aRuns = @(); $aCounts = @(); $aError = $null
+try {
+    foreach ($step in 1..3) {
+        if ($step -eq 3) { Add-Content -LiteralPath (Join-Path $a 'tests\Quick.Tests.ps1') -Value "Write-Host 'edited'" }
+        $aRuns += Invoke-GateRunner -Root $a -Gate
+        $aCounts += , @((Get-RunCount $a 'Quick.Tests.ps1'), (Get-RunCount $a 'Plain.Tests.ps1'))
+    }
+    $aLog = Get-GateLogLine $a
+}
+catch { $aError = $_.Exception.Message }
+
+Invoke-TestCase 'A second Gate run reuses an unchanged eligible Suite and runs the rest' {
+    Assert-True ($null -eq $aError) "The scenario failed to run: $aError"
+    Assert-True ($aRuns[0].ExitCode -eq 0 -and $aRuns[1].ExitCode -eq 0) "Both runs must pass. Output: $($aRuns[1].Output)"
+    Assert-True ($aRuns[1].Output -match 'Gate evidence: on') "Expected the evidence line. Output: $($aRuns[1].Output)"
+    Assert-True (($aCounts[1] -join ',') -eq '1,2') "Quick must run once and Plain twice, got Quick,Plain = $($aCounts[1] -join ',')."
+    Assert-True ($aRuns[1].Output -match 'REUSED Quick\.Tests\.ps1 \(evidence [0-9a-f]{12}\)') "Expected the REUSED line. Output: $($aRuns[1].Output)"
+    Assert-True ($aRuns[1].Output -match '\| Quick\.Tests\.ps1 \| reused \| 0 \| - \|') "Expected a reused row in the table. Output: $($aRuns[1].Output)"
+    Assert-True ($aRuns[1].Output -match 'All 2 suite\(s\) passed\.') "A reused Suite still counts as passed. Output: $($aRuns[1].Output)"
+}
+
+Invoke-TestCase 'An edited eligible Suite runs again' {
+    Assert-True ($null -eq $aError) "The scenario failed to run: $aError"
+    Assert-True ($aRuns[2].ExitCode -eq 0) "The third run must pass. Output: $($aRuns[2].Output)"
+    Assert-True (($aCounts[2] -join ',') -eq '2,3') "Quick must run again after its edit, got Quick,Plain = $($aCounts[2] -join ',')."
+    Assert-True ($aRuns[2].Output -notmatch 'REUSED') "Nothing may be reused after the edit. Output: $($aRuns[2].Output)"
+}
+
+Invoke-TestCase 'Each Gate run appends one log line that names what ran and what was reused' {
+    Assert-True ($null -eq $aError) "The scenario failed to run: $aError"
+    Assert-True ($aLog.Count -eq 3) "Expected three log lines, got $($aLog.Count)."
+    Assert-True ((@($aLog[0].executed | Sort-Object) -join ',') -eq 'Plain.Tests.ps1,Quick.Tests.ps1') "Run 1 executed both. Got: $(@($aLog[0].executed) -join ',')"
+    Assert-True (@($aLog[0].reused).Count -eq 0) 'Run 1 reused nothing.'
+    Assert-True ((@($aLog[1].executed) -join ',') -eq 'Plain.Tests.ps1') "Run 2 executed only Plain. Got: $(@($aLog[1].executed) -join ',')"
+    Assert-True ((@($aLog[1].reused) -join ',') -eq 'Quick.Tests.ps1') "Run 2 reused Quick. Got: $(@($aLog[1].reused) -join ',')"
+    foreach ($line in $aLog) {
+        Assert-True ($line.reuse -eq $true) 'Every run here had reuse on.'
+        Assert-True ($line.elapsedSeconds -is [double] -or $line.elapsedSeconds -is [long] -or $line.elapsedSeconds -is [int]) "elapsedSeconds must be a number. Got: $($line.elapsedSeconds)"
+        Assert-True (-not [string]::IsNullOrWhiteSpace([string] $line.startedAtUtc)) 'Every line must say when it started.'
+        Assert-True ($null -ne $line.PSObject.Properties['revision'] -and $null -ne $line.PSObject.Properties['budgetWarnings']) 'Every line must carry revision and budgetWarnings.'
+    }
+}
+Remove-TempRoot $a
+
+# Scenario B: one eligible Suite, with evidence from a first Gate run.
+$b = New-GateFixture -Suite ([ordered]@{ 'Quick.Tests.ps1' = @{ Reuse = [ordered]@{ eligible = $true } } })
+$bError = $null
+try { $bFirst = Invoke-GateRunner -Root $b -Gate } catch { $bError = $_.Exception.Message }
+
+Invoke-TestCase 'A Gate run where every Suite is reused still passes' {
+    Assert-True ($null -eq $bError) "The scenario failed to run: $bError"
+    Assert-True ($bFirst.ExitCode -eq 0) "The first run must pass. Output: $($bFirst.Output)"
+    $run = Invoke-GateRunner -Root $b -Gate
+    Assert-True ($run.ExitCode -eq 0) "A run with nothing left to run must pass. Output: $($run.Output)"
+    Assert-True ((Get-RunCount $b 'Quick.Tests.ps1') -eq 1) 'The Suite must not run again.'
+    Assert-True ($run.Output -match 'All 1 suite\(s\) passed\.') "Expected the all-passed line. Output: $($run.Output)"
+}
+
+Invoke-TestCase 'Inside GitHub Actions the Gate never reuses' {
+    Assert-True ($null -eq $bError) "The scenario failed to run: $bError"
+    $before = Get-RunCount $b 'Quick.Tests.ps1'
+    $run = Invoke-GateRunner -Root $b -Gate -Environment @{ GITHUB_ACTIONS = 'true' }
+    Assert-True ($run.ExitCode -eq 0) "The run must pass. Output: $($run.Output)"
+    Assert-True ($run.Output -match 'Gate evidence: off \(GitHub Actions\)') "Expected the off line with its reason. Output: $($run.Output)"
+    Assert-True ((Get-RunCount $b 'Quick.Tests.ps1') -eq $before + 1) 'CI must run the Suite even with evidence present.'
+}
+
+Invoke-TestCase 'AHKFLOW_GATE_REUSE=off stops reuse and writes no evidence' {
+    Assert-True ($null -eq $bError) "The scenario failed to run: $bError"
+    Remove-Item -LiteralPath (Join-Path $b 'evidence') -Recurse -Force -ErrorAction SilentlyContinue
+    $before = Get-RunCount $b 'Quick.Tests.ps1'
+    $run = Invoke-GateRunner -Root $b -Gate -Environment @{ AHKFLOW_GATE_REUSE = 'off' }
+    Assert-True ($run.ExitCode -eq 0) "The run must pass. Output: $($run.Output)"
+    Assert-True ($run.Output -match 'Gate evidence: off \(AHKFLOW_GATE_REUSE=off\)') "Expected the off line with its reason. Output: $($run.Output)"
+    Assert-True ((Get-RunCount $b 'Quick.Tests.ps1') -eq $before + 1) 'The Suite must run.'
+    Assert-True (-not (Test-Path -LiteralPath (Join-Path $b 'evidence'))) 'With reuse off, no evidence may be written.'
+}
+
+Invoke-TestCase 'Without -Gate the runner prints no evidence line and writes no log line' {
+    Assert-True ($null -eq $bError) "The scenario failed to run: $bError"
+    Invoke-GateRunner -Root $b -Gate | Out-Null   # evidence again, so a reuse would be possible
+    $before = Get-RunCount $b 'Quick.Tests.ps1'
+    $logBefore = (Get-GateLogLine $b).Count
+    $run = Invoke-GateRunner -Root $b
+    Assert-True ($run.ExitCode -eq 0) "The run must pass. Output: $($run.Output)"
+    Assert-True ($run.Output -notmatch 'Gate evidence') "Without -Gate the output must not change. Output: $($run.Output)"
+    Assert-True ((Get-RunCount $b 'Quick.Tests.ps1') -eq $before + 1) 'Without -Gate nothing is reused.'
+    Assert-True ((Get-GateLogLine $b).Count -eq $logBefore) 'Without -Gate no log line is written.'
+}
+Remove-TempRoot $b
+
+# Scenario C: two eligible Suites in one run. One fails. The other changes its own extra input
+# while it runs.
+$c = New-GateFixture -Suite ([ordered]@{
+        'Fail.Tests.ps1' = @{ Reuse = [ordered]@{ eligible = $true }; Body = @('exit 1') }
+        'Grow.Tests.ps1' = @{ Reuse = [ordered]@{ eligible = $true; extraInputs = @('tests/grow.json') }; Body = @() }
+    })
+$cError = $null
+try {
+    $grow = Join-Path $c 'tests\grow.json'
+    Set-Content -LiteralPath $grow -Value '{ "n": 0 }' -Encoding utf8
+    Add-Content -LiteralPath (Join-Path $c 'tests\Grow.Tests.ps1') -Value "Add-Content -LiteralPath $(ConvertTo-ScriptLiteral $grow) -Value ' '"
+    $cRun = Invoke-GateRunner -Root $c -Gate
+}
+catch { $cError = $_.Exception.Message }
+
+Invoke-TestCase 'A failed Suite leaves no evidence' {
+    Assert-True ($null -eq $cError) "The scenario failed to run: $cError"
+    Assert-True ($cRun.ExitCode -ne 0) "The run must fail. Output: $($cRun.Output)"
+    Assert-True (-not (Test-Path -LiteralPath (Join-Path $c 'evidence\Fail.Tests.ps1'))) 'A failed Suite must leave no evidence.'
+}
+
+Invoke-TestCase 'A Suite whose input changed during its run leaves no evidence' {
+    Assert-True ($null -eq $cError) "The scenario failed to run: $cError"
+    Assert-True ((Get-RunCount $c 'Grow.Tests.ps1') -eq 1) 'The Suite must have run.'
+    Assert-True (-not (Test-Path -LiteralPath (Join-Path $c 'evidence\Grow.Tests.ps1'))) 'Evidence for inputs that changed during the run must not be written.'
+}
+Remove-TempRoot $c
+
 if ($script:Failures.Count -gt 0) {
     Write-Host ''
     Write-Host "FAILED: $($script:Failures.Count) test(s)" -ForegroundColor Red

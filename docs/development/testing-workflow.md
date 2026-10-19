@@ -92,6 +92,39 @@ applies to it too. A branch that changed only one of those thirteen scripts stil
 the fast slice locally, while CI skips its .NET steps. That is the intended direction: the hook is
 stricter than CI on those paths, and never looser.
 
+### Gate reuse
+
+The Gate's PowerShell step can skip a Suite that already passed on exactly the same inputs.
+Backlog 188 added this. Only PowerShell Suites are reused, and only the ones whose manifest entry
+in `tests/powershell-suites.json` says `"reuse": { "eligible": true }`. The build, the format
+check and the coverage slice always run.
+
+A Suite's result is reused only when nothing it depends on has changed. The runner lists every
+file the Suite reads, plus its `extraInputs`, and every file the runner itself reads. It hashes
+them together with the job, the platform, the Lane role, and the pwsh, dotnet and git versions.
+When it finds evidence of a pass under that key, it prints `REUSED <name>` and does not run the
+Suite. The results table shows the Suite as `reused`. When the runner cannot follow a file the
+Suite loads, the Suite runs.
+
+Evidence lives in `TestResults/gate-evidence/`, one folder per Suite. Git ignores `TestResults/`,
+so evidence never leaves your worktree. Delete the folder to clear it. Set
+`AHKFLOW_GATE_EVIDENCE_ROOT` to keep it somewhere else.
+
+Every `pwsh .\scripts\test-fast.ps1 -Mode PowerShell` run counts as a Gate run, whether or not it
+is part of a full Gate. It reuses evidence, checks the Suite time budgets, and appends one line to
+`TestResults/gate-log.jsonl`. The line names the Suites that ran and the Suites that were reused,
+and how long the step took. A direct `pwsh .\scripts\run-powershell-suites.ps1` run does none of
+that.
+
+To run every Suite anyway, switch reuse off for the session:
+
+```powershell
+$env:AHKFLOW_GATE_REUSE = 'off'
+```
+
+CI never reuses. Inside GitHub Actions the runner prints `Gate evidence: off (GitHub Actions)` and
+runs every Suite.
+
 ## Fast inner loop
 
 ```bash
