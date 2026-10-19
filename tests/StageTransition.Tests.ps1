@@ -55,34 +55,17 @@ function New-Root {
     return $root
 }
 
-# A throwaway repository with a local bare remote. Nothing leaves the machine, and 'origin' is a
-# real remote, so a push assertion reads a real ref rather than a recorded intention.
-function New-TransitionFixture {
+# Builds the seed commit of a transition fixture and pushes it to the bare remote.
+function New-TransitionSeed {
     param(
-        [string] $Stage = '2-design',
-        [string] $Difficulty = 'complex',
-        [string] $Branch = '',
-        [string] $StackedOn = '',
-        [switch] $AsWorktree,
-        [switch] $AllBoxesTicked,
-        [switch] $NoItem,
-        # Every failure edge needs PLAN-PROGRESS.md to exist, because Task 5 refuses without it.
-        # Pass this for any case whose stage is 4-execute or later.
-        [switch] $WithProgress,
-        # Another item's PLAN-PROGRESS.md, committed and then deleted by that item's own closure,
-        # on main before this branch starts. Every real branch inherits commits like these, and a
-        # fresh fixture has none, so without this switch no case can see what they do to a lookup.
-        [switch] $WithForeignProgress,
-        # The item's linked plan, and whether it carries the freeze directive. 'none' writes no
-        # '- Plan:' bullet and no file, which is what every case before the freeze rule used.
-        [ValidateSet('none', 'unfrozen', 'frozen')]
-        [string] $PlanState = 'none'
+        [string] $Bare, [string] $Root, [string] $ItemName, [string] $PlanName,
+        [string] $Stage, [string] $Difficulty, [switch] $NoItem, [switch] $AllBoxesTicked,
+        [switch] $WithProgress, [switch] $WithForeignProgress, [string] $PlanState
     )
 
-    $bare = New-Root -Prefix 'transition-remote'
+    $bare = $Bare; $root = $Root; $itemName = $ItemName; $planName = $PlanName
     & git init --bare $bare *> $null
 
-    $root = New-Root -Prefix 'transition-work'
     # A named default branch, so 'origin/main' is a ref the marker check can really resolve.
     & git init -b main $root *> $null
     & git -C $root config user.email 'test@example.com' *> $null
@@ -96,8 +79,6 @@ function New-TransitionFixture {
     Copy-Item -LiteralPath (Join-Path $suiteRoot 'docs/development/workflow.md') `
               -Destination (Join-Path $root 'docs/development/workflow.md')
 
-    $itemName = 'backlog/081-automate-stage-transitions.md'
-    $planName = 'docs/superpowers/plans/2026-09-20-stage-transition-plan-081.md'
     if (-not $NoItem) {
         $box = if ($AllBoxesTicked) { '- [x]' } else { '- [ ]' }
         $item = @(
@@ -136,6 +117,62 @@ function New-TransitionFixture {
     }
     & git -C $root remote add origin $bare *> $null
     & git -C $root push -u origin HEAD *> $null
+}
+
+# Seeded main clones and their bare remotes, one pair per seed shape. Backlog 188: building the
+# seed took about ten git processes per case, and many cases share a shape. A copy of a cached
+# pair needs only its hooks path and its remote pointed at the copy.
+$script:FixtureSeeds = @{}
+
+# A throwaway repository with a local bare remote. Nothing leaves the machine, and 'origin' is a
+# real remote, so a push assertion reads a real ref rather than a recorded intention.
+function New-TransitionFixture {
+    param(
+        [string] $Stage = '2-design',
+        [string] $Difficulty = 'complex',
+        [string] $Branch = '',
+        [string] $StackedOn = '',
+        [switch] $AsWorktree,
+        [switch] $AllBoxesTicked,
+        [switch] $NoItem,
+        # Every failure edge needs PLAN-PROGRESS.md to exist, because Task 5 refuses without it.
+        # Pass this for any case whose stage is 4-execute or later.
+        [switch] $WithProgress,
+        # Another item's PLAN-PROGRESS.md, committed and then deleted by that item's own closure,
+        # on main before this branch starts. Every real branch inherits commits like these, and a
+        # fresh fixture has none, so without this switch no case can see what they do to a lookup.
+        [switch] $WithForeignProgress,
+        # The item's linked plan, and whether it carries the freeze directive. 'none' writes no
+        # '- Plan:' bullet and no file, which is what every case before the freeze rule used.
+        [ValidateSet('none', 'unfrozen', 'frozen')]
+        [string] $PlanState = 'none'
+    )
+
+    $bare = New-Root -Prefix 'transition-remote'
+    $root = New-Root -Prefix 'transition-work'
+    $itemName = 'backlog/081-automate-stage-transitions.md'
+    $planName = 'docs/superpowers/plans/2026-09-20-stage-transition-plan-081.md'
+
+    # Everything that changes the seed commit, and nothing else.
+    $seedKey = @($Stage, $Difficulty, [bool] $NoItem, [bool] $AllBoxesTicked, [bool] $WithProgress,
+        [bool] $WithForeignProgress, ($PlanState -ne 'none')) -join '|'
+    if ($script:FixtureSeeds.ContainsKey($seedKey)) {
+        $seed = $script:FixtureSeeds[$seedKey]
+        Copy-Item -Path (Join-Path $seed.Bare '*') -Destination $bare -Recurse -Force
+        Copy-Item -Path (Join-Path $seed.Root '*') -Destination $root -Recurse -Force
+        & git -C $root config core.hooksPath (Join-Path $root '.nohooks') *> $null
+        & git -C $root remote set-url origin $bare *> $null
+    }
+    else {
+        New-TransitionSeed -Bare $bare -Root $root -ItemName $itemName -PlanName $planName `
+            -Stage $Stage -Difficulty $Difficulty -NoItem:$NoItem -AllBoxesTicked:$AllBoxesTicked `
+            -WithProgress:$WithProgress -WithForeignProgress:$WithForeignProgress -PlanState $PlanState
+        $seedBare = New-Root -Prefix 'transition-seed-remote'
+        $seedRoot = New-Root -Prefix 'transition-seed-work'
+        Copy-Item -Path (Join-Path $bare '*') -Destination $seedBare -Recurse -Force
+        Copy-Item -Path (Join-Path $root '*') -Destination $seedRoot -Recurse -Force
+        $script:FixtureSeeds[$seedKey] = [pscustomobject]@{ Bare = $seedBare; Root = $seedRoot }
+    }
 
     # The happy paths need a LINKED worktree, because the script refuses the main checkout. The
     # main-checkout refusal case is the one that keeps the plain repository.
