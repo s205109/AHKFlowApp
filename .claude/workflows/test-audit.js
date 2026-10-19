@@ -4,13 +4,16 @@ export const meta = {
   whenToUse: 'Pass args { suites: ["X.Tests.ps1", ...] }, at most five Suites per run.',
   phases: [
     { title: 'Audit', detail: 'one read-only auditor per Suite, in parallel' },
-    { title: 'Refute', detail: 'one refuter per Suite with REMOVE or MERGE claims, one at a time' },
+    { title: 'Refute', detail: 'one medium-effort refuter per Suite with REMOVE claims or MERGE claims of 1 s or more, one at a time' },
   ],
 }
 
 const W = 'C:\\Dev\\segocom-github\\AHKFlowApp\\.claude\\worktrees\\wt-speed-up-the-development-cycle'
 const REPORT = W + '\\docs\\superpowers\\specs\\2026-10-18-speed-up-the-development-cycle-research-188\\powershell-suites.md'
 const RUN = (suite) => `pwsh -NoProfile -WorkingDirectory ${W} -Command "& ./scripts/run-powershell-suites.ps1 -Suite ${suite}; exit $LASTEXITCODE"`
+// Lean settings, chosen at stop S5 to spend fewer tokens than batch 1 (1.72 M).
+const MIN_SAVED = 0.5
+const MIN_MERGE_SAVED = 1
 const suites = (args && args.suites) || []
 if (suites.length === 0 || suites.length > 5) throw new Error('Pass args.suites with one to five Suite file names.')
 
@@ -69,7 +72,8 @@ Give every test case one verdict:
 - MERGE: it checks what another case in this Suite (or another Suite) already checks; name that case.
 - REMOVE: it catches no defect that another test does not already catch, or it tests a feature that no longer exists. Name the test that still catches the regression, or the behaviour that is gone.
 - SPEED UP: keep the check, but make it cheaper; say how (for example a shared fixture, fewer git repos, a smaller sleep).
-REMOVE, MERGE and SPEED UP need case-level evidence with file:line. secondsSaved is your estimate from the report's measured costs; use 0 for KEEP.
+REMOVE, MERGE and SPEED UP need case-level evidence with file:line. secondsSaved is your estimate from the report's measured costs.
+Return only the cases you would change and that save at least ${MIN_SAVED} s. Leave out every KEEP and every smaller change. Keep each evidence to two sentences.
 Leave tests\\WorktreeRemoveHook.Tests.ps1 alone (backlog 068 is open).`
 
 const refutePrompt = (suite, claims) => `You are the refuter for one PowerShell test Suite in backlog 188. An auditor claims some cases can be removed or merged. Your job is to DISPROVE each claim if you can.
@@ -100,13 +104,15 @@ log(`${audits.length} of ${suites.length} audits returned`)
 phase('Refute')
 const refutes = []
 for (const a of audits) {
-  const claims = a.cases.filter((c) => c.verdict === 'REMOVE' || c.verdict === 'MERGE')
+  const claims = a.cases.filter((c) => c.verdict === 'REMOVE' || (c.verdict === 'MERGE' && c.secondsSaved >= MIN_MERGE_SAVED))
+  const skipped = a.cases.filter((c) => c.verdict === 'MERGE' && c.secondsSaved < MIN_MERGE_SAVED).length
+  if (skipped > 0) log(`${a.suite}: ${skipped} MERGE claims under ${MIN_MERGE_SAVED} s not refuted`)
   if (claims.length === 0) {
-    log(`${a.suite}: no REMOVE or MERGE claims, no refuter`)
+    log(`${a.suite}: no REMOVE or MERGE claims to refute, no refuter`)
     continue
   }
   // One refuter at a time: they share one worktree and its Lane pool.
-  const r = await agent(refutePrompt(a.suite, claims), { label: `refute:${a.suite}`, phase: 'Refute', schema: REFUTE_SCHEMA })
+  const r = await agent(refutePrompt(a.suite, claims), { label: `refute:${a.suite}`, phase: 'Refute', schema: REFUTE_SCHEMA, effort: 'medium' })
   if (r) refutes.push(r)
   else log(`${a.suite}: refuter returned nothing; its claims stay unrefuted`)
 }
