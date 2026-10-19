@@ -1022,16 +1022,24 @@ try {
         'running', 'ONLY-MARKER'
     ) | Out-Null
 
+    # In this process, not in a child. ValidateRange sits on the script's own parameters, so a bad
+    # value fails at binding, before the body runs. A script that bound it would run the body, and
+    # its exit would only end that script, so the refusal assertion still fails.
     foreach ($badArgs in @(
-            @('-Index', '0'),
-            @('-Index', '-1'),
-            @('-Tail', '0'),
-            @('-Tail', '-5')
+            @{ Index = 0 },
+            @{ Index = -1 },
+            @{ Tail = 0 },
+            @{ Tail = -5 }
         )) {
-        $result = Invoke-WatchScript -ScriptArgs (@('-Root', $root, '-NoFollow') + $badArgs)
-        $shown = $badArgs -join ' '
-        Assert-True ($result.ExitCode -ne 0) "Range: '$shown' must be refused, but the run returned 0. Output: $($result.Output)"
-        Assert-True ($result.Output -notmatch 'ONLY-MARKER') "Range: '$shown' must not fall back to tailing a task. Output: $($result.Output)"
+        $shown = ($badArgs.GetEnumerator() | ForEach-Object { "-$($_.Key) $($_.Value)" }) -join ' '
+        $refused = $false
+        try {
+            & $watchScript -Root $root -NoFollow @badArgs *> $null
+        }
+        catch [System.Management.Automation.ParameterBindingException] {
+            $refused = $true
+        }
+        Assert-True $refused "Range: '$shown' must be refused at parameter binding."
     }
 
     # The first valid index still selects, which proves the range check did not break selection.
@@ -1252,10 +1260,12 @@ Watch-Record -Record `$record -Tail 40 | Out-Null
     Assert-True $entered 'Replacement race: the watcher must print the first run before the replacement.'
 
     # Nothing holds the fixture, so the watcher goes straight into the settle loop on its first
-    # pass. The stubbed Get-TaskState opens the replacement on its second call. If the loop did
-    # not do another round the watcher would print its verdict and exit in about a second, so ten
-    # is a wide margin for "it kept following".
-    $finished = Wait-Job -Job $job -Timeout 10
+    # pass. The stubbed Get-TaskState opens the replacement on its second call. Wait until the
+    # replacement's line is printed, so the clock below starts after the race. If the loop did not
+    # do another round the watcher would print its verdict and exit in about a second, so three
+    # more is a wide margin for "it kept following".
+    Wait-ForJobOutput -Job $job -Pattern 'REPLACEMENT-LINE' | Out-Null
+    $finished = Wait-Job -Job $job -Timeout 3
     Assert-True ($null -eq $finished) `
         "Replacement race: the watcher must keep following a replacement that is still open. Output: $(Get-JobOutputSoFar -Job $job)"
 
