@@ -37,7 +37,7 @@ FAILED: WorktreeMergedCleanupSweep.Tests.ps1 (exit code 1)
   - The second worktree must be removed.
 ```
 
-The assertion is (`tests/WorktreeMergedCleanupSweep.Tests.ps1:370`, "The second worktree must be removed. Stderr:").
+The assertion is (`tests/WorktreeMergedCleanupSweep.Tests.ps1:376`, "The second worktree must be removed. Stderr:").
 It creates two merged worktrees, runs one sweep, and expects both to be removed. The hook
 diagnostics show the two branches judged differently:
 
