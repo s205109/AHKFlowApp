@@ -240,6 +240,30 @@ exit 0
     }
 }
 
+# Backlog 188. The long decision loops below run the full policy many times against one fixed
+# fixture, and every decision starts git rev-parse probes. Each probe names its directory with -C,
+# so its answer depends only on the fixture layout. A loop switches this cache on, and switches it
+# off again before any case that changes the layout.
+$script:RealGuardGitProbe = ${function:Invoke-AgentGuardGitProbe}
+$script:GuardProbeMemo = $null
+
+function Enable-GuardProbeMemo {
+    $script:GuardProbeMemo = @{}
+    ${function:script:Invoke-AgentGuardGitProbe} = {
+        param([string[]] $GitArguments)
+        $key = $GitArguments -join [char]0
+        if (-not $script:GuardProbeMemo.ContainsKey($key)) {
+            $script:GuardProbeMemo[$key] = & $script:RealGuardGitProbe -GitArguments $GitArguments
+        }
+        return $script:GuardProbeMemo[$key]
+    }
+}
+
+function Disable-GuardProbeMemo {
+    ${function:script:Invoke-AgentGuardGitProbe} = $script:RealGuardGitProbe
+    $script:GuardProbeMemo = $null
+}
+
 function Remove-ShimHarness {
     param([object] $Harness)
 
@@ -1258,13 +1282,21 @@ try {
         }
     }
 
-    # No regression inside a managed worktree: every Tier 1a and Tier 2 command above must still be
-    # a plain Allow when it is not targeting the main checkout at all.
-    foreach ($command in (@($tier2AllowCases) + @($forceVariantAskCases) + @($tier1aAskCases))) {
-        Invoke-TestCase "No regression in a managed worktree: $command" {
-            $decision = Invoke-AgentGuardPolicy -Command $command -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main
-            Assert-Equal 'Allow' $decision.Action 'Action'
+    # No regression inside a managed worktree: a Tier 1a and a Tier 2 command must still be a plain
+    # Allow when it is not targeting the main checkout at all. From a managed cwd every command takes
+    # the same path, and the tier only matters when the target is blocked, so one command per tier
+    # is enough. The tables above pin each command's tier.
+    Enable-GuardProbeMemo
+    try {
+        foreach ($command in @('git worktree prune', 'git branch -D topic', 'git checkout other')) {
+            Invoke-TestCase "No regression in a managed worktree: $command" {
+                $decision = Invoke-AgentGuardPolicy -Command $command -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main
+                Assert-Equal 'Allow' $decision.Action 'Action'
+            }
         }
+    }
+    finally {
+        Disable-GuardProbeMemo
     }
 
     Invoke-TestCase 'AHKFLOW_ALLOW_MAIN=1 downgrades a Tier 1a Ask to Warn' {
@@ -1882,16 +1914,21 @@ try {
         '"/c/Program Files/Git/cmd/git.exe" commit -m test'
     )
 
-    foreach ($command in $candidateCommands) {
-        Invoke-TestCase "Bash shim forwards candidate command: $command" {
-            $result = Invoke-BashShim -StdIn (New-ClaudePayload $command $script:RealMainCheckout) -ShimArguments @('Claude')
-            # Reaching PowerShell is what is under test: every candidate above either denies (legacy
-            # stderr + exit 2, or the JSON hookSpecificOutput protocol for a location-rule commit
-            # denial) or warns.
-            $reachedPolicy = $result.ExitCode -eq 2 -or $result.StdErr -match 'BLOCKED|WARNING' -or
-            $result.StdOut -match 'permissionDecision'
-            Assert-True $reachedPolicy "expected the command to reach the policy core (exit $($result.ExitCode), stdout '$($result.StdOut)', stderr '$($result.StdErr)')"
+    # Only the shim's candidate pattern is under test here, so one stub harness serves every
+    # command: forwarding reaches the stub, which announces itself. The policy result of each
+    # command is pinned in-process by the tables above.
+    $candidateHarness = New-ShimHarness -ShimFileName 'pre-bash-guard.sh'
+    try {
+        foreach ($command in $candidateCommands) {
+            Invoke-TestCase "Bash shim forwards candidate command: $command" {
+                $result = Invoke-HarnessShim -Harness $candidateHarness `
+                    -StdIn (New-ClaudePayload $command $script:RealMainCheckout)
+                Assert-Match $script:ShimStubMarker $result.StdErr 'Must forward to the entrypoint'
+            }
         }
+    }
+    finally {
+        Remove-ShimHarness $candidateHarness
     }
 
     Invoke-TestCase 'Bash shim forwards a payload whose metacharacters are unicode-escaped' {
@@ -3453,6 +3490,7 @@ try {
         }
     )
 
+    Enable-GuardProbeMemo
     foreach ($case in $writeDecisionCases) {
         Invoke-TestCase "Write isolation: $($case.Name)" {
             $command = $case.Command.
@@ -3469,6 +3507,7 @@ try {
             Assert-Equal $case.Action $decision.Action 'Action'
         }
     }
+    Disable-GuardProbeMemo
 
     Invoke-TestCase 'Write isolation: a move out of main names the source, not the destination' {
         $source = $fixture.Main.Replace('\', '/') + '/seed.txt'
@@ -4096,6 +4135,7 @@ try {
         }
     )
 
+    Enable-GuardProbeMemo
     foreach ($case in $linkDecisionCases) {
         Invoke-TestCase "Link creation: $($case.Name)" {
             $command = $case.Command.
@@ -4106,6 +4146,7 @@ try {
             Assert-Equal $case.Action $decision.Action 'Action'
         }
     }
+    Disable-GuardProbeMemo
 
     Invoke-TestCase 'Link creation: a refused link names the file the write would land on' {
         $command = 'New-Item -ItemType HardLink -Path ' + $fixture.Managed +
