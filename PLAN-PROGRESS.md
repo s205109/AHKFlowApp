@@ -16,7 +16,7 @@ One line per finished task, written after its deliverable commit.
 - [x] Task 7 — audit run 2, batch 2, and the reference file (stop S5)
 - [x] Task 8 — the `reuse` field in the manifest
 - [x] Task 9 — the evidence library
-- [ ] Task 10 — the runner reuses evidence, and the Gate log
+- [x] Task 10 — the runner reuses evidence, and the Gate log
 - [ ] Task 11 — mark the candidate set
 - [ ] Task 12 — citation drift warns, and `-Fix`
 - [ ] Task 13 — time budget per Suite, and the re-audit suggestion
