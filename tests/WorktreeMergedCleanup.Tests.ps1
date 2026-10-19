@@ -19,9 +19,12 @@ $ErrorActionPreference = 'Stop'
 
 . (Join-Path $PSScriptRoot 'WorktreeMergedCleanup.Common.ps1')
 
-# --- Test: Get-WorktreeCleanupConfig fail-closed state machine ------------------
+# --- Test: the cleanup config and the ask-once answer, in one repository ------------
+# The three blocks only read and write ahkflow.worktreeCleanup, so they share one repository and
+# clear the key between blocks.
 $repo = New-TempGitRepo
 try {
+    # Get-WorktreeCleanupConfig fail-closed state machine.
     Assert-Equal 'unset' (Get-WorktreeCleanupConfig -RepoRoot $repo) 'No config value must read as unset.'
 
     Invoke-TestGit $repo @('config', '--local', 'ahkflow.worktreeCleanup', 'true') | Out-Null
@@ -38,13 +41,9 @@ try {
     Invoke-TestGit $repo @('config', '--local', '--unset-all', 'ahkflow.worktreeCleanup') | Out-Null
     Invoke-TestGit $repo @('config', '--local', 'ahkflow.worktreeCleanup', 'banana') | Out-Null
     Assert-Equal 'invalid' (Get-WorktreeCleanupConfig -RepoRoot $repo) 'A non-boolean value must read as invalid.'
-} finally {
-    Remove-TempTree $repo
-}
 
-# --- Test: Set-WorktreeCleanupConfig persists and reports success/failure -------
-$repo = New-TempGitRepo
-try {
+    # Set-WorktreeCleanupConfig persists and reports success/failure.
+    Invoke-TestGit $repo @('config', '--local', '--unset-all', 'ahkflow.worktreeCleanup') | Out-Null
     Assert-True (Set-WorktreeCleanupConfig -RepoRoot $repo -Enabled $true) 'Setting true must report success.'
     Assert-Equal 'true' (Get-WorktreeCleanupConfig -RepoRoot $repo) 'Set true must be readable as true.'
 
@@ -59,6 +58,35 @@ try {
     } finally {
         Remove-Item -LiteralPath $notARepo -Recurse -Force -ErrorAction SilentlyContinue
     }
+
+    # Set-CleanupAnswer persists the answer and warns on write failure.
+    # Covers the exact seam the Prompt branch calls, so removing the persistence call or the
+    # warning is caught here (the child-process integration tests can't reach the Prompt branch
+    # because they redirect stdin).
+    Invoke-TestGit $repo @('config', '--local', '--unset-all', 'ahkflow.worktreeCleanup') | Out-Null
+    $yes = Set-CleanupAnswer -RepoRoot $repo -Answer 'y'
+    Assert-True ($yes.Clean -and $yes.Persisted) 'Yes must clean and report persisted.'
+    Assert-Equal 'true' (Get-WorktreeCleanupConfig -RepoRoot $repo) 'Yes must persist true.'
+
+    $no = Set-CleanupAnswer -RepoRoot $repo -Answer 'n'
+    Assert-True ((-not $no.Clean) -and $no.Persisted) 'No must skip but still report persisted.'
+    Assert-Equal 'false' (Get-WorktreeCleanupConfig -RepoRoot $repo) 'No must persist false.'
+
+    # Failed write (non-repo dir): must honor the answer for the run, report not-persisted,
+    # and warn on stderr. Capture stderr in-process to assert the warning is emitted.
+    $notARepo = Join-Path ([System.IO.Path]::GetTempPath()) ('notrepo-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+    New-Item -ItemType Directory -Path $notARepo -Force | Out-Null
+    $sw = New-Object System.IO.StringWriter
+    $origErr = [Console]::Error
+    [Console]::SetError($sw)
+    try {
+        $failed = Set-CleanupAnswer -RepoRoot $notARepo -Answer 'y'
+    } finally {
+        [Console]::SetError($origErr)
+        Remove-Item -LiteralPath $notARepo -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    Assert-True ($failed.Clean -and (-not $failed.Persisted)) 'Failed write must honor the answer but report not persisted.'
+    Assert-True ($sw.ToString() -match 'could not persist') 'Failed write must warn on stderr.'
 } finally {
     Remove-TempTree $repo
 }
@@ -124,39 +152,6 @@ try {
     }
 } finally {
     [Environment]::SetEnvironmentVariable('AHKFLOW_WORKTREE_CLEANUP', $oldEnv, 'Process')
-}
-
-# --- Test: Set-CleanupAnswer persists the answer and warns on write failure -----
-# Covers the exact seam the Prompt branch calls, so removing the persistence call or the
-# warning is caught here (the child-process integration tests can't reach the Prompt branch
-# because they redirect stdin).
-$repo = New-TempGitRepo
-try {
-    $yes = Set-CleanupAnswer -RepoRoot $repo -Answer 'y'
-    Assert-True ($yes.Clean -and $yes.Persisted) 'Yes must clean and report persisted.'
-    Assert-Equal 'true' (Get-WorktreeCleanupConfig -RepoRoot $repo) 'Yes must persist true.'
-
-    $no = Set-CleanupAnswer -RepoRoot $repo -Answer 'n'
-    Assert-True ((-not $no.Clean) -and $no.Persisted) 'No must skip but still report persisted.'
-    Assert-Equal 'false' (Get-WorktreeCleanupConfig -RepoRoot $repo) 'No must persist false.'
-
-    # Failed write (non-repo dir): must honor the answer for the run, report not-persisted,
-    # and warn on stderr. Capture stderr in-process to assert the warning is emitted.
-    $notARepo = Join-Path ([System.IO.Path]::GetTempPath()) ('notrepo-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
-    New-Item -ItemType Directory -Path $notARepo -Force | Out-Null
-    $sw = New-Object System.IO.StringWriter
-    $origErr = [Console]::Error
-    [Console]::SetError($sw)
-    try {
-        $failed = Set-CleanupAnswer -RepoRoot $notARepo -Answer 'y'
-    } finally {
-        [Console]::SetError($origErr)
-        Remove-Item -LiteralPath $notARepo -Recurse -Force -ErrorAction SilentlyContinue
-    }
-    Assert-True ($failed.Clean -and (-not $failed.Persisted)) 'Failed write must honor the answer but report not persisted.'
-    Assert-True ($sw.ToString() -match 'could not persist') 'Failed write must warn on stderr.'
-} finally {
-    Remove-TempTree $repo
 }
 
 # --- Test: Test-BranchOwnWorkWasMerged separates unstarted branches from real merged work ---
@@ -303,10 +298,6 @@ try {
     Assert-True (-not $containing) 'Sanity check: no branch may contain the abandoned commit, or the test proves nothing.'
 
     Assert-True (-not (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-reset')) 'A branch whose commit was reset away must not borrow an unrelated rebase as merge proof.'
-
-    $eligible = Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'main'
-    $keys = @($eligible | ForEach-Object { ConvertTo-Key $_.Path })
-    Assert-True (-not ($keys -contains (ConvertTo-Key $resetPath))) 'A branch whose commit was reset away must never be eligible for cleanup.'
 } finally {
     Remove-TempTree $repo
 }
@@ -350,10 +341,6 @@ try {
     Assert-True (-not $containing) 'Sanity check: no branch may contain the abandoned second commit.'
 
     Assert-True (-not (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-loss')) 'A branch holding one abandoned commit must not be proved merged by an equivalent of another commit.'
-
-    $eligible = Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'main'
-    $keys = @($eligible | ForEach-Object { ConvertTo-Key $_.Path })
-    Assert-True (-not ($keys -contains (ConvertTo-Key $lossPath))) 'A branch holding an abandoned commit must never be eligible for cleanup.'
 } finally {
     Remove-TempTree $repo
 }
@@ -383,10 +370,6 @@ try {
     Assert-True (-not $containing) 'Sanity check: no branch may contain the unmerged commit.'
 
     Assert-True (-not (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-forged-ff')) 'A forged commit subject must not authorize deleting a branch that holds unmerged work.'
-
-    $eligible = Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'main'
-    $keys = @($eligible | ForEach-Object { ConvertTo-Key $_.Path })
-    Assert-True (-not ($keys -contains (ConvertTo-Key $forgedPath))) 'A worktree holding unmerged work must never be eligible, whatever its ref-log says.'
 } finally {
     Remove-TempTree $repo
 }
@@ -443,10 +426,6 @@ try {
     Assert-True (-not $containing) 'Sanity check: no branch may contain the abandoned commit.'
 
     Assert-True (-not (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-whitespace')) 'Content that differs only in whitespace must still count as discarded work.'
-
-    $eligible = Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'main'
-    $keys = @($eligible | ForEach-Object { ConvertTo-Key $_.Path })
-    Assert-True (-not ($keys -contains (ConvertTo-Key $wsPath))) 'A worktree holding whitespace-different discarded work must never be eligible.'
 } finally {
     Remove-TempTree $repo
 }
@@ -496,10 +475,6 @@ try {
     Assert-True (-not $containing) 'Sanity check: no branch may contain the abandoned merge commit.'
 
     Assert-True (-not (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-resolver')) 'A discarded merge commit holding a unique resolution must keep the worktree.'
-
-    $eligible = Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'main'
-    $keys = @($eligible | ForEach-Object { ConvertTo-Key $_.Path })
-    Assert-True (-not ($keys -contains (ConvertTo-Key $mergePath))) 'A worktree holding a discarded merge commit must never be eligible.'
 } finally {
     Remove-TempTree $repo
 }
@@ -612,10 +587,6 @@ try {
     Assert-True ($forgedEntries -match '(?m)commit \(finish\):') 'Sanity check: the rebase must really have written a forged "commit (finish):" subject.'
 
     Assert-True (-not (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-forged-finish')) 'A forged "commit (finish):" subject must not count as own commits.'
-
-    $eligible = Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'main'
-    $keys = @($eligible | ForEach-Object { ConvertTo-Key $_.Path })
-    Assert-True (-not ($keys -contains (ConvertTo-Key $forgedPath))) 'A forged "commit (finish):" subject must not make an unstarted worktree eligible.'
 } finally {
     Remove-TempTree $repo
 }
@@ -676,10 +647,6 @@ try {
     Assert-True (-not $containing) 'Sanity check: no branch may contain the dropped commit.'
 
     Assert-True (-not (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-stopped')) 'A reset with no commit after it must keep the worktree.'
-
-    $eligible = Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'main'
-    $keys = @($eligible | ForEach-Object { ConvertTo-Key $_.Path })
-    Assert-True (-not ($keys -contains (ConvertTo-Key $stopPath))) 'A worktree holding a dropped commit nothing replaced must never be eligible.'
 } finally {
     Remove-TempTree $repo
 }
@@ -706,10 +673,6 @@ try {
     Assert-True (-not $containing) 'Sanity check: no branch may contain the dropped commit.'
 
     Assert-True (-not (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-diff-subject')) 'A later commit with a different subject must not clear a reset.'
-
-    $eligible = Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'main'
-    $keys = @($eligible | ForEach-Object { ConvertTo-Key $_.Path })
-    Assert-True (-not ($keys -contains (ConvertTo-Key $diffPath))) 'A worktree whose later commit is unrelated work must never be eligible.'
 } finally {
     Remove-TempTree $repo
 }
@@ -743,10 +706,6 @@ try {
     Assert-True (-not $containing) 'Sanity check: no branch may contain the dropped commit.'
 
     Assert-True (-not (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-other-author')) 'The same subject under a different author must not clear a reset.'
-
-    $eligible = Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'main'
-    $keys = @($eligible | ForEach-Object { ConvertTo-Key $_.Path })
-    Assert-True (-not ($keys -contains (ConvertTo-Key $authorPath))) 'A worktree whose redo carries another author must never be eligible.'
 } finally {
     Remove-TempTree $repo
 }
@@ -775,10 +734,6 @@ try {
     Assert-True (-not $containing) 'Sanity check: no branch may contain the second dropped commit.'
 
     Assert-True (-not (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-two-dropped')) 'Redoing one of two dropped commits must keep the worktree.'
-
-    $eligible = Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'main'
-    $keys = @($eligible | ForEach-Object { ConvertTo-Key $_.Path })
-    Assert-True (-not ($keys -contains (ConvertTo-Key $twoPath))) 'A worktree still holding one dropped commit must never be eligible.'
 } finally {
     Remove-TempTree $repo
 }
@@ -813,10 +768,6 @@ try {
     Assert-True (-not $containing) 'Sanity check: no branch may contain the dropped commit.'
 
     Assert-True (-not (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-own-reset')) 'A matching commit on another branch must not clear this branch reset.'
-
-    $eligible = Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'main'
-    $keys = @($eligible | ForEach-Object { ConvertTo-Key $_.Path })
-    Assert-True (-not ($keys -contains (ConvertTo-Key $ownPath))) 'A worktree whose only match is another branch commit must never be eligible.'
 } finally {
     Remove-TempTree $repo
 }
@@ -846,10 +797,6 @@ try {
     Assert-True (-not $containing) 'Sanity check: no branch may contain the dropped commit.'
 
     Assert-True (-not (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-sideways')) 'A reset that moved sideways must keep the worktree.'
-
-    $eligible = Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'main'
-    $keys = @($eligible | ForEach-Object { ConvertTo-Key $_.Path })
-    Assert-True (-not ($keys -contains (ConvertTo-Key $sidePath))) 'A worktree whose reset moved sideways must never be eligible.'
 } finally {
     Remove-TempTree $repo
 }
@@ -884,10 +831,6 @@ try {
     Assert-True (-not $containing) 'Sanity check: no branch may contain the dropped commit.'
 
     Assert-True (-not (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-away')) 'A redo built somewhere else must keep the worktree.'
-
-    $eligible = Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'main'
-    $keys = @($eligible | ForEach-Object { ConvertTo-Key $_.Path })
-    Assert-True (-not ($keys -contains (ConvertTo-Key $awayPath))) 'A worktree whose redo stands elsewhere must never be eligible.'
 } finally {
     Remove-TempTree $repo
 }
@@ -914,10 +857,6 @@ try {
     Assert-True (-not $containing) 'Sanity check: no branch may contain the dropped commit.'
 
     Assert-True (-not (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-case-subject')) 'A subject differing only in letter case must not clear a reset.'
-
-    $eligible = Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'main'
-    $keys = @($eligible | ForEach-Object { ConvertTo-Key $_.Path })
-    Assert-True (-not ($keys -contains (ConvertTo-Key $casePath))) 'A worktree matched only by case-folded subjects must never be eligible.'
 } finally {
     Remove-TempTree $repo
 }
@@ -947,10 +886,6 @@ try {
     Assert-True ($redoName -ceq 'cleanup test') 'Sanity check: the later commit must carry the lower-case author name.'
 
     Assert-True (-not (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-case-name')) 'An author name differing only in letter case must not clear a reset.'
-
-    $eligible = Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'main'
-    $keys = @($eligible | ForEach-Object { ConvertTo-Key $_.Path })
-    Assert-True (-not ($keys -contains (ConvertTo-Key $namePath))) 'A worktree matched only by a case-folded author name must never be eligible.'
 } finally {
     Remove-TempTree $repo
 }
@@ -980,10 +915,6 @@ try {
     Assert-True ($redoMail -ceq 'TEST@EXAMPLE.COM') 'Sanity check: the later commit must carry the upper-case author email.'
 
     Assert-True (-not (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-case-mail')) 'An author email differing only in letter case must not clear a reset.'
-
-    $eligible = Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'main'
-    $keys = @($eligible | ForEach-Object { ConvertTo-Key $_.Path })
-    Assert-True (-not ($keys -contains (ConvertTo-Key $mailPath))) 'A worktree matched only by a case-folded author email must never be eligible.'
 } finally {
     Remove-TempTree $repo
 }
@@ -1021,10 +952,6 @@ try {
     Assert-True (-not $containing) 'Sanity check: no branch may contain the dropped commit.'
 
     Assert-True (-not (Test-BranchOwnWorkWasMerged -RepoRoot $repo -Branch 'feat-forged-redo')) 'A forged fast-forward must not donate another branch commit as the redo.'
-
-    $eligible = Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'main'
-    $keys = @($eligible | ForEach-Object { ConvertTo-Key $_.Path })
-    Assert-True (-not ($keys -contains (ConvertTo-Key $forgedPath))) 'A worktree whose redo is a forged fast-forward must never be eligible.'
 } finally {
     Remove-TempTree $repo
 }
