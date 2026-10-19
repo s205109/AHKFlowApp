@@ -1210,10 +1210,11 @@ Invoke-TestCase 'MaxParallel 1 runs nothing at the same time' {
         # barrier releases them together and the peak goes above 1.
         #
         # A shorter timeout than the default here. The timeout is pure cost on the passing path in
-        # this case, and it is only reached on the failing path in the case above. Five seconds is
-        # still far longer than starting a second child takes.
+        # this case, and it is only reached on the failing path in the case above. Two seconds is
+        # still far longer than starting a second child takes, and a broken runner still shows a
+        # peak above 1, because the later suites release together.
         $names = @('01-a.Tests.ps1', '02-b.Tests.ps1', '03-c.Tests.ps1')
-        foreach ($name in $names) { Add-IntervalSuite -Root $root -Name $name -BarrierCount 2 -TimeoutSeconds 5 }
+        foreach ($name in $names) { Add-IntervalSuite -Root $root -Name $name -BarrierCount 2 -TimeoutSeconds 2 }
         Set-FixtureManifest -Root $root
 
         $result = Invoke-Driver -SuiteRoot $root -MaxParallel 1
@@ -1248,9 +1249,11 @@ Invoke-TestCase 'An exclusive suite never overlaps another suite' {
         # A correct scheduler pays exactly one timeout. It runs every exclusive suite before the
         # shared pool, so 01-alone starts alone, waits the full timeout because the pair cannot
         # start beside it, and holds alone. The pair then starts together, and the third sign-in
-        # arrives as soon as the second of them does, so they release each other with no wait.
+        # arrives as soon as the second of them does, so they release each other with no wait. That
+        # one timeout is pure cost on the passing path, so 01-alone gets the same five seconds the
+        # MaxParallel 1 case once used instead of the default ten.
         $names = @('01-alone.Tests.ps1', '02-other.Tests.ps1', '03-other.Tests.ps1')
-        Add-IntervalSuite -Root $root -Name '01-alone.Tests.ps1' -BarrierCount 3 -BarrierTag 'pair'
+        Add-IntervalSuite -Root $root -Name '01-alone.Tests.ps1' -BarrierCount 3 -BarrierTag 'pair' -TimeoutSeconds 5
         Add-IntervalSuite -Root $root -Name '02-other.Tests.ps1' -BarrierCount 3 -BarrierTag 'pair'
         Add-IntervalSuite -Root $root -Name '03-other.Tests.ps1' -BarrierCount 3 -BarrierTag 'pair'
         Set-FixtureManifest -Root $root -Entry @(
@@ -2104,8 +2107,10 @@ function Invoke-TwoRunnerLaneProof {
     }
 }
 
-Invoke-TestCase 'Lane one runner admits exactly two of four Workers; off admits all four' {
-    foreach ($off in @($false, $true)) {
+# Lanes on only. The acquisition-failure case stubs Open-AhkFlowLaneFile to throw and runs the off
+# role, so off mode cannot touch the pool, and a peak of 4 at -MaxParallel 4 is plain pool sizing.
+Invoke-TestCase 'Lane one runner admits exactly two of four Workers' {
+    foreach ($off in @($false)) {
         $pool = New-PinnedLanePool 2; $fixture = $null; $child = $null
         try {
             $fixture = New-LaneRunnerFixture -Count 4
