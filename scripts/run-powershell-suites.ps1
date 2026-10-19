@@ -71,6 +71,7 @@ $gateWatch = [System.Diagnostics.Stopwatch]::StartNew()
 . "$PSScriptRoot\test-lanes.common.ps1"
 . "$PSScriptRoot\progress.parallel.ps1"
 . "$PSScriptRoot\gate-evidence.common.ps1"
+. "$PSScriptRoot\suite-budget.common.ps1"
 
 if ([string]::IsNullOrWhiteSpace($SuiteRoot)) {
     $SuiteRoot = Join-Path $repoRoot 'tests'
@@ -146,6 +147,11 @@ if ($Gate) {
         Write-Host "Gate evidence: off ($offReason)"
     }
 }
+
+# Backlog 188. A Suite's committed baselineSeconds is its time budget. Budgets apply only to a Gate
+# run outside GitHub Actions, and they never change the exit code.
+$budgetsOn = $Gate -and -not $inActions
+$budgetWarned = [System.Collections.Generic.List[string]]::new()
 
 if ($reuseOn) {
     # Read once per run: the tool versions and the runner's own inputs are the same for every Suite.
@@ -298,11 +304,21 @@ function Show-SuiteResult {
             Reused   = $false
         })
 
+    $entry = @($entries | Where-Object { $_.Name -eq $Result.Name })[0]
+
+    # Backlog 188. Only a Suite that ran can be over its budget. A reused one never reaches here.
+    if ($budgetsOn -and $null -ne $entry) {
+        $warning = Get-SuiteBudgetWarning -Entry $entry -Seconds $Result.Seconds
+        if ($null -ne $warning) {
+            Write-Host $warning -ForegroundColor Yellow
+            $budgetWarned.Add($Result.Name)
+        }
+    }
+
     # Backlog 188. Evidence only after a pass, and only when the inputs still hash to the key the
     # run started with. A Suite that changed one of its own inputs while it ran proved nothing
     # about the new bytes.
     if ($reuseOn -and $Result.ExitCode -eq 0 -and $reuseKeys.ContainsKey($Result.Name)) {
-        $entry = @($entries | Where-Object { $_.Name -eq $Result.Name })[0]
         $inputs = Get-SuiteInputList -Path $byName[$Result.Name].FullName -Root $suiteParent -ExtraInput $entry.Reuse.ExtraInputs
         $again = Get-SuiteReuseKey -Entry $entry -InputList $inputs -RunnerInputList $runnerInputs @reuseContext
         if ($again -eq $reuseKeys[$Result.Name]) {
@@ -407,6 +423,19 @@ foreach ($item in $selected) {
 # file's last-write time while a child runs. -KnownUnit drops a suite that no longer exists.
 Save-ProgressTimings -Tracker $progress -KnownUnit @($discovered.Name)
 
+# Backlog 188. The streak lives beside the timings, and only a run that keeps timings writes it, so
+# a run over fake Suites never touches it. Two warnings in a row suggest an audit; nothing starts
+# one.
+if ($budgetsOn -and $keepTimings) {
+    $executedNames = @($results | Where-Object { -not $_.Reused } | ForEach-Object { $_.Name })
+    $streakPath = Join-Path $repoRoot 'TestResults\progress\budget-streak.json'
+    $repeat = @(Update-SuiteBudgetStreak -Path $streakPath -Executed $executedNames -Warned @($budgetWarned))
+    if ($repeat.Count -gt 0) {
+        $names = $repeat -join ', '
+        Write-Host "These Suites ran over budget in two runs in a row: $names. To audit them, type in Claude Code: Run /test-audit on $names" -ForegroundColor Yellow
+    }
+}
+
 $failed = @($results | Where-Object { $_.ExitCode -ne 0 })
 
 $lines = [System.Collections.Generic.List[string]]::new()
@@ -452,7 +481,7 @@ if ($Gate) {
             executed       = @($results | Where-Object { -not $_.Reused } | ForEach-Object { $_.Name } | Sort-Object)
             reused         = @($reusedRows | ForEach-Object { $_.Name } | Sort-Object)
             elapsedSeconds = [math]::Round($gateWatch.Elapsed.TotalSeconds, 1)
-            budgetWarnings = @()
+            budgetWarnings = @($budgetWarned | Sort-Object)
         }
         $logFolder = Split-Path -Parent $evidenceRoot
         if (-not (Test-Path -LiteralPath $logFolder -PathType Container)) {

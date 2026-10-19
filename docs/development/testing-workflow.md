@@ -125,6 +125,32 @@ $env:AHKFLOW_GATE_REUSE = 'off'
 CI never reuses. Inside GitHub Actions the runner prints `Gate evidence: off (GitHub Actions)` and
 runs every Suite.
 
+### Suite time budget
+
+Each Suite's `baselineSeconds` in `tests/powershell-suites.json` is its time budget. In a Gate
+run, a Suite that takes more than 1.3 times its budget prints a line like this:
+
+```text
+BUDGET WatchTask.Tests.ps1: 61.2 s against a budget of 44.3 s (+38 %)
+```
+
+A budget under 5 seconds, or a null one, never warns. A reused Suite took no time, so it never
+warns. CI checks no budget. A warning never fails the run. The Gate log line names the Suites that
+warned, under `budgetWarnings`.
+
+When the same Suite warns in two runs in a row that executed it, the runner suggests an audit:
+
+```text
+These Suites ran over budget in two runs in a row: WatchTask.Tests.ps1. To audit them, type in Claude Code: Run /test-audit on WatchTask.Tests.ps1
+```
+
+The audit never starts by itself. `docs/development/test-audit-workflow.md` describes it. The
+runner keeps the count in `TestResults/progress/budget-streak.json`. A run that executes the Suite
+without a warning sets its count back to 0.
+
+When a Suite is slower for a good reason, accept the new time: change its `baselineSeconds` in a
+commit whose message says why.
+
 ## Fast inner loop
 
 ```bash

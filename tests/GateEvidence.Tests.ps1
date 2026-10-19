@@ -383,6 +383,68 @@ Invoke-TestCase 'The evidence root is the override when set, else TestResults/ga
     finally { $env:AHKFLOW_GATE_EVIDENCE_ROOT = $previous }
 }
 
+# --- The time budget per Suite -------------------------------------------------
+
+$budgetLibrary = Join-Path $repoRoot 'scripts\suite-budget.common.ps1'
+if (Test-Path -LiteralPath $budgetLibrary -PathType Leaf) { . $budgetLibrary }
+
+function New-BudgetEntry {
+    param($Baseline)
+    return [pscustomobject]@{ Name = 'S.Tests.ps1'; BaselineSeconds = $Baseline }
+}
+
+Invoke-TestCase 'A Suite 31 percent over its budget warns' {
+    $warning = Get-SuiteBudgetWarning -Entry (New-BudgetEntry 30) -Seconds 39.3
+    Assert-True ($warning -eq 'BUDGET S.Tests.ps1: 39.3 s against a budget of 30.0 s (+31 %)') "Got: $warning"
+}
+
+Invoke-TestCase 'A Suite 29 percent over its budget does not warn' {
+    $warning = Get-SuiteBudgetWarning -Entry (New-BudgetEntry 30) -Seconds 38.7
+    Assert-True ($null -eq $warning) "Got: $warning"
+}
+
+Invoke-TestCase 'A budget under 5 s or null never warns' {
+    Assert-True ($null -eq (Get-SuiteBudgetWarning -Entry (New-BudgetEntry 4.9) -Seconds 100)) 'A budget under 5 s must not warn.'
+    Assert-True ($null -eq (Get-SuiteBudgetWarning -Entry (New-BudgetEntry $null) -Seconds 100)) 'A null budget must not warn.'
+}
+
+Invoke-TestCase 'Two warnings in a row suggest the audit' {
+    $root = New-TempRoot
+    try {
+        $streak = Join-Path $root 'progress\budget-streak.json'
+        $first = @(Update-SuiteBudgetStreak -Path $streak -Executed @('A.Tests.ps1', 'B.Tests.ps1') -Warned @('A.Tests.ps1'))
+        Assert-True ($first.Count -eq 0) "One warning must not suggest the audit. Got: $($first -join ',')"
+        $second = @(Update-SuiteBudgetStreak -Path $streak -Executed @('A.Tests.ps1', 'B.Tests.ps1') -Warned @('A.Tests.ps1'))
+        Assert-True (($second -join ',') -eq 'A.Tests.ps1') "Two in a row must suggest A only. Got: $($second -join ',')"
+    }
+    finally { Remove-TempRoot $root }
+}
+
+Invoke-TestCase 'A run without a warning resets the streak' {
+    $root = New-TempRoot
+    try {
+        $streak = Join-Path $root 'budget-streak.json'
+        Update-SuiteBudgetStreak -Path $streak -Executed @('A.Tests.ps1') -Warned @('A.Tests.ps1') | Out-Null
+        Update-SuiteBudgetStreak -Path $streak -Executed @('A.Tests.ps1') -Warned @() | Out-Null
+        $after = @(Update-SuiteBudgetStreak -Path $streak -Executed @('A.Tests.ps1') -Warned @('A.Tests.ps1'))
+        Assert-True ($after.Count -eq 0) "A clean run in between must reset the streak. Got: $($after -join ',')"
+    }
+    finally { Remove-TempRoot $root }
+}
+
+Invoke-TestCase 'A reused Suite leaves the streak unchanged' {
+    $root = New-TempRoot
+    try {
+        $streak = Join-Path $root 'budget-streak.json'
+        Update-SuiteBudgetStreak -Path $streak -Executed @('A.Tests.ps1') -Warned @('A.Tests.ps1') | Out-Null
+        # A was reused: it is not in Executed, so its streak must survive this run.
+        Update-SuiteBudgetStreak -Path $streak -Executed @('B.Tests.ps1') -Warned @() | Out-Null
+        $after = @(Update-SuiteBudgetStreak -Path $streak -Executed @('A.Tests.ps1') -Warned @('A.Tests.ps1'))
+        Assert-True (($after -join ',') -eq 'A.Tests.ps1') "A reused run must not reset the streak. Got: $($after -join ',')"
+    }
+    finally { Remove-TempRoot $root }
+}
+
 # --- The runner reuses evidence -----------------------------------------------
 #
 # Each scenario runs scripts/run-powershell-suites.ps1 as a child over a folder of fake Suites.
@@ -398,7 +460,7 @@ function ConvertTo-ScriptLiteral {
 }
 
 function New-GateFixture {
-    # Suites: name -> @{ Reuse = $null or a hashtable; Body = extra lines }.
+    # Suites: name -> @{ Reuse = $null or a hashtable; Body = extra lines; Baseline = seconds or absent }.
     param([System.Collections.IDictionary] $Suite)
     $root = New-TempRoot
     $tests = Join-Path $root 'tests'
@@ -409,7 +471,7 @@ function New-GateFixture {
         $lines = @("Add-Content -LiteralPath $(ConvertTo-ScriptLiteral $counter) -Value 'ran'") + @($Suite[$name]['Body'])
         Set-Content -LiteralPath (Join-Path $tests $name) -Value ($lines -join [Environment]::NewLine) -Encoding utf8
 
-        $entry = [ordered]@{ name = $name; jobs = @('suites'); platform = @('windows', 'linux'); execution = 'parallel'; baselineSeconds = $null }
+        $entry = [ordered]@{ name = $name; jobs = @('suites'); platform = @('windows', 'linux'); execution = 'parallel'; baselineSeconds = $Suite[$name]['Baseline'] }
         if ($null -ne $Suite[$name]['Reuse']) { $entry['reuse'] = $Suite[$name]['Reuse'] }
         $entry
     }
@@ -462,10 +524,12 @@ function Invoke-GateRunner {
 }
 
 # Scenario A: one eligible Suite, one with no reuse field. Three Gate runs, with an edit before the
-# third.
+# third. Slow is eligible too, with a 5 s budget it overruns once (Task 13): its 7 s sleep is the
+# only one these cases pay, because the later runs reuse it.
 $a = New-GateFixture -Suite ([ordered]@{
         'Quick.Tests.ps1' = @{ Reuse = [ordered]@{ eligible = $true } }
         'Plain.Tests.ps1' = @{ Reuse = $null }
+        'Slow.Tests.ps1'  = @{ Reuse = [ordered]@{ eligible = $true }; Baseline = 5; Body = @('Start-Sleep -Seconds 7') }
     })
 $aRuns = @(); $aCounts = @(); $aError = $null
 try {
@@ -485,29 +549,42 @@ Invoke-TestCase 'A second Gate run reuses an unchanged eligible Suite and runs t
     Assert-True (($aCounts[1] -join ',') -eq '1,2') "Quick must run once and Plain twice, got Quick,Plain = $($aCounts[1] -join ',')."
     Assert-True ($aRuns[1].Output -match 'REUSED Quick\.Tests\.ps1 \(evidence [0-9a-f]{12}\)') "Expected the REUSED line. Output: $($aRuns[1].Output)"
     Assert-True ($aRuns[1].Output -match '\| Quick\.Tests\.ps1 \| reused \| 0 \| - \|') "Expected a reused row in the table. Output: $($aRuns[1].Output)"
-    Assert-True ($aRuns[1].Output -match 'All 2 suite\(s\) passed\.') "A reused Suite still counts as passed. Output: $($aRuns[1].Output)"
+    Assert-True ($aRuns[1].Output -match 'All 3 suite\(s\) passed\.') "A reused Suite still counts as passed. Output: $($aRuns[1].Output)"
 }
 
 Invoke-TestCase 'An edited eligible Suite runs again' {
     Assert-True ($null -eq $aError) "The scenario failed to run: $aError"
     Assert-True ($aRuns[2].ExitCode -eq 0) "The third run must pass. Output: $($aRuns[2].Output)"
     Assert-True (($aCounts[2] -join ',') -eq '2,3') "Quick must run again after its edit, got Quick,Plain = $($aCounts[2] -join ',')."
-    Assert-True ($aRuns[2].Output -notmatch 'REUSED') "Nothing may be reused after the edit. Output: $($aRuns[2].Output)"
+    Assert-True ($aRuns[2].Output -notmatch 'REUSED Quick') "The edited Suite must not be reused. Output: $($aRuns[2].Output)"
 }
 
 Invoke-TestCase 'Each Gate run appends one log line that names what ran and what was reused' {
     Assert-True ($null -eq $aError) "The scenario failed to run: $aError"
     Assert-True ($aLog.Count -eq 3) "Expected three log lines, got $($aLog.Count)."
-    Assert-True ((@($aLog[0].executed | Sort-Object) -join ',') -eq 'Plain.Tests.ps1,Quick.Tests.ps1') "Run 1 executed both. Got: $(@($aLog[0].executed) -join ',')"
+    Assert-True ((@($aLog[0].executed | Sort-Object) -join ',') -eq 'Plain.Tests.ps1,Quick.Tests.ps1,Slow.Tests.ps1') "Run 1 executed all three. Got: $(@($aLog[0].executed) -join ',')"
     Assert-True (@($aLog[0].reused).Count -eq 0) 'Run 1 reused nothing.'
     Assert-True ((@($aLog[1].executed) -join ',') -eq 'Plain.Tests.ps1') "Run 2 executed only Plain. Got: $(@($aLog[1].executed) -join ',')"
-    Assert-True ((@($aLog[1].reused) -join ',') -eq 'Quick.Tests.ps1') "Run 2 reused Quick. Got: $(@($aLog[1].reused) -join ',')"
+    Assert-True ((@($aLog[1].reused) -join ',') -eq 'Quick.Tests.ps1,Slow.Tests.ps1') "Run 2 reused Quick and Slow. Got: $(@($aLog[1].reused) -join ',')"
     foreach ($line in $aLog) {
         Assert-True ($line.reuse -eq $true) 'Every run here had reuse on.'
         Assert-True ($line.elapsedSeconds -is [double] -or $line.elapsedSeconds -is [long] -or $line.elapsedSeconds -is [int]) "elapsedSeconds must be a number. Got: $($line.elapsedSeconds)"
         Assert-True (-not [string]::IsNullOrWhiteSpace([string] $line.startedAtUtc)) 'Every line must say when it started.'
         Assert-True ($null -ne $line.PSObject.Properties['revision'] -and $null -ne $line.PSObject.Properties['budgetWarnings']) 'Every line must carry revision and budgetWarnings.'
     }
+}
+Invoke-TestCase 'A budget warning prints and the exit code stays 0' {
+    Assert-True ($null -eq $aError) "The scenario failed to run: $aError"
+    Assert-True ($aRuns[0].ExitCode -eq 0) "A budget warning must not fail the run. Output: $($aRuns[0].Output)"
+    Assert-True ($aRuns[0].Output -match 'BUDGET Slow\.Tests\.ps1: [\d.]+ s against a budget of 5\.0 s \(\+\d+ %\)') "Expected the BUDGET line. Output: $($aRuns[0].Output)"
+    Assert-True ((@($aLog[0].budgetWarnings) -join ',') -eq 'Slow.Tests.ps1') "The log line must name the warned Suite. Got: $(@($aLog[0].budgetWarnings) -join ',')"
+}
+
+Invoke-TestCase 'A reused Suite never warns' {
+    Assert-True ($null -eq $aError) "The scenario failed to run: $aError"
+    Assert-True ($aRuns[1].Output -match 'REUSED Slow\.Tests\.ps1') "Slow must be reused in run 2. Output: $($aRuns[1].Output)"
+    Assert-True ($aRuns[1].Output -notmatch 'BUDGET') "A reused Suite took no time, so it must not warn. Output: $($aRuns[1].Output)"
+    Assert-True (@($aLog[1].budgetWarnings).Count -eq 0) 'Run 2 must log no budget warning.'
 }
 Remove-TempRoot $a
 
