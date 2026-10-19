@@ -288,7 +288,24 @@ Proposed: **worth an audit item.** The user confirms or changes this at Task 3.
 
 ## Targets
 
-Empty until Task 3.
+Approved by the user on 2026-10-19.
+
+| # | Measure | Baseline | Target |
+|---|---|---|---|
+| 1 | Gate time, full Gate with evidence reuse switched off | 350.8 s | 210 s or less (40 percent lower) |
+| 2 | Affected-test time, Docs change | 342.8 s | 90 s or less |
+| 2 | Affected-test time, Script change | 346.3 s | 150 s or less |
+| 2 | Affected-test time, Code change | 513.6 s | 300 s or less |
+| 3 | CI critical path | 771 s | 500 s or less |
+| 4 | Gate-required stage exits per item | 2 | 2 or less |
+| 5 | Flaky failures per 30 days | 4 | 1 or less |
+
+- Measures 1 and 2 are judged at 188's closure, in its after record.
+- Measures 3, 4 and 5 move to the follow-up item, with their targets, and are judged there.
+- Measure 4 stays at 2 or less. After the process item merges, the counted stages are `4-execute`
+  and `8-review`, so two exits per item remain normal.
+
+.NET verdict: waiting for the user to confirm the proposed "worth an audit item".
 
 ## Audit
 
