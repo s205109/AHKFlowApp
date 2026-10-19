@@ -261,10 +261,10 @@ if (Test-Path (Join-Path $stubFolder 'gated')) {
     $delegateLock = Enter-AhkFlowTestRunLock -RepoRoot $repoRoot -Mode $Mode
 }
 
-# Runs of different lengths, so the reported-median case sees a median and a mean that differ.
-# 1st longest, 3rd middle. Sorted they are 0.10 / 0.30 / 0.90 s: median 0.30 s, mean 0.43 s.
+# A case that does not write 'sleeps.txt' gets runs of different lengths: 1st longest, 3rd
+# middle. Sorted they are 0.10 / 0.30 / 0.90 s: median 0.30 s, mean 0.43 s.
 #
-# That case asserts each printed number against the runs the harness itself printed, so no
+# The reported-median case asserts each printed number against the runs the harness itself printed, so no
 # threshold here has to survive machine load. It once compared the mean against the median with
 # a fixed 0.05 s margin, which a slow run could close by accident. The fixed-value case above
 # owns that comparison now, where the numbers are constants and nothing can move them.
@@ -274,7 +274,7 @@ if (Test-Path (Join-Path $stubFolder 'fail-fast')) { throw 'Forced timed invocat
 
 # The sleeps this fixture uses, in milliseconds, one per run. A case writes 'sleeps.txt' to
 # choose them, which is how the warm-up cases get a slow head and a flat tail. The fallback is
-# the original cycle, which the median and mean cases above rely on.
+# the original cycle.
 $sleepsPath = Join-Path $stubFolder 'sleeps.txt'
 if (Test-Path -LiteralPath $sleepsPath) {
     $sleeps = @((Get-Content -LiteralPath $sleepsPath -Raw).Trim() -split ',' | ForEach-Object { [int]$_.Trim() })
@@ -366,24 +366,11 @@ function Get-GateStepLines {
 
 Write-Host "Testing $(Join-Path $repoRoot 'scripts\measure-test-modes.ps1')"
 
-Invoke-TestCase 'Timing mode calls the Mode once per run' {
-    $root = New-HarnessFixture
-    try {
-        # -WarmUpRuns 0 because this case counts calls. The default of 2 would add two more.
-        $result = Invoke-Harness -Root $root -Arguments @('-Mode', 'Fast', '-Runs', '3', '-WarmUpRuns', '0', '-SettleSeconds', '0', '-NoBuild')
-        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
-
-        $calls = @(Get-Content -LiteralPath (Join-Path $root 'stub\testfast-calls.txt'))
-        Assert-True ($calls.Count -eq 3) "Expected 3 test-fast.ps1 calls, got $($calls.Count)."
-        Assert-True (@($calls | Where-Object { $_ -match 'NoBuild=True' }).Count -eq 3) `
-            "Every timing run must pass -NoBuild. Calls: $($calls -join ' | ')"
-    }
-    finally { Remove-HarnessFixture -Root $root }
-}
-
 Invoke-TestCase 'KeepBuildInRun leaves -NoBuild off the test-fast call' {
     $root = New-HarnessFixture
     try {
+        # The case checks calls and signals, never run times, so the stub does not sleep.
+        Set-Content -LiteralPath (Join-Path $root 'stub\sleeps.txt') -Value '0' -Encoding utf8
         # -NoBuild here is the harness's own one-build-up-front switch. -KeepBuildInRun governs
         # what each run is asked to do, and the two are deliberately independent.
         $result = Invoke-Harness -Root $root -Arguments @('-Mode', 'Fast', '-Runs', '1', '-WarmUpRuns', '0', '-SettleSeconds', '0', '-NoBuild', '-KeepBuildInRun')
@@ -400,6 +387,8 @@ Invoke-TestCase 'KeepBuildInRun leaves -NoBuild off the test-fast call' {
 Invoke-TestCase 'Two measurements in one Mode keep both sessions' {
     $root = New-HarnessFixture
     try {
+        # The case checks calls and signals, never run times, so the stub does not sleep.
+        Set-Content -LiteralPath (Join-Path $root 'stub\sleeps.txt') -Value '0' -Encoding utf8
         # Backlog 140 took two sessions back to back in one Mode, and the second invocation deleted
         # the first one's artifacts. Each invocation writes its own session folder now, and never
         # removes an earlier one. The stub runs finish within a second, so the two sessions also
@@ -497,9 +486,18 @@ Invoke-TestCase 'Get-AhkFlowTestCount returns zero for every shape of TRX nobody
 Invoke-TestCase 'The reported median is the middle of the sorted runs, and the mean line is the mean' {
     $root = New-HarnessFixture
     try {
+        # Runs of different lengths, so the median and the mean differ: sorted 0.02 / 0.06 / 0.18 s.
+        Set-Content -LiteralPath (Join-Path $root 'stub\sleeps.txt') -Value '180,20,60' -Encoding utf8
+
         # -WarmUpRuns 0 because this case counts calls. The default of 2 would add two more.
         $result = Invoke-Harness -Root $root -Arguments @('-Mode', 'Fast', '-Runs', '3', '-WarmUpRuns', '0', '-SettleSeconds', '0', '-NoBuild')
         Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
+
+        # Timing mode calls the Mode once per run, and every run passes -NoBuild.
+        $calls = @(Get-Content -LiteralPath (Join-Path $root 'stub\testfast-calls.txt'))
+        Assert-True ($calls.Count -eq 3) "Expected 3 test-fast.ps1 calls, got $($calls.Count)."
+        Assert-True (@($calls | Where-Object { $_ -match 'NoBuild=True' }).Count -eq 3) `
+            "Every timing run must pass -NoBuild. Calls: $($calls -join ' | ')"
 
         # Every number here comes from the harness's own output, so both sides of each assertion
         # move together. Load changes what the runs are; it cannot make the median stop being the
@@ -524,10 +522,10 @@ Invoke-TestCase 'The reported median is the middle of the sorted runs, and the m
 Invoke-TestCase 'A slow head is discarded and the median is the flat tail' {
     $root = New-HarnessFixture
     try {
-        # Three slow runs then two flat ones. The median of all five is 0.90 s. The median of the
-        # counted tail is 0.10 s. A harness that forgot to discard cannot land near 0.10 s by
-        # accident, so no threshold here has to survive machine load.
-        Set-Content -LiteralPath (Join-Path $root 'stub\sleeps.txt') -Value '900,900,900,100,100' -Encoding utf8
+        # Three slow runs then two flat ones. The median of all five is 0.60 s. The median of the
+        # counted tail is near 0 s. A harness that forgot to discard cannot land near 0 s by
+        # accident, and 0.30 s of margin on each side survives machine load.
+        Set-Content -LiteralPath (Join-Path $root 'stub\sleeps.txt') -Value '600,600,600,0,0' -Encoding utf8
 
         $result = Invoke-Harness -Root $root -Arguments @(
             '-Mode', 'Fast', '-Runs', '2', '-WarmUpRuns', '3', '-NoBuild')
@@ -539,8 +537,8 @@ Invoke-TestCase 'A slow head is discarded and the median is the flat tail' {
         $text = $result.Output -join "`n"
         Assert-True ($text -match 'median\s+:\s+([\d.,]+)') "No median line. Output: $text"
         $median = [double]($Matches[1] -replace ',', '.')
-        Assert-True ($median -lt 0.5) `
-            "The median must come from the flat tail near 0.10 s, not the whole list near 0.90 s. Got $median."
+        Assert-True ($median -lt 0.3) `
+            "The median must come from the flat tail near 0 s, not the whole list near 0.60 s. Got $median."
     }
     finally { Remove-HarnessFixture -Root $root }
 }
@@ -548,7 +546,7 @@ Invoke-TestCase 'A slow head is discarded and the median is the flat tail' {
 Invoke-TestCase 'The discarded runs are printed, with how many there were' {
     $root = New-HarnessFixture
     try {
-        Set-Content -LiteralPath (Join-Path $root 'stub\sleeps.txt') -Value '900,900,100,100,100' -Encoding utf8
+        Set-Content -LiteralPath (Join-Path $root 'stub\sleeps.txt') -Value '0' -Encoding utf8
 
         $result = Invoke-Harness -Root $root -Arguments @(
             '-Mode', 'Fast', '-Runs', '3', '-WarmUpRuns', '2', '-NoBuild')
@@ -568,20 +566,20 @@ Invoke-TestCase 'The discarded runs are printed, with how many there were' {
 Invoke-TestCase 'The warm-up ceiling caps the runs and never the wait' {
     $root = New-HarnessFixture
     try {
-        Set-Content -LiteralPath (Join-Path $root 'stub\sleeps.txt') -Value '300' -Encoding utf8
+        Set-Content -LiteralPath (Join-Path $root 'stub\sleeps.txt') -Value '100' -Encoding utf8
 
         # A build output file written just now, so the settle clock is not satisfied.
         $binFolder = Join-Path $root 'tests\FakeProject\bin\Release\net10.0'
         New-Item -ItemType Directory -Path $binFolder -Force | Out-Null
         Set-Content -LiteralPath (Join-Path $binFolder 'Fake.dll') -Value 'not a real assembly' -Encoding utf8
 
-        # Four warm-up runs at 300 ms cannot fill a 5 s target, so the ceiling is reached first.
+        # Four warm-up runs at 100 ms cannot fill a 3 s target, so the ceiling is reached first.
         # That is the shape of a real short Mode: the Fast Mode measured 13.5 to 16.1 s a run, and
         # a 600 s target would need more than forty runs to fill. The ceiling must cap the runs
         # without ever letting the counted runs start on a tree that is still cold.
         $result = Invoke-Harness -Root $root -Arguments @(
             '-Mode', 'Fast', '-Runs', '1', '-WarmUpRuns', '1',
-            '-SettleSeconds', '5', '-MaxWarmUpRuns', '4', '-NoBuild')
+            '-SettleSeconds', '3', '-MaxWarmUpRuns', '4', '-NoBuild')
         Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
 
         # Warm-ups past the minimum of one, capped at four, then one counted run.
@@ -595,11 +593,11 @@ Invoke-TestCase 'The warm-up ceiling caps the runs and never the wait' {
             "The ceiling caps the runs, not the wait. It must wait out the rest. Output: $text"
 
         # The assertion that proves the wait really happened. Without it the counted runs start
-        # about 2 s after the build, and the build-age line reads well under the 5 s target.
+        # about 1 s after the build, and the build-age line reads well under the 3 s target.
         Assert-True ($text -match 'built\s+:\s+([\d.,]+)\s+s') "No build-age line. Output: $text"
         $builtAge = [double]($Matches[1] -replace '[,.]', '')
-        Assert-True ($builtAge -ge 5) `
-            "The counted runs must start at or after the 5 s settle target, but the build age reads $builtAge s. Output: $text"
+        Assert-True ($builtAge -ge 3) `
+            "The counted runs must start at or after the 3 s settle target, but the build age reads $builtAge s. Output: $text"
     }
     finally { Remove-HarnessFixture -Root $root }
 }
@@ -628,7 +626,7 @@ Invoke-TestCase 'With no build output the settle clock is off, and it says so' {
 Invoke-TestCase 'The report names the spread and how old the build was' {
     $root = New-HarnessFixture
     try {
-        Set-Content -LiteralPath (Join-Path $root 'stub\sleeps.txt') -Value '100,300,900' -Encoding utf8
+        Set-Content -LiteralPath (Join-Path $root 'stub\sleeps.txt') -Value '20,60,180' -Encoding utf8
 
         $result = Invoke-Harness -Root $root -Arguments @(
             '-Mode', 'Fast', '-Runs', '3', '-WarmUpRuns', '0', '-SettleSeconds', '0', '-NoBuild')
@@ -815,6 +813,8 @@ Invoke-TestCase 'The connection-string variable is restored in the process that 
 Invoke-TestCase 'The build runs inside the lock, and timing mode releases it before the first run' {
     $root = New-HarnessFixture
     try {
+        # The case checks calls and signals, never run times, so the stub does not sleep.
+        Set-Content -LiteralPath (Join-Path $root 'stub\sleeps.txt') -Value '0' -Encoding utf8
         # Note the absent -NoBuild: this case is about the build.
         # -WarmUpRuns 0 because this case counts calls. The default of 2 would add two more.
         $result = Invoke-Harness -Root $root -Arguments @('-Mode', 'Fast', '-Runs', '2', '-WarmUpRuns', '0', '-SettleSeconds', '0')
@@ -1036,7 +1036,7 @@ Invoke-TestCase 'Cancelled admission cleans up in a surviving runspace before an
 # Backlog 188. Gate Mode times the five Gate steps, so the record measures what a developer
 # waits for before a pull request goes ready.
 
-Invoke-TestCase 'Gate Mode runs the five Gate steps in order, once per run' {
+Invoke-TestCase 'Gate Mode runs the five Gate steps in order, once per run, and records their times' {
     $root = New-GateFixture
     try {
         $result = Invoke-Harness -Root $root -Arguments @('-Mode', 'Gate', '-BaseRef', 'main', '-WarmUpRuns', '1', '-Runs', '2')
@@ -1054,15 +1054,8 @@ Invoke-TestCase 'Gate Mode runs the five Gate steps in order, once per run' {
         $actual = Get-GateStepLines -Root $root
         Assert-True (($actual -join "`n") -eq ($expected -join "`n")) `
             "Expected the five steps three times. Got:`n$($actual -join "`n")"
-    }
-    finally { Remove-HarnessFixture -Root $root }
-}
 
-Invoke-TestCase 'Gate Mode writes the five step times into run.json and their medians into record.json' {
-    $root = New-GateFixture
-    try {
-        $result = Invoke-Harness -Root $root -Arguments @('-Mode', 'Gate', '-BaseRef', 'main', '-WarmUpRuns', '1', '-Runs', '2')
-        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
+        # The step times go into run.json, and their medians into record.json.
 
         $session = @(Get-ChildItem -LiteralPath (Join-Path $root 'TestResults\measure-test-modes\Gate') -Directory)
         Assert-True ($session.Count -eq 1) "Expected one session folder, got $($session.Count)."
@@ -1106,6 +1099,12 @@ Invoke-TestCase 'Gate Mode with a change restores the changed file to its origin
         Assert-True (@($seen | Select-Object -Skip 1 | Where-Object { $_ -match 'changed=True' }).Count -eq 6) `
             "Every timed run must see its change. Seen:`n$($seen -join "`n")"
 
+        # The preparation run leaves run-1.txt. Every timed run must start with that file and
+        # nothing else: the marker back, and the file the timed run before it wrote gone.
+        foreach ($line in @($seen | Select-Object -Skip 1)) {
+            Assert-True ($line -match 'held=run-1\.txt changed') "A timed run must start from the prepared evidence only: $line"
+        }
+
         foreach ($relative in $paths) {
             $after = [IO.File]::ReadAllBytes((Join-Path $root $relative))
             Assert-True ([Convert]::ToBase64String($after) -eq [Convert]::ToBase64String($before[$relative])) `
@@ -1132,23 +1131,6 @@ Invoke-TestCase 'Gate Mode with a change restores the file when a step fails' {
         $after = [IO.File]::ReadAllBytes((Join-Path $root $relative))
         Assert-True ([Convert]::ToBase64String($after) -eq [Convert]::ToBase64String($before)) `
             "$relative must hold its original bytes after a failed step."
-    }
-    finally { Remove-HarnessFixture -Root $root }
-}
-
-Invoke-TestCase 'Gate Mode with a change restores the prepared evidence before every timed run' {
-    $root = New-GateFixture
-    try {
-        $result = Invoke-Harness -Root $root -Arguments @('-Mode', 'Gate', '-BaseRef', 'main', '-Change', 'Docs', '-WarmUpRuns', '1', '-Runs', '2')
-        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
-
-        # Run 1 is the preparation run. It leaves run-1.txt. Every timed run must start with that
-        # file and nothing else: the marker back, and the file the timed run before it wrote gone.
-        $seen = @(Get-Content -LiteralPath (Join-Path $root 'stub\evidence-seen.txt'))
-        Assert-True ($seen.Count -eq 4) "Expected 1 preparation and 3 timed runs, got $($seen.Count)."
-        foreach ($line in @($seen | Select-Object -Skip 1)) {
-            Assert-True ($line -match 'held=run-1\.txt changed') "A timed run must start from the prepared evidence only: $line"
-        }
     }
     finally { Remove-HarnessFixture -Root $root }
 }
