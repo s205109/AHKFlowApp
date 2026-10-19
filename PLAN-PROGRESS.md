@@ -12,7 +12,7 @@ One line per finished task, written after its deliverable commit.
 - [x] Task 3 — targets (stop S1)
 - [x] Task 4 — retire the four research tools
 - [x] Task 5 — prepare the audit (stops S2 and S3)
-- [ ] Task 6 — audit run 1, batch 1 (stops S3 and S4)
+- [x] Task 6 — audit run 1, batch 1 (stops S3 and S4)
 - [ ] Task 7 — audit run 2, batch 2, and the reference file (stop S5)
 - [ ] Task 8 — the `reuse` field in the manifest
 - [ ] Task 9 — the evidence library
