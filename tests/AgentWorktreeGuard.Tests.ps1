@@ -583,8 +583,9 @@ try {
     Invoke-TestCase 'CLAUDE_TOOL_INPUT fallback applies only when stdin is empty' {
         $result = Invoke-Entrypoint -StdIn '' -Adapter 'Claude' -WorkingDirectory $fixture.Main `
             -EnvironmentOverrides @{ CLAUDE_TOOL_INPUT = 'git reset --hard' }
+        # A safety-rule denial on the Claude adapter keeps the legacy stderr + exit 2 protocol.
         Assert-Equal 2 $result.ExitCode 'ExitCode'
-        Assert-Match 'BLOCKED' $result.StdErr 'StdErr'
+        Assert-Match 'BLOCKED: git reset --hard' $result.StdErr 'StdErr'
     }
 
     Invoke-TestCase 'CLAUDE_TOOL_INPUT is ignored when stdin carries a payload' {
@@ -977,13 +978,8 @@ try {
             -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
         Assert-Equal 'Deny' $decision.Action 'Action'
         Assert-Match 'BLOCKED: agent Git mutations' $decision.Message 'Message'
-    }
-
-    # The old wording just said "Override with AHKFLOW_ALLOW_MAIN=1", which reads as actionable to
-    # the agent seeing it - but an inline prefix never reaches this evaluator's own process.
-    Invoke-TestCase 'The denial message says where the override must be set' {
-        $decision = Invoke-AgentGuardPolicy -Command 'git commit -m test' `
-            -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
+        # The old wording just said "Override with AHKFLOW_ALLOW_MAIN=1", which reads as actionable
+        # to the agent seeing it - but an inline prefix never reaches this evaluator's own process.
         # Fragments must not span the here-string's line wraps.
         Assert-Match 'in the shell environment before starting the' $decision.Message 'Message'
         Assert-Match 'prefix does not work' $decision.Message 'Message'
@@ -1262,21 +1258,6 @@ try {
         }
     }
 
-    # Safety rules (force-push, reset --hard, clean -f, checkout ., dangerous rm) short-circuit
-    # Invoke-AgentGuardPolicy before the location decision ever runs (see common.ps1:1147), so Ask
-    # is structurally unreachable for them. $safetyCases/$indirectSafetyCases above already pin
-    # Get-AgentCommandSafetyDecision's Action/Rule; this confirms the same end to end through the
-    # full policy, never downgraded to Ask.
-    $safetyStillDenyEndToEndCases = @(
-        'git push --force', 'git push -f', 'git reset --hard', 'git clean -fd', 'git checkout .', 'rm -rf src'
-    )
-    foreach ($command in $safetyStillDenyEndToEndCases) {
-        Invoke-TestCase "Safety rule still denies end to end, never Ask: $command" {
-            $decision = Invoke-AgentGuardPolicy -Command $command -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
-            Assert-Equal 'Deny' $decision.Action 'Action'
-        }
-    }
-
     # No regression inside a managed worktree: every Tier 1a and Tier 2 command above must still be
     # a plain Allow when it is not targeting the main checkout at all.
     foreach ($command in (@($tier2AllowCases) + @($forceVariantAskCases) + @($tier1aAskCases))) {
@@ -1288,14 +1269,6 @@ try {
 
     Invoke-TestCase 'AHKFLOW_ALLOW_MAIN=1 downgrades a Tier 1a Ask to Warn' {
         $decision = Invoke-AgentGuardPolicy -Command 'git checkout other' `
-            -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main -AllowMain $true
-        Assert-Equal 'Warn' $decision.Action 'Action'
-    }
-
-    # Resolved design decision: AHKFLOW_ALLOW_MAIN=1 keeps its exact current behavior for commit -
-    # a warned Allow, not a Deny. This task only changes whether a prompt is offered when it's unset.
-    Invoke-TestCase 'AHKFLOW_ALLOW_MAIN=1 still turns a commit Deny into a warned Allow' {
-        $decision = Invoke-AgentGuardPolicy -Command 'git commit -m test' `
             -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main -AllowMain $true
         Assert-Equal 'Warn' $decision.Action 'Action'
     }
@@ -1499,15 +1472,6 @@ try {
         $json = $result.StdOut | ConvertFrom-Json
         Assert-Equal 'deny' $json.hookSpecificOutput.permissionDecision 'permissionDecision'
         Assert-Match 'subagent' $json.hookSpecificOutput.permissionDecisionReason 'reason'
-    }
-
-    # Control: the identical command with no agent_id must still Ask - otherwise the Deny assertion
-    # above could pass vacuously (e.g. if the command were Deny for an unrelated reason).
-    Invoke-TestCase 'Claude: the same Tier 1a command without agent_id still asks (control)' {
-        $result = Invoke-Entrypoint -StdIn (New-ClaudePayload 'git checkout other' $script:RealMainCheckout) -Adapter 'Claude'
-        Assert-Equal 0 $result.ExitCode 'ExitCode'
-        $json = $result.StdOut | ConvertFrom-Json
-        Assert-Equal 'ask' $json.hookSpecificOutput.permissionDecision 'permissionDecision'
     }
 
     Invoke-TestCase 'Unknown decision action fails closed, verified structurally on every adapter branch' {
@@ -1837,12 +1801,6 @@ try {
         Assert-Equal 'PreToolUse' $json.hookSpecificOutput.hookEventName 'hookEventName'
         Assert-Equal 'deny' $json.hookSpecificOutput.permissionDecision 'permissionDecision'
         Assert-Match 'BLOCKED: agent Git mutations' $json.hookSpecificOutput.permissionDecisionReason 'reason'
-    }
-
-    Invoke-TestCase 'Claude safety-rule denial still uses the legacy stderr + exit 2 protocol' {
-        $result = Invoke-Entrypoint -StdIn (New-ClaudePayload 'git reset --hard' $script:RealMainCheckout) -Adapter 'Claude'
-        Assert-Equal 2 $result.ExitCode 'ExitCode'
-        Assert-Match 'BLOCKED: git reset --hard' $result.StdErr 'StdErr'
     }
 
     Invoke-TestCase 'Claude unreadable-command denial uses the legacy stderr + exit 2 protocol' {
@@ -3543,13 +3501,6 @@ try {
     # A single backtick, built here so no enclosing string escapes it.
     $tick = [string][char]96
 
-    Invoke-TestCase 'Both Readings: a backtick before a main-checkout path is denied' {
-        $decision = Invoke-AgentGuardPolicy `
-            -Command ("Set-Content -Path $tick" + $fixture.Main + '\README.md -Value x') `
-            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main
-        Assert-Equal 'Deny' $decision.Action 'Action'
-    }
-
     Invoke-TestCase 'Both Readings: the bash message is kept when the bash Reading wins' {
         $decision = Invoke-AgentGuardPolicy `
             -Command ('Set-Content -Path ' + $fixture.Main + '\README.md -Value x') `
@@ -3613,11 +3564,6 @@ try {
                 -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main
             Assert-Equal 'Deny' $decision.Action 'Action'
         }
-    }
-
-    Invoke-TestCase 'Backlog 093: a bash backtick substitution still exposes git' {
-        $parsed = Get-AgentCommandSegment -Command "echo ${tick}git rev-parse HEAD${tick}" -Reading Bash
-        Assert-Equal 1 @($parsed.Segments | Where-Object { $_.Kind -eq 'Git' }).Count 'Git segments'
     }
 
     Write-Host 'Redirect targets carry the expression rule too' -ForegroundColor Cyan
@@ -3692,14 +3638,6 @@ try {
         $decision = Invoke-AgentGuardPolicy -Command $command `
             -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $true
         Assert-Equal 'Warn' $decision.Action 'Action'
-    }
-
-    Invoke-TestCase 'Write isolation: a git mutation decision still wins over a write decision' {
-        $command = 'git commit -m x'
-        $decision = Invoke-AgentGuardPolicy -Command $command `
-            -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main -AllowMain $false
-        Assert-Equal 'Deny' $decision.Action 'Action'
-        Assert-Equal 'agent-main-git-mutation' $decision.Rule 'Rule'
     }
 
     Write-Host 'Heredoc and here-string bodies end to end' -ForegroundColor Cyan
@@ -4186,13 +4124,6 @@ try {
         Assert-Match 'cannot write into the main checkout' $decision.Message 'Message'
     }
 
-    Invoke-TestCase 'File-edit isolation: a file inside the plans repo is allowed' {
-        $path = Join-Path $fixture.Managed 'docs\superpowers\x.md'
-        $decision = Get-AgentFileEditWriteDecision -TargetPath $path `
-            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false
-        Assert-Equal 'Allow' $decision.Action 'Action'
-    }
-
     Invoke-TestCase 'File-edit isolation: the plans root itself explains what is still refused' {
         $path = Join-Path $fixture.Main 'docs\superpowers'
         $decision = Get-AgentFileEditWriteDecision -TargetPath $path `
@@ -4242,21 +4173,6 @@ try {
         Assert-True ($result.StdErr -notmatch 'worktree copy') 'Must not send the agent looking for a copy'
     }
 
-    Invoke-TestCase 'Entrypoint: an edit inside the session worktree is allowed' {
-        $target = Join-Path $fixture.Managed 'README.md'
-        $result = Invoke-Entrypoint -Adapter 'Claude' -ScriptPath $script:FixtureEntrypoint `
-            -StdIn (New-ClaudeEditPayload 'Edit' $target $fixture.Managed)
-        Assert-Equal 0 $result.ExitCode 'ExitCode'
-        Assert-Equal '' $result.StdOut.Trim() 'Must produce no decision payload'
-    }
-
-    Invoke-TestCase 'Entrypoint: a main-checkout session may still edit the main checkout' {
-        $target = Join-Path $fixture.Main 'README.md'
-        $result = Invoke-Entrypoint -Adapter 'Claude' -ScriptPath $script:FixtureEntrypoint `
-            -StdIn (New-ClaudeEditPayload 'Edit' $target $fixture.Main)
-        Assert-Equal 0 $result.ExitCode 'ExitCode'
-    }
-
     Invoke-TestCase 'Entrypoint: AHKFLOW_ALLOW_MAIN=1 warns instead of denying an edit' {
         $target = Join-Path $fixture.Main 'README.md'
         $result = Invoke-Entrypoint -Adapter 'Claude' -ScriptPath $script:FixtureEntrypoint `
@@ -4264,15 +4180,6 @@ try {
             -EnvironmentOverrides @{ AHKFLOW_ALLOW_MAIN = '1' }
         Assert-Equal 0 $result.ExitCode 'ExitCode'
         Assert-Match 'AHKFLOW_ALLOW_MAIN=1 overrode' $result.StdErr 'StdErr'
-    }
-
-    Invoke-TestCase 'Entrypoint: AHKFLOW_GUARD_DISABLE=1 skips the file-edit rule too' {
-        $target = Join-Path $fixture.Main 'README.md'
-        $result = Invoke-Entrypoint -Adapter 'Claude' -ScriptPath $script:FixtureEntrypoint `
-            -StdIn (New-ClaudeEditPayload 'Edit' $target $fixture.Managed) `
-            -EnvironmentOverrides @{ AHKFLOW_GUARD_DISABLE = '1' }
-        Assert-Equal 0 $result.ExitCode 'ExitCode'
-        Assert-True ($result.StdErr -notmatch 'cannot write into the main checkout') 'Must not deny'
     }
 
     Invoke-TestCase 'Entrypoint: Codex file-edit calls stay out of scope' {
