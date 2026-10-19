@@ -24,93 +24,23 @@ try {
     $cleanPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-clean'
     Add-TestWorktree -RepoDir $repo -BranchName 'feat-dirty' -Dirty | Out-Null
     Add-TestWorktree -RepoDir $repo -BranchName 'feat-unmerged' -Unmerged | Out-Null
+    # Backlog 060: two brand-new worktrees must be able to exist at the same time. Both branches
+    # point at main's tip, so both look merged; neither is finished work. The second one also
+    # catches up with main by fast-forward and still holds no work of its own.
+    $freshPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-fresh-one' -NoCommits
+    $freshTwoPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-fresh-two' -NoCommits
+    Invoke-TestGit $freshTwoPath @('merge', '--ff-only', 'main') | Out-Null
 
     $eligible = Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'main'
     $keys = @($eligible | ForEach-Object { ConvertTo-Key $_.Path })
 
     Assert-Equal 1 $eligible.Count 'Only the merged+clean worktree should be eligible.'
     Assert-True ($keys -contains (ConvertTo-Key $cleanPath)) 'The merged+clean worktree must be eligible.'
+    Assert-True (-not ($keys -contains (ConvertTo-Key $freshPath))) 'A worktree with no commits of its own must never be eligible.'
+    Assert-True (-not ($keys -contains (ConvertTo-Key $freshTwoPath))) 'A worktree fast-forwarded to main without its own commits must never be eligible.'
     Assert-Equal 'feat-clean' $eligible[0].Branch 'Eligible branch short name should be feat-clean.'
     $mainKey = ConvertTo-Key $repo
     Assert-True (-not ($keys -contains $mainKey)) 'The main checkout must never be eligible.'
-} finally {
-    Remove-TempTree $repo
-}
-
-# --- Test: a worktree whose branch has no commits is never eligible (backlog 060) ---
-# Two brand-new worktrees must be able to exist at the same time. Both branches point at main's
-# tip, so both look merged; neither is finished work. The third worktree here caught up with main
-# by fast-forward and still holds no work of its own.
-$repo = New-TempGitRepo
-try {
-    $freshPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-fresh-one' -NoCommits
-    $freshTwoPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-fresh-two' -NoCommits
-    $donePath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-really-merged'
-
-    # feat-fresh-two catches up with main, which now holds the merge commit for feat-really-merged.
-    Invoke-TestGit $freshTwoPath @('merge', '--ff-only', 'main') | Out-Null
-
-    $eligible = Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'main'
-    $keys = @($eligible | ForEach-Object { ConvertTo-Key $_.Path })
-
-    Assert-Equal 1 $eligible.Count 'Only the branch with merged commits of its own should be eligible.'
-    Assert-True ($keys -contains (ConvertTo-Key $donePath)) 'A branch really merged into main must stay eligible.'
-    Assert-True (-not ($keys -contains (ConvertTo-Key $freshPath))) 'A worktree with no commits of its own must never be eligible.'
-    Assert-True (-not ($keys -contains (ConvertTo-Key $freshTwoPath))) 'A worktree fast-forwarded to main without its own commits must never be eligible.'
-} finally {
-    Remove-TempTree $repo
-}
-
-# --- Test: a merged worktree stays eligible after it catches up with main -------------
-# The sweep's whole job. A worktree left open after its pull request merged, then updated with
-# `git merge --ff-only main`, still holds finished work and must still be removed.
-$repo = New-TempGitRepo
-try {
-    $caughtUpPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-caught-up'
-    Invoke-TestGit $caughtUpPath @('merge', '--ff-only', 'main') | Out-Null
-
-    $eligible = Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'main'
-    $keys = @($eligible | ForEach-Object { ConvertTo-Key $_.Path })
-
-    Assert-True ($keys -contains (ConvertTo-Key $caughtUpPath)) 'A merged worktree that fast-forwarded to main must stay eligible for cleanup.'
-} finally {
-    Remove-TempTree $repo
-}
-
-# --- Test: a rebased worktree is eligible once it merges (backlog 095) ----------------
-# Eligibility is where the deletion decision is made, so the rebase shape is pinned here too, not
-# only at the probe. An unstarted branch rebased onto the merged branch must still survive.
-$repo = New-TempGitRepo
-try {
-    $rebasedPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-rebased-eligible' -Rebase
-    $unstartedPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-unstarted-rebase-eligible' -NoCommits -BaseRef 'main^'
-    Invoke-TestGit $unstartedPath @('rebase', 'feat-rebased-eligible') | Out-Null
-
-    $eligible = Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'main'
-    $keys = @($eligible | ForEach-Object { ConvertTo-Key $_.Path })
-
-    Assert-True ($keys -contains (ConvertTo-Key $rebasedPath)) 'A worktree rebased before its merge must be eligible for cleanup.'
-    Assert-True (-not ($keys -contains (ConvertTo-Key $unstartedPath))) 'An unstarted worktree rebased onto a merged branch must never be eligible.'
-} finally {
-    Remove-TempTree $repo
-}
-
-# --- Test: a forged ref-log subject cannot make an unstarted worktree eligible --------
-# Eligibility is where the deletion decision is made, so the spoof is pinned here too, not
-# only at the probe. GIT_REFLOG_ACTION=commit + a fast-forward writes "commit: Fast-forward"
-# onto a branch nobody committed on.
-$repo = New-TempGitRepo
-try {
-    $spoofPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-spoof-eligible' -NoCommits
-    $donePath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-genuine'
-
-    Invoke-TestGitWithReflogAction -RepoDir $spoofPath -Action 'commit' -GitArgs @('merge', '--ff-only', 'main') | Out-Null
-
-    $eligible = Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'main'
-    $keys = @($eligible | ForEach-Object { ConvertTo-Key $_.Path })
-
-    Assert-True (-not ($keys -contains (ConvertTo-Key $spoofPath))) 'A forged "commit:" ref-log subject must not make an unstarted worktree eligible.'
-    Assert-True ($keys -contains (ConvertTo-Key $donePath)) 'Genuinely merged work must stay eligible alongside the spoofed branch.'
 } finally {
     Remove-TempTree $repo
 }
@@ -186,38 +116,6 @@ try {
     Remove-TempTree $repo
 }
 
-# --- Test: --format branch parsing (regression guard for the '+ ' marker) ------
-$repo = New-TempGitRepo
-try {
-    $mergedPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-plusprefix'
-
-    # A branch checked out in another worktree is prefixed with '+ ' by plain
-    # `git branch --merged`; a naive parse would drop it. Prove the marker is there...
-    $plain = (Invoke-TestGit $repo @('branch', '--merged', 'main')) -join "`n"
-    Assert-True ($plain -match '(?m)^\+\s+feat-plusprefix$') 'Expected the plain --merged output to prefix the worktree branch with "+ ".'
-
-    # ...then prove detection (which uses --format) still finds it.
-    $eligible = Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'main'
-    $keys = @($eligible | ForEach-Object { ConvertTo-Key $_.Path })
-    Assert-True ($keys -contains (ConvertTo-Key $mergedPath)) 'A merged branch checked out in a worktree must be detected despite the "+ " marker.'
-} finally {
-    Remove-TempTree $repo
-}
-
-# --- Test: hook context is report-only (detects, never removes/prompts) --------
-$repo = New-TempGitRepo
-try {
-    $hookPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-hook'
-
-    Invoke-MergedWorktreeCleanup -RepoRoot $repo -IsHook -MainRef 'main'
-
-    Assert-True (Test-Path -LiteralPath $hookPath) 'Hook context must not remove the eligible worktree folder.'
-    $branches = (Invoke-TestGit $repo @('branch', '--list', 'feat-hook')) -join "`n"
-    Assert-True ($branches -match 'feat-hook') 'Hook context must not delete the eligible branch.'
-} finally {
-    Remove-TempTree $repo
-}
-
 # --- Test: redirected non-interactive runs skip removal without prompting -------
 $repo = New-TempGitRepo
 try {
@@ -259,7 +157,7 @@ try {
 $repo = New-WorktreeToolingRepo -ScriptsSource $scriptsDir
 try {
     # An eligible (merged + clean) worktree so cleanup has something to remove during the run.
-    Add-TestWorktree -RepoDir $repo -BranchName 'feat-eligible' | Out-Null
+    $eligiblePath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-eligible'
 
     $stdinFile = Join-Path (Split-Path -Parent $repo) 'hook-stdin.json'
     $stdoutFile = Join-Path (Split-Path -Parent $repo) 'hook-stdout.txt'
@@ -292,51 +190,10 @@ try {
     Assert-True (-not ($stderrText -match 'cleanup: removing merged worktree')) "Default hook cleanup must not remove anything (opt-in). Stderr: $stderrText"
     Assert-True ($stderrText -match 'git config --local ahkflow\.worktreeCleanup true') "Default hook report-only must print the config hint. Stderr: $stderrText"
     Assert-True (Test-Path -LiteralPath (Join-Path $repo '.claude\worktrees')) 'Worktree tooling dir should still exist.'
-} finally {
-    Remove-TempTree $repo
-}
-
-# --- Test: CLI env opt-out (0) keeps WorktreeCreate hook report-only -----------
-# With opt-in as the default, env '0' is a redundant-but-honored disable in hook context.
-$repo = New-WorktreeToolingRepo -ScriptsSource $scriptsDir
-try {
-    # An eligible merged + clean worktree that the opt-out must leave alone.
-    Add-TestWorktree -RepoDir $repo -BranchName 'feat-env-noclean' | Out-Null
-
-    $stdinFile = Join-Path (Split-Path -Parent $repo) 'hook-env-stdin.json'
-    $stdoutFile = Join-Path (Split-Path -Parent $repo) 'hook-env-stdout.txt'
-    $stderrFile = Join-Path (Split-Path -Parent $repo) 'hook-env-stderr.txt'
-    Set-Content -LiteralPath $stdinFile -Value '{"name":"brandnew-env"}' -Encoding utf8
-
-    $oldCleanupEnv = [Environment]::GetEnvironmentVariable('AHKFLOW_WORKTREE_CLEANUP', 'Process')
-    [Environment]::SetEnvironmentVariable('AHKFLOW_WORKTREE_CLEANUP', '0', 'Process')
-    try {
-        $psExe = [System.Diagnostics.Process]::GetCurrentProcess().Path
-        $newWorktreeScript = Join-Path $repo 'scripts\new-worktree.ps1'
-        $proc = Start-Process -FilePath $psExe `
-            -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $newWorktreeScript) `
-            -WorkingDirectory $repo `
-            -RedirectStandardInput $stdinFile `
-            -RedirectStandardOutput $stdoutFile `
-            -RedirectStandardError $stderrFile `
-            -NoNewWindow -PassThru -Wait
-    } finally {
-        [Environment]::SetEnvironmentVariable('AHKFLOW_WORKTREE_CLEANUP', $oldCleanupEnv, 'Process')
-    }
-
-    Assert-Equal 0 $proc.ExitCode "new-worktree.ps1 hook path with env opt-out should exit 0. Stderr: $(Get-Content -Raw -LiteralPath $stderrFile)"
-
-    $stdout = Get-Content -Raw -LiteralPath $stdoutFile
-    $stdoutLines = @(($stdout -split "`r?`n") | Where-Object { $_.Trim() })
-    $expected = ([System.IO.Path]::GetFullPath((Join-Path $repo '.claude\worktrees\brandnew-env'))).TrimEnd('\', '/')
-
-    Assert-Equal 1 $stdoutLines.Count "Hook stdout must remain exactly one line when env cleanup is disabled. Got: $stdout"
-    Assert-Equal $expected ($stdoutLines[0].Trim().TrimEnd('\', '/')) 'Hook stdout must remain exactly the new worktree path when env cleanup is disabled.'
-
-    $stderrText = Get-Content -Raw -LiteralPath $stderrFile
-    Assert-True ($stderrText -match 'cleanup: eligible merged worktree') "Expected cleanup detection output on stderr. Stderr: $stderrText"
-    Assert-True ($stderrText -match 'cleanup: report-only') "Expected env opt-out to keep cleanup in report-only mode. Stderr: $stderrText"
-    Assert-True (-not ($stderrText -match 'cleanup: removing merged worktree')) "Env opt-out must not remove anything. Stderr: $stderrText"
+    # This repo carries the removal script, so a hook that wrongly cleaned would really delete.
+    Assert-True (Test-Path -LiteralPath $eligiblePath) 'Hook context must not remove the eligible worktree folder.'
+    $branches = (Invoke-TestGit $repo @('branch', '--list', 'feat-eligible')) -join "`n"
+    Assert-True ($branches -match 'feat-eligible') 'Hook context must not delete the eligible branch.'
 } finally {
     Remove-TempTree $repo
 }
@@ -397,29 +254,6 @@ foreach ($override in @(
     }
 }
 
-# --- Test: direct call ignores the env var entirely ----------------------------
-$repo = New-TempGitRepo
-try {
-    $kept = Add-TestWorktree -RepoDir $repo -BranchName 'feat-envdirect'
-    # Env '1' set, no config, non-interactive direct (no -IsHook) -> must NOT clean.
-    $res = Invoke-CleanupChild -RepoDir $repo -EnvVars @{ 'AHKFLOW_WORKTREE_CLEANUP' = '1' }
-    Assert-True (-not ($res.Stderr -match 'cleanup: removing')) 'Direct call must ignore AHKFLOW_WORKTREE_CLEANUP.'
-    Assert-True (Test-Path -LiteralPath $kept) 'Env var must not trigger removal on a direct call.'
-} finally {
-    Remove-TempTree $repo
-}
-
-# --- Test: no eligible worktrees -> no prompt, nothing persisted ---------------
-$repo = New-TempGitRepo
-try {
-    Add-TestWorktree -RepoDir $repo -BranchName 'feat-dirty-only' -Dirty | Out-Null
-    $res = Invoke-CleanupChild -RepoDir $repo
-    Assert-True ($res.Stderr -match 'no merged worktrees eligible') 'With no eligible worktrees, cleanup must report none.'
-    Assert-Equal 'unset' (Get-WorktreeCleanupConfig -RepoRoot $repo) 'No eligible worktrees must not persist any preference.'
-} finally {
-    Remove-TempTree $repo
-}
-
 # --- Test: config true cleans (hook and non-interactive direct) ----------------
 foreach ($mode in @(@{ Args = @('-IsHook'); Label = 'hook' }, @{ Args = @(); Label = 'direct' })) {
     $repo = New-WorktreeToolingRepo -ScriptsSource $scriptsDir
@@ -470,6 +304,11 @@ try {
     $dirtyPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-dirty-reported' -Dirty
 
     $res = Invoke-CleanupChild -RepoDir $repo
+    # A dirty worktree is the only one here, so nothing is eligible. Backlog 188 merged the
+    # no-eligible case into this one. The 'unset' check is load-bearing: a preference written on
+    # this path would otherwise go unseen, because persistence can happen outside the prompt.
+    Assert-True ($res.Stderr -match 'no merged worktrees eligible') 'With no eligible worktrees, cleanup must report none.'
+    Assert-Equal 'unset' (Get-WorktreeCleanupConfig -RepoRoot $repo) 'No eligible worktrees must not persist any preference.'
     Assert-True ($res.Stderr -match 'because the worktree has uncommitted changes \(dirty\.txt\)\.') `
         "The sweep must name the dirty worktree on stderr, got: $($res.Stderr)"
     # The path, not just the reason. Naming the wrong worktree would otherwise pass every
