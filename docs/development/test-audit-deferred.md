@@ -105,3 +105,31 @@ are in `docs/development/cycle-time-record.md`, under `## Audit`.
 - `WatchTask`, "Same-size replacement: wait ends whatever reader believes (2377-2422)" (0.7 s): Its premise is gone. The checkpoint, the last 256 bytes before the offset, differs (XXX vs marker), so Read-FileCheckpoint now detects the replacement.
 - `WorktreeMergedCleanupEligibility`, "main-ref exclusion matches a fully-qualified -MainRef (:155-169)" (1 s): Same flaw as :138-153: main is refused by signal 2 (scripts/worktree-git.common.ps1:1106) whether or not the short-name resolution (scripts/cleanup-merged-worktrees.ps1:87-91) and the :135 compare work. Rework it with the same no-'Kept:'-line-for-main assertion.
 - `WorktreeMergedCleanupEligibility`, "main-ref worktree excluded when RepoRoot is a linked worktree (:138-153)" (0 s): This case cannot fail. In this fixture, main's reflog SHAs (seed, merge commit) are never a non-first parent of a merge.
+
+## Batch 2
+
+These proposals need new fixture code: a template repository copied per case, `git fast-import`
+for filler commits, `GIT_COMMITTER_DATE` in place of a sleep, or one repository shared by several
+sections. The two MERGE rows save less than 1 second each, so no refuter tested them. Test each
+one before you apply it.
+
+#### SPEED UP (13 cases, about 57.0 s)
+
+- `BacklogStaleOpen`, "Add-FixtureFiller helper (every case with Filler or BaseAhead > 0)" (11 s): tests/BacklogStaleOpen.Tests.ps1:54-61 runs `git add` and `git commit` for each filler commit. One `git fast-import` stream per call (or `git commit-tree` on a fixed tree plus a single `update-ref`) writes N commits with one or two processes.
+- `WorktreeMergedCleanup`, "New-TempGitRepo fixture used by all 28 git sections (tests/WorktreeMergedCleanup.Common.ps1:67-83)" (12 s): Every section pays git init, symbolic-ref, two config calls, add and commit (6 git processes, Common.ps1:72-80) for an identical seed repository.
+- `WorktreeMergedCleanup`, "Reset-rule negative cases in separate repos (:663, :687, :717, :754, :786, :824, :857, :895, :925, :958, :991)" (4 s): Eleven sections each build a fresh repo for one branch, and the rule reads only that branch's own ref log (comment at :787), so all eleven can share one repo with their already distinct branch names.
+- `WorktreeMergedCleanup`, "Positive own-work shapes in separate repos: cherry-pick :394, clean merge :507, revert :548, squash rebase :570" (1.5 s): Each of the four builds its own repo (:397, :511, :550, :573) for a branch that ends merged into main, and their branch names do not collide. One shared repo, with the squash case last because it moves main (:583-585), saves three repo builds.
+- `WorktreeMergedCleanupSweep`, "suite-wide: New-TempGitRepo / New-WorktreeToolingRepo per case" (7 s): Each of the 13 plain and 4 tooling fixtures runs git init, symbolic-ref, two config calls, add and commit (tests/WorktreeMergedCleanup.Common.ps1:67-83), and the tooling repo adds a script copy plus commit (:250-271).
+- `WorktreeMergedCleanupSweep`, "Get-BaseRefAtBranchCreation" (2 s): tests/WorktreeMergedCleanupSweep.Tests.ps1:261 sleeps 2 s only so main's ref-log stamp is strictly earlier than the branch's; set GIT_COMMITTER_DATE (ref-log entries take the committer date) to a later fixed time around the Add-TestWorktree call at :263 instead.
+- `WorktreeMergedCleanupSweep`, "a forged commit subject on a never-committed branch (backlog 096)" (2 s): tests/WorktreeMergedCleanupSweep.Tests.ps1:310 sleeps 2 s for the same one-second ref-log resolution; a later GIT_COMMITTER_DATE around the victim creation at :312-313 gives the strict ordering.
+- `WorktreeSweepRemoteBase`, "New-RemoteFixture builder (all fixtures, tests/WorktreeSweepRemoteBase.Tests.ps1:62-120)" (10 s): Each of the 15 fixtures runs about 13 git processes with two pushes, a worktree add, a merge and a reset (:71-109); report 5.1 puts the template saving at about 15 s.
+- `WorktreeSweepRemoteBase`, "Resolver unreachable remote, remote-stale (:253-263)" (1.5 s): The offline sweep case (:406-416) builds the identical fixture (-Merged plus set-url to no-such-origin, :408) and a failed fetch changes no ref. Call Resolve-MergedBaseRef on that fixture first, then run the sweep, saving one fixture.
+- `WorktreeSweepRemoteBase`, "SSH transport, Resolve-BatchModeSshCommand (:284-296)" (1.5 s): Resolve-BatchModeSshCommand only reads `git config core.sshCommand` (scripts/worktree-git.common.ps1:158-163), so it needs no remote, push or worktree. Run it on the unmerged fixture of :396 after that sweep (or on a plain `git init` dir), saving one full fixture.
+- `WorktreeSweepRemoteBase`, "Fetching must not make an unmerged worktree eligible (:396-403)" (1.5 s): Same non-merged New-RemoteFixture shape as the no-upstream case (:266) and the SSH case (:284). Share one non-merged fixture: run this sweep first, then the SSH config checks, so only one fixture is built for both.
+- `WorktreeSweepRemoteBase`, "Windows PowerShell 5.1 resolver reports remote-fetched (:465-479)" (1.5 s): The case only checks Reason is 'remote-fetched' (:472), which any reachable upstream gives, merged or not. Run the 5.1 child against the first resolver fixture (:235) before its finally block removes it, saving one -Merged fixture with two pushes.
+- `WorktreeSweepRemoteBase`, "Hook with unrefreshable base keeps the worktree (:445-457)" (1.5 s): Its fixture setup (-Merged -KeepTrackingRef, origin rewound, set-url offline, :447-448) matches :378-381 exactly, and that sweep leaves the worktree in place (:390).
+
+#### MERGE, not refuted (2 cases, about 1.6 s)
+
+- `MeasureTestModes`, "Soak mode holds the lock for every repetition" (0.8 s): Same harness arguments as 'Soak mode prepares one container for the whole soak and leaves it running' (:840 vs :659: -Soak tests/FakeProject -Runs 3 -NoBuild). Assert the three owner=True test signals (:843-847) in that case and drop one child harness run.
+- `MeasureTestModes`, "A failing soak run is counted and named, and the soak still finishes" (0.8 s): 'A soak run that fails with a half-written TRX is counted, not thrown' sets the same fail-run.txt=2 plus a malformed TRX and makes the same four assertions (:721-734 vs :680-693).

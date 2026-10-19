@@ -425,6 +425,64 @@ shim loop. Each commit body names the test that still catches each removed case.
 
 The deferred work is listed in `docs/development/test-audit-deferred.md`.
 
+### Batch 2
+
+Batch 1 used more tokens than planned, so batch 2 ran with lean settings. An auditor returned only
+the cases it would change that save 0.5 seconds or more. Refuters ran at medium effort, and
+tested every REMOVE and every MERGE that saves 1 second or more. Run `wf_b44c3500-c14` took 36.8
+minutes and 0.84 million subagent tokens, for 5 auditors and 4 refuters. `BacklogStaleOpen` had
+no claim to refute. Every refuter left the worktree clean.
+
+The auditors proposed 42 changes, about 112 seconds in all: 31 SPEED UP, 10 MERGE and 1 REMOVE.
+The refuters tested 9 claims and upheld all 9. Two MERGE claims saved less than 1 second each, so
+no refuter tested them.
+
+The user approved two of three groups on 2026-10-19:
+
+- Group A: apply the 9 upheld claims, about 25 seconds.
+- Group B: apply the 18 SPEED UP proposals that only change a number, such as a sleep, a timeout
+  or a filler-commit count, about 28 seconds.
+- Group C: defer the 13 SPEED UP proposals that need new fixture code, and the 2 untested MERGE
+  claims, about 59 seconds. Batch 1's seed cache saved only 1.7 of an estimated 17 seconds, so
+  fixture rewrites carry more risk for their estimate.
+
+Each Suite ran alone, three times per point, after one warm-up run. The table gives the median in
+seconds.
+
+| Suite | Before | After |
+|---|---|---|
+| `MeasureTestModes.Tests.ps1` | 68.1 | 45.4 |
+| `WorktreeMergedCleanupSweep.Tests.ps1` | 46.3 | 30.3 |
+| `WorktreeMergedCleanup.Tests.ps1` | 41.4 | 29.0 |
+| `WorktreeSweepRemoteBase.Tests.ps1` | 32.6 | 29.8 |
+| `BacklogStaleOpen.Tests.ps1` | 30.6 | 22.4 |
+| Total | 219.0 | 156.9 |
+
+The five Suites lost 62.1 seconds, or 28.4 percent, against an estimate of about 53.
+
+What changed, per Suite:
+
+- `MeasureTestModes`: 3 cases merged into existing cases. Stub sleeps are zero where a case
+  asserts only calls or signals, and smaller where it compares run times. The warm-up ceiling
+  case waits for a 3 second settle target, not 5.
+- `WorktreeMergedCleanupSweep`: 3 sweeps merged into 2 existing sweeps. The kill timeout is 1
+  second, not 3.
+- `WorktreeMergedCleanup`: 17 negative eligibility checks removed. Each one repeated a negative
+  `Test-BranchOwnWorkWasMerged` check, which runs the same verdict. The three config sections
+  share one repository.
+- `WorktreeSweepRemoteBase`: the report-mode sweep merged into the end-to-end `-Cleanup` sweep.
+  The refuter showed that `WorktreeLeftoverBranch.Tests.ps1` still catches a stale report-mode
+  base.
+- `BacklogStaleOpen`: the cases use a limit of 3 and fewer filler commits, in place of the
+  default limit of 12 and up to 29 commits. Two cases still pin the default limit.
+
+One change made a case stronger. The bulk-edit row now uses 3 filler commits, so it fails when
+the bulk edit is read as the stamp. With 9 filler commits it passed on that defect. A mutation
+proved it: dropping the `-G` Stage-line filter from the stamp lookup fails only that row.
+
+The deferred rows are under `## Batch 2` in `docs/development/test-audit-deferred.md`. The
+workflow reference is `docs/development/test-audit-workflow.md`.
+
 ## After
 
 Empty until Task 14.
