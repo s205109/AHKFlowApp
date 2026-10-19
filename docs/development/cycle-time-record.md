@@ -483,6 +483,32 @@ proved it: dropping the `-G` Stage-line filter from the stamp lookup fails only 
 The deferred rows are under `## Batch 2` in `docs/development/test-audit-deferred.md`. The
 workflow reference is `docs/development/test-audit-workflow.md`.
 
+### Gate reuse per Suite
+
+Each candidate Suite carries a `reuse` field in `tests/powershell-suites.json`. Four are eligible:
+
+- `StageTransition.Tests.ps1`: eligible. Its git repositories are fixtures, and its `gh` is a fake.
+- `WatchTask.Tests.ps1`: eligible. It reads `scripts/watch-task.ps1` and sets the session
+  variable it reads.
+- `WorktreeMergedCleanup.Tests.ps1`: eligible. Its shared helper now names
+  `scripts/cleanup-merged-worktrees.ps1` by a written-out path, so the resolver can follow it.
+- `BacklogStaleOpen.Tests.ps1`: eligible. Its git repositories are fixtures.
+- `CiPowerShellSuiteRunner.Tests.ps1`: not eligible. It runs `cmd` and reads the machine's core
+  count.
+- `AgentWorktreeGuard.Tests.ps1`: not eligible. It runs bash, cmd and Windows PowerShell, and
+  reads the user profile.
+- `WorktreeMergedCleanupEligibility.Tests.ps1`: not eligible. Its sweep child calls the real `gh`.
+- `WorktreeMergedCleanupSweep.Tests.ps1`: not eligible. Its sweep child calls the real `gh`.
+- `WorktreeSweepRemoteBase.Tests.ps1`: not eligible. It runs Windows PowerShell 5.1, and its sweep
+  child calls the real `gh`.
+- `MeasureTestModes.Tests.ps1`: not eligible. It dot-sources a runspace parameter, which the
+  resolver cannot follow.
+
+Two PowerShell Mode runs on 2026-10-19 proved reuse. Both passed all 73 Suites. The second printed
+`REUSED` for the four eligible Suites and ran the other 69. Then `# probe` was appended to
+`scripts/watch-task.ps1` for one more run. `WatchTask` ran again and passed, and the other three
+eligible Suites were reused. The file's bytes were restored afterwards.
+
 ## After
 
 Empty until Task 14.

@@ -164,6 +164,12 @@ function Invoke-Wrapper {
     }
 }
 
+# Backlog 188. Every PowerShell Mode run is a Gate run and writes a Gate log line. The Lane case
+# below starts the wrapper without Invoke-Wrapper, so the whole Suite points the log and the
+# evidence at a scratch folder, never at the real TestResults folder.
+$suiteEvidenceRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('ahkflow-testfast-mode-suite-evidence-' + [guid]::NewGuid().ToString('N'))
+$env:AHKFLOW_GATE_EVIDENCE_ROOT = Join-Path $suiteEvidenceRoot 'gate-evidence'
+
 Write-Host "Testing $script:WrapperPath"
 Assert-True (Test-Path -LiteralPath $script:WrapperPath) "Wrapper script not found at $script:WrapperPath."
 
@@ -333,6 +339,8 @@ Invoke-TestCase 'PowerShell wrapper forwards all Lane settings and restores fixt
     } finally { Remove-SuiteFixture $root; Remove-PinnedLanePool $pool }
 }
 
+
+Remove-Item -LiteralPath $suiteEvidenceRoot -Recurse -Force -ErrorAction SilentlyContinue
 
 Write-Host ''
 if ($script:Failures.Count -gt 0) {
