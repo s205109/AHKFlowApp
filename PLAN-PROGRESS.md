@@ -28,7 +28,7 @@ One line per finished task, written after its deliverable commit.
 **Red evidence:**
 
 ```
-Review of PR 454: WatchTask reuse can hide a failure caused by a directory next to the checkout (thread on tests/powershell-suites.json:50); -Fix rewrites a backticked path:line inside the quoted text (thread on scripts/check-citation-freshness.ps1:132); box 3 needs the after record on the final revision; box 6 needs a history note.
+Review of PR 454: WatchTask reuse can hide a failure caused by a directory next to the checkout (thread on the WatchTask entry of tests/powershell-suites.json); -Fix rewrites a backticked path:line inside the quoted text (thread on Set-MovedCitation in scripts/check-citation-freshness.ps1); box 3 needs the after record on the final revision; box 6 needs a history note.
 ```
 
 **Recovery task:** R1 mark WatchTask not eligible for reuse; R2 -Fix rewrites only the leading path:line of a citation, with a regression case; R3 rerun plan Task 14 on the final revision and refresh the after record; R4 note in item 188 that the cycle-time record counts as history for box 6.

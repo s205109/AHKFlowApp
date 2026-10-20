@@ -41,14 +41,13 @@ Each criterion is refined in the spec. Tick a box only when its words hold liter
       says when each after window starts and when it is ready.
 - [x] Every audit batch the user approved is applied, and the after record lists what each batch
       removed, merged or sped up.
-- [ ] The four retired research tools, the five Suites that retire whole, the two interval helpers,
+- [x] The four retired research tools, the five Suites that retire whole, the two interval helpers,
       and the `Get-AhkFlowTrxRunInterval` case in `tests/TrxIntervals.Tests.ps1` are gone. No live
       doc names them. ADRs, `backlog/done/`, and frozen plans and specs keep their mentions as
       history.
-      Not ticked: `docs/development/cycle-time-record.md` names the five retired Suites in its
-      Before ranking, as history. The exceptions above do not list that record, so the words
-      do not hold literally. The reviewer or the user decides whether the record counts as
-      history.
+      `docs/development/cycle-time-record.md` names the five retired Suites in its Before
+      ranking. The review of pull request 454 ruled that this record counts as history, like the
+      exceptions above.
 - [x] A saved audit workflow is in `.claude/workflows/`, and a reference file records how to run it.
 - [x] The Gate reuses a stored green result for a PowerShell Suite whose inputs did not change,
       inside one worktree, and runs it again when an input changed. A Suite with no input list
