@@ -26,37 +26,44 @@ runs and fewer red CI runs, so that I spend my time on the change and not on wai
 
 Each criterion is refined in the spec. Tick a box only when its words hold literally.
 
-- [ ] A baseline record holds five measures: Gate time, affected-test time, CI critical path,
+- [x] A baseline record holds five measures: Gate time, affected-test time, CI critical path,
       Gate-required stage exits per item, and flaky failures. It also states whether the .NET
       steps are worth an audit item of their own.
-- [ ] Each of the five measures has a target that the user approved after the baseline and before
+- [x] Each of the five measures has a target that the user approved after the baseline and before
       any improvement work.
 - [ ] An after record of Gate time and affected-test time, taken on the final revision with the
       baseline's method and preparation, sits next to the baseline. It reports both targets as met
       or missed, and a missed target carries the user's decision to accept it or continue.
-- [ ] A follow-up item carries the before record and the targets of the other three measures, and
+      Not ticked: the after record was taken at `8a326f89`. Three later commits changed scripts
+      (`116414e5`, `99578e70`, and the Simplify refactor), so it was not taken on the final
+      revision. Plan rule G9 asks for Task 14 to run again before this box is true.
+- [x] A follow-up item carries the before record and the targets of the other three measures, and
       says when each after window starts and when it is ready.
-- [ ] Every audit batch the user approved is applied, and the after record lists what each batch
+- [x] Every audit batch the user approved is applied, and the after record lists what each batch
       removed, merged or sped up.
 - [ ] The four retired research tools, the five Suites that retire whole, the two interval helpers,
       and the `Get-AhkFlowTrxRunInterval` case in `tests/TrxIntervals.Tests.ps1` are gone. No live
       doc names them. ADRs, `backlog/done/`, and frozen plans and specs keep their mentions as
       history.
-- [ ] A saved audit workflow is in `.claude/workflows/`, and a reference file records how to run it.
-- [ ] The Gate reuses a stored green result for a PowerShell Suite whose inputs did not change,
+      Not ticked: `docs/development/cycle-time-record.md` names the five retired Suites in its
+      Before ranking, as history. The exceptions above do not list that record, so the words
+      do not hold literally. The reviewer or the user decides whether the record counts as
+      history.
+- [x] A saved audit workflow is in `.claude/workflows/`, and a reference file records how to run it.
+- [x] The Gate reuses a stored green result for a PowerShell Suite whose inputs did not change,
       inside one worktree, and runs it again when an input changed. A Suite with no input list
       always runs. Build, format and coverage are not reused.
-- [ ] Every Suite in the audit's candidate set that still exists is marked in the manifest as
+- [x] Every Suite in the audit's candidate set that still exists is marked in the manifest as
       eligible for reuse, or as not eligible with a one-line reason. The reuse key builds an
       eligible Suite's input list each time, and an unresolved dependency switches reuse off.
-- [ ] Evidence is written only after a Suite passed and only when no input changed during the run.
+- [x] Evidence is written only after a Suite passed and only when no input changed during the run.
       Unreadable or malformed evidence counts as a miss.
-- [ ] The Gate warns, and does not fail, when a Suite of 5 s or more runs more than 30 percent over
+- [x] The Gate warns, and does not fail, when a Suite of 5 s or more runs more than 30 percent over
       its committed `baselineSeconds`. A reused result never warns.
-- [ ] The citation check warns when the cited text moved to exactly one other line, and fails when
+- [x] The citation check warns when the cited text moved to exactly one other line, and fails when
       the text is gone or appears on several lines.
-- [ ] `CONTEXT.md` defines Gate input, Gate evidence, and Outside review.
-- [ ] The process item, the memory and instruction cleanup item, and the architecture pilot item
+- [x] `CONTEXT.md` defines Gate input, Gate evidence, and Outside review.
+- [x] The process item, the memory and instruction cleanup item, and the architecture pilot item
       are filed, each pointing at the spec and carrying the criteria of its part.
 
 ## Out of scope
