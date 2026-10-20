@@ -22,3 +22,14 @@ One line per finished task, written after its deliverable commit.
 - [x] Task 13 — time budget per Suite, and the re-audit suggestion
 - [x] Task 14 — the after record (stop S6 when a target is missed)
 - [x] Task 15 — the follow-up item
+
+## Failure edge to 4-execute (2026-10-20)
+
+**Red evidence:**
+
+```
+Review of PR 454: WatchTask reuse can hide a failure caused by a directory next to the checkout (thread on tests/powershell-suites.json:50); -Fix rewrites a backticked path:line inside the quoted text (thread on scripts/check-citation-freshness.ps1:132); box 3 needs the after record on the final revision; box 6 needs a history note.
+```
+
+**Recovery task:** R1 mark WatchTask not eligible for reuse; R2 -Fix rewrites only the leading path:line of a citation, with a regression case; R3 rerun plan Task 14 on the final revision and refresh the after record; R4 note in item 188 that the cycle-time record counts as history for box 6.
+
