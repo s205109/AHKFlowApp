@@ -485,11 +485,12 @@ workflow reference is `docs/development/test-audit-workflow.md`.
 
 ### Gate reuse per Suite
 
-Each candidate Suite carries a `reuse` field in `tests/powershell-suites.json`. Three are eligible:
+Each candidate Suite carries a `reuse` field in `tests/powershell-suites.json`. Two are eligible:
 
 - `StageTransition.Tests.ps1`: eligible. Its git repositories are fixtures, and its `gh` is a fake.
-- `WatchTask.Tests.ps1`: eligible. It reads `scripts/watch-task.ps1` and sets the session
-  variable it reads.
+- `WatchTask.Tests.ps1`: not eligible. Its script lists the directories next to the real
+  checkout, which no key covers. The review of pull request 454 found this; it was eligible at
+  first.
 - `WorktreeMergedCleanup.Tests.ps1`: eligible. Its shared helper now names
   `scripts/cleanup-merged-worktrees.ps1` by a written-out path, so the resolver can follow it.
 - `BacklogStaleOpen.Tests.ps1`: not eligible. Its last two checks read the live repository: its
@@ -582,7 +583,7 @@ eligible Suite, so that Suite runs again. That is why its PowerShell step is slo
 
 Every number fell, and every target was missed. The build, format and diff check steps take about
 45 seconds together, and the PowerShell step still takes 197 to 255 seconds. Only 4 of 73 Suites
-were eligible for reuse during these runs, and 3 are after the final review. So most of the Gate
+were eligible for reuse during these runs, and 2 are after the reviews. So most of the Gate
 still runs on every change.
 
 Stop S6, answered by the user on 2026-10-20: **accept the result.** The misses stand as recorded.
