@@ -129,7 +129,9 @@ function Set-MovedCitation {
     $lines = [regex]::Split($text, '(?<=\n)')
     foreach ($one in $Move) {
         $index = $one.CitingLine - 1
-        $newText = $one.Text.Replace(('{0}:{1}`' -f $one.Path, $one.OldStart), ('{0}:{1}`' -f $one.Path, $one.NewStart))
+        # Only the citation's own line number, which follows the path at the start of its text. The
+        # quoted text can hold the same `path:line`, and it must stay byte for byte.
+        $newText = [regex]::Replace($one.Text, '^(\(`[^`]*?:)\d+', ('${1}' + $one.NewStart))
         $at = $lines[$index].IndexOf($one.Text, [System.StringComparison]::Ordinal)
         if ($at -lt 0) { throw "The citation $($one.Text) is no longer on line $($one.CitingLine) of $FullPath." }
         $lines[$index] = $lines[$index].Substring(0, $at) + $newText + $lines[$index].Substring($at + $one.Text.Length)

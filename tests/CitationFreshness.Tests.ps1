@@ -565,6 +565,28 @@ finally {
     Remove-Item -LiteralPath $fix.Root -Recurse -Force
 }
 
+# Review of PR 454. A quote may hold the same `path:line` in backticks. -Fix must rewrite only the
+# citation's own line number, and keep the quoted text byte for byte.
+$fixture = New-FixtureRepository
+try {
+    & git -C $fixture config core.autocrlf false
+    Add-FixtureFile -Root $fixture -RelativePath 'target.txt' -Lines @('reference `target.txt:1`')
+    Add-FixtureFile -Root $fixture -RelativePath 'doc.md' -Lines @('intro', 'see (`target.txt:1`, "reference `target.txt:1`") here')
+    Complete-FixtureCommit -Root $fixture -Message 'base'
+    $base = ((& git -C $fixture rev-parse HEAD) -join '').Trim()
+    Add-FixtureFile -Root $fixture -RelativePath 'target.txt' -Lines @('a new first line', 'reference `target.txt:1`')
+    Add-FixtureFile -Root $fixture -RelativePath 'doc.md' -Lines @('intro, edited on the branch', 'see (`target.txt:1`, "reference `target.txt:1`") here')
+    Complete-FixtureCommit -Root $fixture -Message 'branch'
+
+    $run = Invoke-Runner -Arguments @('-ScanRoot', $fixture, '-ResolveRoot', $fixture, '-BaseRef', $base, '-Fix')
+    $after = @(Get-Content -LiteralPath (Join-Path $fixture 'doc.md'))
+    Assert-True ($run.ExitCode -eq 0 -and $after[1] -eq 'see (`target.txt:2`, "reference `target.txt:1`") here') `
+        "-Fix rewrites only the citation's line number, never the quoted text. Exit $($run.ExitCode), line now: $($after[1])"
+}
+finally {
+    Remove-Item -LiteralPath $fixture -Recurse -Force
+}
+
 # --- OnlyPath narrows which files are scanned ---
 
 # The plans repository is one shared working tree with a single branch, linked into every worktree.
