@@ -6,7 +6,7 @@
 - **Type**: Tooling
 - **Interfaces**: none (process docs, test runner scripts, test suites)
 - **Difficulty**: complex
-- **Stage**: 5-simplify
+- **Stage**: 6-verify
 
 ## Summary
 
