@@ -513,8 +513,8 @@ eligible Suites were reused. The file's bytes were restored afterwards.
 
 ## After
 
-Measured on 2026-10-19 and 2026-10-20 at revision `8a326f89`, the last commit that changes a
-script or a Suite. The commands and their order are the ones under `## Before`, each with
+Measured on 2026-10-20 at revision `e138787f`, the final revision: the last commit that changes
+a script or a Suite. The commands and their order are the ones under `## Before`, each with
 `-BaseRef HEAD`. No run printed `Sharing the test Lane pool with:`. The coverage step was in the
 same state as before in every case: it skipped itself in case 1, case 3, `Docs` and `Script`, and
 it ran for `Code`.
@@ -523,71 +523,75 @@ it ran for `Code`.
 
 Case 1, full Gate with evidence reuse switched off:
 
-- Warm-up: 307.34 s (discarded).
-- Counted runs: 299.33 s, 311.31 s, 2071.57 s.
-- **Median: 311.31 s**, against 350.84 s before: 11.3 percent lower.
-- Step medians: build 4.98 s, format 45.27 s, PowerShell 254.82 s, coverage 0.16 s, diff check
+- Warm-up: 317.39 s (discarded).
+- Counted runs: 313.95 s, 315.62 s, 319.10 s.
+- **Median: 315.62 s**, against 350.84 s before: 10.0 percent lower. Spread: 1.6 percent.
+- Step medians: build 5.75 s, format 47.15 s, PowerShell 262.83 s, coverage 0.18 s, diff check
   0.03 s.
-
-The third run is not a slow Gate. Every Suite in it took 1,800 seconds or more, against about 50
-to 150 in the other two runs, so the whole machine stalled for about half an hour, most likely in
-sleep. The median does not use that run.
-
-An earlier attempt at case 1 failed in its second run. `WorktreeMergedCleanupSweep.Tests.ps1`
-stopped with "Cannot convert value System.Object[] to type System.Boolean": an `Assert-True`
-received an array. The same Suite then passed 12 runs in a row on its own, and it passed in every
-other Gate run. The message names no line, so the cause is not found. It is recorded here as one
-flaky failure under load.
 
 Case 3, second Gate with no input changed, evidence reuse on:
 
-- Warm-up: 239.29 s (discarded).
-- Counted runs: 241.55 s, 287.48 s, 241.09 s.
-- **Median: 241.55 s**, against 336.01 s before: 28.1 percent lower.
-- Step medians: build 4.61 s, format 39.25 s, PowerShell 197.39 s, coverage 0.11 s, diff check
+- Warm-up: 267.46 s (discarded).
+- Counted runs: 272.97 s, 307.70 s, 309.37 s.
+- **Median: 307.70 s**, against 336.01 s before: 8.4 percent lower. Spread: 11.8 percent.
+- Step medians: build 5.06 s, format 47.69 s, PowerShell 254.45 s, coverage 0.16 s, diff check
   0.02 s.
-- Four Suites were reused in each run. Case 1 against case 3 is the saving that reuse alone buys:
-  57.4 seconds of PowerShell step.
+- Two Suites were eligible for reuse. Case 1 against case 3 is the saving that reuse alone buys:
+  8.4 seconds of PowerShell step.
 
 ### 2. Affected-test time
 
-Preparation run: 285.53 s (build 5.43 s, format 38.51 s, PowerShell 241.41 s, coverage 0.15 s,
+Preparation run: 319.33 s (build 6.21 s, format 46.97 s, PowerShell 265.96 s, coverage 0.16 s,
 diff check 0.02 s).
 
 | Change | Warm-up | Counted runs | Median | Before | Change |
 |---|---|---|---|---|---|
-| Docs | 288.92 s | 287.78 s, 288.67 s, 242.32 s | **287.78 s** | 342.80 s | -16.1 % |
-| Script | 253.59 s | 253.99 s, 251.47 s, 250.29 s | **251.47 s** | 346.29 s | -27.4 % |
-| Code | 450.85 s | 428.63 s, 456.28 s, 460.08 s | **456.28 s** | 513.63 s | -11.2 % |
+| Docs | 280.79 s | 278.61 s, 296.83 s, 342.47 s | **296.83 s** | 342.80 s | -13.4 % |
+| Script | 302.87 s | 308.77 s, 305.29 s, 297.84 s | **305.29 s** | 346.29 s | -11.8 % |
+| Code | 486.48 s | 491.60 s, 492.46 s, 526.03 s | **492.46 s** | 513.63 s | -4.1 % |
 
 Step medians per change:
 
 | Change | build | format | PowerShell | coverage | diff check |
 |---|---|---|---|---|---|
-| Docs | 4.88 s | 40.06 s | 242.18 s | 0.11 s | 0.02 s |
-| Script | 4.82 s | 40.36 s | 205.98 s | 0.11 s | 0.02 s |
-| Code | 5.80 s | 40.24 s | 241.45 s | 172.78 s | 0.02 s |
-
-The `Docs` change edits `docs/development/testing-workflow.md`, which is an input of at least one
-eligible Suite, so that Suite runs again. That is why its PowerShell step is slower than the
-`Script` step.
+| Docs | 5.30 s | 41.80 s | 251.40 s | 0.17 s | 0.03 s |
+| Script | 5.63 s | 50.23 s | 251.62 s | 0.15 s | 0.03 s |
+| Code | 6.39 s | 49.53 s | 236.81 s | 199.69 s | 0.02 s |
 
 ### Verdict
 
 | # | Measure | Before | After | Target | Verdict |
 |---|---|---|---|---|---|
-| 1 | Gate time, reuse off | 350.8 s | 311.3 s | 210 s or less | **missed** |
-| 2 | Affected-test time, Docs | 342.8 s | 287.8 s | 90 s or less | **missed** |
-| 2 | Affected-test time, Script | 346.3 s | 251.5 s | 150 s or less | **missed** |
-| 2 | Affected-test time, Code | 513.6 s | 456.3 s | 300 s or less | **missed** |
+| 1 | Gate time, reuse off | 350.8 s | 315.6 s | 210 s or less | **missed** |
+| 2 | Affected-test time, Docs | 342.8 s | 296.8 s | 90 s or less | **missed** |
+| 2 | Affected-test time, Script | 346.3 s | 305.3 s | 150 s or less | **missed** |
+| 2 | Affected-test time, Code | 513.6 s | 492.5 s | 300 s or less | **missed** |
 
 Every number fell, and every target was missed. The build, format and diff check steps take about
-45 seconds together, and the PowerShell step still takes 197 to 255 seconds. Only 4 of 73 Suites
-were eligible for reuse during these runs, and 2 are after the reviews. So most of the Gate
-still runs on every change.
+50 seconds together, and the PowerShell step still takes 237 to 263 seconds. The audit made the
+Suites faster. Reuse adds little, because only 2 of 73 Suites are eligible: the two reviews took
+away `BacklogStaleOpen` and `WatchTask`, which read state no key covers.
 
-Stop S6, answered by the user on 2026-10-20: **accept the result.** The misses stand as recorded.
-The remaining speed-ups stay in backlog 195.
+Stop S6, answered by the user on 2026-10-20: **accept the result.** The answer was given on the
+first measurement below; this one, on the final revision, misses the same four targets. The
+misses stand as recorded. The remaining speed-ups stay in backlog 195.
+
+### The first measurement, at `8a326f89`
+
+Taken on 2026-10-19 and 2026-10-20, before the two review fixes and the Simplify commit. Plan rule
+G9 asked for this task to run again on the final revision, which the section above does.
+
+- Case 1: median 311.31 s. One run stalled for about half an hour, most likely in machine sleep,
+  and the median does not use it.
+- Case 3: median 241.55 s. Four Suites were eligible then, and reuse saved 57.4 seconds of
+  PowerShell step.
+- Case 2: `Docs` 287.78 s, `Script` 251.47 s, `Code` 456.28 s.
+
+An attempt at case 1 failed in its second run. `WorktreeMergedCleanupSweep.Tests.ps1` stopped
+with "Cannot convert value System.Object[] to type System.Boolean": an `Assert-True` received an
+array. The same Suite then passed 12 runs in a row on its own, and it passed in every other Gate
+run. The message names no line, so the cause is not found. It is recorded here as one flaky
+failure under load.
 
 ### Gate executions
 
@@ -614,21 +618,21 @@ Refuted claims: 9 in batch 1, none in batch 2. The deferred rows are in
 ### Baselines refreshed
 
 `baselineSeconds` in `tests/powershell-suites.json` now holds the case-1 median of each Suite the
-audit changed, and of `GateEvidence.Tests.ps1`:
+audit changed, and of `GateEvidence.Tests.ps1`, from the final-revision run above:
 
 | Suite | Before | After |
 |---|---|---|
-| `CiPowerShellSuiteRunner.Tests.ps1` | 177.4 | 149.2 |
-| `StageTransition.Tests.ps1` | null | 132.5 |
-| `AgentWorktreeGuard.Tests.ps1` | 111.5 | 84.7 |
-| `WorktreeMergedCleanupEligibility.Tests.ps1` | 102.1 | 63.5 |
-| `WatchTask.Tests.ps1` | 85.2 | 68.5 |
-| `MeasureTestModes.Tests.ps1` | 84.7 | 69.0 |
-| `WorktreeMergedCleanupSweep.Tests.ps1` | 78.8 | 50.0 |
-| `WorktreeMergedCleanup.Tests.ps1` | 71.9 | 53.8 |
+| `CiPowerShellSuiteRunner.Tests.ps1` | 177.4 | 150.6 |
+| `StageTransition.Tests.ps1` | null | 136.6 |
+| `AgentWorktreeGuard.Tests.ps1` | 111.5 | 86.7 |
+| `WorktreeMergedCleanupEligibility.Tests.ps1` | 102.1 | 65.0 |
+| `WatchTask.Tests.ps1` | 85.2 | 70.2 |
+| `MeasureTestModes.Tests.ps1` | 84.7 | 68.9 |
+| `WorktreeMergedCleanupSweep.Tests.ps1` | 78.8 | 52.0 |
+| `WorktreeMergedCleanup.Tests.ps1` | 71.9 | 55.9 |
 | `WorktreeSweepRemoteBase.Tests.ps1` | 65.3 | 55.6 |
-| `BacklogStaleOpen.Tests.ps1` | 57.2 | 36.9 |
-| `GateEvidence.Tests.ps1` | null | 32.3 |
+| `BacklogStaleOpen.Tests.ps1` | 57.2 | 41.0 |
+| `GateEvidence.Tests.ps1` | null | 33.8 |
 
 `TestFastPowerShellMode.Tests.ps1` warned in 7 runs but was not audited, so its baseline is
 unchanged.

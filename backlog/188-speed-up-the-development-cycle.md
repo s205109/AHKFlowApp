@@ -31,12 +31,11 @@ Each criterion is refined in the spec. Tick a box only when its words hold liter
       steps are worth an audit item of their own.
 - [x] Each of the five measures has a target that the user approved after the baseline and before
       any improvement work.
-- [ ] An after record of Gate time and affected-test time, taken on the final revision with the
+- [x] An after record of Gate time and affected-test time, taken on the final revision with the
       baseline's method and preparation, sits next to the baseline. It reports both targets as met
       or missed, and a missed target carries the user's decision to accept it or continue.
-      Not ticked: the after record was taken at `8a326f89`. Three later commits changed scripts
-      (`116414e5`, `99578e70`, and the Simplify refactor), so it was not taken on the final
-      revision. Plan rule G9 asks for Task 14 to run again before this box is true.
+      The record was measured again at `e138787f`, the final revision, after the review fixes.
+      All four targets are missed, and the user's S6 answer, accept, covers them.
 - [x] A follow-up item carries the before record and the targets of the other three measures, and
       says when each after window starts and when it is ready.
 - [x] Every audit batch the user approved is applied, and the after record lists what each batch

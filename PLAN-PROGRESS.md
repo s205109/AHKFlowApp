@@ -33,3 +33,4 @@ Review of PR 454: WatchTask reuse can hide a failure caused by a directory next 
 
 **Recovery task:** R1 mark WatchTask not eligible for reuse; R2 -Fix rewrites only the leading path:line of a citation, with a regression case; R3 rerun plan Task 14 on the final revision and refresh the after record; R4 note in item 188 that the cycle-time record counts as history for box 6.
 
+- [x] Recovery R1 to R4 done: WatchTask not eligible, -Fix rewrites only the line number, the after record measured again at `e138787f`, box 6 ticked on the reviewer's ruling.
