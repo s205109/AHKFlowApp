@@ -21,4 +21,4 @@ One line per finished task, written after its deliverable commit.
 - [x] Task 12 — citation drift warns, and `-Fix`
 - [x] Task 13 — time budget per Suite, and the re-audit suggestion
 - [x] Task 14 — the after record (stop S6 when a target is missed)
-- [ ] Task 15 — the follow-up item
+- [x] Task 15 — the follow-up item
