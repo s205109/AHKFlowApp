@@ -85,5 +85,8 @@ Each criterion is refined in the spec. Tick a box only when its words hold liter
 - Related: backlog 068 (flaky `WorktreeRemoveHook` reads), backlog 187 (UI test events outside
   `InvokeAsync`), spec and plan 126 (the earlier PowerShell suite performance work).
 - Siblings: 191 (process), 192 (memory and instructions), 193 (architecture pilot).
+- Follow-ups: 196 measures the CI critical path, the stage exits per item and the flaky failures
+  once their windows are ready. 195 applies or rejects the deferred test-audit speed-ups. 194
+  carries the .NET test audit.
 - Spec: `docs/superpowers/specs/2026-10-18-speed-up-the-development-cycle-design-188.md`
 - Plan: `docs/superpowers/plans/2026-10-18-speed-up-the-development-cycle-plan-188.md`
