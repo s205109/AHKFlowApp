@@ -161,17 +161,23 @@ if ($NoAdoptionTier) {
     'Tier 3 skipped: no merge base with origin/main. A shallow clone or a missing remote does this.'
 }
 
-$moved = [System.Collections.Generic.List[object]]::new()
-$problems = @(Get-CitationProblem -ScanRoot $ScanRoot -ResolveRoot $ResolveRoot -ChangedLine $changed -OnlyPath $OnlyPath -Moved $moved)
+# One pass of the check. It runs once, and once more after -Fix rewrites files.
+function Invoke-CitationCheck {
+    $found = [System.Collections.Generic.List[object]]::new()
+    $issues = @(Get-CitationProblem -ScanRoot $ScanRoot -ResolveRoot $ResolveRoot -ChangedLine $changed -OnlyPath $OnlyPath -Moved $found)
+    return [pscustomobject]@{ Moved = $found; Problems = $issues }
+}
 
-if ($Fix -and $moved.Count -gt 0) {
+$check = Invoke-CitationCheck
+
+if ($Fix -and $check.Moved.Count -gt 0) {
     # Only the files this branch changed. A citation in any other file belongs to work that is not
     # this branch's to edit.
     $branchLines = if ($null -ne $changed) { $changed } else { Get-ChangedLine -Root $ScanRoot -BaseRef $BaseRef }
     $branchFiles = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     foreach ($entry in $branchLines) { [void] $branchFiles.Add($entry.Substring(0, $entry.LastIndexOf(':'))) }
 
-    foreach ($group in ($moved | Group-Object CitingPath)) {
+    foreach ($group in ($check.Moved | Group-Object CitingPath)) {
         if ($branchFiles.Contains($group.Name)) {
             Set-MovedCitation -FullPath (Join-Path $ScanRoot $group.Name) -Move @($group.Group)
             foreach ($one in $group.Group) { "FIXED $($one.Where): $($one.Path):$($one.OldStart) now reads $($one.Path):$($one.NewStart)." }
@@ -182,9 +188,11 @@ if ($Fix -and $moved.Count -gt 0) {
 
     # The check again, on the rewritten files. Its result is this run's result.
     if ($null -ne $changed) { $changed = Get-ChangedLine -Root $ScanRoot -BaseRef $BaseRef }
-    $moved = [System.Collections.Generic.List[object]]::new()
-    $problems = @(Get-CitationProblem -ScanRoot $ScanRoot -ResolveRoot $ResolveRoot -ChangedLine $changed -OnlyPath $OnlyPath -Moved $moved)
+    $check = Invoke-CitationCheck
 }
+
+$moved = $check.Moved
+$problems = $check.Problems
 
 if ($moved.Count -gt 0) {
     ''

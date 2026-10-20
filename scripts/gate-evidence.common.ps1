@@ -21,6 +21,10 @@
 
 $script:GateEvidenceFormatVersion = 1
 
+# The git-ignored folder a run writes its output into: the evidence, the Gate log and the budget
+# streak. Nothing under it is ever an input, so writing there can never change a key.
+$script:GateOutputFolder = 'TestResults'
+
 # A token that names a file the script may read. The list may hold too much; it must never miss a
 # path written out in the text.
 $script:GateEvidencePathPattern = '[A-Za-z0-9_.\-/]+\.(?:ps1|psm1|psd1|json|md|yml|csv|txt|xml|trx)\b'
@@ -109,10 +113,10 @@ function Get-SuiteInputList {
             $unresolved.Add("$($Full.Replace('\', '/')) lies outside $($rootFull.Replace('\', '/'))")
             return
         }
-        # TestResults/ is git-ignored output that runs write, never a file a Suite depends on. The
-        # runner rewrites its budget streak there after every Gate run; as an input it changed
-        # every key, and nothing was reused (final review, backlog 188).
-        if ($relative.StartsWith('TestResults/', [System.StringComparison]::OrdinalIgnoreCase)) { return }
+        # Run output is never a file a Suite depends on. The runner rewrites its budget streak
+        # there after every Gate run; as an input it changed every key, and nothing was reused
+        # (final review, backlog 188).
+        if ($relative.StartsWith("$script:GateOutputFolder/", [System.StringComparison]::OrdinalIgnoreCase)) { return }
         if ($files.Add($Full) -and $script:GateEvidenceScriptExtension -contains [System.IO.Path]::GetExtension($Full).ToLowerInvariant()) {
             $queue.Enqueue($Full)
         }
@@ -384,5 +388,5 @@ function Get-GateEvidenceRoot {
     if (-not [string]::IsNullOrWhiteSpace($env:AHKFLOW_GATE_EVIDENCE_ROOT)) {
         return $env:AHKFLOW_GATE_EVIDENCE_ROOT
     }
-    return Join-Path $RepoRoot 'TestResults\gate-evidence'
+    return Join-Path $RepoRoot "$script:GateOutputFolder\gate-evidence"
 }

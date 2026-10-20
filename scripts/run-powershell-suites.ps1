@@ -129,6 +129,8 @@ try {
 
 $byName = @{}
 foreach ($file in $discovered) { $byName[$file.Name] = $file }
+$entryByName = @{}
+foreach ($entry in $entries) { $entryByName[$entry.Name] = $entry }
 
 $inActions = $env:GITHUB_ACTIONS -eq 'true'
 
@@ -166,13 +168,20 @@ if ($reuseOn) {
         RunnerRoot  = $repoRoot
     }
 
+    # An eligible Suite's input list and key, built the same way before it runs and after it passes.
+    function Get-EntryReuseKey {
+        param([object] $Entry)
+        $inputs = Get-SuiteInputList -Path $byName[$Entry.Name].FullName -Root $suiteParent -ExtraInput $Entry.Reuse.ExtraInputs
+        return [pscustomobject]@{
+            Inputs = $inputs
+            Key    = Get-SuiteReuseKey -Entry $Entry -InputList $inputs -RunnerInputList $runnerInputs @reuseContext
+        }
+    }
+
     $toRun = [System.Collections.Generic.List[object]]::new()
     foreach ($entry in $selected) {
         $key = $null
-        if ($null -ne $entry.Reuse -and $entry.Reuse.Eligible) {
-            $inputs = Get-SuiteInputList -Path $byName[$entry.Name].FullName -Root $suiteParent -ExtraInput $entry.Reuse.ExtraInputs
-            $key = Get-SuiteReuseKey -Entry $entry -InputList $inputs -RunnerInputList $runnerInputs @reuseContext
-        }
+        if ($null -ne $entry.Reuse -and $entry.Reuse.Eligible) { $key = (Get-EntryReuseKey $entry).Key }
         if ($null -ne $key -and $null -ne (Read-GateEvidence -EvidenceRoot $evidenceRoot -SuiteName $entry.Name -Key $key)) {
             Write-Host "REUSED $($entry.Name) (evidence $($key.Substring(0, 12)))"
             $reusedRows.Add([pscustomobject]@{ Name = $entry.Name; ExitCode = 0; Seconds = 0; Reused = $true })
@@ -304,7 +313,7 @@ function Show-SuiteResult {
             Reused   = $false
         })
 
-    $entry = @($entries | Where-Object { $_.Name -eq $Result.Name })[0]
+    $entry = $entryByName[$Result.Name]
 
     # Backlog 188. Only a Suite that ran can be over its budget. A reused one never reaches here.
     if ($budgetsOn -and $null -ne $entry) {
@@ -319,10 +328,9 @@ function Show-SuiteResult {
     # run started with. A Suite that changed one of its own inputs while it ran proved nothing
     # about the new bytes.
     if ($reuseOn -and $Result.ExitCode -eq 0 -and $reuseKeys.ContainsKey($Result.Name)) {
-        $inputs = Get-SuiteInputList -Path $byName[$Result.Name].FullName -Root $suiteParent -ExtraInput $entry.Reuse.ExtraInputs
-        $again = Get-SuiteReuseKey -Entry $entry -InputList $inputs -RunnerInputList $runnerInputs @reuseContext
-        if ($again -eq $reuseKeys[$Result.Name]) {
-            Write-GateEvidence -EvidenceRoot $evidenceRoot -SuiteName $Result.Name -Key $again -InputList $inputs -RunnerInputList $runnerInputs -Seconds $Result.Seconds
+        $again = Get-EntryReuseKey $entry
+        if ($again.Key -eq $reuseKeys[$Result.Name]) {
+            Write-GateEvidence -EvidenceRoot $evidenceRoot -SuiteName $Result.Name -Key $again.Key -InputList $again.Inputs -RunnerInputList $runnerInputs -Seconds $Result.Seconds
         }
     }
 }
@@ -428,7 +436,7 @@ Save-ProgressTimings -Tracker $progress -KnownUnit @($discovered.Name)
 # one.
 if ($budgetsOn -and $keepTimings) {
     $executedNames = @($results | Where-Object { -not $_.Reused } | ForEach-Object { $_.Name })
-    $streakPath = Join-Path $repoRoot 'TestResults\progress\budget-streak.json'
+    $streakPath = Join-Path $repoRoot "$script:GateOutputFolder\progress\budget-streak.json"
     $repeat = @(Update-SuiteBudgetStreak -Path $streakPath -Executed $executedNames -Warned @($budgetWarned))
     if ($repeat.Count -gt 0) {
         $names = $repeat -join ', '

@@ -52,10 +52,9 @@ function Update-SuiteBudgetStreak {
         $streak = @{}
     }
 
-    $warnedSet = [System.Collections.Generic.HashSet[string]]::new([string[]] @($Warned), [System.StringComparer]::OrdinalIgnoreCase)
     $suggest = [System.Collections.Generic.List[string]]::new()
     foreach ($name in @($Executed)) {
-        if ($warnedSet.Contains($name)) {
+        if (@($Warned) -contains $name) {
             $streak[$name] = 1 + $(if ($streak.ContainsKey($name)) { $streak[$name] } else { 0 })
             if ($streak[$name] -ge 2) { $suggest.Add($name) }
         } else {
