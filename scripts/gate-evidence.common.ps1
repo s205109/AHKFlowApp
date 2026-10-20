@@ -104,10 +104,15 @@ function Get-SuiteInputList {
 
     $addFile = {
         param([string] $Full)
-        if ($null -eq (ConvertTo-GateRelativePath -FullPath $Full -Root $rootFull)) {
+        $relative = ConvertTo-GateRelativePath -FullPath $Full -Root $rootFull
+        if ($null -eq $relative) {
             $unresolved.Add("$($Full.Replace('\', '/')) lies outside $($rootFull.Replace('\', '/'))")
             return
         }
+        # TestResults/ is git-ignored output that runs write, never a file a Suite depends on. The
+        # runner rewrites its budget streak there after every Gate run; as an input it changed
+        # every key, and nothing was reused (final review, backlog 188).
+        if ($relative.StartsWith('TestResults/', [System.StringComparison]::OrdinalIgnoreCase)) { return }
         if ($files.Add($Full) -and $script:GateEvidenceScriptExtension -contains [System.IO.Path]::GetExtension($Full).ToLowerInvariant()) {
             $queue.Enqueue($Full)
         }

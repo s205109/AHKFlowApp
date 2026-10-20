@@ -142,6 +142,22 @@ Invoke-TestCase 'A path named only in a comment is not an input' {
     finally { Remove-TempRoot $root }
 }
 
+Invoke-TestCase 'A path under TestResults is not an input' {
+    # Final review, backlog 188. The runner names TestResults/progress/budget-streak.json and
+    # rewrites it after every Gate run. As an input it changed every key, so nothing was reused.
+    # TestResults/ is git-ignored output that a run writes, never a file a Suite depends on.
+    $root = New-TempRoot
+    try {
+        $suite = Write-TestFile $root 'tests\S.Tests.ps1' "`$streak = Join-Path `$PSScriptRoot '..\TestResults\progress\budget-streak.json'"
+        Write-TestFile $root 'TestResults\progress\budget-streak.json' '{}' | Out-Null
+
+        $list = Get-SuiteInputList -Path $suite -Root $root
+        Assert-True $list.Resolved "The list must resolve. Unresolved: $($list.Unresolved -join ' | ')"
+        Assert-True (($list.Inputs -join ',') -eq 'tests/S.Tests.ps1') "Run output must not be an input. Got: $($list.Inputs -join ',')"
+    }
+    finally { Remove-TempRoot $root }
+}
+
 Invoke-TestCase 'A dot-source of a variable built at run time leaves the list unresolved' {
     $root = New-TempRoot
     try {
