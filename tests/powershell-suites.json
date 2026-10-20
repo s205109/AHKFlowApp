@@ -7,7 +7,7 @@
     { "name": "BacklogFolderParity.Tests.ps1", "jobs": ["invariants", "suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 0.8 },
     { "name": "BacklogNumbering.Tests.ps1", "jobs": ["invariants", "suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 13.8 },
     { "name": "BacklogPlanPointer.Tests.ps1", "jobs": ["invariants", "suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 3.8 },
-    { "name": "BacklogStaleOpen.Tests.ps1", "jobs": ["invariants", "suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 36.9, "reuse": {"eligible": true} },
+    { "name": "BacklogStaleOpen.Tests.ps1", "jobs": ["invariants", "suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 36.9, "reuse": {"eligible": false, "reason": "checks the live repository: its backlog items and its base branch"} },
     { "name": "CiBuildTestSteps.Tests.ps1", "jobs": ["suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": null },
     { "name": "CiPowerShellSuiteRunner.Tests.ps1", "jobs": ["suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 149.2, "reuse": {"eligible": false, "reason": "runs cmd and reads the machine core count"} },
     { "name": "CitationFreshness.Tests.ps1", "jobs": ["invariants", "suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 48.1 },

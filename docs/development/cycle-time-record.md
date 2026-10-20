@@ -485,14 +485,15 @@ workflow reference is `docs/development/test-audit-workflow.md`.
 
 ### Gate reuse per Suite
 
-Each candidate Suite carries a `reuse` field in `tests/powershell-suites.json`. Four are eligible:
+Each candidate Suite carries a `reuse` field in `tests/powershell-suites.json`. Three are eligible:
 
 - `StageTransition.Tests.ps1`: eligible. Its git repositories are fixtures, and its `gh` is a fake.
 - `WatchTask.Tests.ps1`: eligible. It reads `scripts/watch-task.ps1` and sets the session
   variable it reads.
 - `WorktreeMergedCleanup.Tests.ps1`: eligible. Its shared helper now names
   `scripts/cleanup-merged-worktrees.ps1` by a written-out path, so the resolver can follow it.
-- `BacklogStaleOpen.Tests.ps1`: eligible. Its git repositories are fixtures.
+- `BacklogStaleOpen.Tests.ps1`: not eligible. Its last two checks read the live repository: its
+  backlog items and its base branch. The final review found this; it was marked eligible at first.
 - `CiPowerShellSuiteRunner.Tests.ps1`: not eligible. It runs `cmd` and reads the machine's core
   count.
 - `AgentWorktreeGuard.Tests.ps1`: not eligible. It runs bash, cmd and Windows PowerShell, and
@@ -505,7 +506,7 @@ Each candidate Suite carries a `reuse` field in `tests/powershell-suites.json`. 
   resolver cannot follow.
 
 Two PowerShell Mode runs on 2026-10-19 proved reuse. Both passed all 73 Suites. The second printed
-`REUSED` for the four eligible Suites and ran the other 69. Then `# probe` was appended to
+`REUSED` for the four Suites eligible then and ran the other 69. Then `# probe` was appended to
 `scripts/watch-task.ps1` for one more run. `WatchTask` ran again and passed, and the other three
 eligible Suites were reused. The file's bytes were restored afterwards.
 
@@ -581,7 +582,8 @@ eligible Suite, so that Suite runs again. That is why its PowerShell step is slo
 
 Every number fell, and every target was missed. The build, format and diff check steps take about
 45 seconds together, and the PowerShell step still takes 197 to 255 seconds. Only 4 of 73 Suites
-are eligible for reuse, so most of the Gate still runs on every change.
+were eligible for reuse during these runs, and 3 are after the final review. So most of the Gate
+still runs on every change.
 
 Stop S6, answered by the user on 2026-10-20: **accept the result.** The misses stand as recorded.
 The remaining speed-ups stay in backlog 195.
