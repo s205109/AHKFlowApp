@@ -45,3 +45,4 @@ CI run 39747519544, job powershell-suites: MeasureTestModes.Tests.ps1 case The w
 
 **Recovery task:** R5 restore the warm-up ceiling case to its proven values, 300 ms runs and a 5 s settle target, and run MeasureTestModes.
 
+- [x] Recovery R5 done: the warm-up ceiling case is back at 300 ms runs and a 5 s settle target.

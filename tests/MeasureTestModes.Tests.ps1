@@ -566,20 +566,22 @@ Invoke-TestCase 'The discarded runs are printed, with how many there were' {
 Invoke-TestCase 'The warm-up ceiling caps the runs and never the wait' {
     $root = New-HarnessFixture
     try {
-        Set-Content -LiteralPath (Join-Path $root 'stub\sleeps.txt') -Value '100' -Encoding utf8
+        Set-Content -LiteralPath (Join-Path $root 'stub\sleeps.txt') -Value '300' -Encoding utf8
 
         # A build output file written just now, so the settle clock is not satisfied.
         $binFolder = Join-Path $root 'tests\FakeProject\bin\Release\net10.0'
         New-Item -ItemType Directory -Path $binFolder -Force | Out-Null
         Set-Content -LiteralPath (Join-Path $binFolder 'Fake.dll') -Value 'not a real assembly' -Encoding utf8
 
-        # Four warm-up runs at 100 ms cannot fill a 3 s target, so the ceiling is reached first.
+        # Four warm-up runs at 300 ms cannot fill a 5 s target, so the ceiling is reached first.
+        # Backlog 188 tried 100 ms and 3 s. On a GitHub runner three warm-ups filled 3 s, so the
+        # ceiling never ran: start-up costs about a second a run there. Keep the 5 s margin.
         # That is the shape of a real short Mode: the Fast Mode measured 13.5 to 16.1 s a run, and
         # a 600 s target would need more than forty runs to fill. The ceiling must cap the runs
         # without ever letting the counted runs start on a tree that is still cold.
         $result = Invoke-Harness -Root $root -Arguments @(
             '-Mode', 'Fast', '-Runs', '1', '-WarmUpRuns', '1',
-            '-SettleSeconds', '3', '-MaxWarmUpRuns', '4', '-NoBuild')
+            '-SettleSeconds', '5', '-MaxWarmUpRuns', '4', '-NoBuild')
         Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
 
         # Warm-ups past the minimum of one, capped at four, then one counted run.
@@ -593,11 +595,11 @@ Invoke-TestCase 'The warm-up ceiling caps the runs and never the wait' {
             "The ceiling caps the runs, not the wait. It must wait out the rest. Output: $text"
 
         # The assertion that proves the wait really happened. Without it the counted runs start
-        # about 1 s after the build, and the build-age line reads well under the 3 s target.
+        # about 2 s after the build, and the build-age line reads well under the 5 s target.
         Assert-True ($text -match 'built\s+:\s+([\d.,]+)\s+s') "No build-age line. Output: $text"
         $builtAge = [double]($Matches[1] -replace '[,.]', '')
-        Assert-True ($builtAge -ge 3) `
-            "The counted runs must start at or after the 3 s settle target, but the build age reads $builtAge s. Output: $text"
+        Assert-True ($builtAge -ge 5) `
+            "The counted runs must start at or after the 5 s settle target, but the build age reads $builtAge s. Output: $text"
     }
     finally { Remove-HarnessFixture -Root $root }
 }
