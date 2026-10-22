@@ -143,8 +143,27 @@ $script:BinaryExtension = '\.(png|jpg|jpeg|gif|ico|svg|pdf|zip|dll|exe|pfx|snk|w
 # A citation that carries weight belongs in a document, so this only ever hides quoted data.
 $script:DataExtension = '\.(csv|tsv|jsonl)$'
 
+# Every line number in the target whose collapsed text holds the phrase. Backlog 188 uses it to
+# tell a citation that moved from one whose text is gone.
+function Find-CitationPhraseLine {
+    param(
+        [Parameter(Mandatory)][AllowEmptyString()][AllowEmptyCollection()][string[]] $TargetLines,
+        [Parameter(Mandatory)][string] $Phrase
+    )
+    $found = [System.Collections.Generic.List[int]]::new()
+    for ($i = 0; $i -lt $TargetLines.Count; $i++) {
+        if ((ConvertTo-CollapsedText -Text ([string] $TargetLines[$i])).Contains($Phrase)) { $found.Add($i + 1) }
+    }
+    return , $found.ToArray()
+}
+
 # Walks ScanRoot and returns one string per problem. ChangedLine enables tier 3; leave it null and
 # the check reads state only.
+#
+# Moved, backlog 188: a single-line canonical citation whose text left its line, and now sits on
+# exactly one other line of the target, has moved. A caller that passes a list gets each one in it,
+# and it is not a problem. A caller that passes no list gets it as a problem that names the new
+# line, so no caller goes silent without asking to.
 function Get-CitationProblem {
     param(
         [Parameter(Mandatory)][string] $ScanRoot,
@@ -154,7 +173,8 @@ function Get-CitationProblem {
         # everything, so every existing caller keeps its behaviour. Pre-push passes the plans this
         # branch owns: the plans repository is one shared working tree with a single branch, and
         # another branch's live plan cites lines that are right there and wrong here (backlog 112).
-        [string[]] $OnlyPath
+        [string[]] $OnlyPath,
+        [System.Collections.Generic.List[object]] $Moved
     )
 
     $scanPath = (Resolve-Path -LiteralPath $ScanRoot).Path
@@ -188,6 +208,30 @@ function Get-CitationProblem {
     function Add-Problem {
         param([Parameter(Mandatory)][int] $Tier, [Parameter(Mandatory)][string] $Detail)
         $problems.Add(('{0} tier {1}: {2} {3}' -f $where, $Tier, $citation.Text, $Detail))
+    }
+
+    # The search for a single-line canonical citation whose text is not on its line. Returns the
+    # detail to add when it is still a problem, or $null when it was recorded as moved.
+    function Get-DriftDetail {
+        param([string] $Phrase, [string[]] $TargetLines)
+        $hits = Find-CitationPhraseLine -TargetLines $TargetLines -Phrase $Phrase
+        if ($hits.Count -eq 1) {
+            if ($null -ne $Moved) {
+                $Moved.Add([pscustomobject]@{
+                        Where      = $where
+                        CitingPath = $relative
+                        CitingLine = $lineNumber
+                        Text       = $citation.Text
+                        Path       = $citation.Path
+                        OldStart   = $citation.Start
+                        NewStart   = $hits[0]
+                    })
+                return $null
+            }
+            return ('the text moved to line {0}' -f $hits[0])
+        }
+        if ($hits.Count -eq 0) { return ('the text is on no line of {0}' -f $citation.Path) }
+        return ('the text is on lines {0}' -f ($hits -join ', '))
     }
 
     foreach ($relative in $scanList) {
@@ -242,7 +286,14 @@ function Get-CitationProblem {
                     continue
                 }
                 if ($citation.End -gt $targetLines.Count) {
-                    Add-Problem 1 ('points past the end of {0}, which has {1} lines' -f $citation.Path, $targetLines.Count)
+                    $pastEnd = 'points past the end of {0}, which has {1} lines' -f $citation.Path, $targetLines.Count
+                    $phrase = if ($citation.Kind -eq 'Canonical') { ConvertTo-CollapsedText -Text $citation.Phrase } else { '' }
+                    if ($citation.Start -eq $citation.End -and -not [string]::IsNullOrEmpty($phrase)) {
+                        $drift = Get-DriftDetail -Phrase $phrase -TargetLines $targetLines
+                        if ($null -ne $drift) { Add-Problem 1 ('{0}, and {1}' -f $pastEnd, $drift) }
+                        continue
+                    }
+                    Add-Problem 1 $pastEnd
                     continue
                 }
 
@@ -258,7 +309,13 @@ function Get-CitationProblem {
 
                 $slice = ConvertTo-CollapsedText -Text (($targetLines[($citation.Start - 1)..($citation.End - 1)]) -join ' ')
                 if (-not $slice.Contains($phrase)) {
-                    Add-Problem 2 ('does not match. The target holds: {0}' -f $slice)
+                    # A range keeps the old behaviour: which lines would it move to?
+                    if ($citation.Start -ne $citation.End) {
+                        Add-Problem 2 ('does not match. The target holds: {0}' -f $slice)
+                        continue
+                    }
+                    $drift = Get-DriftDetail -Phrase $phrase -TargetLines $targetLines
+                    if ($null -ne $drift) { Add-Problem 2 ('does not match, and {0}. The target holds: {1}' -f $drift, $slice) }
                 }
             }
         }

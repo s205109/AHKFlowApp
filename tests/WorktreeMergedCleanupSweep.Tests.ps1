@@ -154,7 +154,7 @@ try {
 $hostExe = [System.Diagnostics.Process]::GetCurrentProcess().Path
 $watch = [System.Diagnostics.Stopwatch]::StartNew()
 $hung = Invoke-CapturedProcess -FilePath $hostExe `
-    -Arguments @('-NoProfile', '-Command', 'Start-Sleep -Seconds 120') -TimeoutSeconds 3
+    -Arguments @('-NoProfile', '-Command', 'Start-Sleep -Seconds 120') -TimeoutSeconds 1
 $watch.Stop()
 
 Assert-True $hung.Started 'The child must have started.'
@@ -360,14 +360,24 @@ try {
 # outcome log and then hand over to a watcher that wrote "Removed.", which is two lines for one
 # attempt. And the watcher's temp copy had no reliable logger, so two watchers colliding on the
 # same file could drop a line entirely.
+#
+# The same sweep also proves two -Cleanup rules. -Cleanup overrides config false: it cleans, and it
+# does not prompt. And the strongest override still must not delete a worktree nobody has
+# committed in (backlog 060).
 $repo = New-WorktreeToolingRepo -ScriptsSource $scriptsDir
 try {
     $first = Add-TestWorktree -RepoDir $repo -BranchName 'feat-outcome-one'
     $second = Add-TestWorktree -RepoDir $repo -BranchName 'feat-outcome-two'
+    $fresh = Add-TestWorktree -RepoDir $repo -BranchName 'feat-fresh-forced' -NoCommits
+    Invoke-TestGit $repo @('config', '--local', 'ahkflow.worktreeCleanup', 'false') | Out-Null
 
     $res = Invoke-CleanupChild -RepoDir $repo -ExtraArgs @('-Cleanup')
-    Assert-True (Wait-ForWorktreeCleaned -RepoDir $repo -WorktreePath $first) "The first worktree must be removed. Stderr: $($res.Stderr)"
+    Assert-True (Wait-ForWorktreeCleaned -RepoDir $repo -WorktreePath $first) "The first worktree must be removed, and -Cleanup must override config false. Stderr: $($res.Stderr)"
     Assert-True (Wait-ForWorktreeCleaned -RepoDir $repo -WorktreePath $second) "The second worktree must be removed. Stderr: $($res.Stderr)"
+    Assert-True (Test-Path -LiteralPath $fresh) '-Cleanup must not remove a worktree whose branch has no commits of its own.'
+    Assert-True (-not ($res.Stderr -match 'feat-fresh-forced')) 'An unstarted worktree must not even be reported as eligible.'
+    $branches = (Invoke-TestGit $repo @('branch', '--list', 'feat-fresh-forced')) -join "`n"
+    Assert-True ($branches -match 'feat-fresh-forced') '-Cleanup must not delete the unstarted branch.'
 
     # The watcher writes its outcome after the folder is gone, so waiting on the folder is not
     # waiting on the line. Poll until both leaves have one, then read once.
@@ -406,7 +416,7 @@ try {
     Remove-TempTree $repo
 }
 
-# --- Test: a kept worktree's outcome line carries the guard's own reason ------------------
+# --- Test: a kept worktree's outcome line carries the guard's own reason, and a stale number does not keep one ---
 # A source scan can show that a call site looks right. It cannot show that the log a human reads
 # holds the reason that applied. Both writers used to log one fixed sentence, "Kept: the plan was
 # never implemented.", whatever the verdict was, and that sentence sent an investigation to the
@@ -489,6 +499,24 @@ try {
     Set-PlanGuardFixture -RepoDir $repo -WorktreePath $untouched -RecordedNumber '118' -ItemNumber '141' `
         -PlanBullet '`docs/superpowers/plans/plan-141.md`' -PlanBody "- [ ] Step 1`n- [ ] Step 2"
 
+    # And one removed worktree whose recorded number is stale. This is the worktree that started
+    # backlog 122: its manifest records somebody else's open item, its own item shipped into
+    # backlog/done with an implemented plan, and every sweep refused it. Nothing edits the
+    # manifest -- the guard stops believing it instead.
+    $stale = Add-TestWorktree -RepoDir $repo -BranchName 'feat-renumbered'
+    Set-PlanGuardFixture -RepoDir $repo -WorktreePath $stale -RecordedNumber '118' -ItemNumber '120' `
+        -ItemFolder 'backlog\done' -PlanBullet '`docs/superpowers/plans/plan-120.md`' -PlanBody "- [x] Step 1"
+
+    # The item the stale number names: still open, and its pointer is the unfilled template. Judging
+    # it refuses, so a removal here proves the guard judged the other one.
+    Set-Content -LiteralPath (Join-Path $repo 'backlog\118-a-different-title.md') `
+        -Value "# 118 - other`n`n- Plan: <path, or ""none - reason"">" -Encoding utf8
+    Invoke-TestGit $repo @('add', '-A') | Out-Null
+    Invoke-TestGit $repo @('commit', '-m', 'seed the item the stale number names') | Out-Null
+
+    $manifestPath = Join-Path $stale 'scripts\.env.worktree'
+    $manifestBefore = Get-Content -Raw -LiteralPath $manifestPath
+
     $res = Invoke-CleanupChild -RepoDir $repo -ExtraArgs @('-Cleanup')
 
     $outsideLeaf = Split-Path -Leaf $outside
@@ -514,31 +542,8 @@ try {
 
     Assert-True (Test-Path -LiteralPath $outside) 'A refused worktree stays on disk'
     Assert-True (Test-Path -LiteralPath $untouched) 'A refused worktree stays on disk'
-} finally {
-    Remove-TempTree $repo
-}
 
-# --- Test: the sweep removes a worktree whose recorded number is stale --------------------
-# This is the worktree that started backlog 122: its manifest records somebody else's open item,
-# its own item shipped into backlog/done with an implemented plan, and every sweep refused it.
-# Nothing edits the manifest -- the guard stops believing it instead.
-$repo = New-PlanGuardRepo -ScriptsSource $scriptsDir
-try {
-    $stale = Add-TestWorktree -RepoDir $repo -BranchName 'feat-renumbered'
-    Set-PlanGuardFixture -RepoDir $repo -WorktreePath $stale -RecordedNumber '118' -ItemNumber '120' `
-        -ItemFolder 'backlog\done' -PlanBullet '`docs/superpowers/plans/plan-120.md`' -PlanBody "- [x] Step 1"
-
-    # The item the stale number names: still open, and its pointer is the unfilled template. Judging
-    # it refuses, so a removal here proves the guard judged the other one.
-    Set-Content -LiteralPath (Join-Path $repo 'backlog\118-a-different-title.md') `
-        -Value "# 118 - other`n`n- Plan: <path, or ""none - reason"">" -Encoding utf8
-    Invoke-TestGit $repo @('add', '-A') | Out-Null
-    Invoke-TestGit $repo @('commit', '-m', 'seed the item the stale number names') | Out-Null
-
-    $manifestPath = Join-Path $stale 'scripts\.env.worktree'
-    $manifestBefore = Get-Content -Raw -LiteralPath $manifestPath
-
-    $res = Invoke-CleanupChild -RepoDir $repo -ExtraArgs @('-Cleanup')
+    # The stale-number worktree is removed.
     Assert-True (Wait-ForWorktreeCleaned -RepoDir $repo -WorktreePath $stale) `
         "A worktree whose own item shipped must be removed. Stderr: $($res.Stderr)"
 
@@ -546,10 +551,10 @@ try {
     Assert-True (-not (Test-Path -LiteralPath $manifestPath)) 'The worktree folder is gone, manifest and all'
     Assert-True ($manifestBefore -match 'AHKFLOW_BACKLOG_ITEM=118') 'The fixture really did record the stale number'
 
-    $leaf = Split-Path -Leaf $stale
-    $lines = Get-OutcomeLinesFor -RepoDir $repo -Leaf $leaf
-    Assert-Equal 1 $lines.Count "'$leaf' must have exactly one outcome line, got: $($lines -join ' || ')"
-    Assert-True ($lines[0] -match '\sRemoved\.$') "The outcome line must be the normal removal line, got '$($lines[0])'"
+    $staleLeaf = Split-Path -Leaf $stale
+    $staleLines = Get-OutcomeLinesFor -RepoDir $repo -Leaf $staleLeaf
+    Assert-Equal 1 $staleLines.Count "'$staleLeaf' must have exactly one outcome line, got: $($staleLines -join ' || ')"
+    Assert-True ($staleLines[0] -match '\sRemoved\.$') "The outcome line must be the normal removal line, got '$($staleLines[0])'"
 
     # The disagreement is a diagnostic, never an outcome. A human who wonders why 118 was in the
     # manifest can find both numbers there.
@@ -568,34 +573,6 @@ Assert-True ($sweepSource -match '(?m)^function Write-SweepOutcome \{') 'cleanup
 Assert-True ($sweepSource -match "Failed: the removal script could not be found\.") 'A missing removal script writes a Failed outcome'
 Assert-True ($sweepSource -match "Failed: the removal script could not be started\.") 'A spawn failure writes a Failed outcome'
 
-
-# --- Test: -Cleanup overrides config false (cleans, no prompt) ------------------
-$repo = New-WorktreeToolingRepo -ScriptsSource $scriptsDir
-try {
-    $target = Add-TestWorktree -RepoDir $repo -BranchName 'feat-flag-over-false'
-    Invoke-TestGit $repo @('config', '--local', 'ahkflow.worktreeCleanup', 'false') | Out-Null
-    $res = Invoke-CleanupChild -RepoDir $repo -ExtraArgs @('-Cleanup')
-    Assert-True (Wait-ForWorktreeCleaned -RepoDir $repo -WorktreePath $target) "-Cleanup must override config false. Stderr: $($res.Stderr)"
-} finally {
-    Remove-TempTree $repo
-}
-
-# --- Test: -Cleanup removes finished work and leaves unstarted worktrees (backlog 060) ---
-# The strongest override still must not delete a worktree nobody has committed in.
-$repo = New-WorktreeToolingRepo -ScriptsSource $scriptsDir
-try {
-    $fresh = Add-TestWorktree -RepoDir $repo -BranchName 'feat-fresh-forced' -NoCommits
-    $target = Add-TestWorktree -RepoDir $repo -BranchName 'feat-done-forced'
-
-    $res = Invoke-CleanupChild -RepoDir $repo -ExtraArgs @('-Cleanup')
-    Assert-True (Wait-ForWorktreeCleaned -RepoDir $repo -WorktreePath $target) "-Cleanup must still remove a genuinely merged worktree. Stderr: $($res.Stderr)"
-    Assert-True (Test-Path -LiteralPath $fresh) '-Cleanup must not remove a worktree whose branch has no commits of its own.'
-    Assert-True (-not ($res.Stderr -match 'feat-fresh-forced')) 'An unstarted worktree must not even be reported as eligible.'
-    $branches = (Invoke-TestGit $repo @('branch', '--list', 'feat-fresh-forced')) -join "`n"
-    Assert-True ($branches -match 'feat-fresh-forced') '-Cleanup must not delete the unstarted branch.'
-} finally {
-    Remove-TempTree $repo
-}
 
 # --- Test: signal 2 reports which SHA proved the merge --------------------------
 $repo = New-TempGitRepo

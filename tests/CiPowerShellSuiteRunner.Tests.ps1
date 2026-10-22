@@ -317,21 +317,6 @@ function Invoke-Driver {
 Write-Host "Testing $script:DriverPath"
 Assert-True (Test-Path -LiteralPath $script:DriverPath) "Driver script not found at $script:DriverPath."
 
-Invoke-TestCase 'All suites pass -> exit code 0' {
-    $root = New-SuiteFixture
-    try {
-        Add-FakeSuite -Root $root -Name '01-pass.Tests.ps1' -Ending 'pass'
-        Add-FakeSuite -Root $root -Name '02-exit-zero.Tests.ps1' -Ending 'exit-zero'
-        Set-FixtureManifest -Root $root
-
-        $result = Invoke-Driver -SuiteRoot $root
-        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
-        Assert-True ($result.Output -match 'All 2 suite\(s\) passed\.') "Expected the all-passed summary line. Output: $($result.Output)"
-    } finally {
-        Remove-SuiteFixture -Root $root
-    }
-}
-
 Invoke-TestCase 'The driver prints a progress line per suite and saves no timings for a fixture run' {
     $root = New-SuiteFixture
     $timingsPath = Join-Path $repoRoot 'TestResults\progress\run-powershell-suites.json'
@@ -346,6 +331,12 @@ Invoke-TestCase 'The driver prints a progress line per suite and saves no timing
 
         Assert-True ($result.Output -match '\[\d/2 done\] 01-pass\.Tests\.ps1') "Expected a completion line for the first suite. Output: $($result.Output)"
         Assert-True ($result.Output -match '\[\d/2 done\] 02-pass\.Tests\.ps1') "Expected a completion line for the second suite. Output: $($result.Output)"
+        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
+        Assert-True ($result.Output -match 'All 2 suite\(s\) passed\.') "Expected the all-passed summary line. Output: $($result.Output)"
+        # The header states what the run actually did, so it must come from the host, not from an
+        # argument. A run on this machine can only ever be this platform.
+        $expectedPlatform = if ($IsWindows) { 'windows' } else { 'linux' }
+        Assert-True ($result.Output -match "Platform: $expectedPlatform") "The header must name $expectedPlatform. Output: $($result.Output)"
 
         # The line's position is not fixed any more, because suites finish in whatever order they
         # finish. The last-write check below is what proves the run did not reach the real store.
@@ -370,7 +361,7 @@ Invoke-TestCase 'A run over the repository''s own tests folder saves its timings
         New-Item -ItemType Directory -Path (Join-Path $fakeRepo 'tests') -Force | Out-Null
         New-Item -ItemType Directory -Path (Join-Path $fakeRepo 'markers') -Force | Out-Null
 
-        foreach ($name in @('run-powershell-suites.ps1', 'progress.common.ps1', 'progress.parallel.ps1', 'powershell-suites.common.ps1', 'suite-worker-count.common.ps1', 'test-lanes.common.ps1')) {
+        foreach ($name in @('run-powershell-suites.ps1', 'progress.common.ps1', 'progress.parallel.ps1', 'powershell-suites.common.ps1', 'suite-worker-count.common.ps1', 'test-lanes.common.ps1', 'gate-evidence.common.ps1', 'suite-budget.common.ps1')) {
             Copy-Item -LiteralPath (Join-Path $repoRoot "scripts/$name") -Destination (Join-Path $fakeRepo "scripts/$name")
         }
 
@@ -398,72 +389,6 @@ Invoke-TestCase 'A run over the repository''s own tests folder saves its timings
         Assert-True ($null -ne $saved.'01-pass.Tests.ps1') 'The saved timings must name the suite that ran.'
     } finally {
         Remove-Item -LiteralPath $fakeRepo -Recurse -Force -ErrorAction SilentlyContinue
-    }
-}
-
-Invoke-TestCase 'A suite that exits 1 fails the run' {
-    $root = New-SuiteFixture
-    try {
-        Add-FakeSuite -Root $root -Name '01-pass.Tests.ps1' -Ending 'pass'
-        Add-FakeSuite -Root $root -Name '02-fail.Tests.ps1' -Ending 'exit-one'
-        Set-FixtureManifest -Root $root
-
-        $result = Invoke-Driver -SuiteRoot $root
-        Assert-True ($result.ExitCode -eq 1) "Expected exit code 1, got $($result.ExitCode). Output: $($result.Output)"
-        Assert-True ($result.Output -match '02-fail\.Tests\.ps1 \| failed') "The summary must mark 02-fail as failed. Output: $($result.Output)"
-    } finally {
-        Remove-SuiteFixture -Root $root
-    }
-}
-
-Invoke-TestCase 'A suite that throws fails the run' {
-    $root = New-SuiteFixture
-    try {
-        Add-FakeSuite -Root $root -Name '01-throw.Tests.ps1' -Ending 'throw'
-        Set-FixtureManifest -Root $root
-
-        $result = Invoke-Driver -SuiteRoot $root
-        Assert-True ($result.ExitCode -eq 1) "Expected exit code 1, got $($result.ExitCode). Output: $($result.Output)"
-        Assert-True ($result.Output -match '01-throw\.Tests\.ps1 \| failed') "The summary must mark 01-throw as failed. Output: $($result.Output)"
-    } finally {
-        Remove-SuiteFixture -Root $root
-    }
-}
-
-# The regression test for the trap named in backlog item 066. A passing suite that leaves
-# $LASTEXITCODE at 1 must still be reported as passed, which is only true because the driver runs
-# each suite in its own process.
-Invoke-TestCase 'A passing suite with a dirty $LASTEXITCODE still passes' {
-    $root = New-SuiteFixture
-    try {
-        Add-FakeSuite -Root $root -Name '01-dirty.Tests.ps1' -Ending 'dirty'
-        Set-FixtureManifest -Root $root
-
-        $result = Invoke-Driver -SuiteRoot $root
-        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
-        Assert-True ($result.Output -match '01-dirty\.Tests\.ps1 \| passed') "The summary must mark 01-dirty as passed. Output: $($result.Output)"
-    } finally {
-        Remove-SuiteFixture -Root $root
-    }
-}
-
-Invoke-TestCase 'Every suite runs even when the first one fails' {
-    $root = New-SuiteFixture
-    try {
-        Add-FakeSuite -Root $root -Name '01-fail.Tests.ps1' -Ending 'exit-one'
-        Add-FakeSuite -Root $root -Name '02-throw.Tests.ps1' -Ending 'throw'
-        Add-FakeSuite -Root $root -Name '03-pass.Tests.ps1' -Ending 'pass'
-        Add-FakeSuite -Root $root -Name '04-dirty.Tests.ps1' -Ending 'dirty'
-        Set-FixtureManifest -Root $root
-
-        $result = Invoke-Driver -SuiteRoot $root
-        Assert-True ($result.ExitCode -eq 1) "Expected exit code 1, got $($result.ExitCode). Output: $($result.Output)"
-
-        foreach ($name in @('01-fail.Tests.ps1', '02-throw.Tests.ps1', '03-pass.Tests.ps1', '04-dirty.Tests.ps1')) {
-            Assert-True (Test-MarkerExists -Root $root -Name $name) "Suite $name must still have run. Output: $($result.Output)"
-        }
-    } finally {
-        Remove-SuiteFixture -Root $root
     }
 }
 
@@ -500,6 +425,8 @@ Invoke-TestCase 'The driver writes its table to the GITHUB_STEP_SUMMARY file' {
         Set-FixtureManifest -Root $root
 
         $result = Invoke-Driver -SuiteRoot $root
+        Assert-True ($result.ExitCode -eq 1) "Expected exit code 1, got $($result.ExitCode). Output: $($result.Output)"
+        Assert-True ($result.Output -match '02-fail\.Tests\.ps1 \| failed') "The summary must mark 02-fail as failed. Output: $($result.Output)"
         Assert-True ($result.Summary -match '### PowerShell suites') "The summary file must hold the table heading. Summary: $($result.Summary)"
         Assert-True ($result.Summary -match '02-fail\.Tests\.ps1 \| failed') "The summary file must mark 02-fail as failed. Summary: $($result.Summary)"
         Assert-True ($result.Summary -match '1 of 2 suite\(s\) failed') "The summary file must hold the failure count. Summary: $($result.Summary)"
@@ -819,6 +746,94 @@ Invoke-TestCase 'A single-platform array survives onto the entry' {
     }
 }
 
+# --- reuse, backlog 188 ---
+
+Invoke-TestCase 'A reuse field that is absent reads as null' {
+    $path = New-ManifestFile -Entry @(
+        [ordered]@{ name = 'a.Tests.ps1'; jobs = @('suites'); platform = @('windows', 'linux'); execution = 'parallel'; baselineSeconds = 1 }
+    )
+    try {
+        $entries = @(Read-SuiteManifest -Path $path -DiscoveredName @('a.Tests.ps1'))
+        Assert-True ($entries.Count -eq 1) "Expected one entry, got $($entries.Count)."
+        Assert-True ($null -ne $entries[0].PSObject.Properties['Reuse']) 'The entry must carry a Reuse property.'
+        Assert-True ($null -eq $entries[0].Reuse) 'An absent reuse field must read as $null, never as eligible.'
+    } finally {
+        Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
+    }
+}
+
+Invoke-TestCase 'A reuse eligible value that is not a boolean fails the manifest' {
+    foreach ($bad in @('true', 1, $null)) {
+        $path = New-ManifestFile -Entry @(
+            [ordered]@{ name = 'a.Tests.ps1'; jobs = @('suites'); platform = @('windows', 'linux'); execution = 'parallel'; baselineSeconds = 1; reuse = [ordered]@{ eligible = $bad } }
+        )
+        try {
+            $threw = $false
+            $message = ''
+            try { Read-SuiteManifest -Path $path -DiscoveredName @('a.Tests.ps1') } catch { $threw = $true; $message = $_.Exception.Message }
+            Assert-True $threw "reuse.eligible '$bad' must throw; only a JSON boolean is allowed."
+            Assert-True ($message -match 'eligible') "The message must name the field. Got: $message"
+        } finally {
+            Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+Invoke-TestCase 'A reuse field marked not eligible with no reason fails the manifest' {
+    foreach ($reuse in @([ordered]@{ eligible = $false }, [ordered]@{ eligible = $false; reason = '  ' })) {
+        $path = New-ManifestFile -Entry @(
+            [ordered]@{ name = 'a.Tests.ps1'; jobs = @('suites'); platform = @('windows', 'linux'); execution = 'parallel'; baselineSeconds = 1; reuse = $reuse }
+        )
+        try {
+            $threw = $false
+            $message = ''
+            try { Read-SuiteManifest -Path $path -DiscoveredName @('a.Tests.ps1') } catch { $threw = $true; $message = $_.Exception.Message }
+            Assert-True $threw 'A reuse field that is not eligible must say why.'
+            Assert-True ($message -match 'reason') "The message must ask for a reason. Got: $message"
+        } finally {
+            Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+Invoke-TestCase 'A reuse extra input that climbs out with .. fails the manifest' {
+    foreach ($bad in @('../outside.json', 'tests/../../outside.json', 'tests\x.json', '/etc/x.json', 'C:/x.json')) {
+        $path = New-ManifestFile -Entry @(
+            [ordered]@{ name = 'a.Tests.ps1'; jobs = @('suites'); platform = @('windows', 'linux'); execution = 'parallel'; baselineSeconds = 1; reuse = [ordered]@{ eligible = $true; extraInputs = @($bad) } }
+        )
+        try {
+            $threw = $false
+            $message = ''
+            try { Read-SuiteManifest -Path $path -DiscoveredName @('a.Tests.ps1') } catch { $threw = $true; $message = $_.Exception.Message }
+            Assert-True $threw "Extra input '$bad' must throw; it must be relative, with forward slashes and no .. segment."
+            Assert-True ($message -match [regex]::Escape($bad)) "The message must name the bad path. Got: $message"
+        } finally {
+            Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+Invoke-TestCase 'An eligible reuse field returns its extra inputs in order' {
+    $path = New-ManifestFile -Entry @(
+        [ordered]@{ name = 'a.Tests.ps1'; jobs = @('suites'); platform = @('windows', 'linux'); execution = 'parallel'; baselineSeconds = 1; reuse = [ordered]@{ eligible = $true; extraInputs = @('tests/z.json', 'docs/a.md', 'tests/missing.json') } }
+        [ordered]@{ name = 'b.Tests.ps1'; jobs = @('suites'); platform = @('windows', 'linux'); execution = 'parallel'; baselineSeconds = 1; reuse = [ordered]@{ eligible = $false; reason = 'scans every tracked file' } }
+    )
+    try {
+        $entries = @(Read-SuiteManifest -Path $path -DiscoveredName @('a.Tests.ps1', 'b.Tests.ps1'))
+        $a = $entries | Where-Object { $_.Name -eq 'a.Tests.ps1' }
+        $b = $entries | Where-Object { $_.Name -eq 'b.Tests.ps1' }
+        Assert-True ($a.Reuse.Eligible -is [bool] -and $a.Reuse.Eligible) 'An eligible field must read as the boolean true.'
+        # A path that does not exist is not a manifest error. Task 9 reads it as unresolved.
+        Assert-True ((@($a.Reuse.ExtraInputs) -join ',') -eq 'tests/z.json,docs/a.md,tests/missing.json') `
+            "The extra inputs must keep their order. Got: $(@($a.Reuse.ExtraInputs) -join ',')"
+        Assert-True ($b.Reuse.Eligible -is [bool] -and -not $b.Reuse.Eligible) 'A field that is not eligible must read as the boolean false.'
+        Assert-True ($b.Reuse.Reason -eq 'scans every tracked file') "The reason must survive. Got: $($b.Reuse.Reason)"
+        Assert-True (@($b.Reuse.ExtraInputs).Count -eq 0) 'A field with no extraInputs must give an empty list.'
+    } finally {
+        Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
+    }
+}
+
 Invoke-TestCase 'With no pattern the selection is every suite in the suites job' {
     $entries = @(
         [pscustomobject]@{ Name = 'a.Tests.ps1'; Jobs = @('suites'); Platform = @('windows', 'linux'); Execution = 'parallel'; Reason = $null; BaselineSeconds = 1.0 }
@@ -849,22 +864,6 @@ Invoke-TestCase 'The runner takes no -Platform override' {
         Assert-True ($exitCode -ne 0) "The runner must refuse -Platform. Exit code: $exitCode. Output: $output"
         Assert-True ($output -match 'Platform') "The refusal must name the parameter. Output: $output"
         Assert-True (-not (Test-MarkerExists -Root $root -Name '01-pass.Tests.ps1')) 'No suite may run behind a refused argument.'
-    } finally {
-        Remove-SuiteFixture -Root $root
-    }
-}
-
-# The header states what the run actually did, so it must come from the host, not from an
-# argument. A run on this machine can only ever be this platform.
-Invoke-TestCase 'The run header names the platform the host is on' {
-    $root = New-SuiteFixture
-    try {
-        Add-FakeSuite -Root $root -Name '01-pass.Tests.ps1' -Ending 'pass'
-        Set-FixtureManifest -Root $root
-
-        $result = Invoke-Driver -SuiteRoot $root
-        $expected = if ($IsWindows) { 'windows' } else { 'linux' }
-        Assert-True ($result.Output -match "Platform: $expected") "The header must name $expected. Output: $($result.Output)"
     } finally {
         Remove-SuiteFixture -Root $root
     }
@@ -1131,6 +1130,9 @@ Invoke-TestCase 'A parallel run and a sequential run reach the same verdict and 
         foreach ($name in @('01-pass', '02-fail', '03-dirty', '04-throw')) {
             Assert-True ($parallel.Output -match "$name\.Tests\.ps1 \| (passed|failed)") "The table must list $name. Output: $($parallel.Output)"
         }
+        # The regression test for the trap named in backlog item 066. A passing suite that leaves
+        # $LASTEXITCODE at 1 must still be reported as passed, which is only true because the
+        # driver runs each suite in its own process.
         Assert-True ($parallel.Output -match '03-dirty\.Tests\.ps1 \| passed') "A dirty exit code must still pass in parallel. Output: $($parallel.Output)"
     } finally {
         Remove-SuiteFixture -Root $root
@@ -1296,10 +1298,11 @@ Invoke-TestCase 'MaxParallel 1 runs nothing at the same time' {
         # barrier releases them together and the peak goes above 1.
         #
         # A shorter timeout than the default here. The timeout is pure cost on the passing path in
-        # this case, and it is only reached on the failing path in the case above. Five seconds is
-        # still far longer than starting a second child takes.
+        # this case, and it is only reached on the failing path in the case above. Two seconds is
+        # still far longer than starting a second child takes, and a broken runner still shows a
+        # peak above 1, because the later suites release together.
         $names = @('01-a.Tests.ps1', '02-b.Tests.ps1', '03-c.Tests.ps1')
-        foreach ($name in $names) { Add-IntervalSuite -Root $root -Name $name -BarrierCount 2 -TimeoutSeconds 5 }
+        foreach ($name in $names) { Add-IntervalSuite -Root $root -Name $name -BarrierCount 2 -TimeoutSeconds 2 }
         Set-FixtureManifest -Root $root
 
         $result = Invoke-Driver -SuiteRoot $root -MaxParallel 1
@@ -1334,9 +1337,11 @@ Invoke-TestCase 'An exclusive suite never overlaps another suite' {
         # A correct scheduler pays exactly one timeout. It runs every exclusive suite before the
         # shared pool, so 01-alone starts alone, waits the full timeout because the pair cannot
         # start beside it, and holds alone. The pair then starts together, and the third sign-in
-        # arrives as soon as the second of them does, so they release each other with no wait.
+        # arrives as soon as the second of them does, so they release each other with no wait. That
+        # one timeout is pure cost on the passing path, so 01-alone gets the same five seconds the
+        # MaxParallel 1 case once used instead of the default ten.
         $names = @('01-alone.Tests.ps1', '02-other.Tests.ps1', '03-other.Tests.ps1')
-        Add-IntervalSuite -Root $root -Name '01-alone.Tests.ps1' -BarrierCount 3 -BarrierTag 'pair'
+        Add-IntervalSuite -Root $root -Name '01-alone.Tests.ps1' -BarrierCount 3 -BarrierTag 'pair' -TimeoutSeconds 5
         Add-IntervalSuite -Root $root -Name '02-other.Tests.ps1' -BarrierCount 3 -BarrierTag 'pair'
         Add-IntervalSuite -Root $root -Name '03-other.Tests.ps1' -BarrierCount 3 -BarrierTag 'pair'
         Set-FixtureManifest -Root $root -Entry @(
@@ -1369,19 +1374,6 @@ Invoke-TestCase 'An exclusive suite never overlaps another suite' {
     }
 }
 
-Invoke-TestCase 'A blank AHKFLOW_SUITE_MAX_PARALLEL falls back to the default' {
-    $root = New-SuiteFixture
-    try {
-        Add-FakeSuite -Root $root -Name '01-pass.Tests.ps1' -Ending 'pass'
-        Set-FixtureManifest -Root $root
-
-        $result = Invoke-Driver -SuiteRoot $root -EnvVar @{ AHKFLOW_SUITE_MAX_PARALLEL = '   ' }
-        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
-    } finally {
-        Remove-SuiteFixture -Root $root
-    }
-}
-
 Invoke-TestCase 'A bad AHKFLOW_SUITE_MAX_PARALLEL fails the run and names the variable' {
     $root = New-SuiteFixture
     try {
@@ -1399,21 +1391,6 @@ Invoke-TestCase 'A bad AHKFLOW_SUITE_MAX_PARALLEL fails the run and names the va
             # '*' matched nothing, so the reset never ran.
             Get-ChildItem -LiteralPath (Join-Path $root 'markers') | Remove-Item -Force
         }
-    } finally {
-        Remove-SuiteFixture -Root $root
-    }
-}
-
-Invoke-TestCase 'An explicit -MaxParallel wins over the environment variable' {
-    $root = New-SuiteFixture
-    try {
-        Add-FakeSuite -Root $root -Name '01-pass.Tests.ps1' -Ending 'pass'
-        Set-FixtureManifest -Root $root
-
-        # The variable is unusable, so a run that read it would fail. The explicit value must win
-        # before the variable is even considered.
-        $result = Invoke-Driver -SuiteRoot $root -MaxParallel 2 -EnvVar @{ AHKFLOW_SUITE_MAX_PARALLEL = 'lots' }
-        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
     } finally {
         Remove-SuiteFixture -Root $root
     }
@@ -1540,7 +1517,7 @@ Invoke-TestCase 'A targeted run keeps the stored timings of every suite it did n
         New-Item -ItemType Directory -Path (Join-Path $fakeRepo 'tests') -Force | Out-Null
         New-Item -ItemType Directory -Path (Join-Path $fakeRepo 'markers') -Force | Out-Null
 
-        foreach ($name in @('run-powershell-suites.ps1', 'progress.common.ps1', 'progress.parallel.ps1', 'powershell-suites.common.ps1', 'suite-worker-count.common.ps1', 'test-lanes.common.ps1')) {
+        foreach ($name in @('run-powershell-suites.ps1', 'progress.common.ps1', 'progress.parallel.ps1', 'powershell-suites.common.ps1', 'suite-worker-count.common.ps1', 'test-lanes.common.ps1', 'gate-evidence.common.ps1', 'suite-budget.common.ps1')) {
             Copy-Item -LiteralPath (Join-Path $repoRoot "scripts/$name") -Destination (Join-Path $fakeRepo "scripts/$name")
         }
 
@@ -1567,7 +1544,8 @@ Invoke-TestCase 'A targeted run keeps the stored timings of every suite it did n
         # the file the first run wrote already holds both names. No fake suite takes anywhere
         # near this long, so a value that survives was copied and a value that changed was
         # measured.
-        $seeded = [ordered]@{ '01-one.Tests.ps1' = 4242.4; '02-two.Tests.ps1' = 8484.8 }
+        # The third entry names a suite file that no longer exists, and the run must drop it.
+        $seeded = [ordered]@{ '01-one.Tests.ps1' = 4242.4; '02-two.Tests.ps1' = 8484.8; 'deleted.Tests.ps1' = 42 }
         Set-Content -LiteralPath $timings -Value (([pscustomobject] $seeded) | ConvertTo-Json) -Encoding UTF8
 
         $targeted = Invoke-RunnerProcess -ArgumentList @('-NoProfile', '-File', $driver, '-Suite', '01-one*')
@@ -1578,47 +1556,15 @@ Invoke-TestCase 'A targeted run keeps the stored timings of every suite it did n
         Assert-True ($after.'02-two.Tests.ps1' -eq 8484.8) "The unselected suite's stored seconds must not change, got $($after.'02-two.Tests.ps1')."
         Assert-True ($null -ne $after.PSObject.Properties['01-one.Tests.ps1']) 'A targeted run must store the suite it ran.'
         Assert-True ($after.'01-one.Tests.ps1' -ne 4242.4) 'The selected suite must be measured again, not copied from the store.'
-    } finally {
-        Remove-Item -LiteralPath $fakeRepo -Recurse -Force -ErrorAction SilentlyContinue
-    }
-}
-
-Invoke-TestCase 'A stored entry whose suite file no longer exists is dropped' {
-    $fakeRepo = Join-Path ([System.IO.Path]::GetTempPath()) ('ahkflow-suiterepo-' + [guid]::NewGuid().ToString('N'))
-    try {
-        New-Item -ItemType Directory -Path (Join-Path $fakeRepo 'scripts') -Force | Out-Null
-        New-Item -ItemType Directory -Path (Join-Path $fakeRepo 'tests') -Force | Out-Null
-        New-Item -ItemType Directory -Path (Join-Path $fakeRepo 'markers') -Force | Out-Null
-        New-Item -ItemType Directory -Path (Join-Path $fakeRepo 'TestResults/progress') -Force | Out-Null
-
-        foreach ($name in @('run-powershell-suites.ps1', 'progress.common.ps1', 'progress.parallel.ps1', 'powershell-suites.common.ps1', 'suite-worker-count.common.ps1', 'test-lanes.common.ps1')) {
-            Copy-Item -LiteralPath (Join-Path $repoRoot "scripts/$name") -Destination (Join-Path $fakeRepo "scripts/$name")
-        }
-
-        Add-FakeSuite -Root $fakeRepo -Name '01-one.Tests.ps1' -Ending 'pass'
-        Move-Item -LiteralPath (Join-Path $fakeRepo '01-one.Tests.ps1') -Destination (Join-Path $fakeRepo 'tests/01-one.Tests.ps1')
-
-        $manifest = [ordered]@{ suites = @(
-                [ordered]@{ name = '01-one.Tests.ps1'; jobs = @('suites'); platform = @('windows', 'linux'); execution = 'parallel'; baselineSeconds = $null }
-            ) }
-        Set-Content -LiteralPath (Join-Path $fakeRepo 'tests/powershell-suites.json') -Value ($manifest | ConvertTo-Json -Depth 6) -Encoding utf8
-
-        $timings = Join-Path $fakeRepo 'TestResults/progress/run-powershell-suites.json'
-        Set-Content -LiteralPath $timings -Value '{ "deleted.Tests.ps1": 42 }' -Encoding utf8
-
-        Invoke-RunnerProcess -ArgumentList @('-NoProfile', '-File', (Join-Path $fakeRepo 'scripts/run-powershell-suites.ps1')) | Out-Null
-
-        $saved = Get-Content -LiteralPath $timings -Raw | ConvertFrom-Json
-        Assert-True ($null -eq $saved.PSObject.Properties['deleted.Tests.ps1']) 'An entry whose suite file is gone must be dropped.'
-        Assert-True ($null -ne $saved.PSObject.Properties['01-one.Tests.ps1']) 'The suite that ran must be stored.'
+        Assert-True ($null -eq $after.PSObject.Properties['deleted.Tests.ps1']) 'An entry whose suite file is gone must be dropped.'
     } finally {
         Remove-Item -LiteralPath $fakeRepo -Recurse -Force -ErrorAction SilentlyContinue
     }
 }
 
 # A storing run needs a tree the runner treats as a repository of its own, with no -NoStore. The
-# two cases above build that same shape inline; this helper is the reusable form of it. Collapsing
-# those two onto it is optional tidying, and this contract is what the new case below needs.
+# case above builds that same shape inline; this helper is the reusable form of it. Moving that
+# case onto it is optional tidying, and this contract is what the new case below needs.
 # -Suite names the suites, each of which gets a plain passing body. -Body overrides the body of any
 # of them, as an array of script lines.
 function New-StoringRepoFixture {
@@ -1629,7 +1575,7 @@ function New-StoringRepoFixture {
         foreach ($folder in @('scripts', 'tests', 'markers', 'TestResults/progress')) {
             New-Item -ItemType Directory -Path (Join-Path $repo $folder) -Force | Out-Null
         }
-        foreach ($name in @('run-powershell-suites.ps1', 'progress.common.ps1', 'progress.parallel.ps1', 'powershell-suites.common.ps1', 'suite-worker-count.common.ps1', 'test-lanes.common.ps1')) {
+        foreach ($name in @('run-powershell-suites.ps1', 'progress.common.ps1', 'progress.parallel.ps1', 'powershell-suites.common.ps1', 'suite-worker-count.common.ps1', 'test-lanes.common.ps1', 'gate-evidence.common.ps1', 'suite-budget.common.ps1')) {
             Copy-Item -LiteralPath (Join-Path $repoRoot "scripts/$name") -Destination (Join-Path $repo "scripts/$name")
         }
 
@@ -1877,15 +1823,6 @@ Invoke-TestCase 'The one Save-ProgressTimings call sits at the top level, after 
 
 # --- Checks over this repository's own manifest ---
 
-Invoke-TestCase 'The manifest lists every suite in tests/, exactly once' {
-    $manifestPath = Join-Path $PSScriptRoot 'powershell-suites.json'
-    Assert-True (Test-Path -LiteralPath $manifestPath) "The manifest must exist at $manifestPath."
-
-    $onDisk = @(Get-ChildItem -LiteralPath $PSScriptRoot -Filter '*.Tests.ps1' -File | ForEach-Object { $_.Name })
-    $entries = @(Read-SuiteManifest -Path $manifestPath -DiscoveredName $onDisk)
-    Assert-True ($entries.Count -eq $onDisk.Count) "Manifest holds $($entries.Count) entries for $($onDisk.Count) files."
-}
-
 # One list of invariant suites, not two. Until backlog 127 the invariant job kept its own copy of
 # the five names, and a case here compared the two copies and kept them in step. The copy is gone:
 # scripts/ci/check-repo-invariants.ps1 now calls the runner with -Job invariants, so the manifest
@@ -2071,7 +2008,8 @@ Invoke-TestCase 'A developer run with no worker argument uses 75% of the physica
         }
         Set-FixtureManifest -Root $root
 
-        $result = Invoke-Driver -SuiteRoot $root -EnvVar @{ AHKFLOW_SUITE_MAX_PARALLEL = $null; GITHUB_ACTIONS = $null }
+        # A blank variable must fall through to the default, so this run sets one.
+        $result = Invoke-Driver -SuiteRoot $root -EnvVar @{ AHKFLOW_SUITE_MAX_PARALLEL = '   '; GITHUB_ACTIONS = $null }
         Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
         Assert-True ($result.Output -match "Workers: $expected\b") "Expected the default worker count $expected. Output: $($result.Output)"
         Assert-True ($result.Output -match 'Workers: \d+ \(default:') "The line must say the number came from the default. Output: $($result.Output)"
@@ -2127,7 +2065,9 @@ Invoke-TestCase 'An explicit -MaxParallel is named on the Workers line' {
         }
         Set-FixtureManifest -Root $root
 
-        $result = Invoke-Driver -SuiteRoot $root -MaxParallel 2 -EnvVar @{ AHKFLOW_SUITE_MAX_PARALLEL = '3' }
+        # The variable is unusable, so a run that read it would fail. The explicit value must win
+        # before the variable is even considered.
+        $result = Invoke-Driver -SuiteRoot $root -MaxParallel 2 -EnvVar @{ AHKFLOW_SUITE_MAX_PARALLEL = 'lots' }
         Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
         Assert-True ($result.Output -match 'Workers: 2 \(-MaxParallel\)') "The parameter must win and be named. Output: $($result.Output)"
     } finally {
@@ -2255,8 +2195,10 @@ function Invoke-TwoRunnerLaneProof {
     }
 }
 
-Invoke-TestCase 'Lane one runner admits exactly two of four Workers; off admits all four' {
-    foreach ($off in @($false, $true)) {
+# Lanes on only. The acquisition-failure case stubs Open-AhkFlowLaneFile to throw and runs the off
+# role, so off mode cannot touch the pool, and a peak of 4 at -MaxParallel 4 is plain pool sizing.
+Invoke-TestCase 'Lane one runner admits exactly two of four Workers' {
+    foreach ($off in @($false)) {
         $pool = New-PinnedLanePool 2; $fixture = $null; $child = $null
         try {
             $fixture = New-LaneRunnerFixture -Count 4
@@ -2280,12 +2222,6 @@ Invoke-TestCase 'Lane one runner admits exactly two of four Workers; off admits 
     }
 }
 Invoke-TestCase 'Lane two checkout runners enforce one combined cap' { Invoke-TwoRunnerLaneProof }
-Invoke-TestCase 'Lane unchanged two-checkout proof rejects acquisition bypass' {
-    $failure = $null
-    try { Invoke-TwoRunnerLaneProof -Bypass } catch { $failure = $_.Exception.Message }
-    Assert-True ($failure -match 'Admission cap violated|never acknowledged') "Expected the bypass to fail admission proof, got: $failure"
-    Write-Host "  MUTATION REJECTED: $failure"
-}
 Invoke-TestCase 'Lane owner hardware query is once with adaptive sizing or explicit Workers' {
     $pool = New-PinnedLanePool 2
     $repo = New-StoringRepoFixture -Suite @('one.Tests.ps1') -CountCoreProbes

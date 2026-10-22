@@ -45,6 +45,19 @@
 
   The container is left running when the soak ends, the same way scripts/test-fast.ps1 leaves it.
 
+  Backlog 188. -Mode Gate times the five steps of the Gate instead of one test Mode: the build,
+  the format check, the PowerShell Mode, the Coverage Mode, and git diff --check. Every run builds,
+  because the Gate builds, so Gate Mode does no build up front and has no settle clock. It takes 1
+  warm-up and 3 counted runs unless the caller says otherwise. -BaseRef sets the base for the
+  coverage step and for git diff --check. The measurement passes HEAD, so the branch's own diff
+  never decides whether coverage runs.
+
+  -Change measures the first Gate after one fixed change. One preparation run on the unchanged tree
+  saves the evidence folder. Before each warm-up and counted run, the script puts that evidence
+  back, appends one line to the change's file, runs the Gate, and then writes the file's original
+  bytes back. -NoEvidenceReuse sets AHKFLOW_GATE_REUSE=off around each run, so it measures a full
+  Gate. Each session writes record.json with the revision and the median of each step.
+
   tests/MeasureTestModes.Tests.ps1 covers the orchestration: argument routing, the median, the
   run lock, environment restoration, one container for the whole soak, the zero-test guard, and
   what happens when a run fails. It stubs dotnet and replaces the SQL helper, so it costs seconds
@@ -53,7 +66,7 @@
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet('Fast', 'Integration', 'E2E')]
+    [ValidateSet('Fast', 'Integration', 'E2E', 'Gate')]
     [string]$Mode = 'Fast',
 
     [ValidateRange(1, 100)]
@@ -89,7 +102,18 @@ param(
 
     # Soak mode. The path to one test project, for example
     # 'tests/AHKFlowApp.Infrastructure.Tests'. -Mode is ignored when this is given.
-    [string]$Soak
+    [string]$Soak,
+
+    # Gate Mode only. The fixed changes to measure, from Docs, Script and Code. A comma list in one
+    # value works too, because 'pwsh -File' passes 'Docs,Script,Code' as a single string.
+    [string[]]$Change,
+
+    # Gate Mode only. Turns evidence reuse off for every run, so each run is a full Gate.
+    [switch]$NoEvidenceReuse,
+
+    # Gate Mode only. The base for the coverage step and for git diff --check. Empty means the
+    # Gate's own base, as Resolve-AhkFlowGateBaseRef finds it.
+    [string]$BaseRef
 )
 
 $ErrorActionPreference = 'Stop'
@@ -98,6 +122,7 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 . "$PSScriptRoot\test-run-lock.common.ps1"
 . "$PSScriptRoot\test-results.common.ps1"
 . "$PSScriptRoot\test-lanes.common.ps1"
+. "$PSScriptRoot\code-change-filter.common.ps1"
 
 # A failing 'dotnet test' must be counted, not thrown. PowerShell turns a non-zero exit code from
 # a native command into a terminating error while $ErrorActionPreference is 'Stop' and this
@@ -116,6 +141,49 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $PSNativeCommandUseErrorActionPreference = $false
 
 $isSoak = -not [string]::IsNullOrWhiteSpace($Soak)
+
+# Backlog 188. The fixed changes Gate Mode can measure. Each appends one line to one file.
+$gateChanges = [ordered]@{
+    # Docs only, so the coverage step still skips.
+    Docs = @{ File = 'docs/development/testing-workflow.md'; Line = '<!-- gate-measure -->' }
+    # A script a Suite loads, through tests/WatchTask.Tests.ps1.
+    Script = @{ File = 'scripts/watch-task.ps1'; Line = '# gate-measure' }
+    # A .cs file, so the build and the coverage step both run.
+    Code = @{ File = 'src/Backend/AHKFlowApp.Domain/Entities/Category.cs'; Line = '// gate-measure' }
+}
+$changeNames = @($Change | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+
+if ($Mode -eq 'Gate') {
+    # Refuse before any work starts, so a wrong call costs nothing.
+    $refused = @()
+    if ($isSoak) { $refused += '-Soak' }
+    if ($NoBuild) { $refused += '-NoBuild' }
+    if ($KeepBuildInRun) { $refused += '-KeepBuildInRun' }
+    if ($PSBoundParameters.ContainsKey('SettleSeconds') -and $SettleSeconds -gt 0) { $refused += '-SettleSeconds' }
+    if ($refused.Count -gt 0) {
+        throw ("Gate Mode does not take {0}. Every Gate run builds, so there is no build up front to skip, " +
+            "and the tree never ages, so a settle clock would only add warm-up runs up to the ceiling. " +
+            "A soak runs one test project, not the Gate.") -f ($refused -join ', ')
+    }
+
+    foreach ($name in $changeNames) {
+        if (-not $gateChanges.Contains($name)) {
+            throw "Unknown -Change value '$name'. Use Docs, Script or Code."
+        }
+    }
+    if ($changeNames.Count -gt 0 -and $NoEvidenceReuse) {
+        throw '-Change measures the first Gate after a change, with evidence reuse on. Do not combine it with -NoEvidenceReuse.'
+    }
+    if ($changeNames.Count -gt 0 -and $PSBoundParameters.ContainsKey('WarmUpRuns') -and $WarmUpRuns -eq 0) {
+        throw '-Change needs at least one warm-up run on each changed tree. Drop -WarmUpRuns 0.'
+    }
+
+    if (-not $PSBoundParameters.ContainsKey('Runs')) { $Runs = 3 }
+    if (-not $PSBoundParameters.ContainsKey('WarmUpRuns')) { $WarmUpRuns = 1 }
+}
+elseif ($changeNames.Count -gt 0 -or $NoEvidenceReuse -or $PSBoundParameters.ContainsKey('BaseRef')) {
+    throw '-Change, -NoEvidenceReuse and -BaseRef work only with -Mode Gate.'
+}
 
 function Invoke-TimedRun {
     <#
@@ -187,6 +255,161 @@ function Invoke-TimedRun {
     return $elapsed
 }
 
+function Invoke-GateRun {
+    <#
+      One timed run of the five Gate steps, printed and returned with each step's seconds.
+
+      The native steps check $LASTEXITCODE, because this script turns the native-command throw off.
+      test-fast.ps1 throws on a failure, so its two steps catch the throw and name the step.
+    #>
+    param(
+        [Parameter(Mandatory = $true)][string]$Label,
+        [Parameter(Mandatory = $true)][string]$Configuration,
+        [Parameter(Mandatory = $true)][string]$ScriptRoot,
+        [Parameter(Mandatory = $true)][string]$RepoRoot,
+        [Parameter(Mandatory = $true)][string]$RunDirectory,
+        [Parameter(Mandatory = $true)][string]$BaseRef,
+        [switch]$NoEvidenceReuse
+    )
+
+    Write-Host ''
+    Write-Host "=== Gate $Label ===" -ForegroundColor Cyan
+    New-Item -ItemType Directory -Path $RunDirectory -Force | Out-Null
+
+    $testFast = Join-Path $ScriptRoot 'test-fast.ps1'
+    $steps = [ordered]@{}
+    $previousReuse = $env:AHKFLOW_GATE_REUSE
+    if ($NoEvidenceReuse) { $env:AHKFLOW_GATE_REUSE = 'off' }
+
+    $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+    try {
+        foreach ($step in @(
+            @{ Name = 'build'; Native = $true; Body = { & dotnet build AHKFlowApp.slnx --configuration $Configuration | Out-Host } },
+            @{ Name = 'format'; Native = $true; Body = { & dotnet format AHKFlowApp.slnx --verify-no-changes | Out-Host } },
+            @{ Name = 'powershell'; Native = $false; Body = { & $testFast -Mode PowerShell | Out-Host } },
+            @{ Name = 'coverage'; Native = $false; Body = { & $testFast -Mode Coverage -BaseRef $BaseRef | Out-Host } },
+            @{ Name = 'diff-check'; Native = $true; Body = { & git diff --check "$BaseRef...HEAD" | Out-Host } }
+        )) {
+            $stepWatch = [System.Diagnostics.Stopwatch]::StartNew()
+            try {
+                & $step.Body
+            }
+            catch {
+                throw "Gate step '$($step.Name)' failed during $Label. $($_.Exception.Message)"
+            }
+            if ($step.Native -and $LASTEXITCODE -ne 0) {
+                throw "Gate step '$($step.Name)' failed during $Label with exit code $LASTEXITCODE."
+            }
+            $steps[$step.Name] = [Math]::Round($stepWatch.Elapsed.TotalSeconds, 2)
+        }
+        $stopwatch.Stop()
+    }
+    finally {
+        $env:AHKFLOW_GATE_REUSE = $previousReuse
+    }
+
+    $elapsed = [Math]::Round($stopwatch.Elapsed.TotalSeconds, 2)
+
+    # The runner keeps one per-Suite timing file and rewrites it every run, so each run keeps a copy.
+    $suiteTimes = Join-Path $RepoRoot 'TestResults\progress\run-powershell-suites.json'
+    if (Test-Path -LiteralPath $suiteTimes) {
+        Copy-Item -LiteralPath $suiteTimes -Destination (Join-Path $RunDirectory 'run-powershell-suites.json') -Force
+    }
+
+    [pscustomobject]@{ Label = $Label; ElapsedSeconds = $elapsed; Steps = $steps } |
+        ConvertTo-Json |
+        Set-Content -LiteralPath (Join-Path $RunDirectory 'run.json') -Encoding utf8
+
+    Write-Host ("{0}: {1:N2} s ({2})" -f $Label, $elapsed,
+        (($steps.Keys | ForEach-Object { '{0} {1:N2}' -f $_, $steps[$_] }) -join ', ')) -ForegroundColor Green
+    return [pscustomobject]@{ ElapsedSeconds = $elapsed; Steps = $steps }
+}
+
+function Restore-GateEvidence {
+    <#
+      Puts the evidence folder back to the state the preparation run left. A timed run must start
+      from that state, or it measures a second Gate instead of the first Gate after a change.
+    #>
+    param(
+        [Parameter(Mandatory = $true)][string]$EvidenceRoot,
+        [Parameter(Mandatory = $true)][string]$SavedEvidence
+    )
+
+    Remove-Item -LiteralPath $EvidenceRoot -Recurse -Force -ErrorAction SilentlyContinue
+    if (Test-Path -LiteralPath $SavedEvidence) {
+        Copy-Item -LiteralPath $SavedEvidence -Destination $EvidenceRoot -Recurse -Force
+    }
+}
+
+function Invoke-GateCase {
+    <#
+      The warm-up and counted runs of one Gate case. With a change, each run starts from the saved
+      evidence, appends the change's line, and puts the file's original bytes back in a finally
+      block. It never restores through git, which would also drop any other edit in the tree.
+    #>
+    param(
+        [Parameter(Mandatory = $true)][string]$CaseRoot,
+        [Parameter(Mandatory = $true)][int]$WarmUpRuns,
+        [Parameter(Mandatory = $true)][int]$Runs,
+        [Parameter(Mandatory = $true)][hashtable]$RunArguments,
+        [string]$ChangeName,
+        [string]$ChangeFile,
+        [string]$ChangePath,
+        [string]$ChangeLine,
+        [string]$EvidenceRoot,
+        [string]$SavedEvidence
+    )
+
+    $warmUps = @()
+    $counted = @()
+    $labelPrefix = if ($ChangeName) { "$ChangeName " } else { '' }
+    $total = $WarmUpRuns + $Runs
+    for ($index = 1; $index -le $total; $index++) {
+        $isWarmUp = $index -le $WarmUpRuns
+        $number = if ($isWarmUp) { $index } else { $index - $WarmUpRuns }
+        $label = if ($isWarmUp) { "${labelPrefix}warm-up $number" } else { "${labelPrefix}run $number of $Runs" }
+        $folder = Join-Path $CaseRoot $(if ($isWarmUp) { "warmup-$number" } else { "run-$number" })
+
+        if ($ChangeName) {
+            Restore-GateEvidence -EvidenceRoot $EvidenceRoot -SavedEvidence $SavedEvidence
+            $original = [System.IO.File]::ReadAllBytes($ChangePath)
+            try {
+                # One line with the file's own line ending, after a line ending if the file lacks one.
+                $text = [System.Text.Encoding]::UTF8.GetString($original)
+                $lineEnding = if ($text.Contains("`r`n")) { "`r`n" } else { "`n" }
+                $prefix = if ($text.EndsWith("`n")) { '' } else { $lineEnding }
+                [System.IO.File]::WriteAllBytes($ChangePath,
+                    [byte[]]($original + [System.Text.Encoding]::UTF8.GetBytes("$prefix$ChangeLine$lineEnding")))
+                $result = Invoke-GateRun -Label $label -RunDirectory $folder @RunArguments
+            }
+            finally {
+                [System.IO.File]::WriteAllBytes($ChangePath, $original)
+            }
+        }
+        else {
+            $result = Invoke-GateRun -Label $label -RunDirectory $folder @RunArguments
+        }
+
+        if ($isWarmUp) { $warmUps += $result } else { $counted += $result }
+    }
+
+    $stepMedians = [ordered]@{}
+    foreach ($name in $counted[0].Steps.Keys) {
+        $stepMedians[$name] = Get-AhkFlowMedian -Values @($counted | ForEach-Object { $_.Steps[$name] })
+    }
+    $runSeconds = @($counted | ForEach-Object { $_.ElapsedSeconds })
+
+    return [pscustomobject][ordered]@{
+        Change = if ($ChangeName) { $ChangeName } else { $null }
+        File = if ($ChangeName) { $ChangeFile } else { $null }
+        WarmUpSeconds = @($warmUps | ForEach-Object { $_.ElapsedSeconds })
+        RunSeconds = $runSeconds
+        MedianSeconds = Get-AhkFlowMedian -Values $runSeconds
+        SpreadPercent = [Math]::Round((Get-AhkFlowRelativeSpread -Values $runSeconds), 1)
+        StepMedians = $stepMedians
+    }
+}
+
 function Get-BuildCompletedAtUtc {
     <#
       When the test output was last written, in UTC, or $null when there is none.
@@ -243,7 +466,8 @@ try {
     try {
         $lock = Enter-AhkFlowTestRunLock -RepoRoot $repoRoot -Mode $lockMode
 
-        if (-not $NoBuild) {
+        # Gate Mode builds inside every run, because the Gate does.
+        if (-not $NoBuild -and $Mode -ne 'Gate') {
             Write-Host "Building solution ($Configuration) once before the runs..."
             & dotnet build AHKFlowApp.slnx --configuration $Configuration | Out-Host
             if ($LASTEXITCODE -ne 0) { throw 'Build failed.' }
@@ -353,6 +577,79 @@ try {
     }
     New-Item -ItemType Directory -Path $runRoot -Force | Out-Null
     Write-Host "Session artifacts: $runRoot" -ForegroundColor Cyan
+
+    if ($Mode -eq 'Gate') {
+        # Backlog 188. Gate Mode has its own loop: no settle clock, and with -Change a preparation
+        # run first. The lock is already released above, because the coverage step calls
+        # test-fast.ps1, which takes the same lock.
+        $gateBase = Resolve-AhkFlowGateBaseRef -RepoRoot $repoRoot -BaseRef $BaseRef
+        # The same rule as Get-GateEvidenceRoot in scripts/gate-evidence.common.ps1.
+        $evidenceRoot = if (-not [string]::IsNullOrWhiteSpace($env:AHKFLOW_GATE_EVIDENCE_ROOT)) {
+            $env:AHKFLOW_GATE_EVIDENCE_ROOT
+        }
+        else {
+            Join-Path $repoRoot 'TestResults\gate-evidence'
+        }
+        Write-Host "Gate base: $gateBase" -ForegroundColor Cyan
+
+        $runArguments = @{
+            Configuration = $Configuration
+            ScriptRoot = $PSScriptRoot
+            RepoRoot = $repoRoot
+            BaseRef = $gateBase
+            NoEvidenceReuse = [bool]$NoEvidenceReuse
+        }
+
+        $preparation = $null
+        $cases = @()
+        if ($changeNames.Count -eq 0) {
+            $cases += Invoke-GateCase -CaseRoot $runRoot -WarmUpRuns $WarmUpRuns -Runs $Runs -RunArguments $runArguments
+        }
+        else {
+            # Only a green Gate on the unchanged tree makes the state every timed run starts from.
+            $preparation = Invoke-GateRun -Label 'preparation' -RunDirectory (Join-Path $runRoot 'preparation') @runArguments
+            $savedEvidence = Join-Path $runRoot 'prepared-evidence'
+            if (Test-Path -LiteralPath $evidenceRoot) {
+                Copy-Item -LiteralPath $evidenceRoot -Destination $savedEvidence -Recurse -Force
+            }
+
+            foreach ($name in $changeNames) {
+                $cases += Invoke-GateCase -CaseRoot (Join-Path $runRoot $name) -WarmUpRuns $WarmUpRuns -Runs $Runs `
+                    -RunArguments $runArguments -ChangeName $name -ChangeFile $gateChanges[$name].File `
+                    -ChangePath (Join-Path $repoRoot $gateChanges[$name].File) -ChangeLine $gateChanges[$name].Line `
+                    -EvidenceRoot $evidenceRoot -SavedEvidence $savedEvidence
+            }
+        }
+
+        $revision = "$(& git rev-parse HEAD)".Trim()
+        [pscustomobject][ordered]@{
+            Revision = $revision
+            Mode = 'Gate'
+            BaseRef = $gateBase
+            NoEvidenceReuse = [bool]$NoEvidenceReuse
+            Preparation = $preparation
+            Cases = $cases
+        } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $runRoot 'record.json') -Encoding utf8
+
+        Write-Host ''
+        Write-Host "Gate at $revision, base $gateBase" -ForegroundColor Cyan
+        if ($null -ne $preparation) {
+            Write-Host ("  preparation: {0:N2} s" -f $preparation.ElapsedSeconds)
+        }
+        foreach ($case in $cases) {
+            $name = if ($case.Change) { "change $($case.Change)" } else { 'no change' }
+            Write-Host "  $name over $Runs counted runs" -ForegroundColor Cyan
+            if ($case.WarmUpSeconds.Count -gt 0) {
+                Write-Host ("    warm-up: {0} (discarded, {1})" -f `
+                    (($case.WarmUpSeconds | ForEach-Object { '{0:N2}' -f $_ }) -join ' / '), $case.WarmUpSeconds.Count)
+            }
+            Write-Host ("    runs   : {0}" -f (($case.RunSeconds | ForEach-Object { '{0:N2}' -f $_ }) -join ' / '))
+            Write-Host ("    median : {0:N2} s" -f $case.MedianSeconds)
+            Write-Host ("    spread : {0:N1} % of the median" -f $case.SpreadPercent)
+            Write-Host ("    steps  : {0}" -f (($case.StepMedians.Keys | ForEach-Object { '{0} {1:N2}' -f $_, $case.StepMedians[$_] }) -join ', '))
+        }
+        return
+    }
 
     $buildCompletedAtUtc = Get-BuildCompletedAtUtc -RepoRoot $repoRoot -Configuration $Configuration
     if ($null -eq $buildCompletedAtUtc) {

@@ -32,9 +32,6 @@ $expectedSuites = @(
     'BacklogPlanPointer.Tests.ps1'
     'BacklogStaleOpen.Tests.ps1'
     'CitationFreshness.Tests.ps1'
-    # Backlog 140. Pure arithmetic with no path, no git and no process, and the harness-overhead
-    # report rests on it. A Linux job proves it in under a second.
-    'IntervalUnion.Tests.ps1'
     # Backlog 146 proves native lock behavior on the hosted Linux runtime before admission is wired.
     'LaneFileLockPrimitive.Tests.ps1'
     # Backlog 133. It joins the invariants job because it is the only check that catches a test
@@ -50,8 +47,8 @@ $expectedSuites = @(
     # Backlog 127. This one is in the job so that every pull request proves the runner starts,
     # reads a manifest, and selects suites on Linux. It is the only member that is here for the
     # platform rather than for a repository invariant.
-    # Backlog 140. Same reason as IntervalUnion.Tests.ps1: it parses a fixed TRX this suite writes
-    # itself, so it needs no run, no container and no path of its own.
+    # Backlog 140. It parses a fixed TRX this suite writes itself, so it needs no run, no container
+    # and no path of its own. A Linux job proves it in under a second.
     'TrxIntervals.Tests.ps1'
     'SuiteRunnerLinux.Tests.ps1'
 )

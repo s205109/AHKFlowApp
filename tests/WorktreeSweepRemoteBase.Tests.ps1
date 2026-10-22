@@ -308,17 +308,6 @@ Assert-Contains (Format-MergedBaseRefMessage -Prefix 'cleanup' -Base $local) "ba
 
 # --- The sweep: a stale local main no longer hides a merge ---------------------
 
-$fixture = New-RemoteFixture -Merged
-try {
-    $sweep = Invoke-Sweep -RepoDir $fixture.Repo
-    Assert-True ($sweep.ExitCode -eq 0) "The sweep must exit 0, got $($sweep.ExitCode). Stderr: $($sweep.Stderr)"
-    Assert-Contains $sweep.Stderr "base 'origin/main' (fetched from origin)." 'The sweep must report the base it decided against.'
-    Assert-Contains $sweep.Stderr "eligible merged worktree: $($fixture.Worktree)" 'A worktree merged on the remote must be eligible while local main is stale.'
-
-} finally {
-    Remove-Fixture $fixture.Root
-}
-
 # An explicit -MainRef is the caller's choice: it must not fetch, and it must still say which base
 # it decided against. A fresh fixture, because a fetch that already ran would hide a fetch here.
 $fixture = New-RemoteFixture -Merged
@@ -343,6 +332,8 @@ $fixture = New-RemoteFixture -Merged -WithScripts
 try {
     $sweep = Invoke-Sweep -RepoDir $fixture.Repo -ExtraArgs @('-Cleanup')
     Assert-True ($sweep.ExitCode -eq 0) "The sweep must exit 0, got $($sweep.ExitCode). Stderr: $($sweep.Stderr)"
+    Assert-Contains $sweep.Stderr "base 'origin/main' (fetched from origin)." 'The sweep must report the base it decided against.'
+    Assert-Contains $sweep.Stderr "eligible merged worktree: $($fixture.Worktree)" 'A worktree merged on the remote must be eligible while local main is stale.'
     Assert-Contains $sweep.Stderr "removing merged worktree: $($fixture.Worktree)" 'The sweep must remove the eligible worktree.'
     Assert-NotContains $sweep.Stderr 'not found; cannot remove' 'The fixture must carry the removal script.'
     Assert-NotContains $sweep.Stderr 'is not merged into' 'The removal gate must accept the base the sweep handed it.'

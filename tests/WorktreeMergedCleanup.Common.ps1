@@ -270,5 +270,7 @@ function New-WorktreeToolingRepo {
     return $repo
 }
 
-# Import the cleanup functions (guard keeps the standalone entrypoint from running).
-. (Join-Path $scriptsDir 'cleanup-merged-worktrees.ps1')
+# Import the cleanup functions (guard keeps the standalone entrypoint from running). The path is
+# written out from the repository root, not built from $scriptsDir, so the Gate's input resolver
+# (scripts/gate-evidence.common.ps1) can follow it. Backlog 188.
+. (Join-Path $suiteRoot 'scripts/cleanup-merged-worktrees.ps1')

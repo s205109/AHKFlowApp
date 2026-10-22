@@ -207,11 +207,11 @@ finally { Remove-Fixture $fixture.Root }
 
 $cases = @(
     @{ Name = 'Below the limit passes';            Stage = '4-execute'; Filler = 2; Threshold = 3; Extra = @{};                            Expect = 0 }
-    @{ Name = 'Stage 3-plan is never a candidate'; Stage = '3-plan';    Filler = 9; Threshold = 3; Extra = @{};                            Expect = 0 }
-    @{ Name = 'An unmerged stamp is in flight';    Stage = '8-review';  Filler = 9; Threshold = 3; Extra = @{ LeaveUnmerged = $true };     Expect = 0 }
-    @{ Name = 'blocked/ is parked on purpose';     Stage = '8-review';  Filler = 9; Threshold = 3; Extra = @{ Folder = 'blocked' };        Expect = 0 }
-    @{ Name = 'icebox/ is parked on purpose';      Stage = '8-review';  Filler = 9; Threshold = 3; Extra = @{ Folder = 'icebox' };         Expect = 0 }
-    @{ Name = 'A bulk edit does not reset it';     Stage = '8-review';  Filler = 9; Threshold = 3; Extra = @{ TouchWithoutStage = $true }; Expect = 1 }
+    @{ Name = 'Stage 3-plan is never a candidate'; Stage = '3-plan';    Filler = 4; Threshold = 3; Extra = @{};                            Expect = 0 }
+    @{ Name = 'An unmerged stamp is in flight';    Stage = '8-review';  Filler = 4; Threshold = 3; Extra = @{ LeaveUnmerged = $true };     Expect = 0 }
+    @{ Name = 'blocked/ is parked on purpose';     Stage = '8-review';  Filler = 4; Threshold = 3; Extra = @{ Folder = 'blocked' };        Expect = 0 }
+    @{ Name = 'icebox/ is parked on purpose';      Stage = '8-review';  Filler = 4; Threshold = 3; Extra = @{ Folder = 'icebox' };         Expect = 0 }
+    @{ Name = 'A bulk edit does not reset it';     Stage = '8-review';  Filler = 3; Threshold = 3; Extra = @{ TouchWithoutStage = $true }; Expect = 1 }
     @{ Name = '9-ship in backlog/ fails at once';  Stage = '9-ship';    Filler = 0; Threshold = 3; Extra = @{};                            Expect = 1 }
 )
 
@@ -246,20 +246,21 @@ finally { Remove-Fixture $fixture.Root }
 # The count must start where the stamp LANDED on the base branch, not at the stamp itself.
 # Counting from the stamp measures how long the branch was open: 15 commits on main during a
 # two-day branch put a healthy item over the limit on the day its first pull request merged.
+# These cases use a limit of 3, so a few commits show the same shape as fifteen.
 
-$fixture = New-StaleFixture -Stage '8-review' -BaseAhead 15 -Filler 0
+$fixture = New-StaleFixture -Stage '8-review' -BaseAhead 4 -Filler 0
 try {
-    $problems = @(Get-BacklogStaleOpenProblem -RepoRoot $fixture.Repo)
-    Assert-True ($problems.Count -eq 0) "A base that moved 15 commits while the branch was open must not count, got: $($problems -join ' | ')"
+    $problems = @(Get-BacklogStaleOpenProblem -RepoRoot $fixture.Repo -Threshold 3)
+    Assert-True ($problems.Count -eq 0) "A base that moved 4 commits while the branch was open must not count, got: $($problems -join ' | ')"
 }
 finally { Remove-Fixture $fixture.Root }
 
 # The same fixture, with the base moving past the landing, must still fail.
 
-$fixture = New-StaleFixture -Stage '8-review' -BaseAhead 15 -Filler 14
+$fixture = New-StaleFixture -Stage '8-review' -BaseAhead 4 -Filler 4
 try {
-    $problems = @(Get-BacklogStaleOpenProblem -RepoRoot $fixture.Repo)
-    Assert-True ($problems.Count -eq 1) "Fourteen commits after the landing must fail, got: $($problems -join ' | ')"
+    $problems = @(Get-BacklogStaleOpenProblem -RepoRoot $fixture.Repo -Threshold 3)
+    Assert-True ($problems.Count -eq 1) "Four commits after the landing must fail, got: $($problems -join ' | ')"
 }
 finally { Remove-Fixture $fixture.Root }
 
@@ -268,9 +269,9 @@ finally { Remove-Fixture $fixture.Root }
 # The branch-side merge is the oldest merge on the path from the stamp to the base tip, and it
 # never appears on the base's first-parent chain. Reading it as the landing loses the item.
 
-$fixture = New-StaleFixture -Stage '8-review' -BaseAhead 3 -Filler 14 -BranchMergesBase
+$fixture = New-StaleFixture -Stage '8-review' -BaseAhead 3 -Filler 4 -BranchMergesBase
 try {
-    $problems = @(Get-BacklogStaleOpenProblem -RepoRoot $fixture.Repo)
+    $problems = @(Get-BacklogStaleOpenProblem -RepoRoot $fixture.Repo -Threshold 3)
     Assert-True ($problems.Count -eq 1) "A branch that merged the base in must still be judged, got $($problems.Count): $($problems -join ' | ')"
 }
 finally { Remove-Fixture $fixture.Root }
@@ -286,7 +287,7 @@ finally { Remove-Fixture $fixture.Root }
 
 # --- No base branch: refuse to guess, the way the shallow clone does ---
 
-$fixture = New-StaleFixture -Stage '8-review' -Filler 14 -NoBase
+$fixture = New-StaleFixture -Stage '8-review' -NoBase
 try {
     $problems = @(Get-BacklogStaleOpenProblem -RepoRoot $fixture.Repo)
     Assert-True ($problems.Count -eq 1) "A repository with no base branch must report exactly one problem, got: $($problems.Count): $($problems -join ' | ')"

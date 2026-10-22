@@ -15,7 +15,7 @@ The measured artifacts are:
 measured on 2026-08-21. The two inputs behind them are machine-local and gitignored: the session
 transcripts under `~/.claude/projects`, and `.claude/worktrees/worktree-removal.log`
 (`.gitignore:451`, ".claude/worktrees/"). Each records only what happened on that machine, and
-the removal log does not reach back to the start of the window. Re-running either script on
+the removal log does not reach back to the start of the window. Re-running the measurement on
 another machine measures that machine, and prints different numbers. The committed rows are
 what makes the published figures auditable; re-running is not.
 
@@ -81,21 +81,20 @@ to both is a tool result:
 | 2 | `human-paste` | `Test-HumanTurn` says so: `type` is `user`, **and** either `origin.kind` is `human` or `promptSource` is `typed`, `suggestion_accepted` or `queued` |
 | 3 | `unresolved` | neither rule matched, or no record answers to the row's `Key` |
 
-The precedence is
-(`scripts/label-cleanup-events.ps1:218`, "function Get-RecordRoute {"),
-and the second rule is the metric's own human-turn rule, called rather than copied
+The rules apply in the order above. The second rule is the metric's own human-turn rule
 (`scripts/measure-process-friction.ps1:186`, "function Test-HumanTurn {"),
-so the two agree by construction. Because the rule is mechanical,
-`scripts/label-cleanup-events.ps1` computes the label instead of a person judging it.
+and the labelling called it rather than copied it, so the two agree by construction. Because the
+rule is mechanical, a script computed each label instead of a person judging it. Backlog 188
+retired that script and its test; git history keeps both.
 
-`unresolved` is a real output of the script. It must never reach the committed file, because an
-unresolved row is a row nobody labelled, and `tests/CleanupEventLabels.Tests.ps1` fails one.
+`unresolved` was a real output of the script. It never reached the committed file, because an
+unresolved row is a row nobody labelled, and the test failed one.
 
 A row's `Key` is the identity the metric wrote for its record: `msg:<message.id>` when the
 record carries a message id, `uuid:<uuid>` otherwise
 (`scripts/measure-process-friction.ps1:270`, "function Get-MessageKey {").
-The labeller looks up both. Its third form, `text:<text>`, names no record and cannot be
-resolved; the same test fails a ledger row that carries one.
+The labelling looked up both. Its third form, `text:<text>`, names no record and cannot be
+resolved; the same test failed a ledger row that carried one.
 
 The label answers a real question — how cleanup outcomes reach a conversation — without
 claiming one route is more real than the other.

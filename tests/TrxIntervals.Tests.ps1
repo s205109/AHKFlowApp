@@ -1,7 +1,7 @@
 #Requires -Version 7.0
 
-# Backlog 140. The two interval readers the harness-overhead report needs, driven against a TRX
-# written by this suite rather than by a test run.
+# Backlog 140. Read-TrxResults, driven against a TRX written by this suite rather than by a test
+# run. It checks that each test's interval comes back in UTC with the right length.
 #
 # Run it by hand with:  pwsh ./tests/TrxIntervals.Tests.ps1
 
@@ -34,15 +34,6 @@ try {
   </TestDefinitions>
 </TestRun>
 '@ | Set-Content -LiteralPath $trxPath -Encoding UTF8
-
-    $runInterval = Get-AhkFlowTrxRunInterval -TrxPath $trxPath
-    $runLength = ($runInterval.End - $runInterval.Start).TotalSeconds
-    if ([math]::Abs($runLength - 12) -gt 0.001) {
-        $failures += "run interval : expected 12 s, got $runLength s"
-    }
-    if ($runInterval.Start.Kind -ne [System.DateTimeKind]::Utc) {
-        $failures += "run interval : expected a UTC start, got $($runInterval.Start.Kind)"
-    }
 
     $results = @(Read-TrxResults -TrxPath $trxPath -ProjectName 'Sample')
     if ($results.Count -ne 1) {
