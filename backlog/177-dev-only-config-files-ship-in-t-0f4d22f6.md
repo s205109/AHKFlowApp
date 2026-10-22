@@ -65,4 +65,4 @@ that it does not advertise a test-auth switch.
   The project knows the folder is public. These three files are dev-only, so they do not need to
   be in it.
 - Spec: none — this is a publish-exclusion change.
-- Plan: none — moderate work, goes straight to Plan at pickup.
+- Plan: `docs/superpowers/plans/2026-10-22-dev-only-config-publish-plan-177.md`
