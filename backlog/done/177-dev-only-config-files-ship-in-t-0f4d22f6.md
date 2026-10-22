@@ -6,7 +6,7 @@
 - **Type**: Chore
 - **Interfaces**: none (frontend project file, published output)
 - **Difficulty**: moderate
-- **Stage**: 3-plan
+- **Stage**: 9-ship
 
 ## Summary
 
@@ -23,12 +23,12 @@ that it does not advertise a test-auth switch.
 
 ## Acceptance criteria
 
-- [ ] `appsettings.Local.json`, `appsettings.E2E.json` and `appsettings.NoAuth.json` are absent
+- [x] `appsettings.Local.json`, `appsettings.E2E.json` and `appsettings.NoAuth.json` are absent
       from the published `wwwroot`.
-- [ ] `appsettings.Development.json` is absent from the published `wwwroot` on a machine where
+- [x] `appsettings.Development.json` is absent from the published `wwwroot` on a machine where
       that file exists, which is every developer's machine.
-- [ ] Local development, the E2E run and the no-auth run all still read their config.
-- [ ] A check or a test proves a published bundle holds no `appsettings` file other than the ones
+- [x] Local development, the E2E run and the no-auth run all still read their config.
+- [x] A check or a test proves a published bundle holds no `appsettings` file other than the ones
       the app needs at run time.
 
 ## Out of scope
