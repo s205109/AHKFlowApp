@@ -23,6 +23,19 @@
     <ServiceWorker Include="wwwroot\service-worker.js" PublishedContent="wwwroot\service-worker.published.js" />
   </ItemGroup>
 
+  <!--
+    These files are for local dev, the no-auth run, E2E and Docker only. They stay build
+    assets so the dev server still serves them, but dotnet publish must not ship them.
+    .gitignore does not keep a file out of a publish, so each one is listed here.
+  -->
+  <ItemGroup>
+    <Content Update="wwwroot\appsettings.Development.json" CopyToPublishDirectory="Never" />
+    <Content Update="wwwroot\appsettings.Development.json.example" CopyToPublishDirectory="Never" />
+    <Content Update="wwwroot\appsettings.E2E.json" CopyToPublishDirectory="Never" />
+    <Content Update="wwwroot\appsettings.Local.json" CopyToPublishDirectory="Never" />
+    <Content Update="wwwroot\appsettings.NoAuth.json" CopyToPublishDirectory="Never" />
+  </ItemGroup>
+
   <ItemGroup>
     <InternalsVisibleTo Include="AHKFlowApp.UI.Blazor.Tests" />
   </ItemGroup>
