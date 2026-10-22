@@ -519,6 +519,13 @@ a script or a Suite. The commands and their order are the ones under `## Before`
 same state as before in every case: it skipped itself in case 1, case 3, `Docs` and `Script`, and
 it ran for `Code`.
 
+One commit came after this measurement. CI failed at Ship on the warm-up ceiling case in
+`MeasureTestModes.Tests.ps1`, whose settle target audit batch 2 had cut from 5 to 3 seconds.
+Commit `cbd3797a` put the original 300 ms runs and 5 second target back. That adds about 2
+seconds to one Suite, which runs beside the others, so the Gate times move by less than that.
+Every target is missed by 90 seconds or more, so no verdict can change. On 2026-10-22 the user
+chose to keep this measurement rather than run it again.
+
 ### 1. Gate time
 
 Case 1, full Gate with evidence reuse switched off:

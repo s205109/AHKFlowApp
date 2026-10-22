@@ -34,8 +34,11 @@ Each criterion is refined in the spec. Tick a box only when its words hold liter
 - [x] An after record of Gate time and affected-test time, taken on the final revision with the
       baseline's method and preparation, sits next to the baseline. It reports both targets as met
       or missed, and a missed target carries the user's decision to accept it or continue.
-      The record was measured again at `e138787f`, the final revision, after the review fixes.
-      All four targets are missed, and the user's S6 answer, accept, covers them.
+      The record was measured again at `e138787f`, after the review fixes. All four targets are
+      missed, and the user's S6 answer, accept, covers them. One later commit, `cbd3797a`,
+      restored a test's own timing after CI failed at Ship. It adds about 2 seconds to one Suite
+      that runs beside the others, against misses of 90 seconds or more. On 2026-10-22 the user
+      chose to keep this measurement rather than run it again.
 - [x] A follow-up item carries the before record and the targets of the other three measures, and
       says when each after window starts and when it is ready.
 - [x] Every audit batch the user approved is applied, and the after record lists what each batch
