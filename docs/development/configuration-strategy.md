@@ -57,10 +57,14 @@ Per [Microsoft documentation](https://learn.microsoft.com/aspnet/core/blazor/fun
 src/Frontend/AHKFlowApp.UI.Blazor/wwwroot/
 ├── appsettings.json                     Committed (localhost default)
 ├── appsettings.Development.json.example Committed (optional local override template)
+├── appsettings.Local.json               Committed (Docker image, local API URL)
+├── appsettings.E2E.json                 Committed (E2E test run)
 ├── appsettings.NoAuth.json              Committed (local no-auth run, test user sign-in)
 ├── appsettings.Test.json                Committed (TEST Azure API URL)
 └── appsettings.Production.json          Committed (PROD Azure API URL)
 ```
+
+The project file keeps every dev-only file out of `dotnet publish`. Only `appsettings.json`, `appsettings.Test.json` and `appsettings.Production.json` ship. `PublishedConfigTests` checks this.
 
 ### What's in Frontend Config
 
