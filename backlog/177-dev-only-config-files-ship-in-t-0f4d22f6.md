@@ -6,7 +6,7 @@
 - **Type**: Chore
 - **Interfaces**: none (frontend project file, published output)
 - **Difficulty**: moderate
-- **Stage**: 1-pickup
+- **Stage**: 3-plan
 
 ## Summary
 
