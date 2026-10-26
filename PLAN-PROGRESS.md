@@ -1,2 +1,0 @@
-Task 1; c265e119; red before fix: view mode start-edit ends at 1248.19, open-full-editor at 1296.19, past cell 1240; chip at 236px and 12%: ChipRight 878.34 past ContentRight 874.34; green after fix: 9 of 9 E2E, HotkeysPageTests 43 of 43; deferrals: none
-Task 2; ad0c1a64; hotstrings test moved onto ActionsCell with expectedButtons: 3 for each state; green: 4 of 4 HotstringsCrudFlowTests E2E; deferrals: none
