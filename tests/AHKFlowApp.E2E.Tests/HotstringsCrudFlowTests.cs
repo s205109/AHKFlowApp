@@ -1,7 +1,6 @@
 using AHKFlowApp.E2E.Tests.Fixtures;
 using AHKFlowApp.Infrastructure.Persistence;
 using AHKFlowApp.TestUtilities.Builders;
-using FluentAssertions;
 using FluentAssertions.Execution;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Playwright;
