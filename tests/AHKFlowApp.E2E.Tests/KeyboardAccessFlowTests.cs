@@ -131,6 +131,28 @@ public sealed class KeyboardAccessFlowTests(StackFixtureB fixture) : IAsyncLifet
         await Assertions.Expect(page.Locator("textarea[data-test=\"profile-header-input\"]")).ToHaveAccessibleNameAsync("Header template");
     }
 
+    // Backlog 189. bUnit proves the aria-label is on each picker's input. Only a browser proves it
+    // becomes the name, for a MudSelect and a MudAutocomplete.
+    [Fact]
+    public async Task InlinePickers_NameWhatTheyHold()
+    {
+        await SeedHotkeyAsync(fixture, "Open notepad");
+        await using IBrowserContext ctx = await fixture.Browser.NewContextAsync(DesktopViewport);
+        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/hotkeys");
+        ILocator row = page.Locator(".desktop-branch tbody tr", new() { HasTextString = "Open notepad" });
+        await row.WaitForAsync();
+        await row.Locator("button.start-edit").ClickAsync();
+
+        // Once the description moves into an input value, the row's text filter stops matching it.
+        ILocator editRow = page.Locator(".desktop-branch tr.edit-row");
+        await Assertions.Expect(editRow.Locator("input[data-test=\"key-input\"]")).ToHaveAccessibleNameAsync("Key");
+        await Assertions.Expect(editRow.Locator("input[data-test=\"category-select\"]")).ToHaveAccessibleNameAsync("Categories");
+
+        // The profile picker renders only while the row does not apply to all profiles.
+        await editRow.Locator("input[data-test=\"applies-to-all-checkbox\"]").UncheckAsync();
+        await Assertions.Expect(editRow.Locator("input[data-test=\"profile-select\"]")).ToHaveAccessibleNameAsync("Profiles");
+    }
+
     private static async Task AssertRingsAsync(IPage page, ILocator row, string textColour)
     {
         // Real Tab presses prove the nav link is reachable by keyboard. They also put the
@@ -192,6 +214,20 @@ public sealed class KeyboardAccessFlowTests(StackFixtureB fixture) : IAsyncLifet
             .WithOwner(TestAuthHandler.TestOwnerOid)
             .WithTrigger(trigger)
             .WithReplacement("by the way")
+            .Build());
+
+        await db.SaveChangesAsync();
+    }
+
+    private static async Task SeedHotkeyAsync(StackFixture fixture, string description)
+    {
+        await using AsyncServiceScope scope = fixture.Api.Services.CreateAsyncScope();
+        AppDbContext db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        db.Hotkeys.Add(new HotkeyBuilder()
+            .WithOwner(TestAuthHandler.TestOwnerOid)
+            .WithDescription(description)
+            .WithRun("notepad.exe")
             .Build());
 
         await db.SaveChangesAsync();
