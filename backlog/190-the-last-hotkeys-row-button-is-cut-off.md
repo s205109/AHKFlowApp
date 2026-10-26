@@ -45,7 +45,8 @@ removed" and "tests cover the new API" cannot.
 
   The table container ends at 1240 px and has `overflow: auto`, so it cuts off whatever sticks out.
 - Likely cause, the same as backlog 185: the Actions column is fixed at 160 px
-  (`src/Frontend/AHKFlowApp.UI.Blazor/Pages/Hotkeys.razor:199`, "width:160px").
+  (`src/Frontend/AHKFlowApp.UI.Blazor/Pages/Hotkeys.razor:199`, "width:160px"). <!-- citation-check:ignore: the line before this item's fix, which changed it to 236 px -->
+  Backlog 190 widened the column to 236 px, so the cited line no longer exists.
   Four 48 px buttons need 192 px before any gap or padding. The line breaks between the buttons
   render as spaces of about 4 px each. The Razor comment before `open-full-editor` removes the
   space before that button.
