@@ -215,9 +215,8 @@ public sealed class SnapshotEventGuardTests
     private static bool Encloses((int Start, int End) call, int position) =>
         call.Start < position && call.End > position;
 
-    private static bool IsOpener(char c) => c is '(' or '[' or '{';
-
-    private static bool IsCloser(char c) => c is ')' or ']' or '}';
+    // The change in depth at one character, counting every kind of bracket.
+    private static int Delta(char c) => c is '(' or '[' or '{' ? 1 : c is ')' or ']' or '}' ? -1 : 0;
 
     // The first semicolon at depth zero or less. A semicolon inside a block lambda in the chain sits
     // deeper and does not end the statement. A closer of an enclosing call does not end it either.
@@ -227,7 +226,7 @@ public sealed class SnapshotEventGuardTests
         for (int k = start; k < code.Length; k++)
         {
             char c = code[k];
-            depth += IsOpener(c) ? 1 : IsCloser(c) ? -1 : 0;
+            depth += Delta(c);
             if (c == ';' && depth <= 0)
             {
                 return k;
@@ -261,7 +260,7 @@ public sealed class SnapshotEventGuardTests
         for (int k = from; k < code.Length; k++)
         {
             char c = code[k];
-            depth += IsOpener(c) ? 1 : IsCloser(c) ? -1 : 0;
+            depth += Delta(c);
             if (depth < 0)
             {
                 return false;
