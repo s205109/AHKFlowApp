@@ -11,12 +11,11 @@
 ## Summary
 
 The product has four spellings across the app bar, the home page, the browser tab and the web app
-manifest. The Health page has three names. The home page also offers two CLI commands that do not
-exist, each with its own Copy button.
+manifest. The Health page has three names.
 
 ## User story
 
-As an owner, I want one product name and commands that run, so that I can trust what the app
+As an owner, I want one product name and one name for each page, so that I can trust what the app
 tells me.
 
 ## Acceptance criteria
@@ -24,8 +23,6 @@ tells me.
 - [ ] One product spelling appears in `index.html`, the app bar, the home page heading, the home
       page browser tab and `manifest.webmanifest`.
 - [ ] The Health page uses one name in its nav link, its browser tab and its heading.
-- [ ] Every command on the CLI quickstart card runs as printed against the current CLI.
-- [ ] A test or a check proves each quickstart command names a command the CLI actually defines.
 - [ ] `manifest.webmanifest` has a `short_name` shorter than its `name`, and a `description`.
 - [ ] Either the UI's action labels match the seven Action names in `CONTEXT.md`, or `CONTEXT.md`
       blesses the display form.
@@ -34,22 +31,12 @@ tells me.
 
 - Renaming the repository, the solution or the project folders.
 - Wording of messages and validation errors, which item 169 covers.
+- The commands on the CLI quickstart card. Backlog 197 owns them.
 
 ## Notes / dependencies
 
-- Found by the acceptance sweep on 2026-10-13, findings F1 (S2), F5, F7, F13 and F25. Full
-  evidence in `.superpowers/acceptance-sweep-2026-10-12/findings.md`, which is local and
-  gitignored.
-- **F1, the quickstart card.** `Components/Home/CliQuickstartCard.razor` prints
-  `ahkflow new "yw" "you're welcome" --profile work` and `ahkflow list --profile work --grep
-  "typo"`. The CLI's own `--help` defines four commands: `login`, `logout`, `hotstring` and
-  `download`. There is no root `new` and no root `list`, and `NewHotstringCommand` takes
-  `--trigger` and `--replacement` as options, never as positional arguments. The third line,
-  `ahkflow download ahk --profile work`, is correct.
-- The correct forms are `ahkflow hotstring new --trigger "yw" --replacement "you're welcome"
-  --profile work` and `ahkflow hotstring list --profile work --grep "typo"`.
-- The app already documents the right syntax elsewhere. `changelog.json` says
-  "`ahkflow hotstring list` shows a Kind column". Only the quickstart card is wrong.
+- Found by the acceptance sweep on 2026-10-13, findings F5, F7, F13 and F25. Full evidence in
+  `.superpowers/acceptance-sweep-2026-10-12/findings.md`, which is local and gitignored.
 - **F5 and F25, the four spellings.** `AHKFlowApp` in `wwwroot/index.html` and
   `Layout/MainLayout.razor`; `AHKFlow` in the home page's browser tab from `Pages/Home.razor`;
   `AHKflow` in the hero heading from `Components/Home/HeroSection.razor`, which comes from
@@ -71,13 +58,10 @@ tells me.
   splitting one. Decide which side moves.
 - No file in the repository states what the manifest name must be, and `CONTEXT.md` does not
   cover the manifest. That part is plain reasonableness, not a sourced rule.
-- **Split at pickup, one pull request per outcome.** The two halves have nothing in common beyond
-  both being text an owner reads:
-  1. **Commands that do not run.** Fix the two quickstart lines, and add the check that proves
-     each printed command exists. F1, the only S2 in this item. Do this one first: a printed
-     command that fails is worse than a name spelled four ways.
-  2. **One product name, one page name.** The four spellings, the Health page's three names, the
-     manifest's `short_name` and `description`, and the F13 decision about action labels. F5, F7,
-     F13 and F25.
+- **Split at pickup on 2026-10-26, one pull request per outcome.** The sweep put two outcomes in
+  this item, and they share nothing beyond being text an owner reads. This item keeps outcome 2,
+  one product name and one page name, because that is what its title says. Outcome 1, the
+  quickstart commands that do not run (F1, S2), moved to backlog 197. It has its own worktree from
+  `main`, so it can ship first, as this item asked.
 - Spec: none — the only open question is F13, and it is a one-line decision.
 - Plan: none — moderate work, goes straight to Plan at pickup.
