@@ -1208,4 +1208,21 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
         cut.Find("textarea[data-test=\"replacement-input\"]").GetAttribute("aria-label").Should().Be("Replacement");
         cut.Find("input[data-test=\"description-input\"]").GetAttribute("aria-label").Should().Be("Description");
     }
+
+    // Backlog 189. The pickers are shared components, so the page names them through AriaLabel.
+    // AppliesToAllProfiles is false, so the profile picker renders.
+    [Fact]
+    public void EditRow_Pickers_NameWhatTheyHold()
+    {
+        var dto = new HotstringDto(Guid.NewGuid(), [], false, "btw", "by the way", null, true, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+        StubList(Page(dto));
+
+        IRenderedComponent<Hotstrings> cut = RenderPage();
+        cut.WaitForState(() => cut.Markup.Contains("btw"));
+        cut.Find("button.edit").Click();
+        cut.WaitForAssertion(() => cut.Find("input[data-test=\"profile-select\"]"));
+
+        cut.Find("input[data-test=\"profile-select\"]").GetAttribute("aria-label").Should().Be("Profiles");
+        cut.Find("input[data-test=\"category-select\"]").GetAttribute("aria-label").Should().Be("Categories");
+    }
 }

@@ -67,4 +67,33 @@ public sealed class EntityMultiSelectTests : BunitContext, IAsyncLifetime
 
         cut.Markup.Should().Contain("Work");
     }
+
+    // Backlog 189. A picker in an inline edit row has no visible label, so AriaLabel is its name.
+    // The selector names the input element, so the name sits on the field, not a wrapper.
+    [Fact]
+    public void AriaLabel_WhenSet_NamesTheInput()
+    {
+        IRenderedComponent<EntityMultiSelect> cut = RenderWithPopover(b =>
+        {
+            b.AddAttribute(2, nameof(EntityMultiSelect.Options), new List<EntityOption>());
+            b.AddAttribute(3, nameof(EntityMultiSelect.DataTest), "profile-select");
+            b.AddAttribute(4, nameof(EntityMultiSelect.AriaLabel), "Profiles");
+        });
+
+        cut.Find("input[data-test=\"profile-select\"]").GetAttribute("aria-label").Should().Be("Profiles");
+    }
+
+    // A dialog picker is named by its visible Label. An aria-label would replace that name.
+    [Fact]
+    public void AriaLabel_WhenUnset_RendersNoAriaLabel()
+    {
+        IRenderedComponent<EntityMultiSelect> cut = RenderWithPopover(b =>
+        {
+            b.AddAttribute(2, nameof(EntityMultiSelect.Options), new List<EntityOption>());
+            b.AddAttribute(3, nameof(EntityMultiSelect.Label), "Profiles");
+            b.AddAttribute(4, nameof(EntityMultiSelect.DataTest), "profile-select");
+        });
+
+        cut.Find("input[data-test=\"profile-select\"]").HasAttribute("aria-label").Should().BeFalse();
+    }
 }

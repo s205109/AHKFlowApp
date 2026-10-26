@@ -840,7 +840,7 @@
                        Value="@edit.Key" ValueChanged="value => edit.Key = value ?? string.Empty"
                        Error="@(_commitAttempted && ValidateKey(edit.Key) is not null)"
                        ErrorText="@(_commitAttempted ? ValidateKey(edit.Key) : null)"
-                       DataTest="key-input" />
+                       DataTest="key-input" AriaLabel="Key" />
             <MudCheckBox T="bool" Dense="true" Label="Ctrl" @bind-Value="edit.Ctrl"
                          UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "ctrl-checkbox" })" />
             <MudCheckBox T="bool" Dense="true" Label="Alt" @bind-Value="edit.Alt"
@@ -894,7 +894,7 @@
                                SelectedIds="edit.ProfileIds"
                                SelectedIdsChanged="@(ids => edit.ProfileIds = [.. ids])"
                                Dense="true" Placeholder="Select profiles"
-                               DataTest="profile-select" />
+                               DataTest="profile-select" AriaLabel="Profiles" />
         }
     </MudStack>;
 
@@ -911,7 +911,7 @@
                             SelectedIds="edit.CategoryIds"
                             SelectedIdsChanged="@(ids => edit.CategoryIds = [.. ids])"
                             Dense="true" Placeholder="Select categories"
-                            DataTest="category-select" />;
+                            DataTest="category-select" AriaLabel="Categories" />;
 
     private RenderFragment RenderCategories(IReadOnlyCollection<Guid> categoryIds) =>
         @<EntityChips Ids="categoryIds" Options="_categoryOptions" />;
