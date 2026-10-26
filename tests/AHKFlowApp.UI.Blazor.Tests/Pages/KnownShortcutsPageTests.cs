@@ -116,6 +116,16 @@ public sealed class KnownShortcutsPageTests : BunitContext, IAsyncLifetime
         page.Find($"{branch} button.{css}[data-shortcut-id=\"{shortcutId}\"][data-used-by=\"{usedBy}\"]");
 
     [Fact]
+    public void Intro_SpellsTheProductName()
+    {
+        StubList(BrowserShortcut());
+
+        IRenderedComponent<KnownShortcuts> page = RenderPage();
+
+        page.Markup.Should().Contain("These are the shortcuts AHKFlowApp warns you about");
+    }
+
+    [Fact]
     public void Page_RendersOneRowPerUse()
     {
         StubList(BrowserShortcut());

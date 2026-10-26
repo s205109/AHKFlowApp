@@ -195,6 +195,13 @@ button.import-hotstring-fab {
     background-color: transparent;
 }
 
+/* The hero word is one long word, and the h2 size cannot fit it on a phone (backlog 170). */
+@media (max-width: 599.98px) {
+    h2.hero-heading {
+        font-size: 2.5rem;
+    }
+}
+
 /* Focus ring policy (backlog 168). The one place that decides how a focused control looks.
    - Covered: nav links, and every MudBlazor button, including the buttons that hold a checkbox
      or a switch.
