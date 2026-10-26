@@ -33,8 +33,9 @@ removed" and "tests cover the new API" cannot.
       any other bUnit event method, including its `Async` form.
 - [ ] A guard test in `AHKFlowApp.UI.Blazor.Tests` reads the UI test sources. It fails when an
       event is chained to `FindAll(...)` or to a child lookup (`QuerySelector`, `QuerySelectorAll`,
-      `Closest`, `Children`, `ParentElement`, `NextElementSibling`, `PreviousElementSibling`) in a
-      statement that does not run inside `InvokeAsync`. It passes on the tree as it is.
+      `Closest`, `Children`, `ParentElement`, `NextElementSibling`, `PreviousElementSibling`),
+      unless the lookup and the event both run inside the same `InvokeAsync` call. It passes on
+      the tree as it is.
 - [ ] `src/Frontend/AHKFlowApp.UI.Blazor/CLAUDE.md` states that an event on a `FindAll` element or
       a child lookup runs inside `InvokeAsync`. It also says why an event on a `Find` element does
       not need to.
