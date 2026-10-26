@@ -20,11 +20,11 @@ tells me.
 
 ## Acceptance criteria
 
-- [ ] One product spelling appears in `index.html`, the app bar, the home page heading, the home
+- [x] One product spelling appears in `index.html`, the app bar, the home page heading, the home
       page browser tab and `manifest.webmanifest`.
-- [ ] The Health page uses one name in its nav link, its browser tab and its heading.
-- [ ] `manifest.webmanifest` has a `short_name` shorter than its `name`, and a `description`.
-- [ ] Either the UI's action labels match the seven Action names in `CONTEXT.md`, or `CONTEXT.md`
+- [x] The Health page uses one name in its nav link, its browser tab and its heading.
+- [x] `manifest.webmanifest` has a `short_name` shorter than its `name`, and a `description`.
+- [x] Either the UI's action labels match the seven Action names in `CONTEXT.md`, or `CONTEXT.md`
       blesses the display form.
 
 ## Out of scope
