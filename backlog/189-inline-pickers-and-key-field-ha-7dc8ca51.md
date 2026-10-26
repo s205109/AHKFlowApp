@@ -55,4 +55,8 @@ removed" and "tests cover the new API" cannot.
 - Backlog 186 sets the pattern: an `aria-label` with the same words as the column title. Its plan
   adds that rule to the frontend `CLAUDE.md`.
 - Spec: none — known controls, one kind of fix.
-- Plan: none — moderate work, goes straight to Plan at pickup.
+- Plan: `docs/superpowers/plans/2026-10-26-inline-picker-names-plan-189.md`
+- Checked at pickup, MudBlazor 9.3.0 source: `MudSelect` and `MudAutocomplete` both pass
+  `UserAttributes` to their `MudInput`, which puts them on the `<input>` that takes focus.
+  `MudSelect` hides that input only when `CanRenderValue` is true, and `CanRenderValue` is always
+  false with `MultiSelection`, which `EntityMultiSelect` always sets.
