@@ -2,6 +2,7 @@ using AHKFlowApp.E2E.Tests.Fixtures;
 using AHKFlowApp.Infrastructure.Persistence;
 using AHKFlowApp.TestUtilities.Builders;
 using FluentAssertions;
+using FluentAssertions.Execution;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Playwright;
 using Xunit;
@@ -17,6 +18,20 @@ public sealed class HotkeysCrudFlowTests(StackFixtureB fixture) : IAsyncLifetime
     {
         ViewportSize = new ViewportSize { Width = 1280, Height = 800 },
     };
+
+    // 1240 px still shows the desktop grid, and its Profiles column is narrower than at 1280 px.
+    // The chip test runs here because a 12% column fails and 14% passes, each by about 4 px.
+    private static readonly BrowserNewContextOptions NarrowDesktopViewport = new()
+    {
+        ViewportSize = new ViewportSize { Width = 1240, Height = 800 },
+    };
+
+    private sealed class ChipFit
+    {
+        public double ChipRight { get; init; }
+
+        public double ContentRight { get; init; }
+    }
 
     public Task InitializeAsync() =>
         fixture.ResetDataAsync();
@@ -307,6 +322,62 @@ public sealed class HotkeysCrudFlowTests(StackFixtureB fixture) : IAsyncLifetime
         // The count proves the page's selection changed. The row ticks prove the owner can see it.
         await Assertions.Expect(checkboxA).ToBeCheckedAsync();
         await Assertions.Expect(checkboxB).ToBeCheckedAsync();
+    }
+
+    // Backlog 190. Four 48 px buttons did not fit the 160 px Actions column. In view mode the last
+    // one ended 56 px past its cell, and the cell cut it off. Edit mode shows two buttons and
+    // already fit; it is measured so that a later change cannot break it. Both states are
+    // measured before any assertion runs, so one red run shows each state that fails.
+    [Fact]
+    public async Task RowButtons_OnDesktopViewport_SitInsideTheActionsCellOnOneLine()
+    {
+        // The builder's default action is Run, and F1 is a known key, so this row edits inline.
+        await SeedHotkeysAsync(fixture, ("Macro A", "F1"));
+
+        await using IBrowserContext ctx = await fixture.Browser.NewContextAsync(DesktopViewport);
+
+        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/hotkeys");
+        ILocator row = page.Locator(".desktop-branch tbody tr", new() { HasTextString = "Macro A" });
+        await row.Locator("button.open-full-editor").WaitForAsync();
+        ActionsCellLayout view = await ActionsCell.MeasureAsync(page, row, "button.open-full-editor");
+
+        await row.Locator("button.start-edit").ClickAsync();
+        ILocator editRow = page.Locator(".desktop-branch tr.edit-row");
+        await editRow.Locator("button.cancel-edit").WaitForAsync();
+        ActionsCellLayout edit = await ActionsCell.MeasureAsync(page, editRow, "button.cancel-edit");
+
+        using (new AssertionScope())
+        {
+            ActionsCell.AssertInsideItsCellOnOneLine("view mode", view, expectedButtons: 4);
+            ActionsCell.AssertInsideItsCellOnOneLine("edit mode", edit, expectedButtons: 2);
+        }
+    }
+
+    // Backlog 190. The wider Actions column leaves less room for the percentage columns. With
+    // Profiles at 12%, the "All profiles" chip ran into its cell's right padding at this window;
+    // at 14% it fits. The check uses the content box, not the cell, because the cell's padding
+    // would hide a chip that had run into it.
+    [Fact]
+    public async Task AllProfilesChip_OnNarrowDesktopViewport_EndsInsideItsContentBox()
+    {
+        // The builder's default row applies to all profiles, so it shows the chip.
+        await SeedHotkeysAsync(fixture, ("Macro A", "F1"));
+
+        await using IBrowserContext ctx = await fixture.Browser.NewContextAsync(NarrowDesktopViewport);
+
+        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/hotkeys");
+        ILocator row = page.Locator(".desktop-branch tbody tr", new() { HasTextString = "Macro A" });
+        await row.Locator(".mud-chip", new() { HasTextString = "All profiles" }).WaitForAsync();
+
+        // The chip's width depends on its font, and the page loads Roboto with display=swap.
+        await page.EvaluateAsync("() => document.fonts.ready.then(() => true)");
+
+        ILocator cell = row.Locator("td").Filter(new() { Has = page.Locator(".mud-chip", new() { HasTextString = "All profiles" }) });
+        ChipFit fit = await cell.EvaluateAsync<ChipFit>(
+            "td => ({ ChipRight: td.querySelector('.mud-chip').getBoundingClientRect().right, "
+            + "ContentRight: td.getBoundingClientRect().right - parseFloat(getComputedStyle(td).paddingRight) })");
+
+        fit.ChipRight.Should().BeLessThanOrEqualTo(fit.ContentRight, "the All profiles chip must end inside its cell's content box");
     }
 
     // Fills a MudAutocomplete key picker and commits the typed value by blurring (CoerceValue).

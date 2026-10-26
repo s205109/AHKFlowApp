@@ -30,11 +30,11 @@ public sealed class CliQuickstartCardTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
-    public void Copy_button_invokes_clipboard_writeText()
+    public async Task Copy_button_invokes_clipboard_writeText()
     {
         IRenderedComponent<CliQuickstartCard> cut = Render<CliQuickstartCard>();
 
-        cut.FindAll("button.cli-copy-btn").First().Click();
+        await cut.InvokeAsync(() => cut.FindAll("button.cli-copy-btn").First().Click());
 
         JSInterop.VerifyInvoke("navigator.clipboard.writeText");
     }

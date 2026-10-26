@@ -8,8 +8,8 @@ namespace AHKFlowApp.E2E.Tests;
 /// <summary>
 /// Keeps the rule from ADR 0017: an E2E page is opened only through the diagnosed helper.
 ///
-/// This reads source as text to find the banned call, and it is the only test in this repository
-/// that does. The exemption is read from the compiled class instead. A Pester suite
+/// This reads source as text to find the banned call. The exemption is read from the compiled
+/// class instead. A Pester suite
 /// would have been the usual home for a rule about how the repository is written, but
 /// .githooks/pre-push.ps1 runs the Fast slice and not the PowerShell suites, so a suite would stay
 /// silent until CI. The person who breaks this rule is writing an E2E test and running the E2E

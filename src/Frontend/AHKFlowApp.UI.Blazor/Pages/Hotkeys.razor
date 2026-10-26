@@ -196,7 +196,11 @@
                     }
                 </CellTemplate>
             </TemplateColumn>
-            <TemplateColumn Title="Actions" Sortable="false" Filterable="false" HeaderStyle="width:160px">
+            @* Four 48 px buttons and three 4 px gaps take 204 px. The cell adds 16 px of padding
+               on each side, so the column needs 236 px. The right padding also holds the focus
+               ring, which reaches 4 px past the button. Under table-layout:fixed the header cell
+               sets the column width. *@
+            <TemplateColumn Title="Actions" Sortable="false" Filterable="false" HeaderStyle="width:236px">
                 <CellTemplate>@RenderActions(context.Item)</CellTemplate>
             </TemplateColumn>
         </Columns>
@@ -949,32 +953,36 @@
     }
 
     private RenderFragment RenderActions(HotkeyEditModel item) => @<text>
-        @if (IsEditing(item))
-        {
-            <MudIconButton Class="commit-edit" Icon="@Icons.Material.Filled.Check"
-                           Color="Color.Success" OnClick="() => CommitEditAsync(item)"
-                           UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = $"Save {item.Description}" })" />
-            <MudIconButton Class="cancel-edit" Icon="@Icons.Material.Filled.Close"
-                           Color="Color.Default" OnClick="CancelEditAsync"
-                           UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = "Cancel edit" })" />
-        }
-        else
-        {
-            <MudIconButton Class="show-history" Icon="@Icons.Material.Filled.History"
-                           OnClick="() => ShowHistoryAsync(item)"
-                           UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = $"Show history for {item.Description}" })" />
-            <MudIconButton Class="delete" Icon="@Icons.Material.Filled.Delete" Color="Color.Error"
-                           OnClick="() => DeleteAsync(item)"
-                           UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = $"Delete {item.Description}" })" />
-            <MudIconButton Class="start-edit" Icon="@Icons.Material.Filled.Edit"
-                           OnClick="() => StartEditAsync(item)"
-                           UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = $"Edit {item.Description}" })" />
-            @* Inline edit covers the two single-field kinds, and it cannot change the action kind.
-               This is how those rows reach the full editor, which can. *@
-            <MudIconButton Class="open-full-editor" Icon="@Icons.Material.Filled.OpenInFull"
-                           OnClick="() => OpenEditDialogAsync(item)"
-                           UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = $"Open the full editor for {item.Description}", ["title"] = "Open the full editor" })" />
-        }
+        @* A flex row, so the buttons sit 4 px apart and never wrap. Without it the line breaks
+           between them render as spaces, whose width depends on the font. *@
+        <MudStack Row="true" Spacing="1" Wrap="Wrap.NoWrap">
+            @if (IsEditing(item))
+            {
+                <MudIconButton Class="commit-edit" Icon="@Icons.Material.Filled.Check"
+                               Color="Color.Success" OnClick="() => CommitEditAsync(item)"
+                               UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = $"Save {item.Description}" })" />
+                <MudIconButton Class="cancel-edit" Icon="@Icons.Material.Filled.Close"
+                               Color="Color.Default" OnClick="CancelEditAsync"
+                               UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = "Cancel edit" })" />
+            }
+            else
+            {
+                <MudIconButton Class="show-history" Icon="@Icons.Material.Filled.History"
+                               OnClick="() => ShowHistoryAsync(item)"
+                               UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = $"Show history for {item.Description}" })" />
+                <MudIconButton Class="delete" Icon="@Icons.Material.Filled.Delete" Color="Color.Error"
+                               OnClick="() => DeleteAsync(item)"
+                               UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = $"Delete {item.Description}" })" />
+                <MudIconButton Class="start-edit" Icon="@Icons.Material.Filled.Edit"
+                               OnClick="() => StartEditAsync(item)"
+                               UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = $"Edit {item.Description}" })" />
+                @* Inline edit covers the two single-field kinds, and it cannot change the action kind.
+                   This is how those rows reach the full editor, which can. *@
+                <MudIconButton Class="open-full-editor" Icon="@Icons.Material.Filled.OpenInFull"
+                               OnClick="() => OpenEditDialogAsync(item)"
+                               UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = $"Open the full editor for {item.Description}", ["title"] = "Open the full editor" })" />
+            }
+        </MudStack>
     </text>;
 
     public void Dispose() { _cts.Cancel(); _cts.Dispose(); }
