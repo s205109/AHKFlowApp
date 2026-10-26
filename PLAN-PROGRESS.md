@@ -1,0 +1,1 @@
+Task 1; c265e119; red before fix: view mode start-edit ends at 1248.19, open-full-editor at 1296.19, past cell 1240; chip at 236px and 12%: ChipRight 878.34 past ContentRight 874.34; green after fix: 9 of 9 E2E, HotkeysPageTests 43 of 43; deferrals: none
