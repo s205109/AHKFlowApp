@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: UI
 - **Difficulty**: moderate
-- **Stage**: 7-document
+- **Stage**: 8-review
 
 ## Summary
 
@@ -23,9 +23,9 @@ Write each criterion as state a reader can observe in the repository, not as a c
 "The handler returns `Result.NotFound()` for a missing id" can be checked. "The old check is
 removed" and "tests cover the new API" cannot.
 
-- [ ] At a 1280 px window, every button in a hotkeys row sits inside its cell, in view mode and in
+- [x] At a 1280 px window, every button in a hotkeys row sits inside its cell, in view mode and in
       edit mode.
-- [ ] An E2E flow test asserts that every row button sits inside its cell, in both modes.
+- [x] An E2E flow test asserts that every row button sits inside its cell, in both modes.
 
 ## Out of scope
 
