@@ -99,4 +99,4 @@ removed" and "tests cover the new API" cannot.
   - Difficulty is `moderate`. No ADR, because the rule is easy to reverse. No `CONTEXT.md` term,
     because a snapshot element is a test idea, not a domain one.
 - Spec: none — the decisions and the probe evidence above are the whole design.
-- Plan: none — not planned yet.
+- Plan: `docs/superpowers/plans/2026-10-26-ui-tests-snapshot-events-plan-187.md`
