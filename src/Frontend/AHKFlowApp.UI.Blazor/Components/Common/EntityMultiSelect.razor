@@ -33,18 +33,9 @@
 
     private Dictionary<string, object?> _userAttributes = [];
 
-    protected override void OnParametersSet()
-    {
-        _userAttributes = [];
-        if (DataTest is not null)
-        {
-            _userAttributes["data-test"] = DataTest;
-        }
-        if (AriaLabel is not null)
-        {
-            _userAttributes["aria-label"] = AriaLabel;
-        }
-    }
+    // A null value renders no attribute, so an unset DataTest or AriaLabel adds nothing.
+    protected override void OnParametersSet() =>
+        _userAttributes = new() { ["data-test"] = DataTest, ["aria-label"] = AriaLabel };
 
     /// <summary>
     /// Fits the control into a narrow container: collapses a multi-selection to "N selected"
