@@ -69,6 +69,19 @@ public sealed class ProductAndPageNamesFlowTests(StackFixtureB fixture)
     }
 
     [Fact]
+    public async Task HealthPage_UsesOneName()
+    {
+        await using IBrowserContext ctx = await fixture.Browser.NewContextAsync();
+        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/");
+
+        ILocator navLink = page.Locator("a.mud-nav-link[href=\"health\"]");
+        await Assertions.Expect(navLink).ToHaveTextAsync("Health");
+        await navLink.ClickAsync();
+        await Assertions.Expect(page).ToHaveTitleAsync("Health");
+        await Assertions.Expect(page.Locator("[data-test=\"health-heading\"]")).ToHaveTextAsync("Health");
+    }
+
+    [Fact]
     public async Task HeroHeading_OnPhoneViewport_FitsItsWidth()
     {
         await using IBrowserContext ctx = await fixture.Browser.NewContextAsync(PhoneViewport);
