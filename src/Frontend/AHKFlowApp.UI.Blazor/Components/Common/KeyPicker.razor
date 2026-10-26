@@ -13,7 +13,7 @@
                  Required="@Required" RequiredError="@RequiredError"
                  Error="@Error" ErrorText="@ErrorText"
                  HelperText="@HelperText"
-                 UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = DataTest })">
+                 UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = DataTest, ["aria-label"] = AriaLabel })">
     <ItemTemplate>
         @* Results arrive ordered by group, so groups cluster; this label is what tells the
            user which cluster they are looking at, standing in for the group headers
@@ -35,6 +35,12 @@
     [Parameter, EditorRequired] public string Role { get; set; } = "HotkeyKey";
 
     [Parameter] public string? Label { get; set; }
+
+    /// <summary>
+    /// Value for the <c>aria-label</c> attribute: the name a screen reader says when no visible
+    /// <see cref="Label"/> names the picker, as in an inline edit row.
+    /// </summary>
+    [Parameter] public string? AriaLabel { get; set; }
     [Parameter] public string? Value { get; set; }
     [Parameter] public EventCallback<string?> ValueChanged { get; set; }
     /// <summary>
