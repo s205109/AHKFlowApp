@@ -25,10 +25,17 @@ Write each criterion as state a reader can observe in the repository, not as a c
 "The handler returns `Result.NotFound()` for a missing id" can be checked. "The old check is
 removed" and "tests cover the new API" cannot.
 
-- [ ] Each control listed under Notes has an accessible name.
-- [ ] Each name matches what a sighted owner reads for that control, such as the column title
+- [x] Each control listed under Notes has an accessible name.
+      The five controls pass `AriaLabel`. `KeyboardAccessFlowTests.InlinePickers_NameWhatTheyHold`
+      reads the computed name in a browser for the three controls on the hotkeys page.
+- [x] Each name matches what a sighted owner reads for that control, such as the column title
       `Profiles` or `Categories`.
-- [ ] A bUnit test asserts the accessible name of each control listed under Notes.
+      The pickers use the column titles. The key field uses `Key`, the label the hotkey dialog
+      gives the same field, because its `Hotkey` column also holds the modifier checkboxes.
+- [x] A bUnit test asserts the accessible name of each control listed under Notes.
+      `EditRow_Pickers_NameWhatTheyHold` in `HotstringsPageTests` and `HotkeysPageTests` asserts
+      the `aria-label` on the `<input>` of all five controls. bUnit reads the attribute, and the
+      browser test above proves it becomes the name.
 
 ## Out of scope
 
