@@ -28,18 +28,18 @@ Write each criterion as state a reader can observe in the repository, not as a c
 "The handler returns `Result.NotFound()` for a missing id" can be checked. "The old check is
 removed" and "tests cover the new API" cannot.
 
-- [ ] In every UI test file, each event fired on an element taken from `FindAll(...)` runs inside
+- [x] In every UI test file, each event fired on an element taken from `FindAll(...)` runs inside
       `InvokeAsync`, together with that `FindAll` call. An event is `Click`, `Change`, `Input`, or
       any other bUnit event method, including its `Async` form.
-- [ ] A guard test in `AHKFlowApp.UI.Blazor.Tests` reads the UI test sources. It fails when an
+- [x] A guard test in `AHKFlowApp.UI.Blazor.Tests` reads the UI test sources. It fails when an
       event is chained to `FindAll(...)` or to a child lookup (`QuerySelector`, `QuerySelectorAll`,
       `Closest`, `Children`, `ParentElement`, `NextElementSibling`, `PreviousElementSibling`),
       unless the lookup and the event both run inside the same `InvokeAsync` call. It passes on
       the tree as it is.
-- [ ] `src/Frontend/AHKFlowApp.UI.Blazor/CLAUDE.md` states that an event on a `FindAll` element or
+- [x] `src/Frontend/AHKFlowApp.UI.Blazor/CLAUDE.md` states that an event on a `FindAll` element or
       a child lookup runs inside `InvokeAsync`. It also says why an event on a `Find` element does
       not need to.
-- [ ] This item records a throwaway probe in `HotkeyEditDialogTests.cs`. After a background render,
+- [x] This item records a throwaway probe in `HotkeyEditDialogTests.cs`. After a background render,
       a 600 ms pause between the find and the click fails a `FindAll` element, and passes both a
       `Find` element and the `InvokeAsync` form.
 
