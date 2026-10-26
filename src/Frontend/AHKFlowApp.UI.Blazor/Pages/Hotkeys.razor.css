@@ -73,19 +73,20 @@
     width: 28%;
 }
 
+/* Profiles renders one "All profiles" chip. Two settings keep it whole, and they work together:
+   a 14% share, two points more than Categories, and a trimmed padding. The wide row actions
+   column leaves less room for the percentage columns, so neither setting is enough alone.
+   HotkeysCrudFlowTests checks the chip at a narrow desktop window. */
 ::deep .hotkeys-grid th:nth-child(5),
-::deep .hotkeys-grid td:nth-child(5),
+::deep .hotkeys-grid td:nth-child(5) {
+    width: 14%;
+    padding-left: 4px;
+    padding-right: 4px;
+}
+
 ::deep .hotkeys-grid th:nth-child(6),
 ::deep .hotkeys-grid td:nth-child(6) {
     width: 12%;
-}
-
-/* Profiles renders one "All profiles" chip. The default 16px/24px cell padding ate 40px of a
-   ~109px cell at 1280px, clipping the chip. Trim the padding rather than widen the column. */
-::deep .hotkeys-grid th:nth-child(5),
-::deep .hotkeys-grid td:nth-child(5) {
-    padding-left: 4px;
-    padding-right: 4px;
 }
 
 /* The cell rule above sets white-space: nowrap, so the edit-mode checkbox label could not wrap and
@@ -96,7 +97,6 @@
     white-space: normal;
 }
 
-::deep .hotkeys-grid th:nth-child(7),
-::deep .hotkeys-grid td:nth-child(7) {
-    width: 160px;
-}
+/* The row actions column takes its width from HeaderStyle on the Actions column in Hotkeys.razor.
+   Under table-layout: fixed the header row sizes each column, and an inline header width beats
+   any rule in this file. */
