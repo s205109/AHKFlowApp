@@ -5,7 +5,7 @@
 - **Epic**: Test reliability
 - **Type**: Bug
 - **Interfaces**: UI | API | CLI (none — test code only)
-- **Difficulty**: to-be-determined
+- **Difficulty**: moderate
 - **Stage**: 2-design
 
 ## Summary
@@ -14,7 +14,8 @@ Some bUnit tests take an element from `FindAll(...)` on the test thread and then
 it. `FindAll` returns a snapshot of the markup. When the component renders again between those two
 steps, the snapshot still carries a handler ID that the renderer has removed, and the test fails
 now and then. `Find(...)` is not exposed, because bUnit runs its selector again after every render.
-Move every event on a `FindAll` element onto the renderer, in every UI test file.
+Move every event on a `FindAll` element onto the renderer, in every UI test file, and add a guard
+test that keeps new ones out.
 
 ## User story
 
@@ -27,12 +28,16 @@ Write each criterion as state a reader can observe in the repository, not as a c
 "The handler returns `Result.NotFound()` for a missing id" can be checked. "The old check is
 removed" and "tests cover the new API" cannot.
 
-- [ ] This item lists every UI component under test that can render without a test action, such
-      as a debounced preview, a timer, or an async continuation. Each entry cites the source line
-      that causes the render.
 - [ ] In every UI test file, each event fired on an element taken from `FindAll(...)` runs inside
       `InvokeAsync`, together with that `FindAll` call. An event is `Click`, `Change`, `Input`, or
       any other bUnit event method, including its `Async` form.
+- [ ] A guard test in `AHKFlowApp.UI.Blazor.Tests` reads the UI test sources. It fails when an
+      event is chained to `FindAll(...)` or to a child lookup (`QuerySelector`, `QuerySelectorAll`,
+      `Closest`, `Children`, `ParentElement`, `NextElementSibling`, `PreviousElementSibling`) in a
+      statement that does not run inside `InvokeAsync`. It passes on the tree as it is.
+- [ ] `src/Frontend/AHKFlowApp.UI.Blazor/CLAUDE.md` states that an event on a `FindAll` element or
+      a child lookup runs inside `InvokeAsync`. It also says why an event on a `Find` element does
+      not need to.
 - [ ] This item records a throwaway probe in `HotkeyEditDialogTests.cs`. After a background render,
       a 600 ms pause between the find and the click fails a `FindAll` element, and passes both a
       `Find` element and the `InvokeAsync` form.
@@ -76,10 +81,22 @@ removed" and "tests cover the new API" cannot.
   `HotkeyMobileListTests.cs` (2), `HotstringMobileListTests.cs` (2), `CliQuickstartCardTests.cs`
   (1), `ProfilesPageTests.cs` (4), and `KnownShortcutsPageTests.cs` (1). About 240 other bare events
   use `Find`, directly or through a helper.
+- A child lookup on a `Find` element also returns a snapshot. The bUnit 2.7.2 wrapper passes
+  `QuerySelector`, `QuerySelectorAll`, `Closest`, `Children`, `ParentElement`, and
+  `NextElementSibling` straight to the wrapped node. That is the generated `ElementWrapper` in the
+  bUnit source at tag `v2.7.2`. On `main` at `eefd8142`, no test fires an event on one.
 
 ## Notes / dependencies
 
-- Design question: should a check keep new bare events out of exposed test files, or is a
-  convention in the UI test docs enough?
-- Spec: none — Design decides whether one is needed.
-- Plan: none — not planned yet; Design comes first because Difficulty is to-be-determined.
+- Design decided on 2026-10-26, after the probe above:
+  - Only events on snapshot elements change: `FindAll` elements and child lookups. `Find`
+    elements stay as they are.
+  - The rule covers every UI test file. It no longer depends on a list of components that render
+    on their own, so the earlier criterion that asked for that list is dropped.
+  - A guard test plus a convention keeps new bare snapshot events out. A Roslyn analyzer was
+    rejected as too heavy for 10 call sites. A convention alone was rejected, because a bare
+    `FindAll` click looks the same as a correct one in review.
+  - Difficulty is `moderate`. No ADR, because the rule is easy to reverse. No `CONTEXT.md` term,
+    because a snapshot element is a test idea, not a domain one.
+- Spec: none — the decisions and the probe evidence above are the whole design.
+- Plan: none — not planned yet.
