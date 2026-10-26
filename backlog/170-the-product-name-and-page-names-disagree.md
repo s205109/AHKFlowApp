@@ -6,7 +6,7 @@
 - **Type**: Defect
 - **Interfaces**: UI
 - **Difficulty**: moderate
-- **Stage**: 4-execute
+- **Stage**: 5-simplify
 
 ## Summary
 
