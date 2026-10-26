@@ -19,7 +19,7 @@
         <MudIconButton Class="drawer-toggle" Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit"
                        Edge="Edge.Start" OnClick="ToggleDrawer"
                        UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = _drawerOpen ? "Close navigation menu" : "Open navigation menu" })" />
-        <MudText Typo="Typo.h6" Class="ml-3">AHKFlowApp</MudText>
+        <MudText Typo="Typo.h6" Class="ml-3" data-test="app-title">AHKFlowApp</MudText>
         <MudSpacer />
         <MudIconButton Class="dark-mode-toggle" Icon="@(_isDarkMode ? Icons.Material.Filled.LightMode : Icons.Material.Filled.DarkMode)"
                        Color="Color.Inherit" OnClick="ToggleDarkMode"

@@ -47,7 +47,7 @@ Which flavour of Hotstring a definition is — Text, Date & time, Macro, or Raw.
 _Avoid_: type, mode
 
 **Action**:
-What a Hotkey does when it fires — one of SendText, SendKeys, Run, Window, Remap, Disable, or Raw. Decides which fields that Hotkey carries and how its line is generated; it is to a Hotkey what Kind is to a Hotstring.
+What a Hotkey does when it fires — one of Send text, Send keys, Run, Window, Remap, Disable, or Raw. Code spells the first two `SendText` and `SendKeys`, the same way it spells the Kind Date & time `DateTime`; text an owner reads uses the spaced form. Decides which fields that Hotkey carries and how its line is generated; it is to a Hotkey what Kind is to a Hotstring.
 _Avoid_: type, command, operation
 
 **Macro**:
