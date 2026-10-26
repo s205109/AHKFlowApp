@@ -58,4 +58,4 @@ removed" and "tests cover the new API" cannot.
 - Backlog 185's plan is in the plans repository:
   `docs/superpowers/plans/2026-10-18-hotstrings-row-buttons-fit-their-cell-plan-185.md`.
 - Spec: none — a layout fault with a known place to look.
-- Plan: none — moderate work, goes straight to Plan at pickup.
+- Plan: `docs/superpowers/plans/2026-10-26-hotkeys-row-buttons-fit-their-cell-plan-190.md`
