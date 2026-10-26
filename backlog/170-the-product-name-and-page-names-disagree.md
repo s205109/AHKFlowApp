@@ -64,4 +64,4 @@ tells me.
   quickstart commands that do not run (F1, S2), moved to backlog 197. It has its own worktree from
   `main`, so it can ship first, as this item asked.
 - Spec: none — the only open question is F13, and it is a one-line decision.
-- Plan: none — moderate work, goes straight to Plan at pickup.
+- Plan: `docs/superpowers/plans/2026-10-26-product-and-page-names-plan-170.md`
