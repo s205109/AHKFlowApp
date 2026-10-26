@@ -974,7 +974,7 @@
                                SelectedIds="edit.ProfileIds"
                                SelectedIdsChanged="@(ids => edit.ProfileIds = [.. ids])"
                                Dense="true" Placeholder="Select profiles"
-                               DataTest="profile-select" />
+                               DataTest="profile-select" AriaLabel="Profiles" />
         }
     </MudStack>;
 
@@ -992,7 +992,7 @@
                             SelectedIdsChanged="@(ids => edit.CategoryIds = [.. ids])"
                             Dense="true" Placeholder="Select categories"
                             Compact="true"
-                            DataTest="category-select" />;
+                            DataTest="category-select" AriaLabel="Categories" />;
 
     private RenderFragment RenderCategories(IReadOnlyCollection<Guid> categoryIds) =>
         @<EntityChips Ids="categoryIds" Options="_categoryOptions" Variant="Variant.Outlined" Color="Color.Primary" />;

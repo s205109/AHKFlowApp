@@ -947,4 +947,16 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
         cut.Find("input[data-test=\"description-input\"]").GetAttribute("aria-label").Should().Be("Description");
         cut.Find($"input[data-test=\"{actionField}\"]").GetAttribute("aria-label").Should().Be(actionName);
     }
+
+    // Backlog 189. The key field is named Key, as in the hotkey dialog: its Hotkey column also
+    // holds the modifier checkboxes, so the column title would name the whole binding.
+    [Fact]
+    public void EditRow_Pickers_NameWhatTheyHold()
+    {
+        IRenderedComponent<Hotkeys> cut = StartInlineEdit(MakeHotkey() with { AppliesToAllProfiles = false });
+
+        cut.Find("input[data-test=\"key-input\"]").GetAttribute("aria-label").Should().Be("Key");
+        cut.Find("input[data-test=\"profile-select\"]").GetAttribute("aria-label").Should().Be("Profiles");
+        cut.Find("input[data-test=\"category-select\"]").GetAttribute("aria-label").Should().Be("Categories");
+    }
 }
