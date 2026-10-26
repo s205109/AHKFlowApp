@@ -6,3 +6,4 @@ One line per finished task, written after its deliverable commit.
 
 - Task 1: b85f40b6; EntityMultiSelectTests and KeyPickerTests 11/11 pass; no deferrals.
 - Task 2: 44b60c12; NameWhatTheyHold 7/7 pass; test-fast -Mode Fast 3107/3107 pass; no deferrals.
+- Task 3: 776cd738; KeyboardAccessFlowTests 6/6 pass; mutation (no aria-label in EntityMultiSelect) failed on Categories as expected, restored and green; no deferrals.
