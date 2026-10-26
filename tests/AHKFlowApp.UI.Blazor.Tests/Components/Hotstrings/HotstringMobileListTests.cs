@@ -174,8 +174,8 @@ public sealed class HotstringMobileListTests : BunitContext, IAsyncLifetime
         await cut.InvokeAsync(() => cut.Find("button.toggle-select-mode").Click());
 
         cut.WaitForAssertion(() => cut.FindAll("input.row-checkbox").Count.Should().Be(2));
-        cut.FindAll("input.row-checkbox")[0].Change(true);
-        cut.FindAll("input.row-checkbox")[1].Change(true);
+        await cut.InvokeAsync(() => cut.FindAll("input.row-checkbox")[0].Change(true));
+        await cut.InvokeAsync(() => cut.FindAll("input.row-checkbox")[1].Change(true));
 
         await cut.InvokeAsync(() => cut.Find("button.bulk-delete-hotstrings").Click());
 

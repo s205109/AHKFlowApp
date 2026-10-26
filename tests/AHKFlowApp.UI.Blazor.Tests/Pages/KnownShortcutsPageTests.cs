@@ -627,7 +627,7 @@ public sealed class KnownShortcutsPageTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
-    public void ANewSearchTerm_ReturnsTheMobileBranchToPageOne()
+    public async Task ANewSearchTerm_ReturnsTheMobileBranchToPageOne()
     {
         // Searching from page 2 used to leave the page number alone, so a term matching three rows
         // showed an empty page 2. Starting this test on page 1 would pass without the reset.
@@ -639,9 +639,9 @@ public sealed class KnownShortcutsPageTests : BunitContext, IAsyncLifetime
         // Page 2 holds the last five rows, Program 20 to Program 24. The page button is found by
         // its own number rather than an aria-label, so the test does not depend on wording
         // MudPagination could change between versions.
-        page.FindAll(".mobile-branch .mud-pagination button")
+        await page.InvokeAsync(() => page.FindAll(".mobile-branch .mud-pagination button")
             .Single(b => b.TextContent.Trim() == "2")
-            .Click();
+            .Click());
 
         // Both assertions wait. MudPagination handles the click asynchronously, so the render it
         // causes can still be queued when Click returns. The typed term then lands behind that
