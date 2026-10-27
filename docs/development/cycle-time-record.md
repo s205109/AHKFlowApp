@@ -780,3 +780,7 @@ The `AgentWorktreeGuard` mutations changed `scripts/agents/invoke-agent-worktree
   changed, only "Shim: a main-session redirect still exits in Bash" failed. With
   `WRITE_CANDIDATE_PATTERN` changed, only "Shim: a worktree-session read still exits in Bash"
   failed. These ran on a slice of the Suite.
+- Rows 102 to 104, after review: two more mutations made the shim print at both of its early
+  exits. With `{}` on stdout, the main-session redirect case and the worktree-session read case
+  failed. With a line on stderr, the noncandidate case failed. Before the review fix, all three
+  cases passed under both mutations.

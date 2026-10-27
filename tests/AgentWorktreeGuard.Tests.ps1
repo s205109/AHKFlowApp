@@ -2022,7 +2022,7 @@ try {
             $result = Invoke-HarnessShim -Harness $harness `
                 -StdIn (New-ClaudePayload 'rg -n "Goal" README.md' $fixture.Main) -ShimArguments @('Claude')
             Assert-Equal 0 $result.ExitCode 'ExitCode'
-            Assert-True ($result.StdErr -notmatch $script:ShimStubMarker) 'Must not start PowerShell'
+            Assert-Equal '' $result.StdErr.Trim() 'StdErr'
         }
         finally { Remove-ShimHarness -Harness $harness }
     }
@@ -4317,6 +4317,7 @@ try {
             $result = Invoke-HarnessShim -Harness $harness `
                 -StdIn (New-ClaudePayload $script:RealWriteCommand $script:RealMainCheckout)
             Assert-Equal 0 $result.ExitCode 'Exit code'
+            Assert-Equal '' $result.StdOut.Trim() 'Must produce no decision payload'
             Assert-True ($result.StdErr -notmatch $script:ShimStubMarker) 'Must not start PowerShell'
         }
         finally { Remove-ShimHarness -Harness $harness }
@@ -4331,6 +4332,7 @@ try {
             $result = Invoke-HarnessShim -Harness $harness `
                 -StdIn (New-ClaudePayload 'cat README.md' $worktreeCwd)
             Assert-Equal 0 $result.ExitCode 'Exit code'
+            Assert-Equal '' $result.StdOut.Trim() 'Must produce no decision payload'
             Assert-True ($result.StdErr -notmatch $script:ShimStubMarker) 'Must not start PowerShell'
         }
         finally { Remove-ShimHarness -Harness $harness }
