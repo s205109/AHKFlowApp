@@ -656,6 +656,10 @@ test Lane pool with:" would not count. No run printed it.
 | Suite | Before | After |
 |---|---|---|
 | `WatchTask.Tests.ps1` | 42.0 | 31.2 |
+| `CiPowerShellSuiteRunner.Tests.ps1` | 113.4 | 82.0 |
+
+The `CiPowerShellSuiteRunner` before runs spread wide: 113.4, 115.1 and 94.7 s. Its after runs
+were 82.0, 83.0 and 80.0 s, so even the fastest before run is 11.7 s above the slowest after run.
 
 ### Changes timed on their own
 
@@ -668,10 +672,13 @@ the before set of the next change. A change stays only when its median fell by 1
 | `WatchTask` | W-A: run the script in this process | 71, 72, 75, 76, 87 to 90 | 9.06 | 1.91 | kept |
 | `WatchTask` | W-B: `Start-ThreadJob` in all 15 job cases | 73, 77 to 86 | 26.32 | 21.90 | kept |
 | `WatchTask` | W-C: cap the stubbed 500 ms sleeps at 50 ms | 70, 74 | 4.54 | 1.41 | kept |
+| `CiPowerShellSuiteRunner` | C-B: runs that fail before any Suite run in this process | 37, 42, 43, 44, 48 to 52 | 6.96 | 0.82 | kept |
+| `CiPowerShellSuiteRunner` | C-A: `Resolve-SuiteWorkerCount`, its cases, and two runner runs kept | 31, 32, 34, 35 | 11.19 | 3.47 | kept |
 
 The W-B stopwatch read 24.29 s in the first before set, and 26.32 s after W-A. Its cases did not
 change in between, so the difference is machine drift. Both numbers are more than 1 s above its
-after median.
+after median. The C-A stopwatch read 12.66 s in the first before set, and 11.19 s after C-B, for
+the same reason.
 
 ### Mutations
 
@@ -689,3 +696,30 @@ Each mutation changed one line of a script and was undone with `git checkout`.
 - `WatchTask`: the state check that ends the follow loop never runs. The old and the new same-size
   case both failed. The whole Suite cannot run under this mutation, because the read-retry case
   starts a child with no timeout, and that child never ends. Both cases ran alone instead.
+- `CiPowerShellSuiteRunner`: the runner uses 1 in place of the count from
+  `Resolve-SuiteWorkerCount`. Eight cases failed, among them "An explicit -MaxParallel is named
+  on the Workers line".
+- `CiPowerShellSuiteRunner`: the runner passes `-MaxParallel ''` and no `-MaxParallelGiven`. Five
+  cases failed, among them the Workers-line case and "A -MaxParallel that is not a whole number of
+  at least one fails the run".
+- `CiPowerShellSuiteRunner`: the runner passes `-EnvMaxParallel $null`. Two cases failed: "A bad
+  AHKFLOW_SUITE_MAX_PARALLEL fails the run and names the variable" and "Only the adaptive default
+  asks the machine about its hardware".
+- `CiPowerShellSuiteRunner`: the runner leaves out `-InActions`. Two cases failed: "A run inside
+  GitHub Actions uses every logical processor" and the hardware-probe case.
+- `CiPowerShellSuiteRunner`: the runner's whole `Error` branch is gone, so a refused value carries
+  on with a count of 0. Exactly two cases failed: the bad-variable case and the `-MaxParallel`
+  value loop. Both runs still ended with exit code 1, from a later error. Only the missing message
+  told them apart, so the cases must keep asserting the message.
+
+Four small changes narrow a check, so each also ran on a scratch slice of the Suite that held only
+the changed case:
+
+- Row 36: when either Lane catch path returns no result, the merged case fails with "got 1". The
+  runner still prints `FAILED:` for both Suites through its missing-result fallback, so the case
+  counts the catch-path message once per Suite.
+- Row 39: with de-duplication removed from `Select-SuiteEntry`, the in-process case fails with
+  "Got: Alpha.Tests.ps1,Alpha.Tests.ps1".
+- Row 40: with group markers printed outside GitHub Actions too, the Workers-line case fails.
+- Row 41: with a timings save after each Suite, the watcher fails with "The timings file existed
+  while a suite was still running", at the new 500 ms grace.
