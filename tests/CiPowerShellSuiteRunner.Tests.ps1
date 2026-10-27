@@ -1541,16 +1541,15 @@ Invoke-TestCase 'A targeted run keeps the stored timings of every suite it did n
         $driver = Join-Path $fakeRepo 'scripts/run-powershell-suites.ps1'
         $timings = Join-Path $fakeRepo 'TestResults/progress/run-powershell-suites.json'
 
-        Invoke-RunnerProcess -ArgumentList @('-NoProfile', '-File', $driver) | Out-Null
-        $before = Get-Content -LiteralPath $timings -Raw | ConvertFrom-Json
-        Assert-True ($null -ne $before.'01-one.Tests.ps1' -and $null -ne $before.'02-two.Tests.ps1') 'The full run must store both suites.'
-
-        # Sentinels, so the second run has to prove it did something. Checking only that both
-        # properties exist would pass on a targeted run that failed before it started a suite:
-        # the file the first run wrote already holds both names. No fake suite takes anywhere
-        # near this long, so a value that survives was copied and a value that changed was
-        # measured.
+        # The seeded file is written directly. 'A run over the repository's own tests folder saves
+        # its timings' already proves that a full run stores timings.
+        #
+        # Sentinels, so the run has to prove it did something. Checking only that both properties
+        # exist would pass on a targeted run that failed before it started a suite: the seeded
+        # file already holds both names. No fake suite takes anywhere near this long, so a value
+        # that survives was copied and a value that changed was measured.
         # The third entry names a suite file that no longer exists, and the run must drop it.
+        New-Item -ItemType Directory -Path (Split-Path -Parent $timings) -Force | Out-Null
         $seeded = [ordered]@{ '01-one.Tests.ps1' = 4242.4; '02-two.Tests.ps1' = 8484.8; 'deleted.Tests.ps1' = 42 }
         Set-Content -LiteralPath $timings -Value (([pscustomobject] $seeded) | ConvertTo-Json) -Encoding UTF8
 
