@@ -1322,13 +1322,18 @@ try {
     Assert-Equal '1-pickup' (Get-SingleBacklogStage -Lines (Get-Content -LiteralPath $f3.ItemPath)) `
         'A refused Pickup must leave the Stage at 1-pickup'
 
-    $f3b = New-TransitionFixture -Stage '1-pickup' -Difficulty 'complex' -AsWorktree
+    # The refusal above left $f3 at 1-pickup with its marker pushed, so a second Pickup on it
+    # reaches 'gh pr list' and the base check again.
     $f3bGh = New-FakeGh -ExistingPr '421' -IsDraft 'true' -BaseRefName 'feature/wt-somewhere-else'
+    $script:f3bOutput = ''
     Invoke-WithFakeGh -Gh $f3bGh -Action {
-        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $f3b.Root -Item '081' -Edge 'success' *> $null
+        $script:f3bOutput = ((& "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $f3.Root -Item '081' `
+            -Edge 'success' *>&1) -join "`n")
     }
     Assert-True ($script:LastTransitionExit -ne 0) 'Pickup must refuse a pull request opened against another base'
-    Assert-Equal '1-pickup' (Get-SingleBacklogStage -Lines (Get-Content -LiteralPath $f3b.ItemPath)) `
+    Assert-True ($script:f3bOutput.Contains("REFUSED: Pull request 421 targets 'feature/wt-somewhere-else', but this Pickup was asked for 'main'. Nothing was stamped.")) `
+        "The refusal must name the other base. Output: $($script:f3bOutput)"
+    Assert-Equal '1-pickup' (Get-SingleBacklogStage -Lines (Get-Content -LiteralPath $f3.ItemPath)) `
         'A Pickup refused for the wrong base must leave the Stage at 1-pickup'
 
     # --- Every legal transition lands on the target workflow.md names ---
