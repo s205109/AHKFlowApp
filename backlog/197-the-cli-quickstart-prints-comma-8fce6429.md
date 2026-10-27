@@ -6,7 +6,7 @@
 - **Type**: Defect
 - **Interfaces**: UI | CLI
 - **Difficulty**: moderate
-- **Stage**: 6-verify
+- **Stage**: 7-document
 
 ## Summary
 
