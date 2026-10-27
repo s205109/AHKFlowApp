@@ -657,9 +657,12 @@ test Lane pool with:" would not count. No run printed it.
 |---|---|---|
 | `WatchTask.Tests.ps1` | 42.0 | 31.2 |
 | `CiPowerShellSuiteRunner.Tests.ps1` | 113.4 | 82.0 |
+| `StageTransition.Tests.ps1` | 92.8 | 65.5 |
 
 The `CiPowerShellSuiteRunner` before runs spread wide: 113.4, 115.1 and 94.7 s. Its after runs
 were 82.0, 83.0 and 80.0 s, so even the fastest before run is 11.7 s above the slowest after run.
+The `StageTransition` before runs were 93.6, 81.6 and 92.8 s, and its after runs 63.4, 65.5 and
+66.5 s, a gap of at least 15.1 s.
 
 ### Changes timed on their own
 
@@ -674,11 +677,16 @@ the before set of the next change. A change stays only when its median fell by 1
 | `WatchTask` | W-C: cap the stubbed 500 ms sleeps at 50 ms | 70, 74 | 4.54 | 1.41 | kept |
 | `CiPowerShellSuiteRunner` | C-B: runs that fail before any Suite run in this process | 37, 42, 43, 44, 48 to 52 | 6.96 | 0.82 | kept |
 | `CiPowerShellSuiteRunner` | C-A: `Resolve-SuiteWorkerCount`, its cases, and two runner runs kept | 31, 32, 34, 35 | 11.19 | 3.47 | kept |
+| `StageTransition` | S-A: the loop skips four edges that named cases prove | 53 | 23.69 | 19.83 | kept |
+| `StageTransition` | S-B: four driver refusals run on `$fx` | 54, 56, 60, 69 | 2.86 | 0.52 | kept |
+| `StageTransition` | S-C: six round cases run on `$rd` | 61, 62, 63, 65, 66, 67 | 6.69 | 2.22 | kept |
 
 The W-B stopwatch read 24.29 s in the first before set, and 26.32 s after W-A. Its cases did not
 change in between, so the difference is machine drift. Both numbers are more than 1 s above its
 after median. The C-A stopwatch read 12.66 s in the first before set, and 11.19 s after C-B, for
-the same reason.
+the same reason. The S-B stopwatch read 2.40 s in the first before set and 2.86 s after S-A. The
+S-C stopwatch read 7.25 s, then 6.93 s, then 6.69 s. Each is more than 1 s above its after
+median either way.
 
 ### Mutations
 
@@ -723,3 +731,16 @@ the changed case:
 - Row 40: with group markers printed outside GitHub Actions too, the Workers-line case fails.
 - Row 41: with a timings save after each Suite, the watcher fails with "The timings file existed
   while a suite was still running", at the new 500 ms grace.
+
+Two more mutations changed `Resolve-TransitionTarget` in `scripts/stage-transition.common.ps1`:
+
+- `StageTransition`: four edges return `5-simplify`: 2-design success, 6-verify failure, 8-review
+  success and 9-ship failure. The whole Suite cannot run under this mutation. The old Ship case
+  reads a gh log that the mutated Ship never writes, and that `Get-Content` error stops the Suite
+  before three of the four named cases run. So the four named cases ran alone, as a slice. Each
+  one failed: "Design success must write 3-plan into the item", "Verify failure must target
+  4-execute", "A Ship with no PLAN-PROGRESS.md must write 9-ship" and "A Ship failure must set
+  6-verify".
+- `StageTransition`: only 9-ship failure returns `5-simplify`. Under the first mutation, the
+  9-ship failure case's own setup Ship is mutated too. Alone, exactly one assertion failed: "A
+  Ship failure must set 6-verify".
