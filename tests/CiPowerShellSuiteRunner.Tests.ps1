@@ -1044,18 +1044,15 @@ Invoke-TestCase 'A -Suite wildcard runs only the suites it matches' {
 }
 
 Invoke-TestCase 'Two -Suite wildcards that overlap run each suite once' {
-    $root = New-SuiteFixture
-    try {
-        Add-FakeSuite -Root $root -Name 'Alpha.Tests.ps1' -Ending 'pass'
-        Add-FakeSuite -Root $root -Name 'Beta.Tests.ps1' -Ending 'pass'
-        Set-FixtureManifest -Root $root
+    # Deduplication lives only in Select-SuiteEntry, so ask it directly. 'A -Suite wildcard runs
+    # only the suites it matches' proves the runner hands -Suite to it.
+    $entries = @(
+        [pscustomobject]@{ Name = 'Alpha.Tests.ps1'; Jobs = @('suites'); Platform = @('windows', 'linux'); Execution = 'parallel'; Reason = $null; BaselineSeconds = $null }
+        [pscustomobject]@{ Name = 'Beta.Tests.ps1'; Jobs = @('suites'); Platform = @('windows', 'linux'); Execution = 'parallel'; Reason = $null; BaselineSeconds = $null }
+    )
 
-        $result = Invoke-Driver -SuiteRoot $root -Suite @('Alpha*', 'A*')
-        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
-        Assert-True ($result.Output -match 'All 1 suite\(s\) passed\.') "Alpha must be counted once. Output: $($result.Output)"
-    } finally {
-        Remove-SuiteFixture -Root $root
-    }
+    $selected = @(Select-SuiteEntry -Entry $entries -Pattern @('Alpha*', 'A*'))
+    Assert-True ($selected.Count -eq 1) "Alpha must be selected once. Got: $($selected.Name -join ',')"
 }
 
 Invoke-TestCase 'An unmatched -Suite wildcard fails the run' {
