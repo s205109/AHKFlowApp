@@ -374,7 +374,9 @@ try {
             $found[0].Source
         }
 
-        $suiteArguments = @('-NoProfile', '-File', (Join-Path $PSScriptRoot 'run-powershell-suites.ps1'))
+        # Backlog 188. Every PowerShell Mode run is a Gate run: it may reuse a Suite's last passing
+        # result, and it writes a Gate log line. A direct call to the runner does neither.
+        $suiteArguments = @('-NoProfile', '-File', (Join-Path $PSScriptRoot 'run-powershell-suites.ps1'), '-Gate')
         if (-not [string]::IsNullOrWhiteSpace($SuiteRoot)) {
             $suiteArguments += @('-SuiteRoot', $SuiteRoot)
         }

@@ -25,8 +25,8 @@ public sealed class HeroSectionTests : BunitContext, IAsyncLifetime
         IRenderedComponent<HeroSection> cut = Render<HeroSection>();
 
         cut.Markup.Should().Contain("AUTOHOTKEY HOTSTRING MANAGER &amp; CLI");
-        cut.Markup.Should().Contain("Welcome to AHK");
-        cut.Markup.Should().Contain("<em>flow</em>");
+        cut.Find("[data-test=\"hero-heading\"]").TextContent.Should().Be("Welcome to AHKFlowApp");
+        cut.Markup.Should().Contain("AHK<em>Flow</em>App");
         cut.Markup.Should().Contain("Manage your AutoHotkey hotstrings and hotkeys");
         cut.Markup.Should().Contain(".ahk");
     }

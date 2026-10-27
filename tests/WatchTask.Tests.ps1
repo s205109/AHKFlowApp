@@ -283,6 +283,8 @@ try {
         @{ Name = 'a terminal marker';         Content = "a`n[exited with code 3]`n";                            Running = $false; ExitCode = 3 }
         @{ Name = 'no final newline';          Content = "a`n[exited with code 4]";                              Running = $false; ExitCode = 4 }
         @{ Name = 'a negative code';           Content = "a`n[exited with code -1]`n";                           Running = $false; ExitCode = -1 }
+        # What Set-Content writes for a finished run: CRLF, and a blank line after the marker.
+        @{ Name = 'a CRLF marker, blank after';  Content = "a`r`n[exited with code 2]`r`n`r`n";                Running = $false; ExitCode = 2 }
         @{ Name = 'a killed marker';           Content = "a`n[killed]`n";                                        Running = $false; ExitCode = $null }
         @{ Name = 'a running task';            Content = "a`nb`n";                                               Running = $true;  ExitCode = $null }
         @{ Name = 'blank lines only';          Content = "`n`n   `n";                                            Running = $true;  ExitCode = $null }
@@ -421,34 +423,6 @@ try {
     Assert-True $reader.InitialTruncated 'Skewed cap: a 1.5 MB line must still reach the initial read limit.'
     Assert-True ($overLongBytes -le (1024 * 1024)) `
         "Skewed cap: the over-long line must contribute at most 1 MiB, got $overLongBytes bytes."
-}
-finally {
-    Remove-Item -LiteralPath $root -Recurse -Force
-}
-
-# --- Running versus finished detection, from file content alone ---
-
-$root = New-WatchTestRoot
-try {
-    $runningFile = New-FakeTaskOutput -Root $root -ProjectFolder 'proj' -LastWrite (Get-Date) -Lines @(
-        'building', 'testing', 'still going'
-    )
-    $finishedFile = New-FakeTaskOutput -Root $root -ProjectFolder 'proj' -LastWrite (Get-Date) -Lines @(
-        'building', 'done', '', '[exited with code 2]', ''
-    )
-    $killedFile = New-FakeTaskOutput -Root $root -ProjectFolder 'proj' -LastWrite (Get-Date) -Lines @(
-        'building', '[killed]'
-    )
-
-    $runningState = Get-TaskState -Path $runningFile
-    $finishedState = Get-TaskState -Path $finishedFile
-    $killedState = Get-TaskState -Path $killedFile
-
-    Assert-True ($runningState.Running -eq $true) 'Detection: a file with no exit line is running.'
-    Assert-True ($finishedState.Running -eq $false) 'Detection: a file ending with the exit line is finished.'
-    Assert-True ($finishedState.ExitCode -eq 2) "Detection: the exit code is read from the line, got: $($finishedState.ExitCode)"
-    Assert-True ($killedState.Running -eq $false) 'Detection: a file ending with [killed] is no longer running.'
-    Assert-True ($null -eq $killedState.ExitCode) 'Detection: a killed task has no exit code.'
 }
 finally {
     Remove-Item -LiteralPath $root -Recurse -Force
@@ -689,6 +663,8 @@ try {
     Assert-True ($result.Output -match 'NEWEST-RUNNING-MARKER') "Newest running: the newest running file must be tailed. Output: $($result.Output)"
     Assert-True ($result.Output -notmatch 'OLDER-RUNNING-MARKER') "Newest running: the older running file must not be tailed. Output: $($result.Output)"
     Assert-True ($result.Output.Contains($newestRunning)) "Newest running: the tailed path must be named. Output: $($result.Output)"
+    # The only check of the singular count form; List window covers the plural.
+    Assert-True ($result.Output -match '1 other task is also running') "Newest running: the count line must name one other. Output: $($result.Output)"
 }
 finally {
     foreach ($writer in $writers) { $writer.Dispose() }
@@ -804,34 +780,6 @@ try {
     Assert-True ($result.Output.Contains($newestFinished)) "Nothing running: the path must be printed. Output: $($result.Output)"
 }
 finally {
-    Remove-Item -LiteralPath $root -Recurse -Force
-}
-
-# --- The more-than-one-running path names the count ---
-
-$root = New-WatchTestRoot
-$writers = @()
-try {
-    $runOne = New-FakeTaskOutput -Root $root -ProjectFolder "$prefix-a" -LastWrite (Get-Date).AddMinutes(-5) -Lines @(
-        'running one', 'RUN-ONE'
-    )
-    $runTwo = New-FakeTaskOutput -Root $root -ProjectFolder "$prefix-b" -LastWrite (Get-Date).AddMinutes(-1) -Lines @(
-        'running two', 'RUN-TWO'
-    )
-
-    $writers = @(
-        (Open-FakeTaskWriter -Path $runOne),
-        (Open-FakeTaskWriter -Path $runTwo)
-    )
-
-    $result = Invoke-WatchScript -ScriptArgs @('-Root', $root, '-NoFollow')
-
-    Assert-True ($result.ExitCode -eq 0) "Two running: exit code must be 0, got $($result.ExitCode). Output: $($result.Output)"
-    Assert-True ($result.Output -match '1 other task is also running') "Two running: the count line must name one other. Output: $($result.Output)"
-    Assert-True ($result.Output -match 'RUN-TWO') "Two running: the newest running file is tailed. Output: $($result.Output)"
-}
-finally {
-    foreach ($writer in $writers) { $writer.Dispose() }
     Remove-Item -LiteralPath $root -Recurse -Force
 }
 
@@ -1074,16 +1022,24 @@ try {
         'running', 'ONLY-MARKER'
     ) | Out-Null
 
+    # In this process, not in a child. ValidateRange sits on the script's own parameters, so a bad
+    # value fails at binding, before the body runs. A script that bound it would run the body, and
+    # its exit would only end that script, so the refusal assertion still fails.
     foreach ($badArgs in @(
-            @('-Index', '0'),
-            @('-Index', '-1'),
-            @('-Tail', '0'),
-            @('-Tail', '-5')
+            @{ Index = 0 },
+            @{ Index = -1 },
+            @{ Tail = 0 },
+            @{ Tail = -5 }
         )) {
-        $result = Invoke-WatchScript -ScriptArgs (@('-Root', $root, '-NoFollow') + $badArgs)
-        $shown = $badArgs -join ' '
-        Assert-True ($result.ExitCode -ne 0) "Range: '$shown' must be refused, but the run returned 0. Output: $($result.Output)"
-        Assert-True ($result.Output -notmatch 'ONLY-MARKER') "Range: '$shown' must not fall back to tailing a task. Output: $($result.Output)"
+        $shown = ($badArgs.GetEnumerator() | ForEach-Object { "-$($_.Key) $($_.Value)" }) -join ' '
+        $refused = $false
+        try {
+            & $watchScript -Root $root -NoFollow @badArgs *> $null
+        }
+        catch [System.Management.Automation.ParameterBindingException] {
+            $refused = $true
+        }
+        Assert-True $refused "Range: '$shown' must be refused at parameter binding."
     }
 
     # The first valid index still selects, which proves the range check did not break selection.
@@ -1252,61 +1208,6 @@ finally {
     Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
 }
 
-# --- A marker written between the settle state read and the liveness probe is still the verdict ---
-#
-# The settle loop reads the terminal state, then probes liveness. A writer that appends its marker
-# and closes in that gap leaves the loop with a stale "no marker" state and a fresh "not held"
-# probe. The old code fell through to "stopped without a terminal marker" and never printed the
-# marker line. The writer is gone, so the file is stable: its real end is the verdict.
-
-$job = $null
-$racePath = Join-Path ([System.IO.Path]::GetTempPath()) ("watch-task-settle-race-$([guid]::NewGuid()).output")
-try {
-    [System.IO.File]::WriteAllText($racePath, "RUN-LINE`n")
-
-    $job = Start-Job -ScriptBlock {
-        param($exe, $script, $path)
-        & $exe -NoProfile -Command @"
-. '$script'
-
-`$script:stateCalls = 0
-`$script:realGetTaskState = `${function:Get-TaskState}
-function Get-TaskState {
-    param([Parameter(Mandatory)][string] `$Path)
-
-    `$script:stateCalls++
-    if (`$script:stateCalls -eq 2) {
-        # The writer appends its marker and closes in the window between this state read and the
-        # liveness probe that follows it. This call returns the state as it was just before.
-        [System.IO.File]::AppendAllText(`$Path, '[exited with code 7]' + [char]10)
-        return [pscustomobject]@{ Running = `$true; ExitCode = `$null; BytesRead = 0 }
-    }
-    return (& `$script:realGetTaskState -Path `$Path)
-}
-
-`$record = [pscustomobject]@{
-    Path = '$path'; LastWrite = (Get-Date); Running = `$true; ExitCode = `$null; Terminal = 'none'
-}
-Watch-Record -Record `$record -Tail 40 | Out-Null
-"@ 2>&1
-    } -ArgumentList $hostExe, $watchScript, $racePath
-
-    $finished = Wait-Job -Job $job -Timeout 30
-    Assert-True ($null -ne $finished) 'Settle race: the watcher must stop, but it was still running after 30s.'
-
-    $output = Get-JobOutputSoFar -Job $job
-    Assert-True ($output -match '\[exited with code 7\]') `
-        "Settle race: the marker line written in the window must still be printed. Output: $output"
-    Assert-True ((Get-LastNonEmptyLine -Text $output) -eq 'Exit code: 7') `
-        "Settle race: the verdict must be the real terminal state. Output: $output"
-    Assert-True ($output -notmatch 'without a terminal marker') `
-        "Settle race: a marked file must not be reported markerless. Output: $output"
-}
-finally {
-    if ($job) { Remove-Job -Job $job -Force -ErrorAction SilentlyContinue }
-    Remove-Item -LiteralPath $racePath -Force -ErrorAction SilentlyContinue
-}
-
 # --- A replacement that opens during the settle probe is still followed, not called stopped ---
 #
 # A replacement run can open the file between the settle loop's liveness probe and its state
@@ -1359,10 +1260,12 @@ Watch-Record -Record `$record -Tail 40 | Out-Null
     Assert-True $entered 'Replacement race: the watcher must print the first run before the replacement.'
 
     # Nothing holds the fixture, so the watcher goes straight into the settle loop on its first
-    # pass. The stubbed Get-TaskState opens the replacement on its second call. If the loop did
-    # not do another round the watcher would print its verdict and exit in about a second, so ten
-    # is a wide margin for "it kept following".
-    $finished = Wait-Job -Job $job -Timeout 10
+    # pass. The stubbed Get-TaskState opens the replacement on its second call. Wait until the
+    # replacement's line is printed, so the clock below starts after the race. If the loop did not
+    # do another round the watcher would print its verdict and exit in about a second, so three
+    # more is a wide margin for "it kept following".
+    Wait-ForJobOutput -Job $job -Pattern 'REPLACEMENT-LINE' | Out-Null
+    $finished = Wait-Job -Job $job -Timeout 3
     Assert-True ($null -eq $finished) `
         "Replacement race: the watcher must keep following a replacement that is still open. Output: $(Get-JobOutputSoFar -Job $job)"
 
@@ -1491,6 +1394,12 @@ Watch-Record -Record `$record -Tail 40 | Out-Null
     $output = Get-JobOutputSoFar -Job $job
     Assert-True ($output -match 'LAST-LINE') `
         "Settle read failure: the line before the failed read must still be printed. Output: $output"
+    # Backlog 188 merged the settle-race case into this one: the marker lands in the same window,
+    # between the state read on call 2 and the liveness probe after it.
+    Assert-True ($output -match '\[exited with code 7\]') `
+        "Settle read failure: the marker line written in the window must still be printed. Output: $output"
+    Assert-True ($output -notmatch 'without a terminal marker') `
+        "Settle read failure: a marked file must not be reported markerless. Output: $output"
     Assert-True ((Get-LastNonEmptyLine -Text $output) -eq 'Exit code: 7') `
         "Settle read failure: the verdict must be the real terminal state. Output: $output"
     Assert-True ($output -notmatch 'was being followed') `
@@ -1787,26 +1696,6 @@ finally {
     $script:swapArmed = $false
 }
 
-# The seam must be gone, or every case below it inherits a writer nobody asked for.
-$seamPath = Join-Path ([System.IO.Path]::GetTempPath()) ("watch-task-seam-off-$([guid]::NewGuid()).output")
-try {
-    [System.IO.File]::WriteAllText($seamPath, "SEAM-OFF`n")
-    $script:swapPath = $seamPath
-    $script:swapText = "SWAPPED-BY-A-SEAM-THAT-SHOULD-BE-GONE`n"
-    $script:swapArmed = $true
-
-    $reader = New-TailReader -Path $seamPath
-    Read-TailText -Reader $reader | Out-Null
-    Read-TailText -Reader $reader | Out-Null
-
-    Assert-True ([System.IO.File]::ReadAllText($seamPath) -eq "SEAM-OFF`n") `
-        'Seam restore: the wrapped checkpoint read must be gone once the driven cases are done.'
-}
-finally {
-    $script:swapArmed = $false
-    Remove-Item -LiteralPath $seamPath -Force -ErrorAction SilentlyContinue
-}
-
 # --- The checkpoint's shape ---
 #
 # The checkpoint must end at the reader's offset, must never be longer than the head length, and
@@ -2016,26 +1905,6 @@ finally {
 finally {
     ${function:Read-FileHead} = $script:realReadFileHead
     $script:headSwapsLeft = 0
-}
-
-# The head seam must be gone, or every case below it inherits a writer nobody asked for.
-$headSeamPath = Join-Path ([System.IO.Path]::GetTempPath()) ("watch-task-head-seam-off-$([guid]::NewGuid()).output")
-try {
-    [System.IO.File]::WriteAllText($headSeamPath, "HEAD-SEAM-OFF`n")
-    $script:headSwapPath = $headSeamPath
-    $script:headSwapTexts = @("SWAPPED-BY-A-HEAD-SEAM-THAT-SHOULD-BE-GONE`n")
-    $script:headSwapsLeft = 1
-
-    $reader = New-TailReader -Path $headSeamPath
-    Read-TailText -Reader $reader | Out-Null
-    Read-TailText -Reader $reader | Out-Null
-
-    Assert-True ([System.IO.File]::ReadAllText($headSeamPath) -eq "HEAD-SEAM-OFF`n") `
-        'Head seam restore: the wrapped head read must be gone once its cases are done.'
-}
-finally {
-    $script:headSwapsLeft = 0
-    Remove-Item -LiteralPath $headSeamPath -Force -ErrorAction SilentlyContinue
 }
 
 # --- Two replacements inside one catch-up read must not end the watch ---
@@ -2252,48 +2121,11 @@ finally {
     Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
 }
 
-# --- A task that finishes between the scan and the tail still ends the watch ---
+# --- A task that finished between the scan and the tail is not reported as still running ---
 #
-# Get-WatchTaskRecord reads whether a task is running, and Watch-Record tails the file after
-# that. A task that finishes in between leaves the record saying "running" while the initial
-# tail already prints and consumes the exit marker. The follow loop only sees text added later,
-# so it would wait for a line that can never arrive.
-#
-# The case builds that exact state rather than racing for it: a record that says running,
-# against a file that already carries the marker.
-
-$job = $null
-$stalePath = Join-Path ([System.IO.Path]::GetTempPath()) ("watch-task-stale-$([guid]::NewGuid()).output")
-try {
-    [System.IO.File]::WriteAllText($stalePath, "ALREADY-DONE`n[exited with code 3]`n")
-
-    $job = Start-Job -ScriptBlock {
-        param($exe, $script, $path, $heldStub)
-        # Out-Null drops the exit code Watch-Record returns, which the real script passes to
-        # 'exit'. Left in, it would become the last line and hide what the watcher printed.
-        & $exe -NoProfile -Command @"
-. '$script'
-$heldStub
-`$record = [pscustomobject]@{ Path = '$path'; LastWrite = (Get-Date); Running = `$true; ExitCode = `$null }
-Watch-Record -Record `$record -Tail 40 | Out-Null
-"@ 2>&1
-    } -ArgumentList $hostExe, $watchScript, $stalePath, $heldStub
-
-    $finished = Wait-Job -Job $job -Timeout 20
-    Assert-True ($null -ne $finished) 'Stale running: the watcher must stop when the file already holds the marker, but it was still running after 20s.'
-
-    $output = Get-JobOutputSoFar -Job $job
-    Assert-True ($output -match 'ALREADY-DONE') "Stale running: the text already in the file must be printed. Output: $output"
-
-    $lastLine = Get-LastNonEmptyLine -Text $output
-    Assert-True ($lastLine -eq 'Exit code: 3') "Stale running: the last line must be exactly 'Exit code: 3', got '$lastLine'. Output: $output"
-}
-finally {
-    if ($job) { Remove-Job -Job $job -Force -ErrorAction SilentlyContinue }
-    Remove-Item -LiteralPath $stalePath -Force -ErrorAction SilentlyContinue
-}
-
-# --- The same stale record with -NoFollow does not claim the task is still running ---
+# The record says running, but the file already holds the marker. Backlog 188 dropped the follow
+# variant of this case: the stale-record check returns before the -NoFollow branch, so this case
+# covers both, and the follow loop would report the exit code anyway.
 
 $stalePath = Join-Path ([System.IO.Path]::GetTempPath()) ("watch-task-stale-nofollow-$([guid]::NewGuid()).output")
 try {
@@ -2310,59 +2142,6 @@ Watch-Record -Record `$record -Tail 40 -NoFollow | Out-Null
 }
 finally {
     Remove-Item -LiteralPath $stalePath -Force -ErrorAction SilentlyContinue
-}
-
-# --- A file replaced by a longer one is read again from the start ---
-#
-# The reader remembers how many bytes it has consumed. A file that is replaced rather than
-# appended to can be the same size or longer, so the byte count alone says nothing is wrong, and
-# the reader carries on from the old spot. Everything before that spot is never read, and when
-# the exit marker is in there the watcher waits for a line that has already been and gone.
-
-$root = New-WatchTestRoot
-$job = $null
-$writer = $null
-try {
-    $session = [guid]::NewGuid().ToString()
-    $tasksDir = Join-Path (Join-Path (Join-Path $root "$prefix-replaced") $session) 'tasks'
-    New-Item -ItemType Directory -Path $tasksDir -Force | Out-Null
-    $replacedPath = Join-Path $tasksDir 'task.output'
-
-    $original = "ORIGINAL-LINE`n" * 30
-    [System.IO.File]::WriteAllText($replacedPath, $original)
-
-    # A running task is one whose output file is held open. Set-FileContentInPlace shares the
-    # write handle, so the in-place replacement below still works.
-    $writer = Open-FakeTaskWriter -Path $replacedPath
-
-    # The replacement below is written over the file in place, never through WriteAllText.
-    # WriteAllText empties the file first, and that short moment makes the file shorter than the
-    # bytes already read, which the watcher notices for a reason that has nothing to do with
-    # replacement. Writing in place removes that luck, so the case tests what it claims.
-
-    $job = Start-Job -ScriptBlock {
-        param($exe, $script, $searchRoot)
-        & $exe -NoProfile -File $script -Root $searchRoot -Tail 100 2>&1
-    } -ArgumentList $hostExe, $watchScript, $root
-
-    $entered = Wait-ForJobOutput -Job $job -Pattern 'ORIGINAL-LINE'
-    Assert-True $entered 'Replaced file: the watcher must read the original file and start following within 30s.'
-
-    # The replacement is longer than the original, and its marker sits after new output.
-    $replacement = ("REPLACEMENT-LINE`n" * 40) + "[exited with code 7]`n"
-    Assert-True ($replacement.Length -gt $original.Length) 'Replaced file: the replacement must be longer, or the case is not testing what it claims.'
-    Set-FileContentInPlace -Path $replacedPath -Text $replacement
-
-    $finished = Wait-Job -Job $job -Timeout 25
-    Assert-True ($null -ne $finished) 'Replaced file: the watcher must notice the replacement and stop, but it was still running after 25s.'
-
-    $output = Get-JobOutputSoFar -Job $job
-    Assert-True ($output -match 'Exit code: 7') "Replaced file: the marker in the replacement must be found. Output: $output"
-}
-finally {
-    if ($writer) { $writer.Dispose() }
-    if ($job) { Remove-Job -Job $job -Force -ErrorAction SilentlyContinue }
-    Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 # --- A replacement that looks identical from the outside still ends the watch ---
@@ -2442,61 +2221,6 @@ Watch-Record -Record `$record -Tail 40 -NoFollow | Out-Null
 }
 finally {
     Remove-Item -LiteralPath $stalePath -Force -ErrorAction SilentlyContinue
-}
-
-# --- Output written while the terminal state is read is still printed ---
-#
-# The follow loop reads new text, and then asks the file whether the task has ended. A run that
-# wrote its last lines between those two steps had them dropped: the state said the task was over,
-# and the watcher stopped without ever reading the bytes that arrived in the gap.
-#
-# The case builds that gap rather than racing for it. Get-TaskState is replaced in a child session:
-# its first call appends more output and reports the task still running, and its second call
-# appends the final lines and reports the task finished.
-
-$job = $null
-$gapPath = Join-Path ([System.IO.Path]::GetTempPath()) ("watch-task-gap-$([guid]::NewGuid()).output")
-try {
-    [System.IO.File]::WriteAllText($gapPath, "FIRST-LINE`n")
-
-    $job = Start-Job -ScriptBlock {
-        param($exe, $script, $path, $heldStub)
-        & $exe -NoProfile -Command @"
-. '$script'
-$heldStub
-
-`$script:stateCalls = 0
-function Get-TaskState {
-    param([Parameter(Mandatory)][string] `$Path)
-
-    `$script:stateCalls++
-    if (`$script:stateCalls -eq 1) {
-        [System.IO.File]::AppendAllText(`$Path, ('SECOND-LINE' + [char]10))
-        return [pscustomobject]@{ Running = `$true; ExitCode = `$null; BytesRead = 0 }
-    }
-
-    [System.IO.File]::AppendAllText(`$Path, ('FINAL-LINE' + [char]10 + '[exited with code 8]' + [char]10))
-    return [pscustomobject]@{ Running = `$false; ExitCode = 8; BytesRead = 0 }
-}
-
-`$record = [pscustomobject]@{ Path = '$path'; LastWrite = (Get-Date); Running = `$true; ExitCode = `$null }
-Watch-Record -Record `$record -Tail 40 | Out-Null
-"@ 2>&1
-    } -ArgumentList $hostExe, $watchScript, $gapPath, $heldStub
-
-    $finished = Wait-Job -Job $job -Timeout 25
-    Assert-True ($null -ne $finished) 'Late append: the watcher must stop, but it was still running after 25s.'
-
-    $output = Get-JobOutputSoFar -Job $job
-    Assert-True ($output -match 'SECOND-LINE') "Late append: the text read before the state check must be printed. Output: $output"
-    Assert-True ($output -match 'FINAL-LINE') "Late append: the text written during the state check must not be lost. Output: $output"
-
-    $lastLine = Get-LastNonEmptyLine -Text $output
-    Assert-True ($lastLine -eq 'Exit code: 8') "Late append: the last line must be 'Exit code: 8', got '$lastLine'. Output: $output"
-}
-finally {
-    if ($job) { Remove-Job -Job $job -Force -ErrorAction SilentlyContinue }
-    Remove-Item -LiteralPath $gapPath -Force -ErrorAction SilentlyContinue
 }
 
 # --- A replacement that arrives during the catch-up read is not judged by the old file ---

@@ -365,7 +365,7 @@ public sealed class ProfilesPageTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
-    public void Download_WhileOneRuns_EveryRowIsDisabled()
+    public async Task Download_WhileOneRuns_EveryRowIsDisabled()
     {
         ProfileDto alpha = MakeProfile("Alpha");
         ProfileDto beta = MakeProfile("Beta");
@@ -375,14 +375,14 @@ public sealed class ProfilesPageTests : BunitContext, IAsyncLifetime
 
         IRenderedComponent<Profiles> cut = RenderPage();
         cut.WaitForAssertion(() => cut.FindAll(DownloadButtonSelector).Should().HaveCount(2));
-        cut.FindAll(DownloadButtonSelector)[0].Click();
+        await cut.InvokeAsync(() => cut.FindAll(DownloadButtonSelector)[0].Click());
 
         cut.WaitForAssertion(() => cut.FindAll(DownloadButtonSelector)
             .Should().OnlyContain(button => button.HasAttribute("disabled")));
     }
 
     [Fact]
-    public void Download_AfterSuccess_EveryRowIsUsableAgain()
+    public async Task Download_AfterSuccess_EveryRowIsUsableAgain()
     {
         ProfileDto alpha = MakeProfile("Alpha");
         ProfileDto beta = MakeProfile("Beta");
@@ -392,7 +392,7 @@ public sealed class ProfilesPageTests : BunitContext, IAsyncLifetime
 
         IRenderedComponent<Profiles> cut = RenderPage();
         cut.WaitForAssertion(() => cut.FindAll(DownloadButtonSelector).Should().HaveCount(2));
-        cut.FindAll(DownloadButtonSelector)[0].Click();
+        await cut.InvokeAsync(() => cut.FindAll(DownloadButtonSelector)[0].Click());
         pending.SetResult(ApiResult<FileDownload>.Ok(ScriptPayload));
 
         cut.WaitForAssertion(() => cut.FindAll(DownloadButtonSelector)
@@ -400,7 +400,7 @@ public sealed class ProfilesPageTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
-    public void Download_AfterFailure_EveryRowIsUsableAgain()
+    public async Task Download_AfterFailure_EveryRowIsUsableAgain()
     {
         ProfileDto alpha = MakeProfile("Alpha");
         ProfileDto beta = MakeProfile("Beta");
@@ -410,7 +410,7 @@ public sealed class ProfilesPageTests : BunitContext, IAsyncLifetime
 
         IRenderedComponent<Profiles> cut = RenderPage();
         cut.WaitForAssertion(() => cut.FindAll(DownloadButtonSelector).Should().HaveCount(2));
-        cut.FindAll(DownloadButtonSelector)[0].Click();
+        await cut.InvokeAsync(() => cut.FindAll(DownloadButtonSelector)[0].Click());
         pending.SetResult(ApiResult<FileDownload>.Failure(ApiResultStatus.NetworkError, null));
 
         cut.WaitForAssertion(() => cut.FindAll(DownloadButtonSelector)
@@ -418,7 +418,7 @@ public sealed class ProfilesPageTests : BunitContext, IAsyncLifetime
     }
 
     [Fact]
-    public void Download_FileSaverFails_ReportsItAndFreesEveryRow()
+    public async Task Download_FileSaverFails_ReportsItAndFreesEveryRow()
     {
         ProfileDto alpha = MakeProfile("Alpha");
         ProfileDto beta = MakeProfile("Beta");
@@ -429,7 +429,7 @@ public sealed class ProfilesPageTests : BunitContext, IAsyncLifetime
 
         IRenderedComponent<Profiles> cut = RenderPage();
         cut.WaitForAssertion(() => cut.FindAll(DownloadButtonSelector).Should().HaveCount(2));
-        cut.FindAll(DownloadButtonSelector)[0].Click();
+        await cut.InvokeAsync(() => cut.FindAll(DownloadButtonSelector)[0].Click());
 
         cut.WaitForAssertion(() => _snackbar.Received(1).Add(
             "Saving the file failed.", Severity.Error,
@@ -627,5 +627,23 @@ public sealed class ProfilesPageTests : BunitContext, IAsyncLifetime
 
         cut.Find("button.commit-edit").GetAttribute("aria-label").Should().Be("Save new profile");
         cut.Find("button.cancel-edit").GetAttribute("aria-label").Should().Be("Cancel editing new profile");
+    }
+
+    // Backlog 186. A field in a row being edited has no visible label, so its aria-label is its
+    // name. The selector names the element, so the name sits on the field, not a wrapper.
+    [Fact]
+    public void EditRow_Fields_NameWhatTheyHold()
+    {
+        StubList(MakeProfile("Work"));
+
+        IRenderedComponent<Profiles> cut = RenderPage();
+        cut.WaitForState(() => cut.Markup.Contains("Work"));
+        cut.Find("button.start-edit").Click();
+        cut.WaitForAssertion(() => cut.Find("input[data-test=\"profile-name-input\"]"));
+
+        cut.Find("input[data-test=\"profile-default-input\"]").GetAttribute("aria-label").Should().Be("Default");
+        cut.Find("input[data-test=\"profile-name-input\"]").GetAttribute("aria-label").Should().Be("Name");
+        cut.Find("textarea[data-test=\"profile-header-input\"]").GetAttribute("aria-label").Should().Be("Header template");
+        cut.Find("textarea[data-test=\"profile-footer-input\"]").GetAttribute("aria-label").Should().Be("Footer template");
     }
 }

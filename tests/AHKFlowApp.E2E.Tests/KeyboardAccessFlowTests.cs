@@ -106,6 +106,53 @@ public sealed class KeyboardAccessFlowTests(StackFixtureB fixture) : IAsyncLifet
         await Assertions.Expect(add).ToBeFocusedAsync();
     }
 
+    // Backlog 186. bUnit proves the aria-label is on the field. Only a browser proves it becomes
+    // the name, for a text input, a textarea, and a checkbox wrapped in an empty <label>.
+    [Fact]
+    public async Task InlineEditFields_NameWhatTheyHold()
+    {
+        await SeedHotstringAsync(fixture, "btw");
+        await using IBrowserContext ctx = await fixture.Browser.NewContextAsync(DesktopViewport);
+        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/hotstrings");
+        ILocator row = page.Locator(".desktop-branch tbody tr", new() { HasTextString = "btw" });
+        await row.WaitForAsync();
+        await row.Locator("button.edit").ClickAsync();
+
+        // Once "btw" moves into an input value, the row's text filter stops matching it.
+        ILocator desktop = page.Locator(".desktop-branch");
+        await Assertions.Expect(desktop.Locator("input[data-test=\"trigger-input\"]")).ToHaveAccessibleNameAsync("Trigger");
+        await Assertions.Expect(desktop.Locator("textarea[data-test=\"replacement-input\"]")).ToHaveAccessibleNameAsync("Replacement");
+
+        // A nav link click keeps the app loaded, so it does not boot a second time.
+        await page.Locator("a.mud-nav-link", new() { HasTextString = "Profiles" }).ClickAsync();
+        await page.Locator("button.add-profile").ClickAsync();
+
+        await Assertions.Expect(page.Locator("input[data-test=\"profile-default-input\"]")).ToHaveAccessibleNameAsync("Default");
+        await Assertions.Expect(page.Locator("textarea[data-test=\"profile-header-input\"]")).ToHaveAccessibleNameAsync("Header template");
+    }
+
+    // Backlog 189. bUnit proves the aria-label is on each picker's input. Only a browser proves it
+    // becomes the name, for a MudSelect and a MudAutocomplete.
+    [Fact]
+    public async Task InlinePickers_NameWhatTheyHold()
+    {
+        await SeedHotkeyAsync(fixture, "Open notepad");
+        await using IBrowserContext ctx = await fixture.Browser.NewContextAsync(DesktopViewport);
+        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/hotkeys");
+        ILocator row = page.Locator(".desktop-branch tbody tr", new() { HasTextString = "Open notepad" });
+        await row.WaitForAsync();
+        await row.Locator("button.start-edit").ClickAsync();
+
+        // Once the description moves into an input value, the row's text filter stops matching it.
+        ILocator editRow = page.Locator(".desktop-branch tr.edit-row");
+        await Assertions.Expect(editRow.Locator("input[data-test=\"key-input\"]")).ToHaveAccessibleNameAsync("Key");
+        await Assertions.Expect(editRow.Locator("input[data-test=\"category-select\"]")).ToHaveAccessibleNameAsync("Categories");
+
+        // The profile picker renders only while the row does not apply to all profiles.
+        await editRow.Locator("input[data-test=\"applies-to-all-checkbox\"]").UncheckAsync();
+        await Assertions.Expect(editRow.Locator("input[data-test=\"profile-select\"]")).ToHaveAccessibleNameAsync("Profiles");
+    }
+
     private static async Task AssertRingsAsync(IPage page, ILocator row, string textColour)
     {
         // Real Tab presses prove the nav link is reachable by keyboard. They also put the
@@ -167,6 +214,20 @@ public sealed class KeyboardAccessFlowTests(StackFixtureB fixture) : IAsyncLifet
             .WithOwner(TestAuthHandler.TestOwnerOid)
             .WithTrigger(trigger)
             .WithReplacement("by the way")
+            .Build());
+
+        await db.SaveChangesAsync();
+    }
+
+    private static async Task SeedHotkeyAsync(StackFixture fixture, string description)
+    {
+        await using AsyncServiceScope scope = fixture.Api.Services.CreateAsyncScope();
+        AppDbContext db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        db.Hotkeys.Add(new HotkeyBuilder()
+            .WithOwner(TestAuthHandler.TestOwnerOid)
+            .WithDescription(description)
+            .WithRun("notepad.exe")
             .Build());
 
         await db.SaveChangesAsync();

@@ -51,14 +51,14 @@
                 string? nameError = showErrors ? ValidateName(edit.Name) : null;
                 <MudTd>
                     <MudCheckBox T="bool" @bind-Value="edit.IsDefault"
-                                 UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "profile-default-input" })" />
+                                 UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "profile-default-input", ["aria-label"] = "Default" })" />
                 </MudTd>
                 <MudTd>
                     <MudTextField @bind-Value="edit.Name"
                                   Validation="@(new Func<string, string?>(ValidateName))"
                                   Error="@(nameError is not null)" ErrorText="@nameError"
                                   Immediate="true" MaxLength="100"
-                                  UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "profile-name-input" })" />
+                                  UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "profile-name-input", ["aria-label"] = "Name" })" />
                 </MudTd>
                 <MudTd>@(context.Id == Guid.Empty ? "—" : context.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm"))</MudTd>
                 <MudTd>@(context.Id == Guid.Empty ? "—" : context.UpdatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm"))</MudTd>
@@ -109,7 +109,7 @@
                             <MudTextField @bind-Value="edit.HeaderTemplate"
                                           T="string" Lines="20" Variant="Variant.Outlined"
                                           MaxLength="8000" Style="font-family: monospace;"
-                                          UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "profile-header-input" })" />
+                                          UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "profile-header-input", ["aria-label"] = "Header template" })" />
                         }
                         else
                         {
@@ -121,7 +121,7 @@
                             <MudTextField @bind-Value="edit.FooterTemplate"
                                           T="string" Lines="10" Variant="Variant.Outlined"
                                           MaxLength="4000" Style="font-family: monospace;"
-                                          UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "profile-footer-input" })" />
+                                          UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "profile-footer-input", ["aria-label"] = "Footer template" })" />
                         }
                         else
                         {

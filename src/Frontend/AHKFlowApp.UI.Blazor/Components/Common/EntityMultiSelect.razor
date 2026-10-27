@@ -25,12 +25,17 @@
     /// <summary>Value for the <c>data-test</c> attribute (preserves E2E selectors).</summary>
     [Parameter] public string? DataTest { get; set; }
 
+    /// <summary>
+    /// Value for the <c>aria-label</c> attribute: the name a screen reader says when no visible
+    /// <see cref="Label"/> names the picker, as in an inline edit row.
+    /// </summary>
+    [Parameter] public string? AriaLabel { get; set; }
+
     private Dictionary<string, object?> _userAttributes = [];
 
+    // A null value renders no attribute, so an unset DataTest or AriaLabel adds nothing.
     protected override void OnParametersSet() =>
-        _userAttributes = DataTest is null
-            ? []
-            : new Dictionary<string, object?> { ["data-test"] = DataTest };
+        _userAttributes = new() { ["data-test"] = DataTest, ["aria-label"] = AriaLabel };
 
     /// <summary>
     /// Fits the control into a narrow container: collapses a multi-selection to "N selected"

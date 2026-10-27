@@ -91,7 +91,7 @@
                                               Error="@(_commitAttempted && ValidateTrigger(context.Item.Trigger) is not null)"
                                               ErrorText="@(_commitAttempted ? ValidateTrigger(context.Item.Trigger) : null)"
                                               Immediate="true" MaxLength="50"
-                                              UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "trigger-input" })" />
+                                              UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "trigger-input", ["aria-label"] = "Trigger" })" />
                             }
                             else
                             {
@@ -109,7 +109,7 @@
                                               ErrorText="@(_commitAttempted ? context.Item.ValidateReplacement(context.Item.Replacement) : null)"
                                               Lines="3"
                                               Immediate="true" MaxLength="@context.Item.ReplacementMaxLength"
-                                              UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "replacement-input" })" />
+                                              UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "replacement-input", ["aria-label"] = "Replacement" })" />
                             }
                             else if (context.Item.Kind == HotstringKind.DateTime)
                             {
@@ -135,7 +135,7 @@
                             {
                                 <MudTextField @bind-Value="context.Item.Description"
                                               Immediate="true" MaxLength="200"
-                                              UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "description-input" })" />
+                                              UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "description-input", ["aria-label"] = "Description" })" />
                             }
                             else
                             {
@@ -191,7 +191,11 @@
                             }
                         </CellTemplate>
                     </TemplateColumn>
-                    <TemplateColumn Title="Actions" Sortable="false" Filterable="false" HeaderStyle="width:160px">
+                    @* Three 48 px buttons and two 4 px gaps take 152 px. The cell adds 16 px of
+                       padding on each side, so the column needs 184 px. The right padding also holds
+                       the focus ring, which reaches 4 px past the button. Under table-layout:fixed
+                       the header cell sets the column width. *@
+                    <TemplateColumn Title="Actions" Sortable="false" Filterable="false" HeaderStyle="width:184px">
                         <CellTemplate>@RenderActions(context.Item)</CellTemplate>
                     </TemplateColumn>
                 </Columns>
@@ -970,7 +974,7 @@
                                SelectedIds="edit.ProfileIds"
                                SelectedIdsChanged="@(ids => edit.ProfileIds = [.. ids])"
                                Dense="true" Placeholder="Select profiles"
-                               DataTest="profile-select" />
+                               DataTest="profile-select" AriaLabel="Profiles" />
         }
     </MudStack>;
 
@@ -988,7 +992,7 @@
                             SelectedIdsChanged="@(ids => edit.CategoryIds = [.. ids])"
                             Dense="true" Placeholder="Select categories"
                             Compact="true"
-                            DataTest="category-select" />;
+                            DataTest="category-select" AriaLabel="Categories" />;
 
     private RenderFragment RenderCategories(IReadOnlyCollection<Guid> categoryIds) =>
         @<EntityChips Ids="categoryIds" Options="_categoryOptions" Variant="Variant.Outlined" Color="Color.Primary" />;
@@ -1033,30 +1037,35 @@
     }
 
     private RenderFragment RenderActions(HotstringEditModel item) => @<text>
-        @if (IsEditing(item))
-        {
-            <MudIconButton Class="commit-edit" Icon="@Icons.Material.Filled.Check"
-                           Color="Color.Success" OnClick="() => CommitEditAsync(item)"
-                           UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = $"Save {RowName(item)}" })" />
-            <MudIconButton Class="cancel-edit" Icon="@Icons.Material.Filled.Close"
-                           Color="Color.Default" OnClick="CancelEditAsync"
-                           UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = $"Cancel editing {RowName(item)}" })" />
-            <MudIconButton Class="promote-edit" Icon="@Icons.Material.Filled.Tune"
-                           OnClick="() => PromoteInlineRowAsync(item)"
-                           UserAttributes="@(new Dictionary<string, object?> { ["title"] = "More options / change kind", ["aria-label"] = "More options / change kind" })" />
-        }
-        else
-        {
-            <MudIconButton Class="edit" Icon="@Icons.Material.Filled.Edit"
-                           OnClick="() => (item.IsInlineEditable ? StartEditAsync(item) : OpenEditDialogAsync(item))"
-                           UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = $"Edit {RowName(item)}" })" />
-            <MudIconButton Class="show-history" Icon="@Icons.Material.Filled.History"
-                           OnClick="() => ShowHistoryAsync(item)"
-                           UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = $"Show history for {RowName(item)}" })" />
-            <MudIconButton Class="delete" Icon="@Icons.Material.Filled.Delete" Color="Color.Error"
-                           OnClick="() => DeleteAsync(item)"
-                           UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = $"Delete {RowName(item)}" })" />
-        }
+        @* A flex row, so the buttons sit 4 px apart and never wrap. Without it the line breaks
+           between them render as spaces, whose width depends on the font, and the edit row lets
+           the third button wrap onto a second line. *@
+        <MudStack Row="true" Spacing="1" Wrap="Wrap.NoWrap">
+            @if (IsEditing(item))
+            {
+                <MudIconButton Class="commit-edit" Icon="@Icons.Material.Filled.Check"
+                               Color="Color.Success" OnClick="() => CommitEditAsync(item)"
+                               UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = $"Save {RowName(item)}" })" />
+                <MudIconButton Class="cancel-edit" Icon="@Icons.Material.Filled.Close"
+                               Color="Color.Default" OnClick="CancelEditAsync"
+                               UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = $"Cancel editing {RowName(item)}" })" />
+                <MudIconButton Class="promote-edit" Icon="@Icons.Material.Filled.Tune"
+                               OnClick="() => PromoteInlineRowAsync(item)"
+                               UserAttributes="@(new Dictionary<string, object?> { ["title"] = "More options / change kind", ["aria-label"] = "More options / change kind" })" />
+            }
+            else
+            {
+                <MudIconButton Class="edit" Icon="@Icons.Material.Filled.Edit"
+                               OnClick="() => (item.IsInlineEditable ? StartEditAsync(item) : OpenEditDialogAsync(item))"
+                               UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = $"Edit {RowName(item)}" })" />
+                <MudIconButton Class="show-history" Icon="@Icons.Material.Filled.History"
+                               OnClick="() => ShowHistoryAsync(item)"
+                               UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = $"Show history for {RowName(item)}" })" />
+                <MudIconButton Class="delete" Icon="@Icons.Material.Filled.Delete" Color="Color.Error"
+                               OnClick="() => DeleteAsync(item)"
+                               UserAttributes="@(new Dictionary<string, object?> { ["aria-label"] = $"Delete {RowName(item)}" })" />
+            }
+        </MudStack>
     </text>;
 
     // Names the row in its buttons' labels, by trigger. A new row has no trigger yet.

@@ -47,7 +47,7 @@
                                   Validation="@(new Func<string, string?>(ValidateName))"
                                   Error="@(nameError is not null)" ErrorText="@nameError"
                                   Immediate="true" MaxLength="30"
-                                  UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "category-name-input" })" />
+                                  UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "category-name-input", ["aria-label"] = "Name" })" />
                 </MudTd>
                 <MudTd>@(context.Id == Guid.Empty ? "—" : context.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm"))</MudTd>
                 <MudTd>@(context.Id == Guid.Empty ? "—" : context.UpdatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm"))</MudTd>
