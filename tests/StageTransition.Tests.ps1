@@ -552,6 +552,24 @@ try {
 
     # --- Ship pushes the closure commit before it flips the pull request ---
     $sh = New-TransitionFixture -Stage '8-review' -Difficulty 'complex' -AsWorktree -AllBoxesTicked -WithProgress
+
+    # --- Ship refuses a pull request number pointing at another branch (review finding 2) ---
+    # Assert-PrOnBranch refuses before any write or push, so this runs on $sh before its own Ship.
+    $r2Gh = New-FakeGh -HeadRefName 'feature/wt-somebody-else'
+    $script:r2Output = ''
+    Invoke-WithFakeGh -Gh $r2Gh -Action {
+        $script:r2Output = ((& "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $sh.Root -Item '081' `
+            -Edge 'success' -Pr 999 *>&1) -join "`n")
+    }
+    Assert-True ($script:LastTransitionExit -ne 0) 'Ship must refuse a pull request on another branch'
+    Assert-True ($script:r2Output.Contains("REFUSED: Pull request 999 belongs to branch 'feature/wt-somebody-else', but this worktree is on 'feature/wt-transition-test'. Nothing was changed.")) `
+        "The refusal must name the other branch. Output: $($script:r2Output)"
+    Assert-True (-not (Test-Path -LiteralPath (Join-Path $sh.Root 'backlog/done/081-automate-stage-transitions.md'))) `
+        'A refused Ship must not move the item'
+    Assert-True (((Get-Content -Raw -LiteralPath $r2Gh.Log) -join "`n") -notmatch 'pr ready') `
+        'A refused Ship must not flip any pull request'
+
+    # $sh's own Ship.
     $shGh = New-FakeGh
     Invoke-WithFakeGh -Gh $shGh -Action {
         & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $sh.Root -Item '081' -Edge 'success' -Pr 421 *> $null
@@ -981,18 +999,6 @@ try {
     Assert-True ($script:LastTransitionExit -ne 0) 'A body with two Stage lines must be refused'
 
     # ================= Copilot review round, PR 421 =================
-
-    # --- Ship refuses a pull request number pointing at another branch (review finding 2) ---
-    $r2 = New-TransitionFixture -Stage '8-review' -Difficulty 'complex' -AsWorktree -AllBoxesTicked -WithProgress
-    $r2Gh = New-FakeGh -HeadRefName 'feature/wt-somebody-else'
-    Invoke-WithFakeGh -Gh $r2Gh -Action {
-        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $r2.Root -Item '081' -Edge 'success' -Pr 999 *> $null
-    }
-    Assert-True ($script:LastTransitionExit -ne 0) 'Ship must refuse a pull request on another branch'
-    Assert-True (-not (Test-Path -LiteralPath (Join-Path $r2.Root 'backlog/done/081-automate-stage-transitions.md'))) `
-        'A refused Ship must not move the item'
-    Assert-True (((Get-Content -Raw -LiteralPath $r2Gh.Log) -join "`n") -notmatch 'pr ready') `
-        'A refused Ship must not flip any pull request'
 
     # --- Pickup reuses a pull request that already exists (review finding 5) ---
     # gh pr create succeeded, then the session died before the stamp. A rerun must find that
