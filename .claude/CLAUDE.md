@@ -2,7 +2,7 @@
 
 Be concise in all interactions.
 
-Your chat replies follow the `ASD-STE100` output style (user level).
+Your chat replies follow the `Plain English` output style (user level).
 Text written into this repository — docs, specs, plans, app-facing strings — follows
 **Plain English** in AGENTS.md. Commit messages are exempt from both: be extremely
 concise, sacrifice grammar for brevity.
@@ -18,31 +18,17 @@ The lines below are rules; each links to the stage that owns the narrative.
 
 ### Plan before you edit
 
-- Classify the change by Difficulty before you touch code. `complex` and `to-be-determined` go to Design, `moderate` to Plan, `trivial` straight to Execute — see [workflow.md#stage-1-pickup](../docs/development/workflow.md#stage-1-pickup).
-- A change is `trivial` only when all three predicates of the source's trivial test are provably false. Read the test there; it carries the exemptions — see [workflow.md#stage-1-pickup](../docs/development/workflow.md#stage-1-pickup).
-- Repository documentation is not app-facing text, so a docs-only change can stay `trivial` — see [workflow.md#stage-1-pickup](../docs/development/workflow.md#stage-1-pickup).
-- Picking up a `backlog/` item is never `trivial` — see [workflow.md#stage-1-pickup](../docs/development/workflow.md#stage-1-pickup).
-- Closing an item whose work already merged is not a pickup: tick the boxes, set `Stage: 9-ship`, and `git mv` it into `backlog/done/` inside a housekeeping round, with no new item and no dedicated worktree. The tick stays here, and not at Document as `AGENTS.md` otherwise requires, because the work already merged and Stage 7 never runs on this path — see [workflow.md#stage-1-pickup](../docs/development/workflow.md#stage-1-pickup).
-- Any change to app-facing wording, labels, or names is never `trivial`, even inside one file — see [workflow.md#stage-1-pickup](../docs/development/workflow.md#stage-1-pickup).
-- Grill the design with `mp-grilling` and `mp-domain-modeling` together before you write code, not after. `/mp-grill-with-docs` is the human's shortcut for the same pair, and an agent cannot call it — see [workflow.md#stage-2-design](../docs/development/workflow.md#stage-2-design).
-- Grill the draft plan with `mp-grilling`, then run the fabrication check — see [workflow.md#stage-3-plan](../docs/development/workflow.md#stage-3-plan).
-- Give every plan a `## Split` section before its first task: the estimate in work sessions, the task that closes the user story, and a verdict when the plan meets the split trigger. Rules: [workflow.md#the-split-record](../docs/development/workflow.md#the-split-record) — see [workflow.md#stage-3-plan](../docs/development/workflow.md#stage-3-plan).
-- Give a `trivial` change an inline plan of at most ten lines in chat: files, change, verification artifact, difficulty verdict. Trivial work skips Plan, so the inline plan is what Execute enters on — see [workflow.md#stage-4-execute](../docs/development/workflow.md#stage-4-execute).
+- Classify the change by Difficulty before you touch code. A `backlog/` pickup is never `trivial`, and neither is a change to app-facing wording, labels, or names — see [Stage 1](../docs/development/workflow.md#stage-1-pickup).
+- Grill a design with `mp-grilling` and `mp-domain-modeling` together, before any code. Only the human can run `/mp-grill-with-docs` — see [Stage 2](../docs/development/workflow.md#stage-2-design).
+- Grill a draft plan with `mp-grilling`, then run the fabrication check — see [Stage 3](../docs/development/workflow.md#stage-3-plan).
+- Give a `trivial` change an inline plan in chat, at most ten lines long — see [Stage 4](../docs/development/workflow.md#stage-4-execute).
 
 ### Create the worktree before you write the plan
 
-- Create the worktree first, with `scripts/new-worktree.ps1`. Then switch the session into it with the native `EnterWorktree` tool, passing the `path` the script printed. Never start a plan in the main checkout and move the work later — see [workflow.md#stage-1-pickup](../docs/development/workflow.md#stage-1-pickup).
-- Both steps are needed, and in that order. The script sets up the manifest, the ports, and the no-auth config. Entering is what makes the location durable: a resumed session comes back to the worktree, and this repository's own worktree write guard starts working because it reads the working directory — see [workflow.md#stage-1-pickup](../docs/development/workflow.md#stage-1-pickup).
-- Enter with `path`. Never create a worktree with `EnterWorktree` and a `name`. That route runs the same script through the `WorktreeCreate` hook, but it cannot pass `-Title`, which keeps the worktree name equal to the backlog item's, and it cannot pass `-BaseRef`, which stacks work on an unmerged branch. It also leaves a worktree the exit prompt offers to delete. Reasons in full: [`docs/adr/0012-pickup-enters-the-worktree.md`](../docs/adr/0012-pickup-enters-the-worktree.md) — see [workflow.md#stage-1-pickup](../docs/development/workflow.md#stage-1-pickup).
-- Step outside the worktree to commit a plan or a spec. Once the session is entered, Claude Code refuses every command that sends git into `docs/superpowers/`, because that folder links back to the main checkout. `AHKFLOW_ALLOW_MAIN=1` does not lift it — the refusal is the harness, not this repository. Use `ExitWorktree` with `keep`, commit, then `EnterWorktree` with the same `path` — see [workflow.md#stage-3-plan](../docs/development/workflow.md#stage-3-plan).
-- Write a plan or a spec without the native `Edit` and `Write` tools. They are refused under `docs/superpowers/`, and the refusal names a worktree copy that cannot exist. Write the file from the shell, or write it somewhere else and copy it in — see [workflow.md#stage-3-plan](../docs/development/workflow.md#stage-3-plan).
-- Keep shell commands short and write every path out in full inside an entered worktree. Claude Code refuses a command it cannot verify stays inside the worktree, which includes loops and command substitution. This repository's guard refuses a write whose target path it cannot expand, which includes a shell variable — see [workflow.md#stage-4-execute](../docs/development/workflow.md#stage-4-execute).
-- Write the spec from inside the worktree, under `docs/superpowers/specs/`, and commit it with the step-outside cycle — see [workflow.md#stage-2-design](../docs/development/workflow.md#stage-2-design).
-- Write the plan from inside the worktree, under `docs/superpowers/plans/`, and commit it with the step-outside cycle — see [workflow.md#stage-3-plan](../docs/development/workflow.md#stage-3-plan).
-- Write and commit code, tests, docs, and config from inside the worktree. Only the plans repository needs the step outside — see [workflow.md#stage-4-execute](../docs/development/workflow.md#stage-4-execute).
-- Edit a plan a grilling round changed from inside the worktree. Writing there is allowed. Committing it is not, so it takes the same step-outside cycle as the first commit — see [workflow.md#stage-3-plan](../docs/development/workflow.md#stage-3-plan).
-- Commit plans with `git -C docs/superpowers commit`, which names the repository the commit belongs to. Run it from the main checkout, after `ExitWorktree` with `keep` — see [workflow.md#stage-3-plan](../docs/development/workflow.md#stage-3-plan).
-- Write inside the worktree's `docs/superpowers/` link, but never rename or delete the folder itself. It is a separate private repo that `scripts/new-worktree.ps1` links into each worktree — see [workflow.md#stage-1-pickup](../docs/development/workflow.md#stage-1-pickup).
+- Create the worktree with `scripts/new-worktree.ps1`, then enter it with `EnterWorktree` and the `path` the script printed. Never create one with `EnterWorktree` and a `name` — see [Stage 1](../docs/development/workflow.md#stage-1-pickup).
+- In an entered session, Claude Code refuses git into `docs/superpowers/`, and the `Edit` and `Write` tools there. Write a plan or spec from the shell. To commit it, use `ExitWorktree` with `keep`, run the two commands from **Plans** in AGENTS.md, then use `EnterWorktree` with the same `path` — see [Stage 3](../docs/development/workflow.md#stage-3-plan).
+- Inside a worktree, write every path in full. The guard refuses a write it cannot expand, such as a path with a shell variable. In an entered session, also avoid loops and `$(...)` — see [Stage 4](../docs/development/workflow.md#stage-4-execute).
+- Never rename or delete the worktree's `docs/superpowers/` link. It is the separate plans repository — see [Stage 1](../docs/development/workflow.md#stage-1-pickup).
 
 ### Other
 
