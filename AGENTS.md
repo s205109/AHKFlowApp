@@ -148,7 +148,7 @@ the narrative. For the stage you are in, read its block in section 3 and the rul
 - Prove an external API from its docs, for the package version this repository pins. Never prove it from memory — see [Stage 3](docs/development/workflow.md#stage-3-plan).
 - Cite repository code in the checkable form (`path:line`, "text from that line"). `scripts/check-citation-freshness.ps1` fails any other form on a changed line — see [Stage 3](docs/development/workflow.md#stage-3-plan).
 - Save a project spec or plan in `docs/superpowers/specs/` or `docs/superpowers/plans/`, named with its backlog number. A personal one goes under `docs/superpowers/personal/`, with no number. Commit by name: `git -C docs/superpowers add <file>`, then `git -C docs/superpowers commit -m "..." -- <file>` — see [Stage 3](docs/development/workflow.md#stage-3-plan).
-- Write the plan's path into the item as a `- Plan:` bullet. `tests/BacklogPlanPointer.Tests.ps1` fails an item that reaches Execute without one — see [Stage 3](docs/development/workflow.md#stage-3-plan).
+- Give the item a `- Plan:` bullet that holds the plan's path. `tests/BacklogPlanPointer.Tests.ps1` fails an item that reaches Execute without one — see [Stage 3](docs/development/workflow.md#stage-3-plan).
 - Before you write code, read the item's `- Plan:` bullet and implement that plan. A plan wins over a spec. With no bullet, look in `docs/superpowers/plans/` for the item's number — see [Stage 3](docs/development/workflow.md#stage-3-plan).
 
 ## Verification After Implementation
@@ -260,7 +260,7 @@ the API URL + `/health`. SWA hostname:
 - The housekeeping round always uses the worktree `wt-backlog-housekeeping` and the branch `chore/wt-backlog-housekeeping`. Never name it after one of its chores — see [Stage 1](docs/development/workflow.md#stage-1-pickup).
 - Create every worktree with `scripts/new-worktree.ps1`, state its base, and pass `-BaseRef` for work on an unmerged branch. Then work from inside it — see [Stage 1](docs/development/workflow.md#stage-1-pickup).
 - Write conventional commits: `feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `chore:`. Make one logical change per commit, with a body that says why — see [Stage 4](docs/development/workflow.md#stage-4-execute).
-- File a backlog item in two steps: create its worktree with `scripts/new-worktree.ps1 -Title`, and inside that worktree run `scripts/new-backlog-item.ps1`. Never pick a number by hand — see [Stage 0](docs/development/workflow.md#stage-0-intake).
+- File a backlog item in two steps: create its worktree with `scripts/new-worktree.ps1 -Title`, and inside that worktree run `scripts/new-backlog-item.ps1`. Never pick a number by hand. `tests/BacklogNumbering.Tests.ps1` fails when two items share one — see [Stage 0](docs/development/workflow.md#stage-0-intake).
 - Tick acceptance boxes at Document. A box that is not true stays unticked, with the reason in the item — see [Stage 7](docs/development/workflow.md#stage-7-document).
 - Close the item in the pull request that ships its work, never in a separate one: `git mv` it into `backlog/done/`. `tests/BacklogStaleOpen.Tests.ps1` and `scripts/check-shipping-pr-closes-item.ps1` fail an item left open — see [Stage 9](docs/development/workflow.md#stage-9-ship).
 - Move an item that waits on something outside this repository into `backlog/blocked/`, with a note near the top on what would unblock it — see [Stage 1](docs/development/workflow.md#stage-1-pickup).
