@@ -875,6 +875,8 @@ if ($gitExe) {
     $checkoutGitRoot = Join-Path ([System.IO.Path]::GetTempPath()) "watch-task-checkout-$([guid]::NewGuid())"
     $checkoutMain = Join-Path $checkoutGitRoot 'main'
     $checkoutOwn = Join-Path $checkoutGitRoot 'wt-own'
+    # Built from the code point so this file stays plain ASCII on disk.
+    $checkoutAccented = Join-Path $checkoutGitRoot ('wt-caf' + [char]0xE9)
     $root = New-WatchTestRoot
     $writers = @()
     $previousSession = $env:CLAUDE_CODE_SESSION_ID
@@ -885,6 +887,16 @@ if ($gitExe) {
         & $gitExe.Source -C $checkoutMain init -q . 2>&1 | Out-Null
         & $gitExe.Source -C $checkoutMain commit -q --allow-empty -m 'init' 2>&1 | Out-Null
         & $gitExe.Source -C $checkoutMain worktree add -q $checkoutOwn -b own 2>&1 | Out-Null
+        & $gitExe.Source -C $checkoutMain worktree add -q $checkoutAccented -b accented 2>&1 | Out-Null
+
+        # A worktree whose name is not plain ASCII is still found. git writes its paths as UTF-8
+        # bytes. PowerShell decodes a native command's output with [Console]::OutputEncoding, which
+        # on Windows is the OEM code page, so those bytes come back as the wrong characters and the
+        # folder they name is never matched. A worktree missing from the checkout list can never
+        # be watched.
+        $checkouts = @(Get-RepositoryCheckoutPath -MainRoot $checkoutMain)
+        Assert-True ($checkouts -contains $checkoutAccented) `
+            "Accented worktree: it must be in the checkout list, got: $($checkouts -join ' | ')"
 
         $ownScriptDir = Join-Path $checkoutOwn 'scripts'
         New-Item -ItemType Directory -Path $ownScriptDir -Force | Out-Null
@@ -915,11 +927,12 @@ if ($gitExe) {
         foreach ($writer in $writers) { $writer.Dispose() }
         Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
         & $gitExe.Source -C $checkoutMain worktree remove --force $checkoutOwn 2>&1 | Out-Null
+        & $gitExe.Source -C $checkoutMain worktree remove --force $checkoutAccented 2>&1 | Out-Null
         Remove-Item -LiteralPath $checkoutGitRoot -Recurse -Force -ErrorAction SilentlyContinue
     }
 }
 else {
-    Write-Host 'Checkout preference check skipped: git is not available.' -ForegroundColor Yellow
+    Write-Host 'Checkout preference and accented worktree checks skipped: git is not available.' -ForegroundColor Yellow
 }
 
 # --- Every running task gets a row, past the twenty-row window ---
@@ -2427,38 +2440,6 @@ exit (Watch-Record -Record `$record -Tail 40)
 finally {
     if ($job) { Remove-Job -Job $job -Force -ErrorAction SilentlyContinue }
     Remove-Item -LiteralPath $settlePath -Force -ErrorAction SilentlyContinue
-}
-
-# --- A worktree whose name is not plain ASCII is still found ---
-#
-# git writes its paths as UTF-8 bytes. PowerShell decodes a native command's output with
-# [Console]::OutputEncoding, which on Windows is the OEM code page, so those bytes come back as
-# the wrong characters and the folder they name is never matched. The checkout list is what the
-# watcher uses to decide which task file belongs to this repository, so a worktree missing from
-# it can never be watched.
-
-$gitExe = Get-Command git -ErrorAction SilentlyContinue
-if ($gitExe) {
-    $gitRoot = Join-Path ([System.IO.Path]::GetTempPath()) "watch-task-git-$([guid]::NewGuid())"
-    $gitMain = Join-Path $gitRoot 'main'
-    # Built from the code point so this file stays plain ASCII on disk.
-    $gitAccented = Join-Path $gitRoot ('wt-caf' + [char]0xE9)
-    try {
-        New-Item -ItemType Directory -Path $gitMain -Force | Out-Null
-        & $gitExe.Source -C $gitMain init -q . 2>&1 | Out-Null
-        & $gitExe.Source -C $gitMain commit -q --allow-empty -m 'init' 2>&1 | Out-Null
-        & $gitExe.Source -C $gitMain worktree add -q $gitAccented -b accented 2>&1 | Out-Null
-
-        $checkouts = @(Get-RepositoryCheckoutPath -MainRoot $gitMain)
-        Assert-True ($checkouts -contains $gitAccented) `
-            "Accented worktree: it must be in the checkout list, got: $($checkouts -join ' | ')"
-    }
-    finally {
-        Remove-Item -LiteralPath $gitRoot -Recurse -Force -ErrorAction SilentlyContinue
-    }
-}
-else {
-    Write-Host 'Accented worktree check skipped: git is not available.' -ForegroundColor Yellow
 }
 
 # --- A catch-up read that fails is retried, not read as a file with nothing left ---
