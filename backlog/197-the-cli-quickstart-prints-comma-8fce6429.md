@@ -48,4 +48,4 @@ app tells me.
 - The app already documents the right syntax elsewhere. `changelog.json` says
   "`ahkflow hotstring list` shows a Kind column". Only the quickstart card is wrong.
 - Spec: none — the CLI's own command tree already defines the correct commands.
-- Plan: none — moderate work, goes straight to Plan at pickup.
+- Plan: `docs/superpowers/plans/2026-10-27-cli-quickstart-commands-plan-197.md`
