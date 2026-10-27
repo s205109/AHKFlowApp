@@ -105,11 +105,37 @@ function Test-TaskFileHeldOpen {
 }
 '@
 
+# Runs the script in this process, the way the range case below does. A pwsh child per call cost
+# about 0.65 s. The script ends with 'exit $code', which sets $LASTEXITCODE here and returns.
+#
+# An array splat passes '-Root' to a script as a value, not as a parameter name, so the arguments
+# become a hashtable first. A switch takes no value.
 function Invoke-WatchScript {
     param([string[]] $ScriptArgs)
 
-    $output = & $hostExe -NoProfile -File $watchScript @ScriptArgs 2>&1 | Out-String
-    return [pscustomobject]@{ Output = $output; ExitCode = $LASTEXITCODE }
+    $parameters = (Get-Command -Name $watchScript).Parameters
+    $bound = @{}
+    for ($i = 0; $i -lt $ScriptArgs.Count; $i++) {
+        $name = $ScriptArgs[$i].TrimStart('-')
+        if ($parameters[$name].SwitchParameter) {
+            $bound[$name] = $true
+        }
+        else {
+            $i++
+            $bound[$name] = $ScriptArgs[$i]
+        }
+    }
+
+    $global:LASTEXITCODE = 0
+    try {
+        $output = & $watchScript @bound *>&1 | Out-String
+        $exitCode = $global:LASTEXITCODE
+    }
+    catch {
+        $output = $_ | Out-String
+        $exitCode = 1
+    }
+    return [pscustomobject]@{ Output = $output; ExitCode = $exitCode }
 }
 
 # The lines a function printed with Write-Host, taken from the information stream and separated
