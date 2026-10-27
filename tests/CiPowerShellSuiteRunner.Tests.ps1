@@ -1676,7 +1676,8 @@ Invoke-TestCase 'Only the adaptive default asks the machine about its hardware' 
     # each branch picks. None of them would notice the probe moving back above the precedence chain,
     # because the number would not change - only the wasted CIM query would come back. So count the
     # calls instead of reading the output.
-    $repo = New-StoringRepoFixture -Suite @('01-a.Tests.ps1', '02-b.Tests.ps1', '03-c.Tests.ps1') -CountCoreProbes
+    # One suite is enough: the probe count does not depend on how many suites run.
+    $repo = New-StoringRepoFixture -Suite @('01-a.Tests.ps1') -CountCoreProbes
     $probes = Join-Path $repo 'markers/coreprobes'
     try {
         $overrides = @(
