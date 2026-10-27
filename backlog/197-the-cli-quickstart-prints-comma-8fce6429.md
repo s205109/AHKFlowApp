@@ -20,7 +20,9 @@ app tells me.
 
 ## Acceptance criteria
 
-- [ ] Every command on the CLI quickstart card runs as printed against the current CLI.
+- [ ] Every command on the CLI quickstart card runs as printed against the current CLI, for a
+  signed-in owner who has the profile the command names. The card tells the owner to replace
+  `work` with an existing profile name.
 - [ ] A test or a check proves each quickstart command names a command the CLI actually defines.
 
 ## Out of scope
@@ -47,5 +49,9 @@ app tells me.
   defines `--profile`.
 - The app already documents the right syntax elsewhere. `changelog.json` says
   "`ahkflow hotstring list` shows a Kind column". Only the quickstart card is wrong.
+- The plan review on 2026-10-27 narrowed criterion 1. Every owner starts with one profile, named
+  `Default`, so a new owner who copies a `--profile work` line gets exit code 2. The criterion used
+  to promise that every line runs for everyone. It now states the prerequisite, and the card says
+  what to replace.
 - Spec: none — the CLI's own command tree already defines the correct commands.
 - Plan: `docs/superpowers/plans/2026-10-27-cli-quickstart-commands-plan-197.md`
