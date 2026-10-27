@@ -2277,22 +2277,25 @@ Invoke-TestCase 'Lane invalid opt-out fails before any Suite starts' {
     } finally { Remove-SuiteFixture $repo; Remove-PinnedLanePool $pool }
 }
 Invoke-TestCase 'Lane acquisition failures produce named failures in exclusive and parallel execution' {
-    foreach ($execution in @('exclusive', 'parallel')) {
-        $pool = New-PinnedLanePool 2
-        $repo = New-StoringRepoFixture -Suite @('one.Tests.ps1', 'two.Tests.ps1')
-        try {
-            $manifestPath = Join-Path $repo 'tests/powershell-suites.json'
-            $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
-            foreach ($entry in $manifest.suites) { $entry.execution = $execution; $entry | Add-Member -NotePropertyName reason -NotePropertyValue 'Controlled exclusive acquisition fixture.' }
-            $manifest | ConvertTo-Json -Depth 6 | Set-Content $manifestPath
-            Add-Content -LiteralPath (Join-Path $repo 'scripts/test-lanes.common.ps1') -Value 'function Enter-AhkFlowLanes { param($PoolRoot, $Share, $Proposal, $Run); throw "injected acquisition failure" }'
-            $result = Invoke-DriverAt -Repo $repo -MaxParallel 2 -EnvVar @{ AHKFLOW_TEST_LANES_ROOT = $pool.Root; AHKFLOW_TEST_LANES_HOLDER = ''; AHKFLOW_TEST_LANES = '' }
-            Assert-True ($result.ExitCode -ne 0) "Acquisition failure must fail $execution runner."
-            foreach ($name in @('one.Tests.ps1', 'two.Tests.ps1')) { Assert-True ($result.Output -match "FAILED: $([regex]::Escape($name))") "Missing named failure for $name. $($result.Output)" }
-            Assert-True ($result.Output -notmatch 'All \d+ suite\(s\) passed') 'Missing results cannot summarize as success.'
-            Assert-True ($result.Output -match 'injected acquisition failure') 'Acquisition error must be visible.'
-        } finally { Remove-SuiteFixture $repo; Remove-PinnedLanePool $pool }
-    }
+    # One exclusive and one parallel entry, so one run reaches both catch paths. The missing-result
+    # fallback also prints FAILED for a Suite, so the catch-path message must appear once per Suite.
+    $pool = New-PinnedLanePool 2
+    $repo = New-StoringRepoFixture -Suite @('one.Tests.ps1', 'two.Tests.ps1')
+    try {
+        $manifestPath = Join-Path $repo 'tests/powershell-suites.json'
+        $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
+        $exclusive = @($manifest.suites | Where-Object { $_.name -eq 'one.Tests.ps1' })[0]
+        $exclusive.execution = 'exclusive'
+        $exclusive | Add-Member -NotePropertyName reason -NotePropertyValue 'Controlled exclusive acquisition fixture.'
+        $manifest | ConvertTo-Json -Depth 6 | Set-Content $manifestPath
+        Add-Content -LiteralPath (Join-Path $repo 'scripts/test-lanes.common.ps1') -Value 'function Enter-AhkFlowLanes { param($PoolRoot, $Share, $Proposal, $Run); throw "injected acquisition failure" }'
+        $result = Invoke-DriverAt -Repo $repo -MaxParallel 2 -EnvVar @{ AHKFLOW_TEST_LANES_ROOT = $pool.Root; AHKFLOW_TEST_LANES_HOLDER = ''; AHKFLOW_TEST_LANES = '' }
+        Assert-True ($result.ExitCode -ne 0) 'Acquisition failure must fail the runner.'
+        foreach ($name in @('one.Tests.ps1', 'two.Tests.ps1')) { Assert-True ($result.Output -match "FAILED: $([regex]::Escape($name))") "Missing named failure for $name. $($result.Output)" }
+        Assert-True ($result.Output -notmatch 'All \d+ suite\(s\) passed') 'Missing results cannot summarize as success.'
+        $shown = [regex]::Matches($result.Output, 'Could not run the suite: injected acquisition failure').Count
+        Assert-True ($shown -eq 2) "Both the exclusive and the parallel catch path must show the acquisition error, got $shown. $($result.Output)"
+    } finally { Remove-SuiteFixture $repo; Remove-PinnedLanePool $pool }
 }
 Invoke-TestCase 'Lane missing Worker results cannot produce a passing summary' {
     $pool = New-PinnedLanePool 2
