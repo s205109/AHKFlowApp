@@ -55,4 +55,4 @@ The four Suites are `StageTransition`, `WatchTask`, `CiPowerShellSuiteRunner` an
 - Split at Design into this item and backlog 201, decision D8 of the spec. Backlog 201 is stacked
   on this branch.
 - Spec: `docs/superpowers/specs/2026-10-27-apply-the-deferred-test-audit-speed-ups-design-195.md`
-- Plan: none yet — written at Stage 3.
+- Plan: `docs/superpowers/plans/2026-10-27-apply-the-deferred-test-audit-speed-ups-plan-195.md`.
