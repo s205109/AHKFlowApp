@@ -643,3 +643,49 @@ audit changed, and of `GateEvidence.Tests.ps1`, from the final-revision run abov
 
 `TestFastPowerShellMode.Tests.ps1` warned in 7 runs but was not audited, so its baseline is
 unchanged.
+
+## Backlog 195
+
+Backlog 195 applied or rejected the deferred rows of four Suites. Each Suite ran alone with
+`scripts/run-powershell-suites.ps1 -Suite <file>`: one warm-up run, then three counted runs. The
+numbers below are the medians of the counted runs, in seconds. A run that printed "Sharing the
+test Lane pool with:" would not count. No run printed it.
+
+### Suite time, run alone
+
+| Suite | Before | After |
+|---|---|---|
+| `WatchTask.Tests.ps1` | 42.0 | 31.2 |
+
+### Changes timed on their own
+
+A change timed on its own had a stopwatch around the code it touched. The Suite printed the
+stopwatch at its end, and the stopwatch was never committed. The three runs after one change are
+the before set of the next change. A change stays only when its median fell by 1 s or more.
+
+| Suite | Change | Rows | Before | After | Verdict |
+|---|---|---|---|---|---|
+| `WatchTask` | W-A: run the script in this process | 71, 72, 75, 76, 87 to 90 | 9.06 | 1.91 | kept |
+| `WatchTask` | W-B: `Start-ThreadJob` in all 15 job cases | 73, 77 to 86 | 26.32 | 21.90 | kept |
+| `WatchTask` | W-C: cap the stubbed 500 ms sleeps at 50 ms | 70, 74 | 4.54 | 1.41 | kept |
+
+The W-B stopwatch read 24.29 s in the first before set, and 26.32 s after W-A. Its cases did not
+change in between, so the difference is machine drift. Both numbers are more than 1 s above its
+after median.
+
+### Mutations
+
+Each mutation changed one line of a script and was undone with `git checkout`.
+
+- `WatchTask`: the no-files path in `scripts/watch-task.ps1` returns 0. Only "No files: exit code
+  must be 1, got 0" failed. So a run in this process still passes its exit code to the case.
+- `WatchTask`: the unfinished-tail branch of `Show-Tail` never runs. Both "No final newline"
+  assertions failed.
+- `WatchTask`: the UTF-8 switch before `git worktree list` is gone. Only "Accented worktree"
+  failed, which now sits in the checkout-preference case.
+- `WatchTask`: the follow loop asks for the task state only after a pass read new text. The
+  reworked same-size case failed with "the watcher must still stop, but it was running after
+  25s". The old version of the case passed under the same mutation.
+- `WatchTask`: the state check that ends the follow loop never runs. The old and the new same-size
+  case both failed. The whole Suite cannot run under this mutation, because the read-retry case
+  starts a child with no timeout, and that child never ends. Both cases ran alone instead.
