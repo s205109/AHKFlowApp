@@ -27,3 +27,4 @@ CiPowerShellSuiteRunner 114.9 s, WatchTask 40.2 s.
 **Recovery task:** Task 5 recovery: point the two citations at lines 1157 and 1158 of tests/AgentWorktreeGuard.Tests.ps1 at lines 2327 and 2416, run CitationFreshness.Tests.ps1 alone, then pass Execute and Simplify again and rerun the Gate at Verify.
 
 - Task 5 recovery: done at d7c02d19. Tests: `CitationFreshness.Tests.ps1` passes alone, and the citation check reports no problem. Next: Simplify, then the Gate at Verify again.
+- Task 5 (Gate and baselines): done at 880ea480. Tests: the Gate at a2a9d9e4 passed with AHKFLOW_GATE_REUSE=off, all 73 Suites, 6 Workers; baselines refreshed from it. Deferrals: none.
