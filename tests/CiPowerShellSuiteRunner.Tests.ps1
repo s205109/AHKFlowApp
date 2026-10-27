@@ -507,21 +507,6 @@ Invoke-TestCase 'A suite folder whose path contains an apostrophe still runs' {
     }
 }
 
-Invoke-TestCase 'A missing manifest fails before any suite runs' {
-    $root = New-SuiteFixture
-    try {
-        Add-FakeSuite -Root $root -Name '01-pass.Tests.ps1' -Ending 'pass'
-        # No Set-FixtureManifest on purpose.
-
-        $result = Invoke-Driver -SuiteRoot $root
-        Assert-True ($result.ExitCode -eq 1) "Expected exit code 1, got $($result.ExitCode). Output: $($result.Output)"
-        Assert-True ($result.Output -match 'powershell-suites\.json') "The message must name the manifest file. Output: $($result.Output)"
-        Assert-True (-not (Test-MarkerExists -Root $root -Name '01-pass.Tests.ps1')) 'No suite may run when the manifest is missing.'
-    } finally {
-        Remove-SuiteFixture -Root $root
-    }
-}
-
 Invoke-TestCase 'A suite file missing from the manifest fails the run' {
     $root = New-SuiteFixture
     try {
@@ -540,40 +525,6 @@ Invoke-TestCase 'A suite file missing from the manifest fails the run' {
     }
 }
 
-Invoke-TestCase 'A manifest entry with no suite file fails the run' {
-    $root = New-SuiteFixture
-    try {
-        Add-FakeSuite -Root $root -Name '01-pass.Tests.ps1' -Ending 'pass'
-        Set-FixtureManifest -Root $root -Entry @(
-            [ordered]@{ name = '01-pass.Tests.ps1'; jobs = @('suites'); platform = @('windows', 'linux'); execution = 'parallel'; baselineSeconds = $null }
-            [ordered]@{ name = 'NotThere.Tests.ps1'; jobs = @('suites'); platform = @('windows', 'linux'); execution = 'parallel'; baselineSeconds = $null }
-        )
-
-        $result = Invoke-Driver -SuiteRoot $root
-        Assert-True ($result.ExitCode -eq 1) "Expected exit code 1, got $($result.ExitCode). Output: $($result.Output)"
-        Assert-True ($result.Output -match 'NotThere\.Tests\.ps1') "The message must name the stale entry. Output: $($result.Output)"
-    } finally {
-        Remove-SuiteFixture -Root $root
-    }
-}
-
-Invoke-TestCase 'A duplicate manifest entry fails the run' {
-    $root = New-SuiteFixture
-    try {
-        Add-FakeSuite -Root $root -Name '01-pass.Tests.ps1' -Ending 'pass'
-        Set-FixtureManifest -Root $root -Entry @(
-            [ordered]@{ name = '01-pass.Tests.ps1'; jobs = @('suites'); platform = @('windows', 'linux'); execution = 'parallel'; baselineSeconds = $null }
-            [ordered]@{ name = '01-pass.Tests.ps1'; jobs = @('suites'); platform = @('windows', 'linux'); execution = 'parallel'; baselineSeconds = 2 }
-        )
-
-        $result = Invoke-Driver -SuiteRoot $root
-        Assert-True ($result.ExitCode -eq 1) "Expected exit code 1, got $($result.ExitCode). Output: $($result.Output)"
-        Assert-True ($result.Output -match 'more than once') "The message must say the name repeats. Output: $($result.Output)"
-    } finally {
-        Remove-SuiteFixture -Root $root
-    }
-}
-
 # Writes a manifest into a scratch folder and returns its path, so a unit case can call
 # Read-SuiteManifest without building a folder of fake suites.
 function New-ManifestFile {
@@ -583,6 +534,51 @@ function New-ManifestFile {
     $payload = [ordered]@{ suites = @($Entry) }
     Set-Content -LiteralPath $path -Value ($payload | ConvertTo-Json -Depth 6) -Encoding utf8
     return $path
+}
+
+# The three cases below were runner runs. The throws live in Read-SuiteManifest, so they call it
+# directly. 'A suite file missing from the manifest fails the run' and 'A blank -Suite wildcard
+# fails the run' still prove that a throw inside the runner's manifest block fails the run before
+# any Suite starts.
+Invoke-TestCase 'A missing manifest fails the manifest read' {
+    $path = Join-Path (Join-Path ([System.IO.Path]::GetTempPath()) ('ahkflow-manifest-missing-' + [guid]::NewGuid().ToString('N'))) 'powershell-suites.json'
+    $threw = $false
+    $message = ''
+    try { Read-SuiteManifest -Path $path -DiscoveredName @('01-pass.Tests.ps1') } catch { $threw = $true; $message = $_.Exception.Message }
+    Assert-True $threw 'A missing manifest must throw.'
+    Assert-True ($message -match 'powershell-suites\.json') "The message must name the manifest file. Got: $message"
+}
+
+Invoke-TestCase 'A manifest entry with no suite file fails the manifest' {
+    $path = New-ManifestFile -Entry @(
+        [ordered]@{ name = '01-pass.Tests.ps1'; jobs = @('suites'); platform = @('windows', 'linux'); execution = 'parallel'; baselineSeconds = $null }
+        [ordered]@{ name = 'NotThere.Tests.ps1'; jobs = @('suites'); platform = @('windows', 'linux'); execution = 'parallel'; baselineSeconds = $null }
+    )
+    try {
+        $threw = $false
+        $message = ''
+        try { Read-SuiteManifest -Path $path -DiscoveredName @('01-pass.Tests.ps1') } catch { $threw = $true; $message = $_.Exception.Message }
+        Assert-True $threw 'A stale manifest entry must throw.'
+        Assert-True ($message -match 'NotThere\.Tests\.ps1') "The message must name the stale entry. Got: $message"
+    } finally {
+        Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
+    }
+}
+
+Invoke-TestCase 'A duplicate manifest entry fails the manifest' {
+    $path = New-ManifestFile -Entry @(
+        [ordered]@{ name = '01-pass.Tests.ps1'; jobs = @('suites'); platform = @('windows', 'linux'); execution = 'parallel'; baselineSeconds = $null }
+        [ordered]@{ name = '01-pass.Tests.ps1'; jobs = @('suites'); platform = @('windows', 'linux'); execution = 'parallel'; baselineSeconds = 2 }
+    )
+    try {
+        $threw = $false
+        $message = ''
+        try { Read-SuiteManifest -Path $path -DiscoveredName @('01-pass.Tests.ps1') } catch { $threw = $true; $message = $_.Exception.Message }
+        Assert-True $threw 'A duplicate manifest entry must throw.'
+        Assert-True ($message -match 'more than once') "The message must say the name repeats. Got: $message"
+    } finally {
+        Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
+    }
 }
 
 Invoke-TestCase 'An unknown job value fails the manifest' {
