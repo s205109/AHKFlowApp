@@ -1500,12 +1500,11 @@ Invoke-TestCase 'A run inside GitHub Actions wraps each suite in one pair of gro
         Add-FakeSuite -Root $root -Name '02-pass.Tests.ps1' -Ending 'pass'
         Set-FixtureManifest -Root $root
 
+        # 'An explicit -MaxParallel is named on the Workers line' checks that a run outside Actions
+        # emits no group markers.
         $inside = Invoke-Driver -SuiteRoot $root -EnvVar @{ GITHUB_ACTIONS = 'true' }
         Assert-True (([regex]::Matches($inside.Output, '::group::')).Count -eq 2) "Expected two group markers. Output: $($inside.Output)"
         Assert-True (([regex]::Matches($inside.Output, '::endgroup::')).Count -eq 2) "Expected two endgroup markers. Output: $($inside.Output)"
-
-        $outside = Invoke-Driver -SuiteRoot $root -EnvVar @{ GITHUB_ACTIONS = '' }
-        Assert-True ($outside.Output -notmatch '::group::') "A run outside Actions must emit no group markers. Output: $($outside.Output)"
     } finally {
         Remove-SuiteFixture -Root $root
     }
@@ -2077,10 +2076,12 @@ Invoke-TestCase 'An explicit -MaxParallel is named on the Workers line' {
         Set-FixtureManifest -Root $root
 
         # The variable is unusable, so a run that read it would fail. The explicit value must win
-        # before the variable is even considered.
-        $result = Invoke-Driver -SuiteRoot $root -MaxParallel 2 -EnvVar @{ AHKFLOW_SUITE_MAX_PARALLEL = 'lots' }
+        # before the variable is even considered. GITHUB_ACTIONS is cleared, so this run also
+        # proves that a run outside Actions emits no group markers.
+        $result = Invoke-Driver -SuiteRoot $root -MaxParallel 2 -EnvVar @{ AHKFLOW_SUITE_MAX_PARALLEL = 'lots'; GITHUB_ACTIONS = $null }
         Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
         Assert-True ($result.Output -match 'Workers: 2 \(-MaxParallel\)') "The parameter must win and be named. Output: $($result.Output)"
+        Assert-True ($result.Output -notmatch '::group::') "A run outside Actions must emit no group markers. Output: $($result.Output)"
     } finally {
         Remove-SuiteFixture -Root $root
     }
