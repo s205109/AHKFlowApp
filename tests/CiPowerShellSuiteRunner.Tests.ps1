@@ -270,28 +270,18 @@ function Invoke-RunnerProcess {
 # Runs the repository's own driver against a fixture suite folder, as its own process. The child
 # process is the point: it is exactly what the CI step measures.
 function Invoke-Driver {
-    param([string] $SuiteRoot, [string[]] $Suite = @(), [string] $RawSuite, [int] $MaxParallel = 0, [string] $RawMaxParallel, [hashtable] $EnvVar = @{})
+    param([string] $SuiteRoot, [string[]] $Suite = @(), [int] $MaxParallel = 0, [hashtable] $EnvVar = @{})
 
-    # RawSuite hands the driver a literal PowerShell expression, so a case can pass '-Suite $null'.
-    # That is what an unset variable becomes, and ConvertTo-ScriptLiteral would quote it into a
-    # string instead, which tests something else.
-    $suiteLiteral = if ($PSBoundParameters.ContainsKey('RawSuite')) {
-        " -Suite $RawSuite"
-    } elseif ($Suite.Count -eq 0) {
+    # The values a run must refuse before any Suite starts, such as '-Suite $null' or
+    # '-MaxParallel 1.5', go through Invoke-RunnerInProcess, which binds them unchanged.
+    $suiteLiteral = if ($Suite.Count -eq 0) {
         ''
     } else {
         ' -Suite @(' + (($Suite | ForEach-Object { ConvertTo-ScriptLiteral $_ }) -join ',') + ')'
     }
 
-    # The binding, not the value. A case passes -MaxParallel -1 on purpose to prove the run
-    # refuses it, and a '-gt 0' test would drop that argument instead of passing it on.
-    #
-    # RawMaxParallel hands the driver a literal argument the same way RawSuite does, so a case can
-    # pass '1.5'. This helper's own [int] would round that to 2 before the driver ever saw it,
-    # which is the very conversion the driver must not perform either.
-    $parallelLiteral = if ($PSBoundParameters.ContainsKey('RawMaxParallel')) {
-        " -MaxParallel $RawMaxParallel"
-    } elseif ($PSBoundParameters.ContainsKey('MaxParallel')) {
+    # The binding, not the value, so no value is dropped on its way to the driver.
+    $parallelLiteral = if ($PSBoundParameters.ContainsKey('MaxParallel')) {
         " -MaxParallel $MaxParallel"
     } else {
         ''
@@ -312,6 +302,44 @@ function Invoke-Driver {
             [System.Environment]::SetEnvironmentVariable($name, $previousEnv[$name])
         }
     }
+}
+
+# Runs a runner in this process, for a run that fails before its first Suite starts. Such a run
+# starts no child, so the process start Invoke-Driver pays buys nothing there. A run that reaches a
+# Suite still goes through Invoke-Driver.
+#
+# The runner changes no process state before its worker chain: no environment write, no
+# Set-Location, no global variable. 'exit 1' inside a script called with '&' sets $LASTEXITCODE
+# here and returns, and '*>&1' captures Write-Host. A thrown error, such as a parameter binding
+# error, gives exit code 1 and the error text as Output.
+function Invoke-RunnerInProcess {
+    param([string] $RunnerPath = $script:DriverPath, [hashtable] $Argument = @{}, [hashtable] $EnvVar = @{})
+
+    # Saved and restored so one case cannot leak a value into the next one, the same way
+    # Invoke-Driver does it.
+    $previousEnv = @{}
+    foreach ($name in $EnvVar.Keys) {
+        $previousEnv[$name] = [System.Environment]::GetEnvironmentVariable($name)
+        [System.Environment]::SetEnvironmentVariable($name, $EnvVar[$name])
+    }
+
+    try {
+        # Reset first, so an exit code left by an earlier case can never pass for this run's.
+        $global:LASTEXITCODE = 0
+        try {
+            $output = & $RunnerPath @Argument *>&1 | Out-String
+            $exitCode = $LASTEXITCODE
+        } catch {
+            $output = $_ | Out-String
+            $exitCode = 1
+        }
+    } finally {
+        foreach ($name in $previousEnv.Keys) {
+            [System.Environment]::SetEnvironmentVariable($name, $previousEnv[$name])
+        }
+    }
+
+    return [pscustomobject]@{ Output = $output; ExitCode = $exitCode }
 }
 
 Write-Host "Testing $script:DriverPath"
@@ -441,7 +469,7 @@ Invoke-TestCase 'A folder with no suites fails the run' {
     try {
         Set-Content -LiteralPath (Join-Path $root 'notes.txt') -Value 'not a suite' -Encoding utf8
 
-        $result = Invoke-Driver -SuiteRoot $root
+        $result = Invoke-RunnerInProcess -Argument @{ SuiteRoot = $root }
         Assert-True ($result.ExitCode -eq 1) "Expected exit code 1, got $($result.ExitCode). Output: $($result.Output)"
         Assert-True ($result.Output -match 'No test suites found') "Expected the empty-folder message. Output: $($result.Output)"
     } finally {
@@ -452,7 +480,7 @@ Invoke-TestCase 'A folder with no suites fails the run' {
 Invoke-TestCase 'A missing suite folder fails the run' {
     $missing = Join-Path ([System.IO.Path]::GetTempPath()) ('ahkflow-suiterunner-missing-' + [guid]::NewGuid().ToString('N'))
 
-    $result = Invoke-Driver -SuiteRoot $missing
+    $result = Invoke-RunnerInProcess -Argument @{ SuiteRoot = $missing }
     Assert-True ($result.ExitCode -eq 1) "Expected exit code 1, got $($result.ExitCode). Output: $($result.Output)"
     Assert-True ($result.Output -match 'Suite folder not found') "Expected the missing-folder message. Output: $($result.Output)"
 }
@@ -858,11 +886,10 @@ Invoke-TestCase 'The runner takes no -Platform override' {
         Set-FixtureManifest -Root $root
 
         $other = if ($IsWindows) { 'linux' } else { 'windows' }
-        $output = & $script:HostExe -NoProfile -File $script:DriverPath -SuiteRoot $root -Platform $other 2>&1 | Out-String
-        $exitCode = $LASTEXITCODE
+        $result = Invoke-RunnerInProcess -Argument @{ SuiteRoot = $root; Platform = $other }
 
-        Assert-True ($exitCode -ne 0) "The runner must refuse -Platform. Exit code: $exitCode. Output: $output"
-        Assert-True ($output -match 'Platform') "The refusal must name the parameter. Output: $output"
+        Assert-True ($result.ExitCode -eq 1) "The runner must refuse -Platform. Exit code: $($result.ExitCode). Output: $($result.Output)"
+        Assert-True ($result.Output -match 'Platform') "The refusal must name the parameter. Output: $($result.Output)"
         Assert-True (-not (Test-MarkerExists -Root $root -Name '01-pass.Tests.ps1')) 'No suite may run behind a refused argument.'
     } finally {
         Remove-SuiteFixture -Root $root
@@ -1056,7 +1083,7 @@ Invoke-TestCase 'A blank -Suite wildcard fails the run' {
         # PowerShell reads a one-element array as its element, so an empty string used to look like
         # "no selection argument" and quietly ran every suite. A caller who wants everything leaves
         # -Suite out.
-        $result = Invoke-Driver -SuiteRoot $root -Suite @('')
+        $result = Invoke-RunnerInProcess -Argument @{ SuiteRoot = $root; Suite = @('') }
         Assert-True ($result.ExitCode -eq 1) "Expected exit code 1, got $($result.ExitCode). Output: $($result.Output)"
         Assert-True ($result.Output -match 'blank') "The message must say the value is blank. Output: $($result.Output)"
         foreach ($name in @('Alpha.Tests.ps1', 'Beta.Tests.ps1')) {
@@ -1076,8 +1103,9 @@ Invoke-TestCase 'A -Suite argument that carries no value fails the run' {
 
         # '-Suite $env:FILTER' with the variable unset binds $null, and '-Suite @()' binds an empty
         # array. Both ask for a subset and name none, so both must fail instead of running the lot.
-        foreach ($literal in @('$null', '@()')) {
-            $result = Invoke-Driver -SuiteRoot $root -RawSuite $literal
+        foreach ($case in @(@{ Literal = '$null'; Value = $null }, @{ Literal = '@()'; Value = @() })) {
+            $literal = $case.Literal
+            $result = Invoke-RunnerInProcess -Argument @{ SuiteRoot = $root; Suite = $case.Value }
             Assert-True ($result.ExitCode -eq 1) "Expected exit code 1 for -Suite $literal, got $($result.ExitCode). Output: $($result.Output)"
             Assert-True ($result.Output -match 'no value to match') "The message must say the argument named nothing. Output: $($result.Output)"
             foreach ($name in @('Alpha.Tests.ps1', 'Beta.Tests.ps1')) {
@@ -1396,50 +1424,32 @@ Invoke-TestCase 'A bad AHKFLOW_SUITE_MAX_PARALLEL fails the run and names the va
     }
 }
 
-Invoke-TestCase 'An explicit -MaxParallel below one fails the run' {
+Invoke-TestCase 'A -MaxParallel that is not a whole number of at least one fails the run' {
     $root = New-SuiteFixture
     try {
         Add-FakeSuite -Root $root -Name '01-pass.Tests.ps1' -Ending 'pass'
         Set-FixtureManifest -Root $root
 
-        $result = Invoke-Driver -SuiteRoot $root -MaxParallel -1
-        Assert-True ($result.ExitCode -eq 1) "Expected exit code 1, got $($result.ExitCode). Output: $($result.Output)"
-        Assert-True ($result.Output -match 'MaxParallel') "The message must name the parameter. Output: $($result.Output)"
-    } finally {
-        Remove-SuiteFixture -Root $root
-    }
-}
-
-Invoke-TestCase 'A fractional -MaxParallel fails the run' {
-    $root = New-SuiteFixture
-    try {
-        Add-FakeSuite -Root $root -Name '01-pass.Tests.ps1' -Ending 'pass'
-        Set-FixtureManifest -Root $root
-
-        # The parameter promises a whole number. An [int] parameter would not enforce that:
+        # '1.5': the parameter promises a whole number. An [int] parameter would not enforce that:
         # PowerShell rounds '1.5' to 2 and '2.5' to 2 while binding, so both typos would run and
         # neither would run the number the caller wrote. The message must quote what was typed.
-        $result = Invoke-Driver -SuiteRoot $root -RawMaxParallel '1.5'
-        Assert-True ($result.ExitCode -eq 1) "Expected exit code 1, got $($result.ExitCode). Output: $($result.Output)"
-        Assert-True ($result.Output -match 'MaxParallel') "The message must name the parameter. Output: $($result.Output)"
-        Assert-True ($result.Output -match '1\.5') "The message must quote the value as typed. Output: $($result.Output)"
-    } finally {
-        Remove-SuiteFixture -Root $root
-    }
-}
-
-Invoke-TestCase 'A -MaxParallel that carries no value fails the run' {
-    $root = New-SuiteFixture
-    try {
-        Add-FakeSuite -Root $root -Name '01-pass.Tests.ps1' -Ending 'pass'
-        Set-FixtureManifest -Root $root
-
-        # '-MaxParallel $null' is what an unset variable becomes at a call site. PowerShell binds
-        # $null to '' for a text parameter, so the run must answer with its own message. The
+        #
+        # $null: '-MaxParallel $null' is what an unset variable becomes at a call site. PowerShell
+        # binds $null to '' for a text parameter, so the run must answer with its own message. The
         # sibling '-Suite $null' case covers the same accident on the other parameter.
-        $result = Invoke-Driver -SuiteRoot $root -RawMaxParallel '$null'
-        Assert-True ($result.ExitCode -eq 1) "Expected exit code 1, got $($result.ExitCode). Output: $($result.Output)"
-        Assert-True ($result.Output -match 'MaxParallel must be a whole number') "Expected the parameter's own message. Output: $($result.Output)"
+        $values = @(
+            @{ Value = '-1'; Expected = @('MaxParallel') }
+            @{ Value = '1.5'; Expected = @('MaxParallel', '1\.5') }
+            @{ Value = $null; Expected = @('MaxParallel must be a whole number') }
+        )
+        foreach ($case in $values) {
+            $shown = if ($null -eq $case.Value) { '$null' } else { $case.Value }
+            $result = Invoke-RunnerInProcess -Argument @{ SuiteRoot = $root; MaxParallel = $case.Value }
+            Assert-True ($result.ExitCode -eq 1) "-MaxParallel $($shown): expected exit code 1, got $($result.ExitCode). Output: $($result.Output)"
+            foreach ($pattern in $case.Expected) {
+                Assert-True ($result.Output -match $pattern) "-MaxParallel $($shown): the message must match '$pattern'. Output: $($result.Output)"
+            }
+        }
     } finally {
         Remove-SuiteFixture -Root $root
     }
@@ -2256,7 +2266,7 @@ Invoke-TestCase 'Lane invalid opt-out fails before any Suite starts' {
     $repo = New-StoringRepoFixture -Suite @('one.Tests.ps1')
     $pool = New-PinnedLanePool 2
     try {
-        $result = Invoke-DriverAt -Repo $repo -MaxParallel 1 -EnvVar @{ AHKFLOW_TEST_LANES_ROOT = $pool.Root; AHKFLOW_TEST_LANES_HOLDER = ''; AHKFLOW_TEST_LANES = 'false' }
+        $result = Invoke-RunnerInProcess -RunnerPath (Join-Path $repo 'scripts/run-powershell-suites.ps1') -Argument @{ MaxParallel = '1' } -EnvVar @{ AHKFLOW_TEST_LANES_ROOT = $pool.Root; AHKFLOW_TEST_LANES_HOLDER = ''; AHKFLOW_TEST_LANES = 'false' }
         Assert-True ($result.ExitCode -ne 0) 'Invalid opt-out must fail.'
         Assert-True (-not (Test-Path (Join-Path $repo 'markers/one.Tests.ps1'))) 'Invalid opt-out started a Suite.'
     } finally { Remove-SuiteFixture $repo; Remove-PinnedLanePool $pool }
