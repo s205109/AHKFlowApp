@@ -1207,11 +1207,17 @@ try {
         'git remote prune origin',
         'git fetch --prune' # already unguarded (not a recognized mutating subcommand) - pin
     )
-    foreach ($command in $tier2AllowCases) {
-        Invoke-TestCase "Tier 2 unconditional allow from main: $command" {
-            $decision = Invoke-AgentGuardPolicy -Command $command -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
-            Assert-Equal 'Allow' $decision.Action 'Action'
+    Enable-GuardProbeMemo
+    try {
+        foreach ($command in $tier2AllowCases) {
+            Invoke-TestCase "Tier 2 unconditional allow from main: $command" {
+                $decision = Invoke-AgentGuardPolicy -Command $command -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
+                Assert-Equal 'Allow' $decision.Action 'Action'
+            }
         }
+    }
+    finally {
+        Disable-GuardProbeMemo
     }
 
     # The force/destructive sibling of each Tier 2 case above can disturb the working tree (or, for
@@ -1235,12 +1241,18 @@ try {
         # lowercase -b clustered/exact-match test coverage above (via $tier2AllowCases) stays Allow.
         "git worktree add -B topic $somewhere"
     )
-    foreach ($command in $forceVariantAskCases) {
-        Invoke-TestCase "Force/destructive variant asks (not Tier 2) from main: $command" {
-            $decision = Invoke-AgentGuardPolicy -Command $command -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
-            Assert-Equal 'Ask' $decision.Action 'Action'
-            Assert-Equal 'agent-main-git-mutation' $decision.Rule 'Rule'
+    Enable-GuardProbeMemo
+    try {
+        foreach ($command in $forceVariantAskCases) {
+            Invoke-TestCase "Force/destructive variant asks (not Tier 2) from main: $command" {
+                $decision = Invoke-AgentGuardPolicy -Command $command -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
+                Assert-Equal 'Ask' $decision.Action 'Action'
+                Assert-Equal 'agent-main-git-mutation' $decision.Rule 'Rule'
+            }
         }
+    }
+    finally {
+        Disable-GuardProbeMemo
     }
 
     # Tier 1a: guarded, not Tier 2, not commit - a permission prompt instead of a silent Deny.
@@ -1248,11 +1260,17 @@ try {
         'git checkout other', 'git switch other', 'git reset HEAD~1', 'git stash', 'git push',
         'git tag v1.0.0', 'git add .', 'git config user.name x'
     )
-    foreach ($command in $tier1aAskCases) {
-        Invoke-TestCase "Tier 1a asks from main: $command" {
-            $decision = Invoke-AgentGuardPolicy -Command $command -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
-            Assert-Equal 'Ask' $decision.Action 'Action'
+    Enable-GuardProbeMemo
+    try {
+        foreach ($command in $tier1aAskCases) {
+            Invoke-TestCase "Tier 1a asks from main: $command" {
+                $decision = Invoke-AgentGuardPolicy -Command $command -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
+                Assert-Equal 'Ask' $decision.Action 'Action'
+            }
         }
+    }
+    finally {
+        Disable-GuardProbeMemo
     }
 
     # Tier 1b: only commit stays a silent Deny. `git commit -m test` and the unbalanced-quote case
@@ -1317,13 +1335,19 @@ try {
         @{ Bare = 'git commit -m x'; Wrapped = 'rtk git commit -m x' },
         @{ Bare = 'git commit --amend'; Wrapped = 'rtk git commit --amend' }
     )
-    foreach ($pair in $wrapperParityPairs) {
-        Invoke-TestCase "Wrapped command matches its bare form: $($pair.Wrapped)" {
-            $bareDecision = Invoke-AgentGuardPolicy -Command $pair.Bare -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
-            $wrappedDecision = Invoke-AgentGuardPolicy -Command $pair.Wrapped -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
-            Assert-Equal $bareDecision.Action $wrappedDecision.Action 'Action'
-            Assert-Equal $bareDecision.Rule $wrappedDecision.Rule 'Rule'
+    Enable-GuardProbeMemo
+    try {
+        foreach ($pair in $wrapperParityPairs) {
+            Invoke-TestCase "Wrapped command matches its bare form: $($pair.Wrapped)" {
+                $bareDecision = Invoke-AgentGuardPolicy -Command $pair.Bare -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
+                $wrappedDecision = Invoke-AgentGuardPolicy -Command $pair.Wrapped -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
+                Assert-Equal $bareDecision.Action $wrappedDecision.Action 'Action'
+                Assert-Equal $bareDecision.Rule $wrappedDecision.Rule 'Rule'
+            }
         }
+    }
+    finally {
+        Disable-GuardProbeMemo
     }
 
     # No wrapped-command case above ever runs from a managed worktree - every Cwd is $fixture.Main.
@@ -1343,13 +1367,19 @@ try {
         'rtk --skip-env', 'rtk --ultra-compact --skip-env', 'rtk proxy', 'rtk --ultra-compact proxy',
         'rtk rtk', 'SKIP_COVERAGE_HOOK=1 rtk', 'rtk err', 'rtk summary', 'rtk test'
     )
-    foreach ($prefix in $wrapperSpellings) {
-        Invoke-TestCase "Wrapper spelling still denies a commit: $prefix git commit -m x" {
-            $decision = Invoke-AgentGuardPolicy -Command "$prefix git commit -m x" `
-                -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
-            Assert-Equal 'Deny' $decision.Action 'Action'
-            Assert-Equal 'agent-main-git-mutation' $decision.Rule 'Rule'
+    Enable-GuardProbeMemo
+    try {
+        foreach ($prefix in $wrapperSpellings) {
+            Invoke-TestCase "Wrapper spelling still denies a commit: $prefix git commit -m x" {
+                $decision = Invoke-AgentGuardPolicy -Command "$prefix git commit -m x" `
+                    -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
+                Assert-Equal 'Deny' $decision.Action 'Action'
+                Assert-Equal 'agent-main-git-mutation' $decision.Rule 'Rule'
+            }
         }
+    }
+    finally {
+        Disable-GuardProbeMemo
     }
 
     Invoke-TestCase 'Commit still dominates through a chain of wrapped segments' {
@@ -3593,16 +3623,22 @@ try {
         @{ Name = 'bash subshell'; Command = '(cd {MAIN} && git commit -m x)' }
     )
 
-    foreach ($readingCase in $readingCases) {
-        Invoke-TestCase "Backlog 093 denies: $($readingCase.Name)" {
-            $resolved = $readingCase.Command.
-            Replace('{TICK}', $tick).
-            Replace('{MAIN}', $fixture.Main).
-            Replace('{WT}', $fixture.Managed)
-            $decision = Invoke-AgentGuardPolicy -Command $resolved `
-                -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main
-            Assert-Equal 'Deny' $decision.Action 'Action'
+    Enable-GuardProbeMemo
+    try {
+        foreach ($readingCase in $readingCases) {
+            Invoke-TestCase "Backlog 093 denies: $($readingCase.Name)" {
+                $resolved = $readingCase.Command.
+                Replace('{TICK}', $tick).
+                Replace('{MAIN}', $fixture.Main).
+                Replace('{WT}', $fixture.Managed)
+                $decision = Invoke-AgentGuardPolicy -Command $resolved `
+                    -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main
+                Assert-Equal 'Deny' $decision.Action 'Action'
+            }
         }
+    }
+    finally {
+        Disable-GuardProbeMemo
     }
 
     Write-Host 'Redirect targets carry the expression rule too' -ForegroundColor Cyan
@@ -3894,23 +3930,29 @@ try {
         }
     )
 
-    foreach ($case in $fileEditCases) {
-        Invoke-TestCase "File-edit isolation: $($case.Name)" {
-            $path = $case.Path.
-            Replace('<MANAGED2>', $fixture.Managed2).
-            Replace('<MANAGED>', $fixture.Managed).
-            Replace('<UNRELATED>', $fixture.Unrelated).
-            Replace('<MAIN>', $fixture.Main)
-            $cwd = switch ($case.Cwd) {
-                'Main' { $fixture.Main }
-                'Unmanaged' { $fixture.Unmanaged }
-                'ManagedSub' { Join-Path $fixture.Managed 'scripts' }
-                default { $fixture.Managed }
+    Enable-GuardProbeMemo
+    try {
+        foreach ($case in $fileEditCases) {
+            Invoke-TestCase "File-edit isolation: $($case.Name)" {
+                $path = $case.Path.
+                Replace('<MANAGED2>', $fixture.Managed2).
+                Replace('<MANAGED>', $fixture.Managed).
+                Replace('<UNRELATED>', $fixture.Unrelated).
+                Replace('<MAIN>', $fixture.Main)
+                $cwd = switch ($case.Cwd) {
+                    'Main' { $fixture.Main }
+                    'Unmanaged' { $fixture.Unmanaged }
+                    'ManagedSub' { Join-Path $fixture.Managed 'scripts' }
+                    default { $fixture.Managed }
+                }
+                $decision = Get-AgentFileEditWriteDecision -TargetPath $path `
+                    -Cwd $cwd -ProtectedRepoRoot $fixture.Main -AllowMain $false
+                Assert-Equal $case.Action $decision.Action 'Action'
             }
-            $decision = Get-AgentFileEditWriteDecision -TargetPath $path `
-                -Cwd $cwd -ProtectedRepoRoot $fixture.Main -AllowMain $false
-            Assert-Equal $case.Action $decision.Action 'Action'
         }
+    }
+    finally {
+        Disable-GuardProbeMemo
     }
 
     Write-Host 'Link creation aimed at the main checkout' -ForegroundColor Cyan
