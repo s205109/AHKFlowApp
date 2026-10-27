@@ -1031,10 +1031,14 @@ try {
     # workflow.md gives the round the same rule as tracked work, with the pull request body
     # standing in for PLAN-PROGRESS.md, which a round does not have.
     $r7Gh = New-FakeGh -Body "Stage: 6-verify" -HeadRefName 'chore/wt-backlog-housekeeping'
+    $script:r7Output = ''
     Invoke-WithFakeGh -Gh $r7Gh -Action {
-        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $rd.Root -Edge 'failure' -Pr 500 *> $null
+        $script:r7Output = ((& "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $rd.Root -Edge 'failure' `
+            -Pr 500 *>&1) -join "`n")
     }
     Assert-True ($script:LastTransitionExit -ne 0) 'A round failure edge with no evidence must be refused'
+    Assert-True ($script:r7Output.Contains('REFUSED: A failure edge needs -Evidence: the failing command and its output.')) `
+        "The refusal must ask for -Evidence. Output: $($script:r7Output)"
     Assert-True ((Get-Content -Raw -LiteralPath $r7Gh.BodyFile) -match '(?m)^Stage: 6-verify\r?$') `
         'A refused round failure must leave the body alone'
 
@@ -1300,10 +1304,14 @@ try {
     # Already ready: there is nothing to resume, and Cleanup writes no Stage line for a round
     # either. The merged pull request is the record.
     $f2bGh = New-FakeGh -Body "Stage: 9-ship" -HeadRefName 'chore/wt-backlog-housekeeping' -IsDraft 'false'
+    $script:f2bOutput = ''
     Invoke-WithFakeGh -Gh $f2bGh -Action {
-        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $rd.Root -Edge 'success' -Pr 500 *> $null
+        $script:f2bOutput = ((& "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $rd.Root -Edge 'success' `
+            -Pr 500 *>&1) -join "`n")
     }
     Assert-True ($script:LastTransitionExit -ne 0) 'A round leaving Ship must be refused'
+    Assert-True ($script:f2bOutput.Contains('REFUSED: Cleanup writes no Stage line. The round stays at 9-ship in its pull request body, and the merged pull request is the record.')) `
+        "The refusal must say Cleanup writes no Stage line. Output: $($script:f2bOutput)"
     Assert-True ((Get-Content -Raw -LiteralPath $f2bGh.BodyFile) -match '(?m)^Stage: 9-ship\r?$') `
         'A refused round cleanup must leave the body at 9-ship'
     Assert-True (((Get-Content -Raw -LiteralPath $f2bGh.Log) -join "`n") -notmatch 'pr ready 500\s*$') `
