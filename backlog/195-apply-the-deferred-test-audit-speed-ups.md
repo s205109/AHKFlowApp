@@ -25,16 +25,16 @@ that the Gate and CI finish sooner.
 The four Suites are `StageTransition`, `WatchTask`, `CiPowerShellSuiteRunner` and
 `AgentWorktreeGuard`.
 
-- [ ] Every row of the four Suites in `docs/development/test-audit-deferred.md` is marked applied
+- [x] Every row of the four Suites in `docs/development/test-audit-deferred.md` is marked applied
       or rejected, with a one-line reason for each rejection.
-- [ ] `docs/development/cycle-time-record.md` holds the before and after median of each of the
+- [x] `docs/development/cycle-time-record.md` holds the before and after median of each of the
       four Suites, each Suite run alone, one warm-up plus three counted runs.
-- [ ] Every row timed on its own under D2 of the spec has its two medians recorded, and no kept
+- [x] Every row timed on its own under D2 of the spec has its two medians recorded, and no kept
       change saved less than 1 s.
-- [ ] Every applied MERGE or REMOVE, and every reworked case removed under D5 of the spec, names in
+- [x] Every applied MERGE or REMOVE, and every reworked case removed under D5 of the spec, names in
       its commit body the test that still catches the defect, or the behaviour that is gone.
-- [ ] Every Suite this item changes passes in the Gate.
-- [ ] `baselineSeconds` in `tests/powershell-suites.json` of every changed Suite comes from a
+- [x] Every Suite this item changes passes in the Gate.
+- [x] `baselineSeconds` in `tests/powershell-suites.json` of every changed Suite comes from a
       Gate run at Verify with evidence reuse off.
 
 ## Out of scope
