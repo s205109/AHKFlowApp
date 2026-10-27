@@ -4229,14 +4229,14 @@ try {
     # OutsideProtectedRepository.
     $script:FixtureEntrypoint = New-FixtureEntrypoint -RepoRoot $fixture.Main
 
-    foreach ($toolName in @('Edit', 'Write', 'NotebookEdit')) {
-        Invoke-TestCase "Entrypoint: $toolName into the main checkout is denied" {
-            $target = Join-Path $fixture.Main 'README.md'
-            $result = Invoke-Entrypoint -Adapter 'Claude' -ScriptPath $script:FixtureEntrypoint `
-                -StdIn (New-ClaudeEditPayload $toolName $target $fixture.Managed)
-            Assert-Equal 2 $result.ExitCode 'ExitCode'
-            Assert-Match 'cannot write into the main checkout' $result.StdErr 'StdErr'
-        }
+    # One tool is enough here. The entrypoint sees every writing tool as ToolName 'file-edit', and
+    # the payload cases above pin how Write and NotebookEdit map to it.
+    Invoke-TestCase 'Entrypoint: Edit into the main checkout is denied' {
+        $target = Join-Path $fixture.Main 'README.md'
+        $result = Invoke-Entrypoint -Adapter 'Claude' -ScriptPath $script:FixtureEntrypoint `
+            -StdIn (New-ClaudeEditPayload 'Edit' $target $fixture.Managed)
+        Assert-Equal 2 $result.ExitCode 'ExitCode'
+        Assert-Match 'cannot write into the main checkout' $result.StdErr 'StdErr'
     }
 
     Invoke-TestCase 'Entrypoint: a Write inside the plans repo is allowed' {
