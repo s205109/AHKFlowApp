@@ -1447,6 +1447,8 @@ try {
     $output = & $hostExe -NoProfile -Command @"
 . '$watchScript'
 $heldStub
+# The stubs below answer by call count, not by time, so a 50 ms wait takes the same path as 500 ms.
+function Start-Sleep { param([int] `$Milliseconds) Microsoft.PowerShell.Utility\Start-Sleep -Milliseconds ([Math]::Min(`$Milliseconds, 50)) }
 `$script:readCall = 0
 function Read-TailText {
     param([object] `$Reader)
@@ -2397,6 +2399,8 @@ try {
         & $exe -NoProfile -Command @"
 . '$script'
 $heldStub
+# The stub below answers by call count, not by time, so a 50 ms wait takes the same path as 500 ms.
+function Start-Sleep { param([int] `$Milliseconds) Microsoft.PowerShell.Utility\Start-Sleep -Milliseconds ([Math]::Min(`$Milliseconds, 50)) }
 
 `$script:stateCalls = 0
 function Get-TaskState {
