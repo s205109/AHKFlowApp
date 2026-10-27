@@ -1050,20 +1050,6 @@ try {
     Assert-True ($r7Body -match '2 failed')                'The round body must carry the red evidence'
     Assert-True ($r7Body -match 'fix the parity check')    'The round body must carry the recovery task'
 
-    # --- A tracked item never writes Stage 10 (review finding 8) ---
-    # 9-ship success happens after the merge, and workflow.md says the Stage field is never
-    # written after merge. An item in backlog/done/ must keep reading 'Stage: 9-ship'.
-    $r8 = New-TransitionFixture -Stage '9-ship' -Difficulty 'complex' -AsWorktree -AllBoxesTicked -WithProgress
-    $r8Head = (& git -C $r8.Root rev-parse HEAD).Trim()
-    $r8Gh = New-FakeGh
-    Invoke-WithFakeGh -Gh $r8Gh -Action {
-        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $r8.Root -Item '081' -Edge 'success' -Pr 421 *> $null
-    }
-    Assert-True ($script:LastTransitionExit -ne 0) 'A tracked item must refuse the 10-cleanup transition'
-    Assert-Equal '9-ship' (Get-FixtureStage -Root $r8.Root) 'A shipped item must keep reading 9-ship'
-    Assert-Equal $r8Head (& git -C $r8.Root rev-parse HEAD).Trim() `
-        'A refused cleanup transition must make no commit'
-
     # ================= Copilot review round 2, PR 421 =================
 
     # --- Ship refuses while the linked plan is still open to the citation check (finding 1) ---
@@ -1152,6 +1138,26 @@ try {
     # reopened. This item is in backlog/done/, but no commit moved it there, so the edge cannot
     # read what PLAN-PROGRESS.md held at Ship. It must refuse before it changes anything.
     $rf = New-TransitionFixture -Stage '9-ship' -Difficulty 'complex' -AsWorktree
+
+    # --- A tracked item never writes Stage 10 (review finding 8) ---
+    # 9-ship success happens after the merge, and workflow.md says the Stage field is never
+    # written after merge. An item in backlog/done/ must keep reading 'Stage: 9-ship'. The refusal
+    # comes before any write or gh call, so it runs on $rf before $rf's item moves below.
+    $r8Head = (& git -C $rf.Root rev-parse HEAD).Trim()
+    $r8Gh = New-FakeGh
+    $script:r8Output = ''
+    Invoke-WithFakeGh -Gh $r8Gh -Action {
+        $script:r8Output = ((& "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $rf.Root -Item '081' `
+            -Edge 'success' -Pr 421 *>&1) -join "`n")
+    }
+    Assert-True ($script:LastTransitionExit -ne 0) 'A tracked item must refuse the 10-cleanup transition'
+    Assert-True ($script:r8Output.Contains('REFUSED: Cleanup writes no Stage field. The item stays at 9-ship in backlog/done/, and the merged pull request is the record.')) `
+        "The refusal must say Cleanup writes no Stage field. Output: $($script:r8Output)"
+    Assert-Equal '9-ship' (Get-FixtureStage -Root $rf.Root) 'A shipped item must keep reading 9-ship'
+    Assert-Equal $r8Head (& git -C $rf.Root rev-parse HEAD).Trim() `
+        'A refused cleanup transition must make no commit'
+
+    # $rf's own case: the item moves into backlog/done/ with no commit behind the move.
     $rfDone = Join-Path $rf.Root 'backlog/done/081-automate-stage-transitions.md'
     New-Item -ItemType Directory -Path (Split-Path -Parent $rfDone) -Force | Out-Null
     Move-Item -LiteralPath $rf.ItemPath -Destination $rfDone
