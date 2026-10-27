@@ -658,11 +658,19 @@ test Lane pool with:" would not count. No run printed it.
 | `WatchTask.Tests.ps1` | 42.0 | 31.2 |
 | `CiPowerShellSuiteRunner.Tests.ps1` | 113.4 | 82.0 |
 | `StageTransition.Tests.ps1` | 92.8 | 65.5 |
+| `AgentWorktreeGuard.Tests.ps1` | 42.6 | 38.6 |
 
 The `CiPowerShellSuiteRunner` before runs spread wide: 113.4, 115.1 and 94.7 s. Its after runs
 were 82.0, 83.0 and 80.0 s, so even the fastest before run is 11.7 s above the slowest after run.
 The `StageTransition` before runs were 93.6, 81.6 and 92.8 s, and its after runs 63.4, 65.5 and
 66.5 s, a gap of at least 15.1 s.
+
+The machine changed speed twice while `AgentWorktreeGuard` was timed. Another session ran a build
+during the first before set, so that set was dropped. The second before set ran at a steady slow
+speed, with a median of 136.5 s. The machine then sped up during the after set of G-A. So the
+before and after rows above come from one pair of sets at the end, run back to back at one
+speed. The after set ran first: 41.0, 38.6 and 38.5 s. Then the Suite file of the task's base
+commit ran with the same stopwatch: 42.4, 42.6 and 43.0 s.
 
 ### Changes timed on their own
 
@@ -680,6 +688,7 @@ the before set of the next change. A change stays only when its median fell by 1
 | `StageTransition` | S-A: the loop skips four edges that named cases prove | 53 | 23.69 | 19.83 | kept |
 | `StageTransition` | S-B: four driver refusals run on `$fx` | 54, 56, 60, 69 | 2.86 | 0.52 | kept |
 | `StageTransition` | S-C: six round cases run on `$rd` | 61, 62, 63, 65, 66, 67 | 6.69 | 2.22 | kept |
+| `AgentWorktreeGuard` | G-A: seven decision loops run inside the probe memo | 20, 21, 23 to 27 | 4.02 | 1.62 | kept |
 
 The W-B stopwatch read 24.29 s in the first before set, and 26.32 s after W-A. Its cases did not
 change in between, so the difference is machine drift. Both numbers are more than 1 s above its
@@ -687,6 +696,10 @@ after median. The C-A stopwatch read 12.66 s in the first before set, and 11.19 
 the same reason. The S-B stopwatch read 2.40 s in the first before set and 2.86 s after S-A. The
 S-C stopwatch read 7.25 s, then 6.93 s, then 6.69 s. Each is more than 1 s above its after
 median either way.
+
+The G-A row comes from the back-to-back pair at the end. Its first pair read 13.01 s before and
+2.36 s after, but the machine sped up between the two sets, so that pair overstates the gain.
+Even at the slow speed, the first after run read 3.39 s.
 
 ### Mutations
 
@@ -744,3 +757,20 @@ Two more mutations changed `Resolve-TransitionTarget` in `scripts/stage-transiti
 - `StageTransition`: only 9-ship failure returns `5-simplify`. Under the first mutation, the
   9-ship failure case's own setup Ship is mutated too. Alone, exactly one assertion failed: "A
   Ship failure must set 6-verify".
+
+The `AgentWorktreeGuard` mutations changed `scripts/agents/invoke-agent-worktree-guard.ps1` or
+`.claude/hooks/pre-bash-guard.sh`. Each was undone by writing back the file's saved bytes.
+
+- Row 22: the Claude run left "Allow paths emit no JSON on any adapter", and the Claude Bash
+  Allow exit printed `{}` before `exit 0`, on the same line. Only "Unknown decision action fails
+  closed, verified structurally on every adapter branch" failed. That case only looks for the
+  text of the Allow line, and this mutation changed that text. A second mutation kept the line
+  and printed `{}` on the line before it. The whole Suite passed, so row 22 was rejected.
+- Row 28: the raw prefilter got the same leading boundary as `CANDIDATE_PATTERN`. With the old
+  payload, which held a literal `&&`, the case passed. With `\u0026\u0026`, "Bash shim forwards a
+  payload whose metacharacters are unicode-escaped" failed. Both ran on a slice of the Suite.
+- Rows 102 to 104: one pattern at a time was set to `.`, which matches every input. With both
+  candidate patterns changed, all three reworked cases failed. With `WORKTREE_SESSION_PATTERN`
+  changed, only "Shim: a main-session redirect still exits in Bash" failed. With
+  `WRITE_CANDIDATE_PATTERN` changed, only "Shim: a worktree-session read still exits in Bash"
+  failed. These ran on a slice of the Suite.
