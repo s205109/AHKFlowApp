@@ -89,7 +89,9 @@ Measured 2026-10-27. Before is the baseline commit `ee203e1a`.
 | Their total size, bytes | 114,154 | 23,799 |
 | `MEMORY.md`, characters | 10,349 | 3,742 |
 
-- Deleted: the 33 approved files. Merged: `project_entered_worktree_blocks_pwsh` into
+- Deleted: the 33 approved files. The auto mode classifier refused the agent's delete, so the
+  user runs it from a handed-over script. The After column counts the folder after that run.
+  Merged: `project_entered_worktree_blocks_pwsh` into
   `project_worktree_guard_blocks_git_not_file_writes`.
 - Shrunk: the 7 files the plan names. Kept: 12 files, with `[[links]]` to removed memories
   replaced by the doc that now holds the fact, or dropped.
