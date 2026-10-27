@@ -637,7 +637,9 @@ try {
     # Three states, because only the index is read. A file git never tracked is never named. The
     # closure deletes it first, and a path in neither the index nor the working tree is the fatal
     # pathspec this item exists to fix.
-    $psFix = New-TransitionFixture -Stage '8-review' -Difficulty 'complex' -AsWorktree
+    # Only the index is read, so $sh3 serves. It shipped without ever tracking PLAN-PROGRESS.md,
+    # which is the first state below.
+    $psFix = $sh3
     $psProgress = Join-Path $psFix.Root 'PLAN-PROGRESS.md'
     $psFrom = 'backlog/081-automate-stage-transitions.md'
     $psTo = 'backlog/done/081-automate-stage-transitions.md'
