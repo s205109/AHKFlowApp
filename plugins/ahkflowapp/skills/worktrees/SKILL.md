@@ -326,6 +326,13 @@ permission prompt instead — read on for which is which.
 `AHKFLOW_ALLOW_MAIN=1` overrides **location only**; `AHKFLOW_GUARD_DISABLE=1` disables the **whole**
 command guard and must never be set persistently.
 
+**Creating a worktree from inside another one.** `scripts/new-worktree.ps1` refuses to run from
+a linked worktree. Run the main checkout's copy, with the location set to main, in one
+command:
+`pwsh -NoProfile -Command "Set-Location 'C:\Dev\segocom-github\AHKFlowApp'; & 'C:\Dev\segocom-github\AHKFlowApp\scripts\new-worktree.ps1' -Title '...'"`.
+Then enter the new worktree with `EnterWorktree` and its `path`, and file the item there. In
+Claude Code, an entered session cannot run `pwsh`, so step out first.
+
 ### Authoritative-main version skew
 
 `core.hooksPath` is the absolute main-checkout `.githooks` directory, so after a guard change lands
