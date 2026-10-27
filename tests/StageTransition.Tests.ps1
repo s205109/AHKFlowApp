@@ -664,7 +664,9 @@ try {
     # --- The undo says what it could not put back (backlog 164) ---
     # No end-to-end case reaches the half-done message. A stale index.lock fails the reset but
     # stages nothing, so the undo correctly reports success there. The contract is checked here.
-    $udFix = New-TransitionFixture -Stage '8-review' -Difficulty 'complex' -AsWorktree -WithProgress
+    # Undo-RecordClosure needs an 8-review item with a tracked progress file. $sh2 is one, and its
+    # Ship was refused for the unticked box, so it is unchanged.
+    $udFix = $sh2
     $udRecord = @(Get-BacklogItem -BacklogRoot (Join-Path $udFix.Root 'backlog') |
                   Where-Object { $_.Key -eq '081' })[0]
     $udDestination = Join-Path $udFix.Root 'backlog/done/081-automate-stage-transitions.md'
