@@ -1408,17 +1408,13 @@ Invoke-TestCase 'A bad AHKFLOW_SUITE_MAX_PARALLEL fails the run and names the va
         Add-FakeSuite -Root $root -Name '01-pass.Tests.ps1' -Ending 'pass'
         Set-FixtureManifest -Root $root
 
-        foreach ($bad in @('lots', '0', '-2', '2.5')) {
-            $result = Invoke-Driver -SuiteRoot $root -EnvVar @{ AHKFLOW_SUITE_MAX_PARALLEL = $bad }
-            Assert-True ($result.ExitCode -eq 1) "Value '$bad' must fail the run, got $($result.ExitCode). Output: $($result.Output)"
-            Assert-True ($result.Output -match 'AHKFLOW_SUITE_MAX_PARALLEL') "The message must name the variable. Output: $($result.Output)"
-            Assert-True ($result.Output -match [regex]::Escape($bad)) "The message must name the value. Output: $($result.Output)"
-            Assert-True (-not (Test-MarkerExists -Root $root -Name '01-pass.Tests.ps1')) "No suite may run for value '$bad'."
-            # Clear the markers folder so the next value is checked from a clean state, not against
-            # a marker a regression left behind on an earlier iteration. -LiteralPath with a literal
-            # '*' matched nothing, so the reset never ran.
-            Get-ChildItem -LiteralPath (Join-Path $root 'markers') | Remove-Item -Force
-        }
+        # 'Resolve-SuiteWorkerCount refuses a bad variable and names it' checks every bad value in
+        # process. This one run proves the runner hands the variable over and stops on the refusal.
+        $result = Invoke-RunnerInProcess -Argument @{ SuiteRoot = $root } -EnvVar @{ AHKFLOW_SUITE_MAX_PARALLEL = 'lots' }
+        Assert-True ($result.ExitCode -eq 1) "Value 'lots' must fail the run, got $($result.ExitCode). Output: $($result.Output)"
+        Assert-True ($result.Output -match 'AHKFLOW_SUITE_MAX_PARALLEL') "The message must name the variable. Output: $($result.Output)"
+        Assert-True ($result.Output -match 'lots') "The message must name the value. Output: $($result.Output)"
+        Assert-True (-not (Test-MarkerExists -Root $root -Name '01-pass.Tests.ps1')) "No suite may run for value 'lots'."
     } finally {
         Remove-SuiteFixture -Root $root
     }
@@ -1967,6 +1963,56 @@ Invoke-TestCase 'AllProcessors uses every logical processor and ignores the phys
     Assert-True ((Get-DefaultSuiteWorkerCount -PhysicalCoreCount 0 -LogicalProcessorCount 0 -AllProcessors) -eq 1) 'The floor of one still holds.'
 }
 
+# Backlog 195. The precedence chain is tested here, in process, branch by branch. The runner cases
+# further down keep one run each for the Actions branch and a bad variable, and the -MaxParallel
+# cases keep theirs, so a runner that stops calling this function, or calls it wrongly, still fails.
+Invoke-TestCase 'Resolve-SuiteWorkerCount picks -MaxParallel over the variable and GitHub Actions' {
+    $sizing = Resolve-SuiteWorkerCount -MaxParallel '3' -MaxParallelGiven -EnvMaxParallel '2' -InActions
+    Assert-True ($null -eq $sizing.Error) "No error expected. Got: $($sizing.Error)"
+    Assert-True ($sizing.Count -eq 3) "The explicit value must win. Got: $($sizing.Count)"
+    Assert-True ($sizing.Source -eq '-MaxParallel') "The source must name the parameter. Got: $($sizing.Source)"
+    Assert-True ($null -eq $sizing.PhysicalCoreCount) 'An explicit value must not read the hardware.'
+}
+
+Invoke-TestCase 'Resolve-SuiteWorkerCount picks the variable over GitHub Actions' {
+    # Once on each side of the Actions branch, so the variable is proved to win over both defaults.
+    foreach ($inActions in @($false, $true)) {
+        $sizing = Resolve-SuiteWorkerCount -EnvMaxParallel '2' -InActions:$inActions
+        Assert-True ($null -eq $sizing.Error) "InActions=$($inActions): no error expected. Got: $($sizing.Error)"
+        Assert-True ($sizing.Count -eq 2) "InActions=$($inActions): the variable must win. Got: $($sizing.Count)"
+        Assert-True ($sizing.Source -eq 'AHKFLOW_SUITE_MAX_PARALLEL') "InActions=$($inActions): the source must name the variable. Got: $($sizing.Source)"
+        Assert-True ($null -eq $sizing.PhysicalCoreCount) "InActions=$($inActions): the variable must not read the hardware."
+    }
+}
+
+Invoke-TestCase 'Resolve-SuiteWorkerCount refuses a bad variable and names it' {
+    foreach ($bad in @('lots', '0', '-2', '2.5')) {
+        $sizing = Resolve-SuiteWorkerCount -EnvMaxParallel $bad
+        Assert-True ($sizing.Error -match 'AHKFLOW_SUITE_MAX_PARALLEL') "Value '$bad': the message must name the variable. Got: $($sizing.Error)"
+        Assert-True ($sizing.Error -match [regex]::Escape($bad)) "Value '$bad': the message must name the value. Got: $($sizing.Error)"
+        Assert-True ($sizing.Count -eq 0) "Value '$bad': a refused value must leave the count at 0. Got: $($sizing.Count)"
+    }
+}
+
+Invoke-TestCase 'Resolve-SuiteWorkerCount uses every logical processor inside GitHub Actions' {
+    # A hosted runner has fewer physical cores than processors, and 75% of them would cut the CI
+    # job to a quarter of the lanes it uses today.
+    $sizing = Resolve-SuiteWorkerCount -InActions
+    Assert-True ($sizing.Count -eq [Math]::Max(1, [Environment]::ProcessorCount)) "Actions must take every processor. Got: $($sizing.Count)"
+    Assert-True ($sizing.Source -match 'GitHub Actions') "The source must name GitHub Actions. Got: $($sizing.Source)"
+    Assert-True ($null -eq $sizing.PhysicalCoreCount) 'The Actions branch must not read the hardware.'
+}
+
+Invoke-TestCase 'Resolve-SuiteWorkerCount reads the hardware only by default' {
+    # A blank variable is no value, so it must fall through to the default.
+    $sizing = Resolve-SuiteWorkerCount -EnvMaxParallel '   '
+    $expected = Get-DefaultSuiteWorkerCount -PhysicalCoreCount (Get-PhysicalCoreCount) -LogicalProcessorCount ([Environment]::ProcessorCount)
+    Assert-True ($null -eq $sizing.Error) "No error expected. Got: $($sizing.Error)"
+    Assert-True ($sizing.Count -eq $expected) "Expected the default worker count $expected. Got: $($sizing.Count)"
+    Assert-True ($sizing.Source.StartsWith('default: ')) "The source must say the number came from the default. Got: $($sizing.Source)"
+    Assert-True ($null -ne $sizing.PhysicalCoreCount) 'The default must hand back the core count it read, for the Lane proposal.'
+}
+
 Invoke-TestCase 'The cpuinfo parser counts physical cores, not hardware threads' {
     # Two cores, two threads each. Four processor blocks, two distinct core ids.
     $text = @(
@@ -2001,54 +2047,15 @@ Invoke-TestCase 'The cpuinfo parser reports nothing when the text names no cores
     Assert-True ((ConvertFrom-ProcCpuInfoCoreCount -Text 'nonsense') -eq 0) 'Text that is not cpuinfo must report zero.'
 }
 
-# GITHUB_ACTIONS is cleared on purpose in the cases below that assert the developer default. This
-# suite runs inside Actions in the suites job, and a run there takes the all-processors branch,
-# which is not the branch those cases are about. AHKFLOW_SUITE_MAX_PARALLEL is cleared for the
-# same kind of reason: a developer may have set it in their own shell, and it would hide the
-# default.
-Invoke-TestCase 'A developer run with no worker argument uses 75% of the physical cores' {
-    $expected = Get-DefaultSuiteWorkerCount -PhysicalCoreCount (Get-PhysicalCoreCount)
-
-    $root = New-SuiteFixture
-    try {
-        # One more suite than the expected worker count, so the shared-suite cap cannot lower the
-        # number and make a broken default look right.
-        for ($i = 1; $i -le $expected + 1; $i++) {
-            Add-FakeSuite -Root $root -Name ('{0:d2}-pass.Tests.ps1' -f $i) -Ending 'pass'
-        }
-        Set-FixtureManifest -Root $root
-
-        # A blank variable must fall through to the default, so this run sets one.
-        $result = Invoke-Driver -SuiteRoot $root -EnvVar @{ AHKFLOW_SUITE_MAX_PARALLEL = '   '; GITHUB_ACTIONS = $null }
-        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
-        Assert-True ($result.Output -match "Workers: $expected\b") "Expected the default worker count $expected. Output: $($result.Output)"
-        Assert-True ($result.Output -match 'Workers: \d+ \(default:') "The line must say the number came from the default. Output: $($result.Output)"
-    } finally {
-        Remove-SuiteFixture -Root $root
-    }
-}
-
 Invoke-TestCase 'A run inside GitHub Actions uses every logical processor' {
     # The whole point of the branch: a hosted runner has fewer physical cores than processors, and
     # 75% of them would cut the CI job to a quarter of the lanes it uses today.
-    $expected = [Math]::Max(1, [Environment]::ProcessorCount)
-
-    $root = New-SuiteFixture
-    try {
-        for ($i = 1; $i -le $expected + 1; $i++) {
-            Add-FakeSuite -Root $root -Name ('{0:d2}-pass.Tests.ps1' -f $i) -Ending 'pass'
-        }
-        Set-FixtureManifest -Root $root
-
-        $result = Invoke-Driver -SuiteRoot $root -EnvVar @{ AHKFLOW_SUITE_MAX_PARALLEL = $null; GITHUB_ACTIONS = 'true' }
-        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
-        Assert-True ($result.Output -match "Workers: $expected \(GitHub Actions:") "Actions must take every processor. Output: $($result.Output)"
-    } finally {
-        Remove-SuiteFixture -Root $root
-    }
-}
-
-Invoke-TestCase 'AHKFLOW_SUITE_MAX_PARALLEL still wins over both defaults and the line names it' {
+    #
+    # The Resolve-SuiteWorkerCount cases prove the branch in process. This run proves the runner
+    # passes -InActions on. DOTNET_PROCESSOR_COUNT makes the child report two processors, fewer
+    # than the three suites, so the shared-suite cap cannot hide a wrong count.
+    # AHKFLOW_SUITE_MAX_PARALLEL is cleared because a developer may have set it in their own
+    # shell, and it would win over the Actions branch.
     $root = New-SuiteFixture
     try {
         foreach ($name in @('01-a.Tests.ps1', '02-b.Tests.ps1', '03-c.Tests.ps1')) {
@@ -2056,12 +2063,9 @@ Invoke-TestCase 'AHKFLOW_SUITE_MAX_PARALLEL still wins over both defaults and th
         }
         Set-FixtureManifest -Root $root
 
-        # Once on each side of the Actions branch, so the variable is proved to win over both.
-        foreach ($actions in @($null, 'true')) {
-            $result = Invoke-Driver -SuiteRoot $root -EnvVar @{ AHKFLOW_SUITE_MAX_PARALLEL = '2'; GITHUB_ACTIONS = $actions }
-            Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
-            Assert-True ($result.Output -match 'Workers: 2 \(AHKFLOW_SUITE_MAX_PARALLEL\)') "The variable must win and be named. Output: $($result.Output)"
-        }
+        $result = Invoke-Driver -SuiteRoot $root -EnvVar @{ AHKFLOW_SUITE_MAX_PARALLEL = $null; GITHUB_ACTIONS = 'true'; DOTNET_PROCESSOR_COUNT = '2' }
+        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
+        Assert-True ($result.Output -match 'Workers: 2 \(GitHub Actions: all 2 logical processors\)') "Actions must take every processor. Output: $($result.Output)"
     } finally {
         Remove-SuiteFixture -Root $root
     }

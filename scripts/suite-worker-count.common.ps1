@@ -194,3 +194,65 @@ function Get-PhysicalCoreCount {
 
     return 0
 }
+
+# The one chain that settles how many suites run at once, highest precedence first. Backlog 195.
+# run-powershell-suites.ps1 calls it once and prints the answer on its Workers line. It lives here,
+# apart from the runner, so a test can ask each branch for its answer in process.
+#
+# -MaxParallelGiven says whether the caller bound -MaxParallel at all. The value alone cannot say
+# it: '-MaxParallel $null' binds '', and the run must refuse that, not fall through to a default.
+#
+# The answer has four parts. Count and Source are what the Workers line prints. PhysicalCoreCount
+# is set only by the default branch, the only one that reads the hardware, so an owner's Lane
+# proposal can reuse it. Error holds the message for a value the run must refuse. Count is then 0,
+# and the caller fails the run.
+function Resolve-SuiteWorkerCount {
+    param(
+        [AllowEmptyString()][string] $MaxParallel = '',
+        [switch] $MaxParallelGiven,
+        [AllowNull()][AllowEmptyString()][string] $EnvMaxParallel,
+        [switch] $InActions
+    )
+
+    $result = [pscustomobject]@{ Count = 0; Source = $null; PhysicalCoreCount = $null; Error = $null }
+    $parsed = 0
+
+    # "An explicit value wins over the variable" has to mean this: validating the variable's text
+    # before the -MaxParallel branch is checked would fail the run on a value the caller has already
+    # overridden. A blank or whitespace variable is no value, so it falls through to the default.
+    if ($MaxParallelGiven) {
+        if (-not [int]::TryParse($MaxParallel.Trim(), [ref] $parsed) -or $parsed -lt 1) {
+            $result.Error = "-MaxParallel must be a whole number of at least one. Got: '$MaxParallel'"
+            return $result
+        }
+        $result.Count = $parsed
+        $result.Source = '-MaxParallel'
+        return $result
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($EnvMaxParallel)) {
+        if (-not [int]::TryParse($EnvMaxParallel.Trim(), [ref] $parsed) -or $parsed -lt 1) {
+            # Falling back to the default here would hide a misconfigured CI job for months.
+            $result.Error = "AHKFLOW_SUITE_MAX_PARALLEL must be a whole number of at least one. Got: '$EnvMaxParallel'"
+            return $result
+        }
+        $result.Count = $parsed
+        $result.Source = 'AHKFLOW_SUITE_MAX_PARALLEL'
+        return $result
+    }
+
+    if ($InActions) {
+        $result.Count = Get-DefaultSuiteWorkerCount -PhysicalCoreCount 0 -AllProcessors
+        $result.Source = "GitHub Actions: all $([Environment]::ProcessorCount) logical processors"
+        return $result
+    }
+
+    # Adaptive Worker sizing queries hardware here. Owners reuse this result for their Lane proposal.
+    # Overrides skip this query; only an owner still needs a proposal.
+    $physicalCoreCount = Get-PhysicalCoreCount
+    $logicalProcessorCount = [Environment]::ProcessorCount
+    $result.Count = Get-DefaultSuiteWorkerCount -PhysicalCoreCount $physicalCoreCount -LogicalProcessorCount $logicalProcessorCount
+    $result.Source = 'default: ' + (Get-DefaultSuiteWorkerReason -PhysicalCoreCount $physicalCoreCount -LogicalProcessorCount $logicalProcessorCount)
+    $result.PhysicalCoreCount = $physicalCoreCount
+    return $result
+}
