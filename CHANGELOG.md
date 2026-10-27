@@ -30,3 +30,4 @@ This changelog starts forward-only. Existing releases before this file was intro
 ### Fixed
 
 - The changelog page shows commands and names as code, and bold text as bold. It no longer shows the backtick and asterisk characters around them.
+- The CLI quickstart card shows `ahkflow hotstring new` and `ahkflow hotstring list`. It used to show `ahkflow new` and `ahkflow list`, which the CLI does not have. It also says to replace `work` with an existing profile name.
