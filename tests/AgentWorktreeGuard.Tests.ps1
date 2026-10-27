@@ -1961,17 +1961,49 @@ try {
         Remove-ShimHarness $candidateHarness
     }
 
-    Invoke-TestCase 'Bash shim forwards a payload whose metacharacters are unicode-escaped' {
-        # Windows PowerShell's ConvertTo-Json escapes & as &, so the raw payload never shows
-        # a literal delimiter before the git token. The shim must still forward it.
-        $escaped = '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":' +
-        '{"command":"cd f&&git commit -m test"},"cwd":"' +
-        ($script:RealMainCheckout -replace '\\', '\\') + '"}'
-        $result = Invoke-BashShim -StdIn $escaped -ShimArguments @('Claude')
-        Assert-Equal 0 $result.ExitCode 'ExitCode'
-        $json = $result.StdOut | ConvertFrom-Json
-        Assert-Equal 'deny' $json.hookSpecificOutput.permissionDecision 'permissionDecision'
-        Assert-Match 'BLOCKED: agent Git mutations' $json.hookSpecificOutput.permissionDecisionReason 'reason'
+    # These three cases test what the shim itself decides: whether to forward, and with which
+    # adapter. One stub harness serves all three. The stub prints its marker and the adapter it was
+    # given. The policy result of each command is pinned in-process by the tables above.
+    $shimHarness = New-ShimHarness -ShimFileName 'pre-bash-guard.sh'
+    try {
+        Invoke-TestCase 'Bash shim forwards a payload whose metacharacters are unicode-escaped' {
+            # Windows PowerShell's ConvertTo-Json escapes & as \u0026, so the raw payload never shows
+            # a literal delimiter before the git token. The shim must still forward it.
+            $escaped = '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":' +
+            '{"command":"cd f\u0026\u0026git commit -m test"},"cwd":"' +
+            ($script:RealMainCheckout -replace '\\', '\\') + '"}'
+            $result = Invoke-HarnessShim -Harness $shimHarness -StdIn $escaped -ShimArguments @('Claude')
+            Assert-Equal 0 $result.ExitCode 'ExitCode'
+            Assert-Match $script:ShimStubMarker $result.StdErr 'Must forward to the entrypoint'
+        }
+
+        Invoke-TestCase 'Bash shim selects Copilot from a native toolArgs payload with no argument' {
+            $result = Invoke-HarnessShim -Harness $shimHarness `
+                -StdIn (New-CopilotPayload 'git commit -m test' $script:RealMainCheckout)
+            Assert-Equal 0 $result.ExitCode 'ExitCode'
+            Assert-Match 'adapter=Copilot' $result.StdErr 'Must select the Copilot adapter'
+        }
+
+        Invoke-TestCase 'Bash shim stays correct when jq is unavailable' {
+            # Drop only the jq directories from PATH. PowerShell must stay reachable, otherwise the
+            # shim's missing-host branch would allow the command and never reach the stub.
+            $pathWithoutJq = (
+                $env:PATH -split ';' |
+                    Where-Object {
+                        $_ -and -not (Test-Path -LiteralPath (Join-Path $_ 'jq.exe')) -and
+                        -not (Test-Path -LiteralPath (Join-Path $_ 'jq'))
+                    }
+            ) -join ';'
+
+            $result = Invoke-HarnessShim -Harness $shimHarness `
+                -StdIn (New-CopilotPayload 'git commit -m test' $script:RealMainCheckout) `
+                -EnvironmentOverrides @{ PATH = $pathWithoutJq }
+            Assert-Match $script:ShimStubMarker $result.StdErr 'Must forward to the entrypoint'
+            Assert-Match 'adapter=Auto' $result.StdErr 'Without jq the shim must forward as Auto'
+        }
+    }
+    finally {
+        Remove-ShimHarness $shimHarness
     }
 
     Invoke-TestCase 'Bash shim forwards an rtk-wrapped commit and produces the deny JSON' {
@@ -1992,32 +2024,6 @@ try {
         $result = Invoke-BashShim -StdIn 'not json' -EnvironmentOverrides @{ AHKFLOW_GUARD_DISABLE = '1' }
         Assert-Equal 0 $result.ExitCode 'ExitCode'
         Assert-Match 'AHKFLOW_GUARD_DISABLE=1' $result.StdErr 'StdErr'
-    }
-
-    Invoke-TestCase 'Bash shim selects Copilot from a native toolArgs payload with no argument' {
-        $result = Invoke-BashShim -StdIn (New-CopilotPayload 'git commit -m test' $script:RealMainCheckout)
-        Assert-Equal 0 $result.ExitCode 'ExitCode'
-        $json = $result.StdOut | ConvertFrom-Json
-        Assert-Equal 'deny' $json.permissionDecision 'permissionDecision'
-        Assert-Match '\[agent-guard:Copilot\]' $result.StdErr 'diagnostic names Copilot'
-    }
-
-    Invoke-TestCase 'Bash shim stays correct when jq is unavailable' {
-        # Drop only the jq directories from PATH - PowerShell must stay reachable, otherwise the
-        # shim's missing-host branch would allow the command and the test would pass vacuously.
-        $pathWithoutJq = (
-            $env:PATH -split ';' |
-                Where-Object {
-                    $_ -and -not (Test-Path -LiteralPath (Join-Path $_ 'jq.exe')) -and
-                    -not (Test-Path -LiteralPath (Join-Path $_ 'jq'))
-                }
-        ) -join ';'
-
-        $result = Invoke-BashShim -StdIn (New-CopilotPayload 'git commit -m test' $script:RealMainCheckout) `
-            -EnvironmentOverrides @{ PATH = $pathWithoutJq }
-        $json = $result.StdOut | ConvertFrom-Json
-        Assert-Equal 'deny' $json.permissionDecision 'permissionDecision'
-        Assert-Match '\[agent-guard:Copilot\]' $result.StdErr 'diagnostic names Copilot'
     }
 
     Invoke-TestCase 'Bash shim falls back to powershell.exe when pwsh is unavailable' {
