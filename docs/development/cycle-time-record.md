@@ -784,3 +784,41 @@ The `AgentWorktreeGuard` mutations changed `scripts/agents/invoke-agent-worktree
   exits. With `{}` on stdout, the main-session redirect case and the worktree-session read case
   failed. With a line on stderr, the noncandidate case failed. Before the review fix, all three
   cases passed under both mutations.
+
+### Gate at Verify
+
+The Gate ran at `a2a9d9e4` with `AHKFLOW_GATE_REUSE=off`, and every step passed. The PowerShell
+step printed `Gate evidence: off (AHKFLOW_GATE_REUSE=off)` and no `REUSED` line. It printed
+`Workers: 6 (AHKFLOW_SUITE_MAX_PARALLEL)`, because the user-level environment sets that variable
+to 6. Two runs from other worktrees shared the test Lane pool: a PowerShell run and a Fast run. So
+these seconds come from a loaded machine, as most Gates on it do.
+
+| Suite | Seconds |
+|---|---|
+| `WatchTask.Tests.ps1` | 43.6 |
+| `CiPowerShellSuiteRunner.Tests.ps1` | 118.3 |
+| `StageTransition.Tests.ps1` | 109.7 |
+| `AgentWorktreeGuard.Tests.ps1` | 77.9 |
+
+The first Gate at Verify, at `da0ed8e4`, was red. `CitationFreshness.Tests.ps1` failed on two
+citations in a comment of `tests/AgentWorktreeGuard.Tests.ps1`. The comment cites two tables in
+its own file, and Task 4 and Simplify moved both tables down by 25 lines. A citation into its own
+file also finds its quoted text on its own line. So the check found the text on two lines, and the
+move was an error, not a warning. Commit `d7c02d19` fixed the two line numbers. The four Suites
+of this item passed in that run as well.
+
+### Baselines refreshed
+
+`baselineSeconds` in `tests/powershell-suites.json` now holds each Suite's seconds from the Gate
+above:
+
+| Suite | Before | After |
+|---|---|---|
+| `WatchTask.Tests.ps1` | 70.2 | 43.6 |
+| `CiPowerShellSuiteRunner.Tests.ps1` | 150.6 | 118.3 |
+| `StageTransition.Tests.ps1` | 136.6 | 109.7 |
+| `AgentWorktreeGuard.Tests.ps1` | 86.7 | 77.9 |
+
+The before values come from the backlog 188 run, on a different load. So the difference between
+the two columns does not measure this item's gain. The run-alone medians at the top of this
+section measure it.
