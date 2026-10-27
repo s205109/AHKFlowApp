@@ -24,8 +24,9 @@ session to be short and current, so that sessions spend their context on the wor
 
 Each criterion is refined in the spec named below. Tick a box only when its words hold literally.
 
-- [ ] The memory folder `~/.claude/projects/C--Dev-segocom-github-AHKFlowApp/memory/` is a git
-      repository of its own, and its first commit holds the folder as it was before this item.
+- [ ] The `~/.claude` repository holds a commit of the memory folder
+      `~/.claude/projects/c--Dev-segocom-github-AHKFlowApp/memory/` as it was before this item,
+      and the item records that commit's hash.
 - [ ] The user approved the removal list before any memory file was deleted, and the item records
       that approval.
 - [ ] A memory that moved into docs went to a file that is not always loaded.
