@@ -211,13 +211,11 @@ if ($null -ne $sizing.Error) {
 }
 $workerCount = $sizing.Count
 $workerSource = $sizing.Source
-$physicalCoreCount = $sizing.PhysicalCoreCount
-$hasPhysicalCoreCount = $null -ne $sizing.PhysicalCoreCount
 
 $laneProposal = 0
 if ($laneRole -eq 'owner') {
-    $laneProposal = if ($hasPhysicalCoreCount) {
-        Get-AhkFlowLaneProposal -PhysicalCoreCount $physicalCoreCount
+    $laneProposal = if ($null -ne $sizing.PhysicalCoreCount) {
+        Get-AhkFlowLaneProposal -PhysicalCoreCount $sizing.PhysicalCoreCount
     } else {
         Get-AhkFlowLaneProposal
     }
