@@ -57,7 +57,8 @@ app tells me.
   live API. A parse test (`CliQuickstartCardTests.cs`) proves that each printed line parses against
   `RootCli.Build` with no error and reaches a command with an action. The CLI integration tests run
   the same options against a real API: `-p` for `hotstring new`, `--profile` and `--search` for
-  `hotstring list`, and `--profile` for `download ahk`. That `--grep` is an alias of `--search`
-  rests on reading `ListHotstringCommand.cs`, not on a test that passes `--grep`.
+  `hotstring list`, and `--profile` for `download ahk`. The parse test passes `--grep` through the
+  parser. No integration test invokes `--grep`. Both names share one option, which the action reads
+  in `ListHotstringCommand.cs`.
 - Spec: none — the CLI's own command tree already defines the correct commands.
 - Plan: `docs/superpowers/plans/2026-10-27-cli-quickstart-commands-plan-197.md`
