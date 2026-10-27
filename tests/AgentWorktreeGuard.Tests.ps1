@@ -2014,10 +2014,17 @@ try {
         Assert-Match 'BLOCKED: agent Git mutations' $json.hookSpecificOutput.permissionDecisionReason 'reason'
     }
 
+    # Proved against the stub entrypoint. The real entrypoint allows 'rg' silently, so a forwarded
+    # run against it also exits 0 with nothing on stderr.
     Invoke-TestCase 'Bash shim exits fast for a noncandidate command despite a matching cwd' {
-        $result = Invoke-BashShim -StdIn (New-ClaudePayload 'rg -n "Goal" README.md' $fixture.Main) -ShimArguments @('Claude')
-        Assert-Equal 0 $result.ExitCode 'ExitCode'
-        Assert-Equal '' $result.StdErr.Trim() 'StdErr'
+        $harness = New-ShimHarness -ShimFileName 'pre-bash-guard.sh'
+        try {
+            $result = Invoke-HarnessShim -Harness $harness `
+                -StdIn (New-ClaudePayload 'rg -n "Goal" README.md' $fixture.Main) -ShimArguments @('Claude')
+            Assert-Equal 0 $result.ExitCode 'ExitCode'
+            Assert-True ($result.StdErr -notmatch $script:ShimStubMarker) 'Must not start PowerShell'
+        }
+        finally { Remove-ShimHarness -Harness $harness }
     }
 
     Invoke-TestCase 'Bash shim honors AHKFLOW_GUARD_DISABLE before doing any work' {
@@ -4301,16 +4308,32 @@ try {
         finally { Remove-ShimHarness -Harness $harness }
     }
 
+    # The next two cases are proved against the stub entrypoint too. A forwarded run against the
+    # real entrypoint also exits 0 with no decision payload, because the write layer allows a
+    # main session and allows a read.
     Invoke-TestCase 'Shim: a main-session redirect still exits in Bash' {
-        $result = Invoke-BashShim -StdIn (New-ClaudePayload $script:RealWriteCommand $script:RealMainCheckout)
-        Assert-Equal 0 $result.ExitCode 'Exit code'
-        Assert-Equal '' $result.StdOut.Trim() 'Must produce no decision payload'
+        $harness = New-ShimHarness -ShimFileName 'pre-bash-guard.sh'
+        try {
+            $result = Invoke-HarnessShim -Harness $harness `
+                -StdIn (New-ClaudePayload $script:RealWriteCommand $script:RealMainCheckout)
+            Assert-Equal 0 $result.ExitCode 'Exit code'
+            Assert-True ($result.StdErr -notmatch $script:ShimStubMarker) 'Must not start PowerShell'
+        }
+        finally { Remove-ShimHarness -Harness $harness }
     }
 
+    # The cwd is a worktree path under the real main checkout, so the case does not depend on where
+    # the suite itself runs.
     Invoke-TestCase 'Shim: a worktree-session read still exits in Bash' {
-        $result = Invoke-BashShim -StdIn (New-ClaudePayload 'cat README.md' $suiteRoot)
-        Assert-Equal 0 $result.ExitCode 'Exit code'
-        Assert-Equal '' $result.StdOut.Trim() 'Must produce no decision payload'
+        $harness = New-ShimHarness -ShimFileName 'pre-bash-guard.sh'
+        try {
+            $worktreeCwd = Join-Path $script:RealMainCheckout '.claude\worktrees\probe'
+            $result = Invoke-HarnessShim -Harness $harness `
+                -StdIn (New-ClaudePayload 'cat README.md' $worktreeCwd)
+            Assert-Equal 0 $result.ExitCode 'Exit code'
+            Assert-True ($result.StdErr -notmatch $script:ShimStubMarker) 'Must not start PowerShell'
+        }
+        finally { Remove-ShimHarness -Harness $harness }
     }
 
     Write-Host 'Bash shim prefilter for file-edit tool calls' -ForegroundColor Cyan
