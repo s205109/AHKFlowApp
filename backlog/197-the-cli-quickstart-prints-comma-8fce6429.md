@@ -20,10 +20,10 @@ app tells me.
 
 ## Acceptance criteria
 
-- [ ] Every command on the CLI quickstart card runs as printed against the current CLI, for a
+- [x] Every command on the CLI quickstart card runs as printed against the current CLI, for a
   signed-in owner who has the profile the command names. The card tells the owner to replace
   `work` with an existing profile name.
-- [ ] A test or a check proves each quickstart command names a command the CLI actually defines.
+- [x] A test or a check proves each quickstart command names a command the CLI actually defines.
 
 ## Out of scope
 
@@ -53,5 +53,11 @@ app tells me.
   `Default`, so a new owner who copies a `--profile work` line gets exit code 2. The criterion used
   to promise that every line runs for everyone. It now states the prerequisite, and the card says
   what to replace.
+- **How criterion 1 was checked, on 2026-10-27.** Nobody ran the three printed strings against a
+  live API. A parse test (`CliQuickstartCardTests.cs`) proves that each printed line parses against
+  `RootCli.Build` with no error and reaches a command with an action. The CLI integration tests run
+  the same options against a real API: `-p` for `hotstring new`, `--profile` and `--search` for
+  `hotstring list`, and `--profile` for `download ahk`. That `--grep` is an alias of `--search`
+  rests on reading `ListHotstringCommand.cs`, not on a test that passes `--grep`.
 - Spec: none — the CLI's own command tree already defines the correct commands.
 - Plan: `docs/superpowers/plans/2026-10-27-cli-quickstart-commands-plan-197.md`
