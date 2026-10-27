@@ -1743,7 +1743,8 @@ Invoke-TestCase 'The timings file is written once, after the last suite ends' {
             "`$watch = [System.Diagnostics.Stopwatch]::StartNew()"
             'while ($watch.Elapsed.TotalSeconds -lt 15 -and -not (Test-Path -LiteralPath $done)) { Start-Sleep -Milliseconds 25 }'
             'if (-not (Test-Path -LiteralPath $done)) { throw ''01-first never finished; the watcher proved nothing.'' }'
-            'Start-Sleep -Milliseconds 1500'
+            # A per-suite save lands within milliseconds of 01-first ending, so 500 ms is enough.
+            'Start-Sleep -Milliseconds 500'
             "`$timings = $(ConvertTo-ScriptLiteral (Join-Path $fake 'TestResults\progress\run-powershell-suites.json'))"
             "`$seen = if (Test-Path -LiteralPath `$timings) { 'present' } else { 'absent' }"
             "Set-Content -LiteralPath $(ConvertTo-ScriptLiteral (Join-Path $fake 'markers\sawtimings')) -Value `$seen -Encoding ascii"
