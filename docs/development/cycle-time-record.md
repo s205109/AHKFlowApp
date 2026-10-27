@@ -758,6 +758,12 @@ Two more mutations changed `Resolve-TransitionTarget` in `scripts/stage-transiti
   9-ship failure case's own setup Ship is mutated too. Alone, exactly one assertion failed: "A
   Ship failure must set 6-verify".
 
+After review, rows 62 and 67 also assert their exact refusal text. Two mutations of
+`Invoke-RoundTransition` in `scripts/take-stage-transition.ps1` proved it, each on a slice. One
+refused every round before the evidence check, and the other refused it after the pull request
+check. Under each, only the new text assertion of its own case failed. The old exit-code and body
+assertions passed under both.
+
 The `AgentWorktreeGuard` mutations changed `scripts/agents/invoke-agent-worktree-guard.ps1` or
 `.claude/hooks/pre-bash-guard.sh`. Each was undone by writing back the file's saved bytes.
 
