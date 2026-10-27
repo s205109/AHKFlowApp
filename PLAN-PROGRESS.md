@@ -3,3 +3,4 @@
 Plan: `docs/superpowers/plans/2026-10-27-prune-memories-and-instruction-files-plan-192.md`
 
 - Task 1 (baseline and approval): done at ae794709. Tests: plan citation check passes; all 34 rows checked by disposition. Deferrals: none.
+- Task 2 (facts into docs): done at bcbbf993. Tests: process parity, SkillParity, SkillLayout, citation freshness and CitationFreshness.Tests.ps1 pass; 13 moved-citation warnings in files this branch does not change. Deferrals: none.
