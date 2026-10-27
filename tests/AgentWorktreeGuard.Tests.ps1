@@ -264,6 +264,16 @@ function Disable-GuardProbeMemo {
     $script:GuardProbeMemo = $null
 }
 
+# Runs one loop with the cache on, and always switches it off again. Each loop gets its own
+# cache, so no answer carries over from one loop to the next.
+function Invoke-WithGuardProbeMemo {
+    param([scriptblock] $Loop)
+
+    Enable-GuardProbeMemo
+    try { & $Loop }
+    finally { Disable-GuardProbeMemo }
+}
+
 function Remove-ShimHarness {
     param([object] $Harness)
 
@@ -1207,17 +1217,13 @@ try {
         'git remote prune origin',
         'git fetch --prune' # already unguarded (not a recognized mutating subcommand) - pin
     )
-    Enable-GuardProbeMemo
-    try {
+    Invoke-WithGuardProbeMemo {
         foreach ($command in $tier2AllowCases) {
             Invoke-TestCase "Tier 2 unconditional allow from main: $command" {
                 $decision = Invoke-AgentGuardPolicy -Command $command -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
                 Assert-Equal 'Allow' $decision.Action 'Action'
             }
         }
-    }
-    finally {
-        Disable-GuardProbeMemo
     }
 
     # The force/destructive sibling of each Tier 2 case above can disturb the working tree (or, for
@@ -1241,8 +1247,7 @@ try {
         # lowercase -b clustered/exact-match test coverage above (via $tier2AllowCases) stays Allow.
         "git worktree add -B topic $somewhere"
     )
-    Enable-GuardProbeMemo
-    try {
+    Invoke-WithGuardProbeMemo {
         foreach ($command in $forceVariantAskCases) {
             Invoke-TestCase "Force/destructive variant asks (not Tier 2) from main: $command" {
                 $decision = Invoke-AgentGuardPolicy -Command $command -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
@@ -1251,26 +1256,19 @@ try {
             }
         }
     }
-    finally {
-        Disable-GuardProbeMemo
-    }
 
     # Tier 1a: guarded, not Tier 2, not commit - a permission prompt instead of a silent Deny.
     $tier1aAskCases = @(
         'git checkout other', 'git switch other', 'git reset HEAD~1', 'git stash', 'git push',
         'git tag v1.0.0', 'git add .', 'git config user.name x'
     )
-    Enable-GuardProbeMemo
-    try {
+    Invoke-WithGuardProbeMemo {
         foreach ($command in $tier1aAskCases) {
             Invoke-TestCase "Tier 1a asks from main: $command" {
                 $decision = Invoke-AgentGuardPolicy -Command $command -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
                 Assert-Equal 'Ask' $decision.Action 'Action'
             }
         }
-    }
-    finally {
-        Disable-GuardProbeMemo
     }
 
     # Tier 1b: only commit stays a silent Deny. `git commit -m test` and the unbalanced-quote case
@@ -1304,17 +1302,13 @@ try {
     # Allow when it is not targeting the main checkout at all. From a managed cwd every command takes
     # the same path, and the tier only matters when the target is blocked, so one command per tier
     # is enough. The tables above pin each command's tier.
-    Enable-GuardProbeMemo
-    try {
+    Invoke-WithGuardProbeMemo {
         foreach ($command in @('git worktree prune', 'git branch -D topic', 'git checkout other')) {
             Invoke-TestCase "No regression in a managed worktree: $command" {
                 $decision = Invoke-AgentGuardPolicy -Command $command -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main
                 Assert-Equal 'Allow' $decision.Action 'Action'
             }
         }
-    }
-    finally {
-        Disable-GuardProbeMemo
     }
 
     Invoke-TestCase 'AHKFLOW_ALLOW_MAIN=1 downgrades a Tier 1a Ask to Warn' {
@@ -1335,8 +1329,7 @@ try {
         @{ Bare = 'git commit -m x'; Wrapped = 'rtk git commit -m x' },
         @{ Bare = 'git commit --amend'; Wrapped = 'rtk git commit --amend' }
     )
-    Enable-GuardProbeMemo
-    try {
+    Invoke-WithGuardProbeMemo {
         foreach ($pair in $wrapperParityPairs) {
             Invoke-TestCase "Wrapped command matches its bare form: $($pair.Wrapped)" {
                 $bareDecision = Invoke-AgentGuardPolicy -Command $pair.Bare -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
@@ -1345,9 +1338,6 @@ try {
                 Assert-Equal $bareDecision.Rule $wrappedDecision.Rule 'Rule'
             }
         }
-    }
-    finally {
-        Disable-GuardProbeMemo
     }
 
     # No wrapped-command case above ever runs from a managed worktree - every Cwd is $fixture.Main.
@@ -1367,8 +1357,7 @@ try {
         'rtk --skip-env', 'rtk --ultra-compact --skip-env', 'rtk proxy', 'rtk --ultra-compact proxy',
         'rtk rtk', 'SKIP_COVERAGE_HOOK=1 rtk', 'rtk err', 'rtk summary', 'rtk test'
     )
-    Enable-GuardProbeMemo
-    try {
+    Invoke-WithGuardProbeMemo {
         foreach ($prefix in $wrapperSpellings) {
             Invoke-TestCase "Wrapper spelling still denies a commit: $prefix git commit -m x" {
                 $decision = Invoke-AgentGuardPolicy -Command "$prefix git commit -m x" `
@@ -1377,9 +1366,6 @@ try {
                 Assert-Equal 'agent-main-git-mutation' $decision.Rule 'Rule'
             }
         }
-    }
-    finally {
-        Disable-GuardProbeMemo
     }
 
     Invoke-TestCase 'Commit still dominates through a chain of wrapped segments' {
@@ -1961,8 +1947,8 @@ try {
         Remove-ShimHarness $candidateHarness
     }
 
-    # These three cases test what the shim itself decides: whether to forward, and with which
-    # adapter. One stub harness serves all three. The stub prints its marker and the adapter it was
+    # These four cases test what the shim itself decides: whether to forward, and with which
+    # adapter. One stub harness serves all four. The stub prints its marker and the adapter it was
     # given. The policy result of each command is pinned in-process by the tables above.
     $shimHarness = New-ShimHarness -ShimFileName 'pre-bash-guard.sh'
     try {
@@ -2001,6 +1987,15 @@ try {
             Assert-Match $script:ShimStubMarker $result.StdErr 'Must forward to the entrypoint'
             Assert-Match 'adapter=Auto' $result.StdErr 'Without jq the shim must forward as Auto'
         }
+
+        # The real entrypoint allows 'rg' silently, so a forwarded run against it would also exit 0
+        # with nothing on stderr. Only the stub tells the two apart.
+        Invoke-TestCase 'Bash shim exits fast for a noncandidate command despite a matching cwd' {
+            $result = Invoke-HarnessShim -Harness $shimHarness `
+                -StdIn (New-ClaudePayload 'rg -n "Goal" README.md' $fixture.Main) -ShimArguments @('Claude')
+            Assert-Equal 0 $result.ExitCode 'ExitCode'
+            Assert-Equal '' $result.StdErr.Trim() 'StdErr'
+        }
     }
     finally {
         Remove-ShimHarness $shimHarness
@@ -2012,19 +2007,6 @@ try {
         $json = $result.StdOut | ConvertFrom-Json
         Assert-Equal 'deny' $json.hookSpecificOutput.permissionDecision 'permissionDecision'
         Assert-Match 'BLOCKED: agent Git mutations' $json.hookSpecificOutput.permissionDecisionReason 'reason'
-    }
-
-    # Proved against the stub entrypoint. The real entrypoint allows 'rg' silently, so a forwarded
-    # run against it also exits 0 with nothing on stderr.
-    Invoke-TestCase 'Bash shim exits fast for a noncandidate command despite a matching cwd' {
-        $harness = New-ShimHarness -ShimFileName 'pre-bash-guard.sh'
-        try {
-            $result = Invoke-HarnessShim -Harness $harness `
-                -StdIn (New-ClaudePayload 'rg -n "Goal" README.md' $fixture.Main) -ShimArguments @('Claude')
-            Assert-Equal 0 $result.ExitCode 'ExitCode'
-            Assert-Equal '' $result.StdErr.Trim() 'StdErr'
-        }
-        finally { Remove-ShimHarness -Harness $harness }
     }
 
     Invoke-TestCase 'Bash shim honors AHKFLOW_GUARD_DISABLE before doing any work' {
@@ -3636,8 +3618,7 @@ try {
         @{ Name = 'bash subshell'; Command = '(cd {MAIN} && git commit -m x)' }
     )
 
-    Enable-GuardProbeMemo
-    try {
+    Invoke-WithGuardProbeMemo {
         foreach ($readingCase in $readingCases) {
             Invoke-TestCase "Backlog 093 denies: $($readingCase.Name)" {
                 $resolved = $readingCase.Command.
@@ -3649,9 +3630,6 @@ try {
                 Assert-Equal 'Deny' $decision.Action 'Action'
             }
         }
-    }
-    finally {
-        Disable-GuardProbeMemo
     }
 
     Write-Host 'Redirect targets carry the expression rule too' -ForegroundColor Cyan
@@ -3943,8 +3921,7 @@ try {
         }
     )
 
-    Enable-GuardProbeMemo
-    try {
+    Invoke-WithGuardProbeMemo {
         foreach ($case in $fileEditCases) {
             Invoke-TestCase "File-edit isolation: $($case.Name)" {
                 $path = $case.Path.
@@ -3963,9 +3940,6 @@ try {
                 Assert-Equal $case.Action $decision.Action 'Action'
             }
         }
-    }
-    finally {
-        Disable-GuardProbeMemo
     }
 
     Write-Host 'Link creation aimed at the main checkout' -ForegroundColor Cyan

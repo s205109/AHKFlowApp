@@ -109,11 +109,13 @@ function Test-TaskFileHeldOpen {
 # about 0.65 s. The script ends with 'exit $code', which sets $LASTEXITCODE here and returns.
 #
 # An array splat passes '-Root' to a script as a value, not as a parameter name, so the arguments
-# become a hashtable first. A switch takes no value.
+# become a hashtable first. A switch takes no value. The parameter list is read once, not per call.
+$script:WatchScriptParameters = (Get-Command -Name $watchScript).Parameters
+
 function Invoke-WatchScript {
     param([string[]] $ScriptArgs)
 
-    $parameters = (Get-Command -Name $watchScript).Parameters
+    $parameters = $script:WatchScriptParameters
     $bound = @{}
     for ($i = 0; $i -lt $ScriptArgs.Count; $i++) {
         $name = $ScriptArgs[$i].TrimStart('-')

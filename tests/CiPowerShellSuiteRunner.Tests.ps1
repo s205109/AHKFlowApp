@@ -326,13 +326,11 @@ function Invoke-RunnerInProcess {
     try {
         # Reset first, so an exit code left by an earlier case can never pass for this run's.
         $global:LASTEXITCODE = 0
-        try {
-            $output = & $RunnerPath @Argument *>&1 | Out-String
-            $exitCode = $LASTEXITCODE
-        } catch {
-            $output = $_ | Out-String
-            $exitCode = 1
-        }
+        $output = & $RunnerPath @Argument *>&1 | Out-String
+        $exitCode = $LASTEXITCODE
+    } catch {
+        $output = $_ | Out-String
+        $exitCode = 1
     } finally {
         foreach ($name in $previousEnv.Keys) {
             [System.Environment]::SetEnvironmentVariable($name, $previousEnv[$name])
