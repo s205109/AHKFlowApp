@@ -2162,11 +2162,10 @@ $stalePath = Join-Path ([System.IO.Path]::GetTempPath()) ("watch-task-stale-nofo
 try {
     [System.IO.File]::WriteAllText($stalePath, "ALREADY-DONE`n[exited with code 5]`n")
 
-    $output = & $hostExe -NoProfile -Command @"
-. '$watchScript'
-`$record = [pscustomobject]@{ Path = '$stalePath'; LastWrite = (Get-Date); Running = `$true; ExitCode = `$null }
-Watch-Record -Record `$record -Tail 40 -NoFollow | Out-Null
-"@ 2>&1 | Out-String
+    # In this process: -NoFollow has no loop, and every seam a case above replaces is restored by
+    # now. Only the Write-Host lines count, as only they reached the screen of the old child.
+    $record = [pscustomobject]@{ Path = $stalePath; LastWrite = (Get-Date); Running = $true; ExitCode = $null }
+    $output = (Get-ShownLine -Record @(Watch-Record -Record $record -Tail 40 -NoFollow 6>&1)) -join "`n"
 
     Assert-True ($output -notmatch 'still running') "Stale running with -NoFollow: the watcher must not say the task is still running. Output: $output"
     Assert-True ($output -match 'Exit code: 5') "Stale running with -NoFollow: the exit code must be reported. Output: $output"
@@ -2241,11 +2240,10 @@ $stalePath = Join-Path ([System.IO.Path]::GetTempPath()) ("watch-task-nonewline-
 try {
     [System.IO.File]::WriteAllText($stalePath, "ALREADY-DONE`n[exited with code 5]")
 
-    $output = & $hostExe -NoProfile -Command @"
-. '$watchScript'
-`$record = [pscustomobject]@{ Path = '$stalePath'; LastWrite = (Get-Date); Running = `$true; ExitCode = `$null }
-Watch-Record -Record `$record -Tail 40 -NoFollow | Out-Null
-"@ 2>&1 | Out-String
+    # In this process: -NoFollow has no loop, and every seam a case above replaces is restored by
+    # now. Only the Write-Host lines count, as only they reached the screen of the old child.
+    $record = [pscustomobject]@{ Path = $stalePath; LastWrite = (Get-Date); Running = $true; ExitCode = $null }
+    $output = (Get-ShownLine -Record @(Watch-Record -Record $record -Tail 40 -NoFollow 6>&1)) -join "`n"
 
     Assert-True ($output -notmatch 'still running') "No final newline: the watcher must not say the task is still running. Output: $output"
     Assert-True ($output -match 'Exit code: 5') "No final newline: the exit code must be reported. Output: $output"
