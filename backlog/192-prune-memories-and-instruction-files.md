@@ -79,6 +79,57 @@ The final list, 33 files:
 - Merged (1): `project_entered_worktree_blocks_pwsh`, into
   `project_worktree_guard_blocks_git_not_file_writes`
 
+## Memory cleanup result
+
+Measured 2026-10-27. Before is the baseline commit `ee203e1a`.
+
+| | Before | After |
+|---|---:|---:|
+| Memory files, `MEMORY.md` excluded | 52 | 19 |
+| Their total size, bytes | 114,154 | 23,799 |
+| `MEMORY.md`, characters | 10,349 | 3,742 |
+
+- Deleted: the 33 approved files. Merged: `project_entered_worktree_blocks_pwsh` into
+  `project_worktree_guard_blocks_git_not_file_writes`.
+- Shrunk: the 7 files the plan names. Kept: 12 files, with `[[links]]` to removed memories
+  replaced by the doc that now holds the fact, or dropped.
+- `project_blazor_auth_csp_eval` now says the live header is
+  `Content-Security-Policy-Report-Only`.
+- `MEMORY.md` has one line per file that stays, 19 lines.
+
+## Findings for user-level files
+
+None of these files changed. Each is a suggestion for the user.
+
+- **F1** `~/.claude/RTK.md` ends with "Refer to CLAUDE.md for full command reference.", but
+  `~/.claude/CLAUDE.md` holds no rtk reference. Drop the `@RTK.md` import, or the line.
+- **F2** `~/.claude/CLAUDE.md` Skill Routing repeats the `custom-review-findings` description,
+  which already says it replaces `superpowers:receiving-code-review`. Shorten it to one line.
+- **F3** `~/.claude/CLAUDE.md` Long-Running Background Commands covers the same ground as
+  `.claude/CLAUDE.md` Watch a background run. Keep one of the two.
+- **F4** `~/.claude/settings.json` has two `ask` rules (`Bash(gh pr create *)`,
+  `Bash(rtk gh pr create *)`) that may never prompt. They measured inert on Claude Code
+  2.1.233. Retest, then drop them or replace them with a hook.
+- **F5** Two kept memories, `feedback_new_plan_goes_to_repo_plus_reviewer_handoff` and
+  `feedback_user_claude_folder_commits`, are user-level rules. Add each as one line under Commit
+  Workflow in `~/.claude/CLAUDE.md`, then delete the memories.
+- **F6** These files load in every session of every project. Measured 2026-10-27, in
+  characters: `~/.claude/CLAUDE.md` 4,678, `RTK.md` 987, `CLI-TOOLS.md` 1,151. Total 6,816.
+
+## Size record
+
+Characters, measured 2026-10-27. Before is `a3b4deae`, the branch head before Task 1.
+
+| File | Before | After | Always loaded |
+|---|---:|---:|---|
+| `AGENTS.md` | 34,519 | 25,276 | yes |
+| `.claude/CLAUDE.md` | 9,259 | 4,654 | yes |
+| `MEMORY.md` | 10,349 | 3,742 | yes |
+| `docs/development/workflow.md` | 76,265 | 79,931 | no |
+
+The three always-loaded files drop from 54,127 to 33,672 characters. `workflow.md` grows by
+3,666, because Stage 3 now holds the fabrication check and the citation rules.
+
 ## Notes / dependencies
 
 - Filed by backlog 188 at its Plan stage. Spec section 4.2.
