@@ -34,8 +34,8 @@ The four Suites are `StageTransition`, `WatchTask`, `CiPowerShellSuiteRunner` an
 - [ ] Every applied MERGE or REMOVE, and every reworked case removed under D5 of the spec, names in
       its commit body the test that still catches the defect, or the behaviour that is gone.
 - [ ] Every Suite this item changes passes in the Gate.
-- [ ] `baselineSeconds` in `tests/powershell-suites.json` of every changed Suite comes from the
-      Gate run at Verify.
+- [ ] `baselineSeconds` in `tests/powershell-suites.json` of every changed Suite comes from a
+      Gate run at Verify with evidence reuse off.
 
 ## Out of scope
 
