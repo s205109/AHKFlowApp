@@ -2189,12 +2189,15 @@ finally {
 
 # --- A replacement that looks identical from the outside still ends the watch ---
 #
-# Comparing the start of the file cannot separate every replacement from an append. A file of the
-# same length, whose first bytes are also the same, looks untouched from every angle the reader
-# has, so its saved byte offset survives and no new text ever arrives.
+# The reader compares three things: the file's length, its first 256 bytes, and the 256 bytes
+# that end at its saved offset. This replacement keeps the length and changes one line only. That
+# line sits after the first 256 bytes, and 300 blank lines follow it, so the last 256 bytes are
+# blank in both files. The file looks untouched from every angle the reader has, so its saved
+# offset survives and no new text ever arrives.
 #
 # The watcher must not depend on catching that. When nothing new arrives it asks the file itself
-# whether it has ended, so the wait always ends whatever the reader believes.
+# whether it has ended, so the wait always ends whatever the reader believes. The task state reads
+# the last line that holds text, which is the marker, however many blank lines follow it.
 
 $root = New-WatchTestRoot
 $job = $null
@@ -2209,11 +2212,13 @@ try {
     # two apart. Both files are exactly the same length.
     $sharedStart = "SAME-PREFIX-LINE`n" * 20
     $marker = "[exited with code 9]`n"
-    $original = $sharedStart + ('X' * ($marker.Length - 1)) + "`n"
-    $replacement = $sharedStart + $marker
+    $blankTail = "`n" * 300
+    $original = $sharedStart + ('X' * ($marker.Length - 1)) + "`n" + $blankTail
+    $replacement = $sharedStart + $marker + $blankTail
 
     Assert-True ($original.Length -eq $replacement.Length) 'Same-size replacement: both files must be the same length, or the case is not testing what it claims.'
     Assert-True ($sharedStart.Length -gt 256) 'Same-size replacement: the shared start must be longer than the part the reader remembers.'
+    Assert-True ($blankTail.Length -gt 256) 'Same-size replacement: the blank tail must be longer than the checkpoint, or the checkpoint sees the changed line.'
 
     [System.IO.File]::WriteAllText($samePath, $original)
 
@@ -2221,9 +2226,10 @@ try {
     # write handle, so the in-place replacement below still works.
     $writer = Open-FakeTaskWriter -Path $samePath
 
+    # A tail of 400 lines reaches past the 300 blank ones, so the wait below sees the shared start.
     $job = Start-ThreadJob -ScriptBlock {
         param($exe, $script, $searchRoot)
-        & $exe -NoProfile -File $script -Root $searchRoot -Tail 100 2>&1
+        & $exe -NoProfile -File $script -Root $searchRoot -Tail 400 2>&1
     } -ArgumentList $hostExe, $watchScript, $root
 
     $entered = Wait-ForJobOutput -Job $job -Pattern 'SAME-PREFIX-LINE'
