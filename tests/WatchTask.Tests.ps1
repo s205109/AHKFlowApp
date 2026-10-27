@@ -1140,7 +1140,10 @@ try {
 
     # No Out-String inside the job. That would hold every line back until the watcher exited,
     # and then no case could wait for the watcher to reach a known point.
-    $job = Start-Job -ScriptBlock {
+    #
+    # Every follow case uses a thread job. Start-Job would start a second pwsh just to host the
+    # job, and the watcher already runs in a child of its own. Remove-Job -Force still ends it.
+    $job = Start-ThreadJob -ScriptBlock {
         param($exe, $script, $searchRoot)
         & $exe -NoProfile -File $script -Root $searchRoot -Tail 40 2>&1
     } -ArgumentList $hostExe, $watchScript, $root
@@ -1202,7 +1205,7 @@ try {
 
     $writer = Open-FakeTaskWriter -Path $abandonedPath
 
-    $job = Start-Job -ScriptBlock {
+    $job = Start-ThreadJob -ScriptBlock {
         param($exe, $script, $searchRoot)
         & $exe -NoProfile -File $script -Root $searchRoot -Tail 40 2>&1
     } -ArgumentList $hostExe, $watchScript, $root
@@ -1246,7 +1249,7 @@ $replPath = Join-Path ([System.IO.Path]::GetTempPath()) ("watch-task-repl-race-$
 try {
     [System.IO.File]::WriteAllText($replPath, "RUN-A-LINE`n")
 
-    $job = Start-Job -ScriptBlock {
+    $job = Start-ThreadJob -ScriptBlock {
         param($exe, $script, $path)
         & $exe -NoProfile -Command @"
 . '$script'
@@ -1318,7 +1321,7 @@ $gapPath = Join-Path ([System.IO.Path]::GetTempPath()) ("watch-task-settle-gap-$
 try {
     [System.IO.File]::WriteAllText($gapPath, "RUN-LINE`n")
 
-    $job = Start-Job -ScriptBlock {
+    $job = Start-ThreadJob -ScriptBlock {
         param($exe, $script, $path)
         & $exe -NoProfile -Command @"
 . '$script'
@@ -1374,7 +1377,7 @@ $failPath = Join-Path ([System.IO.Path]::GetTempPath()) ("watch-task-settle-read
 try {
     [System.IO.File]::WriteAllText($failPath, "RUN-LINE`n")
 
-    $job = Start-Job -ScriptBlock {
+    $job = Start-ThreadJob -ScriptBlock {
         param($exe, $script, $path)
         & $exe -NoProfile -Command @"
 . '$script'
@@ -1489,7 +1492,7 @@ try {
     [System.IO.File]::WriteAllText($markerPath, "STARTED`n")
     $writer = Open-FakeTaskWriter -Path $markerPath
 
-    $job = Start-Job -ScriptBlock {
+    $job = Start-ThreadJob -ScriptBlock {
         param($exe, $script, $searchRoot)
         & $exe -NoProfile -File $script -Root $searchRoot -Tail 40 2>&1
     } -ArgumentList $hostExe, $watchScript, $root
@@ -1556,7 +1559,7 @@ try {
     # write handle, so the in-place replacement below still works.
     $writer = Open-FakeTaskWriter -Path $checkpointPath
 
-    $job = Start-Job -ScriptBlock {
+    $job = Start-ThreadJob -ScriptBlock {
         param($exe, $script, $searchRoot)
         & $exe -NoProfile -File $script -Root $searchRoot -Tail 100 2>&1
     } -ArgumentList $hostExe, $watchScript, $root
@@ -1952,7 +1955,7 @@ $catchUpPath = Join-Path ([System.IO.Path]::GetTempPath()) ("watch-task-catchup-
 try {
     [System.IO.File]::WriteAllText($catchUpPath, "RUN-A-LINE`n")
 
-    $job = Start-Job -ScriptBlock {
+    $job = Start-ThreadJob -ScriptBlock {
         param($exe, $script, $path, $heldStub)
         & $exe -NoProfile -Command @"
 . '$script'
@@ -2037,7 +2040,7 @@ $settlePath = Join-Path ([System.IO.Path]::GetTempPath()) ("watch-task-settle-de
 try {
     [System.IO.File]::WriteAllText($settlePath, "RUN-START-LINE`n")
 
-    $job = Start-Job -ScriptBlock {
+    $job = Start-ThreadJob -ScriptBlock {
         param($exe, $script, $path, $heldStub)
         & $exe -NoProfile -Command @"
 . '$script'
@@ -2126,7 +2129,7 @@ try {
     # the Remove-Item below still succeeds and the watcher still ends through the read-failure path.
     $writer = Open-FakeTaskWriter -Path $deletedPath
 
-    $job = Start-Job -ScriptBlock {
+    $job = Start-ThreadJob -ScriptBlock {
         param($exe, $script, $searchRoot)
         & $exe -NoProfile -File $script -Root $searchRoot -Tail 40 2>&1
     } -ArgumentList $hostExe, $watchScript, $root
@@ -2204,7 +2207,7 @@ try {
     # write handle, so the in-place replacement below still works.
     $writer = Open-FakeTaskWriter -Path $samePath
 
-    $job = Start-Job -ScriptBlock {
+    $job = Start-ThreadJob -ScriptBlock {
         param($exe, $script, $searchRoot)
         & $exe -NoProfile -File $script -Root $searchRoot -Tail 100 2>&1
     } -ArgumentList $hostExe, $watchScript, $root
@@ -2267,7 +2270,7 @@ $swapPath = Join-Path ([System.IO.Path]::GetTempPath()) ("watch-task-swap-$([gui
 try {
     [System.IO.File]::WriteAllText($swapPath, "OLD-LINE`n")
 
-    $job = Start-Job -ScriptBlock {
+    $job = Start-ThreadJob -ScriptBlock {
         param($exe, $script, $path, $heldStub)
         & $exe -NoProfile -Command @"
 . '$script'
@@ -2331,7 +2334,7 @@ $latePath = Join-Path ([System.IO.Path]::GetTempPath()) ("watch-task-late-swap-$
 try {
     [System.IO.File]::WriteAllText($latePath, "OLD-LINE`n")
 
-    $job = Start-Job -ScriptBlock {
+    $job = Start-ThreadJob -ScriptBlock {
         param($exe, $script, $path, $heldStub)
         & $exe -NoProfile -Command @"
 . '$script'
@@ -2389,7 +2392,7 @@ $settlePath = Join-Path ([System.IO.Path]::GetTempPath()) ("watch-task-settle-$(
 try {
     [System.IO.File]::WriteAllText($settlePath, "ONLY-LINE`n")
 
-    $job = Start-Job -ScriptBlock {
+    $job = Start-ThreadJob -ScriptBlock {
         param($exe, $script, $path, $heldStub)
         & $exe -NoProfile -Command @"
 . '$script'
@@ -2471,7 +2474,7 @@ $catchUpPath = Join-Path ([System.IO.Path]::GetTempPath()) ("watch-task-catchup-
 try {
     [System.IO.File]::WriteAllText($catchUpPath, "ONLY-LINE`n")
 
-    $job = Start-Job -ScriptBlock {
+    $job = Start-ThreadJob -ScriptBlock {
         param($exe, $script, $path, $heldStub)
         & $exe -NoProfile -Command @"
 . '$script'
