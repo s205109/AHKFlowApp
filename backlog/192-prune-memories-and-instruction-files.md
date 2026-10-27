@@ -6,7 +6,7 @@
 - **Type**: Tooling
 - **Interfaces**: none (memory files, repository instruction files)
 - **Difficulty**: moderate
-- **Stage**: 7-document
+- **Stage**: 8-review
 
 ## Summary
 
