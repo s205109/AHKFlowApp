@@ -1002,10 +1002,11 @@ try {
         'A resumed Pickup must not call gh pr create again'
 
     # --- A round flips to ready entering 9-ship, not leaving it (review finding 6) ---
-    $r6 = New-TransitionFixture -Stage '8-review' -AsWorktree -Branch 'chore/wt-backlog-housekeeping' -NoItem
+    # A round reads its Stage from the pull request body and writes no git state. So this case
+    # and the two after it run on $rd, each with a fake gh of its own.
     $r6Gh = New-FakeGh -Body "## What`n`nChores.`n`nStage: 8-review" -HeadRefName 'chore/wt-backlog-housekeeping'
     Invoke-WithFakeGh -Gh $r6Gh -Action {
-        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $r6.Root -Edge 'success' -Pr 500 *> $null
+        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $rd.Root -Edge 'success' -Pr 500 *> $null
     }
     Assert-Equal 0 $script:LastTransitionExit 'A round entering Ship must succeed'
     Assert-True ((Get-Content -Raw -LiteralPath $r6Gh.BodyFile) -match '(?m)^Stage: 9-ship\r?$') `
@@ -1016,19 +1017,17 @@ try {
     # --- A round failure edge records its evidence in the body (review finding 7) ---
     # workflow.md gives the round the same rule as tracked work, with the pull request body
     # standing in for PLAN-PROGRESS.md, which a round does not have.
-    $r7 = New-TransitionFixture -Stage '6-verify' -AsWorktree -Branch 'chore/wt-backlog-housekeeping' -NoItem
     $r7Gh = New-FakeGh -Body "Stage: 6-verify" -HeadRefName 'chore/wt-backlog-housekeeping'
     Invoke-WithFakeGh -Gh $r7Gh -Action {
-        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $r7.Root -Edge 'failure' -Pr 500 *> $null
+        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $rd.Root -Edge 'failure' -Pr 500 *> $null
     }
     Assert-True ($script:LastTransitionExit -ne 0) 'A round failure edge with no evidence must be refused'
     Assert-True ((Get-Content -Raw -LiteralPath $r7Gh.BodyFile) -match '(?m)^Stage: 6-verify\r?$') `
         'A refused round failure must leave the body alone'
 
-    $r7b = New-TransitionFixture -Stage '6-verify' -AsWorktree -Branch 'chore/wt-backlog-housekeeping' -NoItem
     $r7bGh = New-FakeGh -Body "Stage: 6-verify" -HeadRefName 'chore/wt-backlog-housekeeping'
     Invoke-WithFakeGh -Gh $r7bGh -Action {
-        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $r7b.Root -Edge 'failure' -Pr 500 `
+        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $rd.Root -Edge 'failure' -Pr 500 `
             -Evidence 'pwsh ./scripts/test-fast.ps1 -Mode Fast : 2 failed' `
             -RecoveryTask 'Chore 3: fix the parity check' *> $null
     }
@@ -1251,10 +1250,10 @@ try {
     }
 
     # --- A round Ship failure undoes the ready flip too (finding 4) ---
-    $f4 = New-TransitionFixture -Stage '9-ship' -AsWorktree -Branch 'chore/wt-backlog-housekeeping' -NoItem
+    # This case and the two after it run on $rd as well. Each fake gh body holds the Stage.
     $f4Gh = New-FakeGh -Body "## What`n`nChores.`n`nStage: 9-ship" -HeadRefName 'chore/wt-backlog-housekeeping' -IsDraft 'false'
     Invoke-WithFakeGh -Gh $f4Gh -Action {
-        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $f4.Root -Edge 'failure' -Pr 500 `
+        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $rd.Root -Edge 'failure' -Pr 500 `
             -Evidence 'CI: 1 check failed' -RecoveryTask 'Chore 2: repair the suite' *> $null
     }
     Assert-Equal 0 $script:LastTransitionExit 'A round Ship failure must succeed'
@@ -1267,10 +1266,9 @@ try {
     # The body is written to 9-ship before 'gh pr ready' runs, so a failed flip leaves the body
     # at 9-ship with a draft pull request. A rerun used to resolve 9-ship -> 10-cleanup and
     # record Cleanup on an unmerged draft.
-    $f2 = New-TransitionFixture -Stage '9-ship' -AsWorktree -Branch 'chore/wt-backlog-housekeeping' -NoItem
     $f2Gh = New-FakeGh -Body "## What`n`nChores.`n`nStage: 9-ship" -HeadRefName 'chore/wt-backlog-housekeeping' -IsDraft 'true'
     Invoke-WithFakeGh -Gh $f2Gh -Action {
-        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $f2.Root -Edge 'success' -Pr 500 *> $null
+        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $rd.Root -Edge 'success' -Pr 500 *> $null
     }
     Assert-Equal 0 $script:LastTransitionExit 'A round resuming Ship must succeed'
     Assert-True ((Get-GhLog -Gh $f2Gh) -match 'pr ready 500') `
@@ -1282,10 +1280,9 @@ try {
 
     # Already ready: there is nothing to resume, and Cleanup writes no Stage line for a round
     # either. The merged pull request is the record.
-    $f2b = New-TransitionFixture -Stage '9-ship' -AsWorktree -Branch 'chore/wt-backlog-housekeeping' -NoItem
     $f2bGh = New-FakeGh -Body "Stage: 9-ship" -HeadRefName 'chore/wt-backlog-housekeeping' -IsDraft 'false'
     Invoke-WithFakeGh -Gh $f2bGh -Action {
-        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $f2b.Root -Edge 'success' -Pr 500 *> $null
+        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $rd.Root -Edge 'success' -Pr 500 *> $null
     }
     Assert-True ($script:LastTransitionExit -ne 0) 'A round leaving Ship must be refused'
     Assert-True ((Get-Content -Raw -LiteralPath $f2bGh.BodyFile) -match '(?m)^Stage: 9-ship\r?$') `
