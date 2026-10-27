@@ -413,6 +413,60 @@ try {
     $fx = New-TransitionFixture -Stage '2-design' -Difficulty 'complex' -AsWorktree
     $branch = (& git -C $fx.Root rev-parse --abbrev-ref HEAD).Trim()
 
+    # The next four cases run on $fx before its own transition. Each one is refused before any
+    # write, so $fx is still at 2-design, with the same commit log, when the transition runs.
+
+    # --- A transition the source does not allow is refused at driver level ---
+    # This is acceptance criterion 2, proven through the script rather than through the reader.
+    # Design success has exactly one target, '3-plan', so '9-ship' is a target workflow.md does
+    # not give this edge.
+    $before = (& git -C $fx.Root rev-parse HEAD).Trim()
+
+    $illegalOutput = (& "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $fx.Root -Item '081' `
+        -Edge 'success' -To '9-ship' *>&1) -join "`n"
+    Assert-True ($LASTEXITCODE -ne 0) 'A target the source does not allow must be refused'
+    Assert-True ($illegalOutput.Contains("REFUSED: -To '9-ship' is not a target of 'success' from '2-design'. The only target is '3-plan'.")) `
+        "The refusal must name the one target workflow.md allows. Output: $illegalOutput"
+
+    $after = (& git -C $fx.Root rev-parse HEAD).Trim()
+    Assert-Equal $before $after 'A refused transition must leave the commit log untouched'
+    Assert-Equal '2-design' (Get-SingleBacklogStage -Lines (Get-Content -LiteralPath (Join-Path $fx.Root 'backlog/081-automate-stage-transitions.md'))) `
+        'A refused transition must leave the field untouched'
+
+    # --- 'blocked' is not a transition this script performs ---
+    # Moving an item into backlog/blocked/ is a manual git mv, so the parameter must refuse the
+    # word rather than accept it and fail later with a message about a missing stage.
+    $blockedMessage = ''
+    try {
+        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $fx.Root -Item '081' -Edge 'blocked' *> $null
+    } catch {
+        $blockedMessage = $_.Exception.Message
+    }
+    Assert-True ($blockedMessage.Contains('The argument "blocked" does not belong to the set "success,failure,not applicable"')) `
+        "The blocked edge must be refused by the parameter itself. Got: $blockedMessage"
+
+    # --- The main checkout is refused ---
+    # $fx's main clone is a plain repository, which is what Test-LinkedWorktree must reject.
+    $fxMain = Split-Path -Parent $fx.HookDir
+    $mainOutput = (& "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $fxMain -Item '081' -Edge 'success' *>&1) -join "`n"
+    Assert-True ($LASTEXITCODE -ne 0) 'The main checkout must be refused'
+    Assert-True ($mainOutput.Contains("REFUSED: '$fxMain' is the main checkout, not a linked worktree.")) `
+        "The refusal must say the path is the main checkout. Output: $mainOutput"
+
+    # --- An item worktree with -Pr and no -Item is refused, not treated as a round (finding 3) ---
+    # The refusal reads only the branch name, so $fx's item branch is enough.
+    $r3Gh = New-FakeGh -Body "Stage: 5-simplify"
+    $script:r3Output = ''
+    Invoke-WithFakeGh -Gh $r3Gh -Action {
+        $script:r3Output = ((& "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $fx.Root -Edge 'success' -Pr 500 *>&1) -join "`n")
+    }
+    Assert-True ($script:LastTransitionExit -ne 0) 'A missing -Item on an item branch must be refused'
+    Assert-True ($script:r3Output.Contains("REFUSED: This worktree is on 'feature/wt-transition-test', which is not the housekeeping round branch 'chore/wt-backlog-housekeeping'. A tracked transition needs -Item.")) `
+        "The refusal must ask for -Item. Output: $($script:r3Output)"
+    Assert-True ((Get-Content -Raw -LiteralPath $r3Gh.BodyFile) -match '(?m)^Stage: 5-simplify\r?$') `
+        'A refused run must not rewrite any pull request body'
+
+    # The ordinary transition itself, on the $fx the four refusals above left unchanged.
     & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $fx.Root -Item '081' -Edge 'success' *> $null
     Assert-Equal 0 $LASTEXITCODE 'An ordinary transition must succeed'
 
@@ -420,22 +474,6 @@ try {
     Assert-Equal '3-plan' $local 'Design success must write 3-plan into the item'
     Assert-Equal '3-plan' (Get-RemoteItemStage -Bare $fx.Bare -Branch $branch) `
         'The transition must be pushed, because the remote is what a reader of main sees'
-
-    # --- A transition the source does not allow is refused at driver level ---
-    # This is acceptance criterion 2, proven through the script rather than through the reader.
-    # Design success has exactly one target, '3-plan', so '9-ship' is a target workflow.md does
-    # not give this edge.
-    $fx2 = New-TransitionFixture -Stage '2-design' -Difficulty 'complex' -AsWorktree
-    $before = (& git -C $fx2.Root rev-parse HEAD).Trim()
-
-    & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $fx2.Root -Item '081' `
-        -Edge 'success' -To '9-ship' *> $null
-    Assert-True ($LASTEXITCODE -ne 0) 'A target the source does not allow must be refused'
-
-    $after = (& git -C $fx2.Root rev-parse HEAD).Trim()
-    Assert-Equal $before $after 'A refused transition must leave the commit log untouched'
-    Assert-Equal '2-design' (Get-SingleBacklogStage -Lines (Get-Content -LiteralPath (Join-Path $fx2.Root 'backlog/081-automate-stage-transitions.md'))) `
-        'A refused transition must leave the field untouched'
 
     # --- An edge that names no stage is a different refusal, and also changes nothing ---
     # Pickup's 'not applicable' edge targets 'none'. That is not an illegal edge; it is a legal
@@ -447,24 +485,6 @@ try {
     Assert-True ($LASTEXITCODE -ne 0) 'An edge that names no stage must fail'
     Assert-Equal $beforeB (& git -C $fx2b.Root rev-parse HEAD).Trim() `
         'An edge that names no stage must leave the commit log untouched'
-
-    # --- 'blocked' is not a transition this script performs ---
-    # Moving an item into backlog/blocked/ is a manual git mv, so the parameter must refuse the
-    # word rather than accept it and fail later with a message about a missing stage.
-    $fx2c = New-TransitionFixture -Stage '2-design' -Difficulty 'complex' -AsWorktree
-    $blockedRefused = $false
-    try {
-        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $fx2c.Root -Item '081' -Edge 'blocked' *> $null
-    } catch {
-        $blockedRefused = $true
-    }
-    Assert-True $blockedRefused 'The blocked edge must be refused by the parameter itself'
-
-    # --- The main checkout is refused ---
-    # Deliberately no -AsWorktree here. A plain repository is what Test-LinkedWorktree must reject.
-    $fx3 = New-TransitionFixture
-    & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $fx3.Root -Item '081' -Edge 'success' *> $null
-    Assert-True ($LASTEXITCODE -ne 0) 'The main checkout must be refused'
 
     # --- Pickup opens the draft pull request, then stamps ---
     $pk = New-TransitionFixture -Stage '1-pickup' -Difficulty 'complex' -AsWorktree
@@ -966,16 +986,6 @@ try {
         'A refused Ship must not move the item'
     Assert-True (((Get-Content -Raw -LiteralPath $r2Gh.Log) -join "`n") -notmatch 'pr ready') `
         'A refused Ship must not flip any pull request'
-
-    # --- An item worktree with -Pr and no -Item is refused, not treated as a round (finding 3) ---
-    $r3 = New-TransitionFixture -Stage '5-simplify' -Difficulty 'complex' -AsWorktree
-    $r3Gh = New-FakeGh -Body "Stage: 5-simplify"
-    Invoke-WithFakeGh -Gh $r3Gh -Action {
-        & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $r3.Root -Edge 'success' -Pr 500 *> $null
-    }
-    Assert-True ($script:LastTransitionExit -ne 0) 'A missing -Item on an item branch must be refused'
-    Assert-True ((Get-Content -Raw -LiteralPath $r3Gh.BodyFile) -match '(?m)^Stage: 5-simplify\r?$') `
-        'A refused run must not rewrite any pull request body'
 
     # --- Pickup reuses a pull request that already exists (review finding 5) ---
     # gh pr create succeeded, then the session died before the stamp. A rerun must find that
