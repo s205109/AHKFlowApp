@@ -475,17 +475,6 @@ try {
     Assert-Equal '3-plan' (Get-RemoteItemStage -Bare $fx.Bare -Branch $branch) `
         'The transition must be pushed, because the remote is what a reader of main sees'
 
-    # --- An edge that names no stage is a different refusal, and also changes nothing ---
-    # Pickup's 'not applicable' edge targets 'none'. That is not an illegal edge; it is a legal
-    # edge with no field to write, and the two must not be confused.
-    $fx2b = New-TransitionFixture -Stage '1-pickup' -Difficulty 'complex' -AsWorktree
-    $beforeB = (& git -C $fx2b.Root rev-parse HEAD).Trim()
-
-    & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $fx2b.Root -Item '081' -Edge 'not applicable' *> $null
-    Assert-True ($LASTEXITCODE -ne 0) 'An edge that names no stage must fail'
-    Assert-Equal $beforeB (& git -C $fx2b.Root rev-parse HEAD).Trim() `
-        'An edge that names no stage must leave the commit log untouched'
-
     # --- Pickup opens the draft pull request, then stamps ---
     $pk = New-TransitionFixture -Stage '1-pickup' -Difficulty 'complex' -AsWorktree
     $gh = New-FakeGh -CreateExitCode 0
@@ -509,6 +498,20 @@ try {
     # -join matters: '-match' against an array filters it and returns an array, not a boolean.
     Assert-True (((& git -C $pk2.Root log --oneline "$pkBefore..HEAD") -join "`n") -notmatch 'at 2-design') `
         'A failed gh pr create must leave no stamp commit'
+
+    # --- An edge that names no stage is a different refusal, and also changes nothing ---
+    # Pickup's 'not applicable' edge targets 'none'. That is not an illegal edge; it is a legal
+    # edge with no field to write, and the two must not be confused. The refused Pickup above left
+    # $pk2 at 1-pickup, so the edge runs on it.
+    $beforeB = (& git -C $pk2.Root rev-parse HEAD).Trim()
+
+    $noStageOutput = (& "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $pk2.Root -Item '081' `
+        -Edge 'not applicable' *>&1) -join "`n"
+    Assert-True ($LASTEXITCODE -ne 0) 'An edge that names no stage must fail'
+    Assert-True ($noStageOutput.Contains("REFUSED: The 'not applicable' edge of '1-pickup' names no stage, so there is no field to write.")) `
+        "The refusal must say the edge names no stage. Output: $noStageOutput"
+    Assert-Equal $beforeB (& git -C $pk2.Root rev-parse HEAD).Trim() `
+        'An edge that names no stage must leave the commit log untouched'
 
     # --- A base ref that does not resolve is refused before anything is written ---
     # git rev-list writes to stderr and returns non-zero for an unknown ref. Reading only its
