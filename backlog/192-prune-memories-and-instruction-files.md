@@ -47,4 +47,4 @@ Each criterion is refined in the spec named below. Tick a box only when its word
   `docs/superpowers/specs/2026-10-18-speed-up-the-development-cycle-research-188/memory-and-instructions.md`.
   Its sort is a list of candidates, not decisions.
 - Spec: `docs/superpowers/specs/2026-10-18-speed-up-the-development-cycle-design-188.md`
-- Plan: none — the spec is the design; Plan comes at pickup.
+- Plan: `docs/superpowers/plans/2026-10-27-prune-memories-and-instruction-files-plan-192.md`
