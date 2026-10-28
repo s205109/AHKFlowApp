@@ -28,3 +28,14 @@ CiPowerShellSuiteRunner 114.9 s, WatchTask 40.2 s.
 
 - Task 5 recovery: done at d7c02d19. Tests: `CitationFreshness.Tests.ps1` passes alone, and the citation check reports no problem. Next: Simplify, then the Gate at Verify again.
 - Task 5 (Gate and baselines): done at 880ea480. Tests: the Gate at a2a9d9e4 passed with AHKFLOW_GATE_REUSE=off, all 73 Suites, 6 Workers; baselines refreshed from it. Deferrals: none.
+
+## Failure edge to 4-execute (2026-10-28)
+
+**Red evidence:**
+
+```
+Local review of 0112b0b0: jq-disabled shim probes forward as Auto, contradicting parser-dependent assertions; removing the existing-progress guard breaks the skipped Ship-failure state but not its named replacement.
+```
+
+**Recovery task:** Review recovery 1: control jq-present and jq-absent shim environments. Review recovery 2: restore existing-progress Ship-failure coverage and prove progress survives without closure lookup.
+
