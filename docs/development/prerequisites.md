@@ -23,6 +23,11 @@ After cloning, run the symlink setup once:
 
 `scripts/agents/setup-cross-agent-skills.ps1` (re-run automatically by the `post-merge` hook when skills change) also bumps the Codex plugin version in `plugins/ahkflowapp/.codex-plugin/plugin.json` from a content hash and refreshes the installed Codex plugin cache via `codex plugin add ahkflowapp@ahkflowapp-local`. Codex captures available skills at session start — start a new Codex session after skill changes.
 
+A skill lives one level deep, at `.agents/<name>/SKILL.md`. Never create `.agents/skills/`:
+the setup script fails on it with ".agents/skills exists but should not", and the
+`post-merge` hook runs that script, so every `git pull` fails too. A skill installer that
+writes `<root>/skills/<name>/` needs its output moved up to `.agents/<name>/`.
+
 ### Windows Defender exclusions
 
 Optional. It needs an administrator, and it is worth doing before you run the tests often.

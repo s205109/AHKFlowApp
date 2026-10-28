@@ -182,6 +182,10 @@ never needed a filter lose nothing.
 
 Use this for domain logic, validators, pure handlers, CLI parser/unit behavior, and Blazor component changes that do not require SQL Server, WebApplicationFactory, or browser automation.
 
+To count the cases of an xUnit theory, run `dotnet vstest <dll> --ListTests`. It prints one
+name per case. `--ListFullyQualifiedTests` prints one name per method and never expands data
+rows.
+
 ## SQL and API-backed tests
 
 ```bash
