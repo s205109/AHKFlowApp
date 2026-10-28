@@ -1348,13 +1348,12 @@ try {
     $workflowPath = Join-Path $suiteRoot 'docs/development/workflow.md'
     $allStages = Get-WorkflowStage -Path $workflowPath
 
-    # Four edges already have a named case above. Each runs the real script and asserts the
+    # Three edges already have a named case above. Each runs the real script and asserts the
     # Stage it lands on, so the loop does not build a fixture for them a second time.
     $namedEdgeCase = @{
         '2-design|success' = 'An ordinary transition writes the field, commits it, and pushes it'
         '6-verify|failure' = 'With evidence, the record and the Stage land in ONE commit'
         '8-review|success' = 'A branch that never wrote PLAN-PROGRESS.md still closes (backlog 164)'
-        '9-ship|failure'   = 'A tracked Ship failure reopens the records and the pull request (finding 5)'
     }
 
     foreach ($stageId in $allStages.Keys) {
@@ -1381,12 +1380,23 @@ try {
             # dispatch rule here, so it gives every case what the heaviest path needs.
             $case = New-TransitionFixture -Stage $bare -Difficulty 'complex' -AsWorktree `
                                           -AllBoxesTicked -WithProgress:$needsProgress
+            # Ship failure with existing progress has no closure history to restore from.
+            # Keep it distinct from the named post-closure recovery case above.
+            $existingProgress = if ($bare -eq '9-ship' -and $edge -eq 'failure') {
+                Get-Content -Raw -LiteralPath (Join-Path $case.Root 'PLAN-PROGRESS.md')
+            } else { $null }
             $caseGh = New-FakeGh
             Invoke-WithFakeGh -Gh $caseGh -Action {
                 & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $case.Root -Item '081' `
                     -Edge $edge -Pr 421 -Evidence 'red' -RecoveryTask 'recover' *> $null
             }
 
+            if ($null -ne $existingProgress) {
+                Assert-Equal 0 $script:LastTransitionExit 'Ship failure must succeed without closure history'
+                $recoveredProgress = Get-Content -Raw -LiteralPath (Join-Path $case.Root 'PLAN-PROGRESS.md')
+                Assert-True ($recoveredProgress.StartsWith($existingProgress)) `
+                    'Existing progress must survive Ship failure before the new recovery record'
+            }
             Assert-Equal $targets[0] (Get-FixtureStage -Root $case.Root) `
                 "The '$edge' edge of '$stageId' must land on '$($targets[0])'"
         }
