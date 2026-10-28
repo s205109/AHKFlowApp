@@ -291,8 +291,48 @@ function Invoke-HarnessShim {
         [object] $Harness,
         [string] $StdIn,
         [string[]] $ShimArguments = @(),
-        [hashtable] $EnvironmentOverrides = @{}
+        [hashtable] $EnvironmentOverrides = @{},
+        [ValidateSet('Inherited', 'Present', 'Absent')]
+        [string] $Jq = 'Inherited',
+        [string] $ParsedCommand = '',
+        [string] $ParsedCwd = '',
+        [switch] $Copilot
     )
+
+    # jq is a third-party boundary. Supply its responses for shim decision tests, without
+    # requiring an installation. Other cases still use the real parser when available.
+    if ($Jq -ne 'Inherited') {
+        $startup = Join-Path $Harness.Root 'jq-environment.sh'
+        $fixture = if ($Jq -eq 'Present') {
+@'
+jq() {
+  local input
+  input=$(cat)
+  [[ "$input" == "$SHIM_TEST_INPUT" ]] || return 1
+  case "$2" in
+    *fromjson*) printf '%s\n' "$SHIM_TEST_COMMAND" ;;
+    '.cwd // empty') printf '%s\n' "$SHIM_TEST_CWD" ;;
+    'has("toolArgs")') [[ "$SHIM_TEST_COPILOT" == 'True' ]] ;;
+    *) return 1 ;;
+  esac
+}
+'@
+        } else {
+@'
+command() {
+  if [[ "$1" == '-v' && "$2" == 'jq' ]]; then return 1; fi
+  builtin command "$@"
+}
+'@
+        }
+        [System.IO.File]::WriteAllText($startup, $fixture.Replace("`r`n", "`n"))
+        $EnvironmentOverrides = @{} + $EnvironmentOverrides
+        $EnvironmentOverrides.BASH_ENV = ConvertTo-BashPath $startup
+        $EnvironmentOverrides.SHIM_TEST_INPUT = $StdIn
+        $EnvironmentOverrides.SHIM_TEST_COMMAND = $ParsedCommand
+        $EnvironmentOverrides.SHIM_TEST_CWD = $ParsedCwd
+        $EnvironmentOverrides.SHIM_TEST_COPILOT = [string][bool]$Copilot
+    }
 
     return Invoke-CapturedProcess -FilePath $script:BashExecutable `
         -Arguments (@((ConvertTo-BashPath $Harness.Shim)) + $ShimArguments) `
@@ -1154,8 +1194,8 @@ try {
     }
 
     # A quote is one of four ways a Reading becomes Ambiguous. The other three are block forms the
-    # suite already covers at (`tests/AgentWorktreeGuard.Tests.ps1:2327`, "    $heredocAmbiguousCases = @(")
-    # and (`tests/AgentWorktreeGuard.Tests.ps1:2416`, "    $hereStringAmbiguousCases = @("), and
+    # suite already covers at (`tests/AgentWorktreeGuard.Tests.ps1:2364`, "    $heredocAmbiguousCases = @(")
+    # and (`tests/AgentWorktreeGuard.Tests.ps1:2453`, "    $hereStringAmbiguousCases = @("), and
     # every one of them must reach the same refusal at every layer. Without this, the message could
     # promise "balanced quoting" to somebody whose heredoc terminator is indented.
     $unreadableCauses = @(
@@ -1965,27 +2005,24 @@ try {
 
         Invoke-TestCase 'Bash shim selects Copilot from a native toolArgs payload with no argument' {
             $result = Invoke-HarnessShim -Harness $shimHarness `
-                -StdIn (New-CopilotPayload 'git commit -m test' $script:RealMainCheckout)
+                -StdIn (New-CopilotPayload 'git commit -m test' $script:RealMainCheckout) `
+                -Jq Present -ParsedCommand 'git commit -m test' -Copilot
             Assert-Equal 0 $result.ExitCode 'ExitCode'
             Assert-Match 'adapter=Copilot' $result.StdErr 'Must select the Copilot adapter'
         }
 
         Invoke-TestCase 'Bash shim stays correct when jq is unavailable' {
-            # Drop only the jq directories from PATH. PowerShell must stay reachable, otherwise the
-            # shim's missing-host branch would allow the command and never reach the stub.
-            $pathWithoutJq = (
-                $env:PATH -split ';' |
-                    Where-Object {
-                        $_ -and -not (Test-Path -LiteralPath (Join-Path $_ 'jq.exe')) -and
-                        -not (Test-Path -LiteralPath (Join-Path $_ 'jq'))
-                    }
-            ) -join ';'
-
-            $result = Invoke-HarnessShim -Harness $shimHarness `
-                -StdIn (New-CopilotPayload 'git commit -m test' $script:RealMainCheckout) `
-                -EnvironmentOverrides @{ PATH = $pathWithoutJq }
-            Assert-Match $script:ShimStubMarker $result.StdErr 'Must forward to the entrypoint'
-            Assert-Match 'adapter=Auto' $result.StdErr 'Without jq the shim must forward as Auto'
+            $worktreeCwd = Join-Path $script:RealMainCheckout '.claude\worktrees\probe'
+            foreach ($payload in @(
+                (New-CopilotPayload 'git commit -m test' $script:RealMainCheckout)
+                (New-ClaudePayload 'cat README.md' $worktreeCwd)
+            )) {
+                $result = Invoke-HarnessShim -Harness $shimHarness -StdIn $payload -Jq Absent
+                Assert-Equal 0 $result.ExitCode 'ExitCode'
+                Assert-Equal '' $result.StdOut.Trim() 'Must produce no decision payload'
+                Assert-Match $script:ShimStubMarker $result.StdErr 'Must forward to the entrypoint'
+                Assert-Match 'adapter=Auto' $result.StdErr 'Without jq the shim must forward as Auto'
+            }
         }
 
         # The real entrypoint allows 'rg' silently, so a forwarded run against it would also exit 0
@@ -4304,7 +4341,8 @@ try {
         try {
             $worktreeCwd = Join-Path $script:RealMainCheckout '.claude\worktrees\probe'
             $result = Invoke-HarnessShim -Harness $harness `
-                -StdIn (New-ClaudePayload 'cat README.md' $worktreeCwd)
+                -StdIn (New-ClaudePayload 'cat README.md' $worktreeCwd) `
+                -Jq Present -ParsedCommand 'cat README.md' -ParsedCwd $worktreeCwd
             Assert-Equal 0 $result.ExitCode 'Exit code'
             Assert-Equal '' $result.StdOut.Trim() 'Must produce no decision payload'
             Assert-True ($result.StdErr -notmatch $script:ShimStubMarker) 'Must not start PowerShell'
