@@ -853,3 +853,20 @@ Coverage ran in full, including 108 browser tests. All thresholds passed: 94.8% 
 The final committed-range whitespace check found the failure transition's blank line at EOF in PLAN-PROGRESS.md.
 The recovery entries remove that EOF blank line. The final staged-tree and committed-range checks are checked separately.
 Timing-budget warnings affected 28 Suites and did not fail the run. No baseline was changed.
+
+### Final S-A verdict after recovery
+
+At 4b9244eb, the current loop ran alone against the same loop with the skip disabled.
+Both versions retained the new existing-progress assertions. Each had one warm-up and three counted runs.
+A scratch Stopwatch covered the loop; no tracked source contained timing instrumentation.
+
+| Variant | Warm-up | Counted runs (s) | Median (s) |
+|---|---|---|---|
+| All legal edges | 23.819 | 24.307, 23.813, 23.423 | 23.813 |
+| Three skipped edges | 19.956 | 19.414, 22.814, 24.483 | 22.814 |
+
+Saving: 0.999 s. D2 requires at least 1 s, so row 53 is rejected.
+The after set drifted upward; it is not evidence for rounding the saving up or keeping the change.
+The skip table and skip condition are removed. Every legal edge runs again.
+Existing-progress success and preservation assertions remain.
+Earlier S-A and isolated Suite timings are historical measurements of earlier revisions.

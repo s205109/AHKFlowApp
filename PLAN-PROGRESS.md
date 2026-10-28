@@ -55,3 +55,5 @@ D2 corrected S-A: full-loop runs 24.307, 23.813, 23.423 s; three-edge-skip runs 
 
 **Recovery task:** Reject S-A row 53 and restore all legal loop edges while retaining existing-progress recovery assertions. Run StageTransition, then Simplify and the Verify Gate.
 
+- D2 recovery: row 53 rejected at 0.999 s saving (23.813 before, 22.814 after). Removed the skip table and condition; kept existing-progress recovery assertions.
+- D2 recovery verification: the complete StageTransition Suite passed in 68.6 s with every legal edge restored. Simplify scope is only removal of the skip table and condition; no further simplification needed.

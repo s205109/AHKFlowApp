@@ -1348,18 +1348,9 @@ try {
     $workflowPath = Join-Path $suiteRoot 'docs/development/workflow.md'
     $allStages = Get-WorkflowStage -Path $workflowPath
 
-    # Three edges already have a named case above. Each runs the real script and asserts the
-    # Stage it lands on, so the loop does not build a fixture for them a second time.
-    $namedEdgeCase = @{
-        '2-design|success' = 'An ordinary transition writes the field, commits it, and pushes it'
-        '6-verify|failure' = 'With evidence, the record and the Stage land in ONE commit'
-        '8-review|success' = 'A branch that never wrote PLAN-PROGRESS.md still closes (backlog 164)'
-    }
-
     foreach ($stageId in $allStages.Keys) {
         $bare = $stageId -replace '^stage-', ''
         foreach ($edge in @('success', 'failure', 'not applicable')) {
-            if ($namedEdgeCase.ContainsKey("$bare|$edge")) { continue }
             if (-not $allStages[$stageId].Edges.Contains($edge)) { continue }
 
             $targets = @(Get-StageEdgeTarget -WorkflowPath $workflowPath -Stage $stageId -Edge $edge)
