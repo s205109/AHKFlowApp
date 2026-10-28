@@ -32,14 +32,11 @@ Each criterion is refined in the spec named below. Tick a box only when its word
 - [x] A memory that moved into docs went to a file that is not always loaded.
 - [x] A rule that a script already enforces keeps one line in the instruction files that names the
       rule and its check. Its reasons sit in the check's own docs or in an ADR.
-- [ ] `AGENTS.md` and `.claude/CLAUDE.md` no longer repeat text that `workflow.md` holds.
-      **Not ticked.** One 8-word run is still shared: the plans-repository commit command,
-      `git -C docs/superpowers commit -m "..." -- <file>`, in the **Plans** section of
-      `AGENTS.md` and in the two-repo transition paragraph of `workflow.md`. The plan keeps it in
-      both on purpose: `.claude/CLAUDE.md` points at the **Plans** commands, and the `workflow.md`
-      sentence holds a moved memory's fact. No other line of either file shares an 8-word run
-      with `workflow.md` (measured 2026-10-27). The reviewer decides whether a shared command
-      counts as repeated text.
+- [x] `AGENTS.md` and `.claude/CLAUDE.md` no longer repeat text that `workflow.md` holds.
+      Ticked at Review on 2026-10-28. The reviewer ruled that the shared plans-repository commit
+      command counted as repeated text. It now lives only in `workflow.md`, under **Two-repo
+      transitions**; `AGENTS.md` **Plans** and `.claude/CLAUDE.md` link to it. Measured
+      afterwards: no line of either file shares an 8-word run with `workflow.md`.
 - [x] The user-level files `~/.claude/CLAUDE.md`, `RTK.md` and `CLI-TOOLS.md` are unchanged. The
       item lists findings about them for the user.
 
@@ -93,7 +90,7 @@ Measured 2026-10-27. Before is the baseline commit `ee203e1a`.
 | | Before | After |
 |---|---:|---:|
 | Memory files, `MEMORY.md` excluded | 52 | 19 |
-| Their total size, bytes | 114,154 | 23,799 |
+| Their total size, bytes | 114,154 | 24,272 |
 | `MEMORY.md`, characters | 10,349 | 3,742 |
 
 - Deleted: the 33 approved files. The auto mode classifier refused the agent's delete, so the
@@ -131,13 +128,13 @@ Characters, measured 2026-10-27. Before is `a3b4deae`, the branch head before Ta
 
 | File | Before | After | Always loaded |
 |---|---:|---:|---|
-| `AGENTS.md` | 34,519 | 25,345 | yes |
-| `.claude/CLAUDE.md` | 9,259 | 4,654 | yes |
+| `AGENTS.md` | 34,519 | 25,554 | yes |
+| `.claude/CLAUDE.md` | 9,259 | 4,731 | yes |
 | `MEMORY.md` | 10,349 | 3,742 | yes |
 | `docs/development/workflow.md` | 76,265 | 79,931 | no |
 
-The three always-loaded files drop from 54,127 to 33,741 characters. (`AGENTS.md` was re-measured
-at Document, after two one-line fixes.) `workflow.md` grows by
+The three always-loaded files drop from 54,127 to 34,027 characters. (`AGENTS.md` and
+`.claude/CLAUDE.md` were re-measured on 2026-10-28, after the review fixes.) `workflow.md` grows by
 3,666, because Stage 3 now holds the fabrication check and the citation rules.
 
 ## Notes / dependencies
