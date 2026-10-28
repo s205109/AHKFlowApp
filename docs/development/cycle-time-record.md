@@ -822,3 +822,34 @@ above:
 The before values come from the backlog 188 run, on a different load. So the difference between
 the two columns does not measure this item's gain. The run-alone medians at the top of this
 section measure it.
+
+### Review recovery after 0112b0b0
+
+Both P2 findings were confirmed. The Review failure edge returned item 195 to Execute at b54ecb8f.
+
+- The Copilot adapter and worktree-read shim cases now use explicit responses from a jq fixture.
+  The fixture checks its stdin and recognizes the queries used by the production shim.
+  It tests shim decisions, not jq parsing. Other integration cases retain the real parser when available.
+  A separate fixture hides jq discovery while leaving PowerShell available.
+  Both Copilot and worktree-read payloads must then forward as Auto.
+- The legal-edge loop again runs Ship failure with existing progress and no closure history.
+  It asserts success, the landed Stage, and preservation of the original progress prefix.
+  The post-closure restoration case remains separate.
+
+The two full Suites passed together: AgentWorktreeGuard 67.4 s and StageTransition 97.5 s.
+These are verification runs, not isolated medians or replacement baselines.
+The earlier S-A medians describe four skipped edges; only three remain skipped after this correction.
+
+Focused real-script slices passed before and after each mutation:
+- Replacing the Copilot adapter with Claude failed the adapter assertion.
+- Making the write pattern match a read failed the no-forwarding assertion.
+- Removing the existing-progress guard failed the success and landed-Stage assertions.
+Production files were restored byte-for-byte after the probes.
+
+Recovery commits: 148fa7cc (jq fixtures), 38f36a3e (existing-progress recovery).
+The Gate ran against these working-tree changes before their commits, with HEAD at b54ecb8f.
+Build and format passed. All 73 PowerShell Suites ran with reuse off and six Workers; none reused evidence.
+Coverage ran in full, including 108 browser tests. All thresholds passed: 94.8% line and 83.2% branch.
+The final committed-range whitespace check found the failure transition's blank line at EOF in PLAN-PROGRESS.md.
+The recovery entries remove that EOF blank line. The final staged-tree and committed-range checks are checked separately.
+Timing-budget warnings affected 28 Suites and did not fail the run. No baseline was changed.

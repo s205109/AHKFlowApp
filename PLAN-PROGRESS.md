@@ -39,3 +39,7 @@ Local review of 0112b0b0: jq-disabled shim probes forward as Auto, contradicting
 
 **Recovery task:** Review recovery 1: control jq-present and jq-absent shim environments. Review recovery 2: restore existing-progress Ship-failure coverage and prove progress survives without closure lookup.
 
+
+- Review recovery 1: implemented explicit jq responses and deterministic absent-jq forwarding checks for both payloads. Full guard Suite and focused mutation checks passed.
+- Review recovery 2: restored the existing-progress Ship-failure edge with success and preservation assertions. Full transition Suite passed; removing the existing-file guard fails the focused case.
+- Review recovery verification: fixes committed as 148fa7cc and 38f36a3e. Build, format, all 73 PowerShell Suites (reuse off), and full coverage passed. Coverage: 94.8% line, 83.2% branch. The transition commit's EOF blank line is removed by these recovery entries; recheck the final commit range.
