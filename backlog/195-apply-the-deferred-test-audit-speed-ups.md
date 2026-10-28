@@ -56,3 +56,9 @@ The four Suites are `StageTransition`, `WatchTask`, `CiPowerShellSuiteRunner` an
   on this branch.
 - Spec: `docs/superpowers/specs/2026-10-27-apply-the-deferred-test-audit-speed-ups-design-195.md`
 - Plan: `docs/superpowers/plans/2026-10-27-apply-the-deferred-test-audit-speed-ups-plan-195.md`.
+- Final recovery: rows 22 and 53 are rejected. All legal transition edges run; the existing-progress
+  Ship recovery check remains. Explicit jq fixtures cover parsed and absent-parser shim behavior.
+- Final Verify: the five-step Gate passed at dc4fb579 with reuse off and six Workers.
+  All 73 PowerShell Suites and full coverage passed. Baselines were refreshed in 4bb7eb09.
+- Document recheck: all six acceptance criteria remain satisfied. The cycle-time record preserves
+  historical medians and identifies the final S-A rejection at 0.999 s saving.
