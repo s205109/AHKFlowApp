@@ -94,7 +94,10 @@ Measured 2026-10-27. Before is the baseline commit `ee203e1a`.
 | `MEMORY.md`, characters | 10,349 | 3,742 |
 
 - Deleted: the 33 approved files. The auto mode classifier refused the agent's delete, so the
-  user runs it from a handed-over script. The After column counts the folder after that run.
+  user ran it from a handed-over script. The After column counts the folder after that run.
+- The `~/.claude` repository holds the result. Commit `ed5796a` (2026-10-27) deletes the 33 files
+  and changes 14. Commit `22a10ff` (2026-10-28) holds one review fix to
+  `project_worktree_guard_blocks_git_not_file_writes`.
   Merged: `project_entered_worktree_blocks_pwsh` into
   `project_worktree_guard_blocks_git_not_file_writes`.
 - Shrunk: the 7 files the plan names. Kept: 12 files, with `[[links]]` to removed memories
@@ -128,12 +131,12 @@ Characters, measured 2026-10-27. Before is `a3b4deae`, the branch head before Ta
 
 | File | Before | After | Always loaded |
 |---|---:|---:|---|
-| `AGENTS.md` | 34,519 | 25,554 | yes |
+| `AGENTS.md` | 34,519 | 25,623 | yes |
 | `.claude/CLAUDE.md` | 9,259 | 4,731 | yes |
 | `MEMORY.md` | 10,349 | 3,742 | yes |
 | `docs/development/workflow.md` | 76,265 | 79,931 | no |
 
-The three always-loaded files drop from 54,127 to 34,027 characters. (`AGENTS.md` and
+The three always-loaded files drop from 54,127 to 34,096 characters. (`AGENTS.md` and
 `.claude/CLAUDE.md` were re-measured on 2026-10-28, after the review fixes.) `workflow.md` grows by
 3,666, because Stage 3 now holds the fabrication check and the citation rules.
 
