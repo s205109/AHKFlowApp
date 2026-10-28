@@ -59,3 +59,14 @@ D2 corrected S-A: full-loop runs 24.307, 23.813, 23.423 s; three-edge-skip runs 
 - D2 recovery verification: the complete StageTransition Suite passed in 68.6 s with every legal edge restored. Simplify scope is only removal of the skip table and condition; no further simplification needed.
 - Final recovery Verify: Gate passed at dc4fb579; all 73 Suites executed with reuse off and six Workers. Full coverage passed (94.8% line, 83.2% branch), as did build, format, and whitespace. Four baselines refreshed from this Gate.
 - Recovery Document: all 79 scoped rows have verdicts; rows 22 and 53 are rejected. Rechecked all six acceptance boxes and the four final Gate baselines. The existing plan steps remain ticked; the S-A rejection is recorded as the final D2 verdict. No app vocabulary, README, or skill changed. Ready for local Review.
+
+## Failure edge to 4-execute (2026-10-28)
+
+**Red evidence:**
+
+```
+Local review confirms locale-sensitive validation, incomplete in-process isolation, shim branch gaps, lost runner coverage, and stale timing evidence.
+```
+
+**Recovery task:** Fix review findings 1-11; apply S1 S2 S4 S6 S7 S9 and stale comments; preserve worker-count API; prove regressions and refresh isolated medians and quiet reuse-off Gate baselines.
+
