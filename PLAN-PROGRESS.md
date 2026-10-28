@@ -44,3 +44,14 @@ Local review of 0112b0b0: jq-disabled shim probes forward as Auto, contradicting
 - Review recovery 2: restored the existing-progress Ship-failure edge with success and preservation assertions. Full transition Suite passed; removing the existing-file guard fails the focused case.
 - Review recovery verification: fixes committed as 148fa7cc and 38f36a3e. Build, format, all 73 PowerShell Suites (reuse off), and full coverage passed. Coverage: 94.8% line, 83.2% branch. The transition commit's EOF blank line is removed by these recovery entries; recheck the final commit range.
 - Recovery Simplify: reviewed the two test corrections at 4cdcb0d9 using code-simplifier guidance. Nothing to simplify: explicit jq modes preserve the dependency boundary, and the restored Ship edge remains distinct from post-closure recovery. Refresh S-A timing for the three-edge skip at Verify.
+
+## Failure edge to 4-execute (2026-10-28)
+
+**Red evidence:**
+
+```
+D2 corrected S-A: full-loop runs 24.307, 23.813, 23.423 s; three-edge-skip runs 19.414, 22.814, 24.483 s. Medians 23.813 and 22.814 s; saving 0.999 s is below the required 1 s.
+```
+
+**Recovery task:** Reject S-A row 53 and restore all legal loop edges while retaining existing-progress recovery assertions. Run StageTransition, then Simplify and the Verify Gate.
+
