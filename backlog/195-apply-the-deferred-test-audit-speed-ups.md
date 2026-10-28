@@ -6,7 +6,7 @@
 - **Type**: Tooling
 - **Interfaces**: none (test suites)
 - **Difficulty**: complex
-- **Stage**: 4-execute
+- **Stage**: 5-simplify
 
 ## Summary
 
