@@ -685,7 +685,7 @@ the before set of the next change. A change stays only when its median fell by 1
 | `WatchTask` | W-C: cap the stubbed 500 ms sleeps at 50 ms | 70, 74 | 4.54 | 1.41 | kept |
 | `CiPowerShellSuiteRunner` | C-B: runs that fail before any Suite run in this process | 37, 42, 43, 44, 48 to 52 | 6.96 | 0.82 | kept |
 | `CiPowerShellSuiteRunner` | C-A: `Resolve-SuiteWorkerCount`, its cases, and two runner runs kept | 31, 32, 34, 35 | 11.19 | 3.47 | kept |
-| `StageTransition` | S-A: the loop skips four edges that named cases prove | 53 | 23.69 | 19.83 | kept |
+| `StageTransition` | S-A: the loop skips four edges that named cases prove | 53 | 23.69 | 19.83 | superseded; rejected after recovery |
 | `StageTransition` | S-B: four driver refusals run on `$fx` | 54, 56, 60, 69 | 2.86 | 0.52 | kept |
 | `StageTransition` | S-C: six round cases run on `$rd` | 61, 62, 63, 65, 66, 67 | 6.69 | 2.22 | kept |
 | `AgentWorktreeGuard` | G-A: seven decision loops run inside the probe memo | 20, 21, 23 to 27 | 4.02 | 1.62 | kept |
@@ -838,7 +838,7 @@ Both P2 findings were confirmed. The Review failure edge returned item 195 to Ex
 
 The two full Suites passed together: AgentWorktreeGuard 67.4 s and StageTransition 97.5 s.
 These are verification runs, not isolated medians or replacement baselines.
-The earlier S-A medians describe four skipped edges; only three remain skipped after this correction.
+The earlier S-A medians describe four skipped edges; the first correction retained three skips. The final D2 recovery below removes all skips.
 
 Focused real-script slices passed before and after each mutation:
 - Replacing the Copilot adapter with Claude failed the adapter assertion.
@@ -870,3 +870,30 @@ The after set drifted upward; it is not evidence for rounding the saving up or k
 The skip table and skip condition are removed. Every legal edge runs again.
 Existing-progress success and preservation assertions remain.
 Earlier S-A and isolated Suite timings are historical measurements of earlier revisions.
+
+### Final recovery Gate at Verify
+
+The five-step Gate passed at dc4fb579 on 2026-10-28.
+Build and format passed. All 73 PowerShell Suites executed with AHKFLOW_GATE_REUSE=off.
+Workers: 6 (AHKFLOW_SUITE_MAX_PARALLEL). No Suite reused evidence.
+The Lane pool was shared with Measure:Gate in wt-speed-up-the-development-cycle.
+These are loaded-machine Gate durations, not isolated comparisons.
+
+Full coverage passed, including 108 browser tests: 94.8% line and 83.2% branch.
+The final committed-range whitespace check passed.
+The durable verification artifacts are the updated guard and transition Suites.
+Their three recovery mutations were caught before the final Gate.
+The all-edge transition Suite also passed alone in 68.6 s after S-A was rejected.
+
+The four baselines are refreshed from this final Gate:
+
+| Suite | Previous baseline (s) | Final Gate baseline (s) |
+|---|---|---|
+| WatchTask.Tests.ps1 | 43.6 | 45.5 |
+| CiPowerShellSuiteRunner.Tests.ps1 | 118.3 | 114.1 |
+| StageTransition.Tests.ps1 | 109.7 | 144.8 |
+| AgentWorktreeGuard.Tests.ps1 | 77.9 | 81.2 |
+
+Local logs: .superpowers/review-195-verify-gate.log and .superpowers/review-195-verify-gate.json.
+The latter records exit 0 for all five steps.
+Verdict: verification passed; ready for Document and local Review.
