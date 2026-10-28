@@ -6,7 +6,7 @@
 - **Type**: Tooling
 - **Interfaces**: none (memory files, repository instruction files)
 - **Difficulty**: moderate
-- **Stage**: 8-review
+- **Stage**: 9-ship
 
 ## Summary
 
