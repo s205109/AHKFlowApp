@@ -127,6 +127,45 @@ function Read-SuiteManifest {
             $baseline = $number
         }
 
+        # Backlog 188. Whether the runner may reuse this Suite's last passing result. An absent
+        # field is $null and never eligible, so a Suite opts in only by saying so.
+        $reuse = $null
+        if ($null -ne $item.PSObject.Properties['reuse']) {
+            $rawReuse = $item.reuse
+            if ($rawReuse -isnot [System.Management.Automation.PSCustomObject]) {
+                throw "Suite '$name' has a reuse field that is not an object. File: $Path"
+            }
+
+            # The JSON type is the contract: "true" or 1 would read as true after a cast.
+            $eligible = if ($null -ne $rawReuse.PSObject.Properties['eligible']) { $rawReuse.eligible } else { $null }
+            if ($eligible -isnot [bool]) {
+                throw "Suite '$name' has a reuse.eligible value that is not true or false: '$eligible'. File: $Path"
+            }
+
+            $reuseReason = if ($null -ne $rawReuse.PSObject.Properties['reason']) { [string] $rawReuse.reason } else { $null }
+            if (-not $eligible -and [string]::IsNullOrWhiteSpace($reuseReason)) {
+                throw "Suite '$name' is not eligible for reuse, so it needs a non-empty reuse.reason saying why. File: $Path"
+            }
+
+            $extraInputs = @()
+            if ($null -ne $rawReuse.PSObject.Properties['extraInputs'] -and $null -ne $rawReuse.extraInputs) {
+                $extraInputs = @($rawReuse.extraInputs | ForEach-Object { [string] $_ })
+            }
+            foreach ($extra in $extraInputs) {
+                # A missing file is not an error here: the evidence library reads it as unresolved.
+                if ([string]::IsNullOrWhiteSpace($extra) -or $extra.Contains('\') -or $extra.StartsWith('/') -or
+                    $extra -match '^[A-Za-z]:' -or @($extra -split '/') -contains '..') {
+                    throw "Suite '$name' has a reuse extra input '$extra'. Use a relative path with forward slashes and no '..' segment. File: $Path"
+                }
+            }
+
+            $reuse = [pscustomobject]@{
+                Eligible    = [bool] $eligible
+                ExtraInputs = [string[]] $extraInputs
+                Reason      = $reuseReason
+            }
+        }
+
         $entries.Add([pscustomobject]@{
                 Name            = $name
                 Jobs            = $jobs
@@ -134,6 +173,7 @@ function Read-SuiteManifest {
                 Execution       = $execution
                 Reason          = $reason
                 BaselineSeconds = $baseline
+                Reuse           = $reuse
             })
     }
 

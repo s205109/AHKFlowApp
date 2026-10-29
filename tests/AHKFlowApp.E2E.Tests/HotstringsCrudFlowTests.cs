@@ -1,6 +1,7 @@
 using AHKFlowApp.E2E.Tests.Fixtures;
 using AHKFlowApp.Infrastructure.Persistence;
 using AHKFlowApp.TestUtilities.Builders;
+using FluentAssertions.Execution;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Playwright;
 using Xunit;
@@ -130,6 +131,42 @@ public sealed class HotstringsCrudFlowTests(StackFixtureC fixture) : IAsyncLifet
         // The count proves the page's selection changed. The row ticks prove the owner can see it.
         await Assertions.Expect(checkboxA).ToBeCheckedAsync();
         await Assertions.Expect(checkboxB).ToBeCheckedAsync();
+    }
+
+    // Backlog 185. Three 48 px buttons did not fit the 160 px Actions column. In view mode the last
+    // one ended 8 px past its cell, and the table container cut it off. In edit mode the third
+    // button dropped to a second line. Every state is measured before any assertion runs, so one
+    // red run shows each state that fails.
+    [Fact]
+    public async Task RowButtons_OnDesktopViewport_SitInsideTheActionsCellOnOneLine()
+    {
+        await SeedHotstringsAsync(fixture, ("btw", "by the way"));
+
+        await using IBrowserContext ctx = await fixture.Browser.NewContextAsync(DesktopViewport);
+
+        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/hotstrings");
+        ILocator row = page.Locator(".desktop-branch tbody tr", new() { HasTextString = "btw" });
+        await row.Locator("button.delete").WaitForAsync();
+        ActionsCellLayout view = await ActionsCell.MeasureAsync(page, row, "button.delete");
+
+        await row.Locator("button.edit").ClickAsync();
+        ILocator editRow = page.Locator(".desktop-branch tr.edit-row");
+        await editRow.Locator("button.promote-edit").WaitForAsync();
+        ActionsCellLayout edit = await ActionsCell.MeasureAsync(page, editRow, "button.promote-edit");
+
+        // Add stays off while a row is in edit mode.
+        await editRow.Locator("button.cancel-edit").ClickAsync();
+        await page.Locator(".desktop-branch button.add-hotstring").ClickAsync();
+        ILocator draftRow = page.Locator(".desktop-branch tr.draft-row");
+        await draftRow.Locator("button.promote-edit").WaitForAsync();
+        ActionsCellLayout draft = await ActionsCell.MeasureAsync(page, draftRow, "button.promote-edit");
+
+        using (new AssertionScope())
+        {
+            ActionsCell.AssertInsideItsCellOnOneLine("view mode", view, expectedButtons: 3);
+            ActionsCell.AssertInsideItsCellOnOneLine("edit mode", edit, expectedButtons: 3);
+            ActionsCell.AssertInsideItsCellOnOneLine("new row", draft, expectedButtons: 3);
+        }
     }
 
     private static async Task SeedHotstringsAsync(StackFixture fixture, params (string Trigger, string Replacement)[] hotstrings)

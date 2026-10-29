@@ -46,7 +46,12 @@ param(
     # Bound as text on purpose. An [int] parameter would round '1.5' to 2 and '2.5' to 2 while
     # binding, so a typo would run a number nobody asked for and the "whole number" promise below
     # could never be checked. The environment-variable path parses its text the same way.
-    [string] $MaxParallel = ''
+    [string] $MaxParallel = '',
+
+    # Backlog 188. This run is the Gate's PowerShell step. Only a Gate run may reuse a Suite's last
+    # passing result, prints its 'Gate evidence:' line, and appends a line to the Gate log. CI and
+    # a direct run leave it off, so their output does not change.
+    [switch] $Gate
 )
 
 $ErrorActionPreference = 'Stop'
@@ -58,11 +63,15 @@ Set-StrictMode -Version Latest
 $PSNativeCommandUseErrorActionPreference = $false
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
+$gateStartedAtUtc = [DateTime]::UtcNow
+$gateWatch = [System.Diagnostics.Stopwatch]::StartNew()
 
 . "$PSScriptRoot\progress.common.ps1"
 . "$PSScriptRoot\powershell-suites.common.ps1"
 . "$PSScriptRoot\test-lanes.common.ps1"
 . "$PSScriptRoot\progress.parallel.ps1"
+. "$PSScriptRoot\gate-evidence.common.ps1"
+. "$PSScriptRoot\suite-budget.common.ps1"
 
 if ([string]::IsNullOrWhiteSpace($SuiteRoot)) {
     $SuiteRoot = Join-Path $repoRoot 'tests'
@@ -120,56 +129,93 @@ try {
 
 $byName = @{}
 foreach ($file in $discovered) { $byName[$file.Name] = $file }
-$suites = @($selected | ForEach-Object { $byName[$_.Name] })
+$entryByName = @{}
+foreach ($entry in $entries) { $entryByName[$entry.Name] = $entry }
 
-# Reading the variable's text here does not settle precedence - the branches below do, in order.
-# "An explicit value wins over the variable" has to mean this: validating the variable's text
-# before the -MaxParallel branch is checked would fail the run on a value the caller has already
-# overridden. A blank or whitespace variable is no value, so it falls through to the default.
 $inActions = $env:GITHUB_ACTIONS -eq 'true'
-$envMaxParallel = $env:AHKFLOW_SUITE_MAX_PARALLEL
-$hasPhysicalCoreCount = $false
+
+# Backlog 188. Reuse needs -Gate, AHKFLOW_GATE_REUSE not 'off', and a run outside GitHub Actions.
+# CI always runs everything. With reuse off, no evidence is read or written.
+$reuseOn = $false
+$reusedRows = [System.Collections.Generic.List[object]]::new()
+$reuseKeys = @{}
+$evidenceRoot = Get-GateEvidenceRoot -RepoRoot $repoRoot
+if ($Gate) {
+    $offReason = if ($env:AHKFLOW_GATE_REUSE -eq 'off') { 'AHKFLOW_GATE_REUSE=off' } elseif ($inActions) { 'GitHub Actions' } else { $null }
+    if ($null -eq $offReason) {
+        $reuseOn = $true
+        Write-Host 'Gate evidence: on'
+    } else {
+        Write-Host "Gate evidence: off ($offReason)"
+    }
+}
+
+# Backlog 188. A Suite's committed baselineSeconds is its time budget. Budgets apply only to a Gate
+# run outside GitHub Actions, and they never change the exit code.
+$budgetsOn = $Gate -and -not $inActions
+$budgetWarned = [System.Collections.Generic.List[string]]::new()
+
+if ($reuseOn) {
+    # Read once per run: the tool versions and the runner's own inputs are the same for every Suite.
+    $runnerInputs = Get-SuiteInputList -Path $PSCommandPath -Root $repoRoot
+    $suiteParent = Split-Path -Parent $SuiteRoot
+    $reuseContext = @{
+        ToolVersion = Get-GateToolVersion -RunnerRoot $repoRoot
+        Job         = $Job
+        Platform    = $runPlatform
+        LaneRole    = $laneRole
+        Root        = $suiteParent
+        RunnerRoot  = $repoRoot
+    }
+
+    # An eligible Suite's input list and key, built the same way before it runs and after it passes.
+    function Get-EntryReuseKey {
+        param([object] $Entry)
+        $inputs = Get-SuiteInputList -Path $byName[$Entry.Name].FullName -Root $suiteParent -ExtraInput $Entry.Reuse.ExtraInputs
+        return [pscustomobject]@{
+            Inputs = $inputs
+            Key    = Get-SuiteReuseKey -Entry $Entry -InputList $inputs -RunnerInputList $runnerInputs @reuseContext
+        }
+    }
+
+    $toRun = [System.Collections.Generic.List[object]]::new()
+    foreach ($entry in $selected) {
+        $key = $null
+        if ($null -ne $entry.Reuse -and $entry.Reuse.Eligible) { $key = (Get-EntryReuseKey $entry).Key }
+        if ($null -ne $key -and $null -ne (Read-GateEvidence -EvidenceRoot $evidenceRoot -SuiteName $entry.Name -Key $key)) {
+            Write-Host "REUSED $($entry.Name) (evidence $($key.Substring(0, 12)))"
+            $reusedRows.Add([pscustomobject]@{ Name = $entry.Name; ExitCode = 0; Seconds = 0; Reused = $true })
+            continue
+        }
+        if ($null -ne $key) { $reuseKeys[$entry.Name] = $key }
+        $toRun.Add($entry)
+    }
+
+    # The tracker, the schedule and the worker cap below see only the Suites that run. A reused
+    # result is not a timing sample.
+    $selected = @($toRun)
+}
+
+$suites = @($selected | ForEach-Object { $byName[$_.Name] })
 
 # Backlog 145. Get-DefaultSuiteWorkerCount in suite-worker-count.common.ps1 carries the measurement
 # behind the 75%, the reason a hosted runner takes every processor instead, and the reason an
-# unreadable core count falls back to the old rule.
+# unreadable core count falls back to the old rule. Resolve-SuiteWorkerCount there is the one
+# chain, highest precedence first, and only its last branch looks at the hardware.
 #
-# One chain, highest precedence first, and only the last branch looks at the hardware.
-if ($PSBoundParameters.ContainsKey('MaxParallel')) {
-    $parsedMaxParallel = 0
-    if (-not [int]::TryParse($MaxParallel.Trim(), [ref] $parsedMaxParallel) -or $parsedMaxParallel -lt 1) {
-        Write-Failure "-MaxParallel must be a whole number of at least one. Got: '$MaxParallel'"
-        exit 1
-    }
-    $workerCount = $parsedMaxParallel
-    $workerSource = '-MaxParallel'
-} elseif (-not [string]::IsNullOrWhiteSpace($envMaxParallel)) {
-    $parsedMaxParallel = 0
-    if (-not [int]::TryParse($envMaxParallel.Trim(), [ref] $parsedMaxParallel) -or $parsedMaxParallel -lt 1) {
-        # Falling back to the default here would hide a misconfigured CI job for months.
-        Write-Failure "AHKFLOW_SUITE_MAX_PARALLEL must be a whole number of at least one. Got: '$envMaxParallel'"
-        exit 1
-    }
-    $workerCount = $parsedMaxParallel
-    $workerSource = 'AHKFLOW_SUITE_MAX_PARALLEL'
-} elseif ($inActions) {
-    $workerCount = Get-DefaultSuiteWorkerCount -PhysicalCoreCount 0 -AllProcessors
-    $workerSource = "GitHub Actions: all $([Environment]::ProcessorCount) logical processors"
-} else {
-    # Adaptive Worker sizing queries hardware here. Owners reuse this result for their Lane proposal.
-    # Overrides skip this query; only an owner still needs a proposal below.
-    $physicalCoreCount = Get-PhysicalCoreCount
-    $hasPhysicalCoreCount = $true
-    $logicalProcessorCount = [Environment]::ProcessorCount
-
-    $workerCount = Get-DefaultSuiteWorkerCount -PhysicalCoreCount $physicalCoreCount -LogicalProcessorCount $logicalProcessorCount
-    $workerSource = 'default: ' + (Get-DefaultSuiteWorkerReason -PhysicalCoreCount $physicalCoreCount -LogicalProcessorCount $logicalProcessorCount)
+# Passing the variable's text does not settle precedence - the function's branches do, in order.
+$sizing = Resolve-SuiteWorkerCount -MaxParallel $MaxParallel -MaxParallelGiven:($PSBoundParameters.ContainsKey('MaxParallel')) -EnvMaxParallel $env:AHKFLOW_SUITE_MAX_PARALLEL -InActions:$inActions
+if ($null -ne $sizing.Error) {
+    Write-Failure $sizing.Error
+    exit 1
 }
+$workerCount = $sizing.Count
+$workerSource = $sizing.Source
 
 $laneProposal = 0
 if ($laneRole -eq 'owner') {
-    $laneProposal = if ($hasPhysicalCoreCount) {
-        Get-AhkFlowLaneProposal -PhysicalCoreCount $physicalCoreCount
+    $laneProposal = if ($null -ne $sizing.PhysicalCoreCount) {
+        Get-AhkFlowLaneProposal -PhysicalCoreCount $sizing.PhysicalCoreCount
     } else {
         Get-AhkFlowLaneProposal
     }
@@ -182,7 +228,7 @@ Write-Host "Running $($suites.Count) PowerShell suite(s) from $SuiteRoot"
 Write-Host "Host: $hostExe"
 Write-Host "Job: $Job    Platform: $runPlatform"
 
-$progress = New-ProgressTracker -RunnerKey 'run-powershell-suites' -Unit @($suites.Name) -RepoRoot $repoRoot -NoStore:(-not $keepTimings)
+$progress = New-ProgressTracker -RunnerKey 'run-powershell-suites' -Unit @($suites | ForEach-Object { $_.Name }) -RepoRoot $repoRoot -NoStore:(-not $keepTimings)
 
 $schedule = @(Get-SuiteSchedule -Entry $selected -History $progress.History)
 
@@ -208,6 +254,7 @@ Write-Host "Workers: $workerCount ($workerSource)"
 $parallelProgress = New-ParallelProgressTracker -Tracker $progress
 
 $results = [System.Collections.Generic.List[object]]::new()
+foreach ($row in $reusedRows) { $results.Add($row) }
 
 # Invoke-SuiteChild comes from powershell-suites.common.ps1, which this script already dot-sources.
 # Prints one suite's whole block, in this runspace. Buffering the child's output and printing it
@@ -234,7 +281,29 @@ function Show-SuiteResult {
             Name     = $Result.Name
             ExitCode = $Result.ExitCode
             Seconds  = [math]::Round($Result.Seconds, 1)
+            Reused   = $false
         })
+
+    $entry = $entryByName[$Result.Name]
+
+    # Backlog 188. Only a Suite that ran can be over its budget. A reused one never reaches here.
+    if ($budgetsOn -and $null -ne $entry) {
+        $warning = Get-SuiteBudgetWarning -Entry $entry -Seconds $Result.Seconds
+        if ($null -ne $warning) {
+            Write-Host $warning -ForegroundColor Yellow
+            $budgetWarned.Add($Result.Name)
+        }
+    }
+
+    # Backlog 188. Evidence only after a pass, and only when the inputs still hash to the key the
+    # run started with. A Suite that changed one of its own inputs while it ran proved nothing
+    # about the new bytes.
+    if ($reuseOn -and $Result.ExitCode -eq 0 -and $reuseKeys.ContainsKey($Result.Name)) {
+        $again = Get-EntryReuseKey $entry
+        if ($again.Key -eq $reuseKeys[$Result.Name]) {
+            Write-GateEvidence -EvidenceRoot $evidenceRoot -SuiteName $Result.Name -Key $again.Key -InputList $again.Inputs -RunnerInputList $runnerInputs -Seconds $Result.Seconds
+        }
+    }
 }
 
 $byPath = @{}
@@ -333,6 +402,19 @@ foreach ($item in $selected) {
 # file's last-write time while a child runs. -KnownUnit drops a suite that no longer exists.
 Save-ProgressTimings -Tracker $progress -KnownUnit @($discovered.Name)
 
+# Backlog 188. The streak lives beside the timings, and only a run that keeps timings writes it, so
+# a run over fake Suites never touches it. Two warnings in a row suggest an audit; nothing starts
+# one.
+if ($budgetsOn -and $keepTimings) {
+    $executedNames = @($results | Where-Object { -not $_.Reused } | ForEach-Object { $_.Name })
+    $streakPath = Join-Path $repoRoot "$script:GateOutputFolder\progress\budget-streak.json"
+    $repeat = @(Update-SuiteBudgetStreak -Path $streakPath -Executed $executedNames -Warned @($budgetWarned))
+    if ($repeat.Count -gt 0) {
+        $names = $repeat -join ', '
+        Write-Host "These Suites ran over budget in two runs in a row: $names. To audit them, type in Claude Code: Run /test-audit on $names" -ForegroundColor Yellow
+    }
+}
+
 $failed = @($results | Where-Object { $_.ExitCode -ne 0 })
 
 $lines = [System.Collections.Generic.List[string]]::new()
@@ -343,6 +425,10 @@ $lines.Add('|---|---|---|---|')
 # By name, not by finish order. A parallel run finishes in a different order every time, and a
 # table nobody can scan is no use in a CI log.
 foreach ($result in ($results | Sort-Object Name)) {
+    if ($result.Reused) {
+        $lines.Add("| $($result.Name) | reused | 0 | - |")
+        continue
+    }
     $verdict = if ($result.ExitCode -eq 0) { 'passed' } else { 'failed' }
     $lines.Add("| $($result.Name) | $verdict | $($result.ExitCode) | $($result.Seconds)s |")
 }
@@ -360,6 +446,30 @@ Write-Host $summary
 
 if (-not [string]::IsNullOrWhiteSpace($env:GITHUB_STEP_SUMMARY)) {
     Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Value $summary -Encoding utf8
+}
+
+# Backlog 188. One line per Gate run, beside the evidence folder. A log that cannot be written
+# warns and never fails the run.
+if ($Gate) {
+    try {
+        $revision = & git -C $repoRoot rev-parse HEAD 2>$null
+        $logLine = [ordered]@{
+            startedAtUtc   = $gateStartedAtUtc.ToString('o')
+            revision       = if ($LASTEXITCODE -eq 0 -and $revision) { ([string] $revision).Trim() } else { $null }
+            reuse          = $reuseOn
+            executed       = @($results | Where-Object { -not $_.Reused } | ForEach-Object { $_.Name } | Sort-Object)
+            reused         = @($reusedRows | ForEach-Object { $_.Name } | Sort-Object)
+            elapsedSeconds = [math]::Round($gateWatch.Elapsed.TotalSeconds, 1)
+            budgetWarnings = @($budgetWarned | Sort-Object)
+        }
+        $logFolder = Split-Path -Parent $evidenceRoot
+        if (-not (Test-Path -LiteralPath $logFolder -PathType Container)) {
+            New-Item -ItemType Directory -Path $logFolder -Force | Out-Null
+        }
+        Add-Content -LiteralPath (Join-Path $logFolder 'gate-log.jsonl') -Value ($logLine | ConvertTo-Json -Compress -Depth 4) -Encoding utf8
+    } catch {
+        Write-Warning "Could not append to the Gate log. $($_.Exception.Message)"
+    }
 }
 
 if ($failed.Count -gt 0) { exit 1 }

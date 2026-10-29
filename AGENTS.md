@@ -127,13 +127,12 @@ Frameworks: xUnit, FluentAssertions (over raw `Assert`), NSubstitute, Testcontai
 ## The development process
 
 The canonical process is [`docs/development/workflow.md`](docs/development/workflow.md).
-Eleven stages, five edges per stage, one durable record of where the work stands. On any
-disagreement between that file and this one, `workflow.md` wins.
+On any disagreement between that file and this one, `workflow.md` wins.
 
 The sections below are the rule index. Each line is a rule; its link is the stage that owns
-the narrative.
+the narrative. For the stage you are in, read its block in section 3 and the rules in section 7.
 
-- Take a stage transition with `scripts/take-stage-transition.ps1`. It writes the field, commits, pushes, and drives the pull request in one order, and it reads every legal target from `workflow.md` at run time. A Claude Code session inside an entered worktree cannot run PowerShell, so it calls the script through the exit and re-enter cycle — see [workflow.md#4-the-current-stage-field](docs/development/workflow.md#4-the-current-stage-field).
+- Take every stage transition with `scripts/take-stage-transition.ps1` — see [section 4](docs/development/workflow.md#4-the-current-stage-field).
 
 ## Debugging
 
@@ -143,27 +142,14 @@ the narrative.
 
 ## Plans
 
-- End every plan with a list of unresolved questions, if any. Keep them extremely concise; sacrifice grammar — see [workflow.md#stage-3-plan](docs/development/workflow.md#stage-3-plan).
-- Run the fabrication check on your own draft before you present it. It is not optional — see [workflow.md#stage-3-plan](docs/development/workflow.md#stage-3-plan).
-- Open every plan with a `## Split` section: the estimate in work sessions, the task at which the user story closes, and a verdict when the plan meets the split trigger. A plan at the split trigger must evaluate a split in writing, and `scripts/check-plan-split-record.ps1` refuses the push otherwise. Rules: [workflow.md#the-split-record](docs/development/workflow.md#the-split-record) — see [workflow.md#stage-3-plan](docs/development/workflow.md#stage-3-plan).
-- Prove every identifier defined in this repository with the `file:line` that defines it, written in the checkable form below — see [workflow.md#stage-3-plan](docs/development/workflow.md#stage-3-plan).
-  - The checkable form is `` (`path:line`, "text from that line") ``, as in (`scripts/check-citation-freshness.ps1:1`, "#Requires -Version 7.0"). `scripts/check-citation-freshness.ps1` fails any citation on a line a pull request adds or edits when it does not use that form. An untouched citation keeps working, so no bulk rewrite is needed.
-  - Suppress a citation the check must not read with `citation-check:ignore` on the same line. Suppress a whole file with `citation-check:ignore-file` alone on its own line, inside the first five non-blank lines.
-  - Freeze a plan or spec when its item ships: `citation-check:ignore-file` at the top, plus a comment saying why. A shipped plan is a record of the tree as it was, not a claim about the tree as it is — see [workflow.md#stage-9-ship](docs/development/workflow.md#stage-9-ship).
-  - A citation to a line your own plan will create is a forward reference, not a proven claim. Mark it `citation-check:ignore` with the reason on the same line, and prove it after the task runs.
-  - Pre-push checks only the plans this branch owns. `docs/superpowers` is one shared working tree with a single branch, so another branch's live plan cites lines that are right there and wrong here. Never repair a plan whose number belongs to somebody else's open item, and always stage plans-repository files by name — `git -C docs/superpowers add <folder>` commits whatever another session has open.
-- Prove every .NET or NuGet identifier against the official documentation for the version in `Directory.Packages.props`. Never cite an external API from memory — see [workflow.md#stage-3-plan](docs/development/workflow.md#stage-3-plan).
-- Prove every MudBlazor or other component parameter against that component's API for the version in `Directory.Packages.props` — see [workflow.md#stage-3-plan](docs/development/workflow.md#stage-3-plan).
-- Prove every CSS selector and `data-test` value with the `file:line` in the `.razor` file that renders it, written in the same checkable form — see [workflow.md#stage-3-plan](docs/development/workflow.md#stage-3-plan).
-- Prove every emitted AHK construct against [`docs/development/ahk-v2-syntax.md`](docs/development/ahk-v2-syntax.md) or the official AHK v2 docs — see [workflow.md#stage-3-plan](docs/development/workflow.md#stage-3-plan).
-- Prove every claim about branch or file state with a `git` or filesystem command, and keep the output — see [workflow.md#stage-3-plan](docs/development/workflow.md#stage-3-plan).
-- Mark anything you cannot prove **FABRICATED** in the draft. Do not delete it and do not soften it. List the fabricated items, revise, then present — see [workflow.md#stage-3-plan](docs/development/workflow.md#stage-3-plan).
-- Save the final spec under `docs/superpowers/specs/YYYY-MM-DD-<topic>-design-NNN.md` and the final plan under `docs/superpowers/plans/YYYY-MM-DD-<topic>-plan-NNN.md`, where `NNN` is the backlog number — see [workflow.md#stage-2-design](docs/development/workflow.md#stage-2-design).
-- Commit from inside the private repo with `git -C docs/superpowers commit`. `git add` from the repo root silently skips that path, so a root commit saves the plan nowhere — see [workflow.md#stage-3-plan](docs/development/workflow.md#stage-3-plan).
-- Commit a project plan or spec to `docs/superpowers/plans/` and `docs/superpowers/specs/`. Project work means code, features, infra, deployment, tests, and repo tooling — see [workflow.md#stage-3-plan](docs/development/workflow.md#stage-3-plan).
-- Commit a personal plan or spec to `docs/superpowers/personal/plans/` and `docs/superpowers/personal/specs/`. Personal work means agent tuning, personal workflow experiments, and one-off context or config cleanups. A personal file carries no backlog number and needs no backlog item — see [workflow.md#stage-3-plan](docs/development/workflow.md#stage-3-plan).
-- Write the plan's path back into the backlog item when you commit the plan: a `- Plan:` bullet under `## Notes / dependencies`. Use `- Plan: none — <reason>` when the item has no plan. `tests/BacklogPlanPointer.Tests.ps1` fails an open or blocked item that reaches Execute without one. A shipped item in `backlog/done/` is never asked for a pointer, but a pointer it carries must be readable, and the same check reads it — see [workflow.md#stage-3-plan](docs/development/workflow.md#stage-3-plan).
-- Read the item's `- Plan:` bullet before you write code, and implement that plan. A plan wins over a spec. When an item carries no such bullet, glob `docs/superpowers/plans/*<NNN>*` and then list the folder — see [workflow.md#stage-3-plan](docs/development/workflow.md#stage-3-plan).
+- Open every plan with a `## Split` section. `scripts/check-plan-split-record.ps1` refuses the push without a valid one — see [Stage 3](docs/development/workflow.md#stage-3-plan).
+- End every plan with its unresolved questions, if any. Keep them very short — see [Stage 3](docs/development/workflow.md#stage-3-plan).
+- Run the fabrication check on your own draft before you present it. Every claim needs proof, and a claim without proof is marked **FABRICATED** — see [Stage 3](docs/development/workflow.md#stage-3-plan).
+- Prove an external API from its docs, for the package version this repository pins. Never prove it from memory — see [Stage 3](docs/development/workflow.md#stage-3-plan).
+- Cite repository code in the checkable form (`path:line`, "text from that line"). `scripts/check-citation-freshness.ps1` fails any other form on a changed line — see [Stage 3](docs/development/workflow.md#stage-3-plan).
+- Save a project spec or plan in `docs/superpowers/specs/` or `docs/superpowers/plans/`, named with its backlog number. A personal one goes under `docs/superpowers/personal/`, with no number. Stage and commit only the files you name, never the whole plans repository. The commands are under **Two-repo transitions** in [section 4](docs/development/workflow.md#4-the-current-stage-field) — see [Stage 3](docs/development/workflow.md#stage-3-plan).
+- Give the item a `- Plan:` bullet that holds the plan's path, or `none — <reason>`. `tests/BacklogPlanPointer.Tests.ps1` fails an item that reaches Execute without one — see [Stage 3](docs/development/workflow.md#stage-3-plan).
+- Before you write code, read the item's `- Plan:` bullet and implement that plan. A plan wins over a spec. With no bullet, look in `docs/superpowers/plans/` for the item's number — see [Stage 3](docs/development/workflow.md#stage-3-plan).
 
 ## Verification After Implementation
 
@@ -269,38 +255,29 @@ the API URL + `/health`. SWA hostname:
 
 ## Git Workflow
 
-- Use GitHub Flow: feature branches from `main`, a PR for every merge — see [workflow.md#stage-1-pickup](docs/development/workflow.md#stage-1-pickup).
-- Name branches `feature/short-description`, `fix/short-description`, `chore/short-description`, or `hotfix/issueid-short-description`. Use `chore/` for a housekeeping round, which carries no single feature and no single fix — see [workflow.md#stage-1-pickup](docs/development/workflow.md#stage-1-pickup).
-- Insert `wt-` after the type prefix for a branch born in an agent worktree: `fix/wt-<topic>`, `feature/wt-<topic>`. No backlog number appears in a branch name or a worktree name; the number lives in the backlog item file — see [workflow.md#stage-0-intake](docs/development/workflow.md#stage-0-intake).
-- Name the housekeeping round's worktree `wt-backlog-housekeeping` and its branch `chore/wt-backlog-housekeeping`. Both names stay generic, because one round carries several unrelated chores. Never name a round after one chore inside it — see [workflow.md#stage-1-pickup](docs/development/workflow.md#stage-1-pickup).
-- Confirm the base before branching, and state it. Pass `-BaseRef <branch>` to `scripts/new-worktree.ps1` for work that builds on an unmerged branch. Every worktree is created by that script; the session then moves into it, and in Claude Code that move uses the native worktree tool. The tool cannot pass a base ref, so stacked work calls the script directly — see [workflow.md#stage-1-pickup](docs/development/workflow.md#stage-1-pickup).
-- At Pickup, the session runs from inside the worktree and does its work there. It steps out only to commit a plan or spec to the private plans repo, then steps back in. Creating a worktree and then working from the main checkout loses the location on resume, and leaves this repository's worktree write guard switched off. In Claude Code, move the session with the native `EnterWorktree` tool and the `path` the script printed. Codex, Copilot, and plain git have no such tool: start the session with its working directory in the worktree instead — see [workflow.md#stage-1-pickup](docs/development/workflow.md#stage-1-pickup).
-- Write conventional commits: `feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `chore:`. The body explains "why", not "what" — see [workflow.md#stage-4-execute](docs/development/workflow.md#stage-4-execute).
-- Keep commits atomic: one logical change per commit, a feature and its tests together. Do not bundle unrelated changes — see [workflow.md#stage-4-execute](docs/development/workflow.md#stage-4-execute).
-- File a `backlog/` item in two steps: create the worktree from the title with `pwsh ./scripts/new-worktree.ps1 -Title "..."`, then write the backlog item inside it with `pwsh ./scripts/new-backlog-item.ps1 -Title "..."`. Never pick a number by hand; CI fails when two files share one — see [workflow.md#stage-0-intake](docs/development/workflow.md#stage-0-intake).
-- Tick a `backlog/` item's acceptance boxes at Document, before Review reads the branch. Leave a box that is not true unticked, with the reason written into the item — an honest gap beats a false tick — see [workflow.md#stage-7-document](docs/development/workflow.md#stage-7-document).
-- Finish a `backlog/` item by `git mv`-ing the file into `backlog/done/` in the same PR that does the work. Never open a separate PR to mark an item done — see [workflow.md#stage-9-ship](docs/development/workflow.md#stage-9-ship).
-- Close the item in the pull request that ships its work. `tests/BacklogStaleOpen.Tests.ps1` fails an item left in `backlog/` at Stage `4-execute` or later once its own records merged and the base branch moved twelve first-parent commits past them — see [workflow.md#stage-9-ship](docs/development/workflow.md#stage-9-ship).
-- A ready pull request whose item has every acceptance box ticked must close that item's records. `scripts/check-shipping-pr-closes-item.ps1` fails CI otherwise, and `tests/BacklogStaleOpen.Tests.ps1` arm 3 reports it after a merge that skipped the check. Both conditions are needed: box state alone would refuse the Document-to-Ship window, and ready state alone would refuse every pull request but the last of a multi-pull-request item. Reasons in full: [`docs/adr/0016-a-shipping-pull-request-is-ready-and-fully-ticked.md`](docs/adr/0016-a-shipping-pull-request-is-ready-and-fully-ticked.md) — see [workflow.md#stage-9-ship](docs/development/workflow.md#stage-9-ship).
-- Block a `backlog/` item by `git mv`-ing it into `backlog/blocked/` when it waits on something outside this repository. The test is whether the work is possible right now, not whether it is worth doing. It keeps its number and its unticked boxes, and says near the top what would unblock it — see [workflow.md#stage-1-pickup](docs/development/workflow.md#stage-1-pickup).
-- Icebox an item in `backlog/icebox/` when the work is possible today and nobody judges it worth doing. That is the other half of the blocked test: `blocked/` is "cannot", `icebox/` is "will not, for now". Use it to keep a real finding rather than lose it, and never as a place to park work somebody is waiting for. An iceboxed item keeps its number, keeps its unticked boxes, stays at `Stage: 0-intake`, and says near the top what would make it worth doing. Nothing nags it, the same way nothing nags a blocked item — see [workflow.md#stage-1-pickup](docs/development/workflow.md#stage-1-pickup).
-- Add a folder under `backlog/` in one place only: `$script:BacklogItemSubfolder` in `scripts/backlog.common.ps1`. The checks that read git rather than the working tree share one copy of the list as a path pattern, `$WorktreeBacklogSubfolderPattern` in `scripts/worktree-git.common.ps1`. `tests/BacklogFolderParity.Tests.ps1` fails when that copy stops matching, or when a script writes the folders into a pattern of its own. A folder no copy knows about still holds items, and their numbers stop counting as taken — see [workflow.md#stage-1-pickup](docs/development/workflow.md#stage-1-pickup).
-- Never force-push to `main` — see [workflow.md#stage-9-ship](docs/development/workflow.md#stage-9-ship).
-- Do not commit on `main`. `.githooks/pre-commit` refuses it for every session, agent and human, and `.githooks/pre-merge-commit` refuses a local merge into `main`. Set `AHKFLOW_ALLOW_MAIN=1` for a deliberate one — see [workflow.md#stage-1-pickup](docs/development/workflow.md#stage-1-pickup).
-- Run the five-step Gate before you mark a pull request **ready**, not when you open the draft: [`docs/development/testing-workflow.md`](docs/development/testing-workflow.md#canonical-pre-pr-gate) — see [workflow.md#stage-6-verify](docs/development/workflow.md#stage-6-verify).
-- Keep a PR focused on a single concern; split a large change into stacked PRs — see [workflow.md#stage-8-review](docs/development/workflow.md#stage-8-review).
-- Treat the main checkout as human-owned. A session in main may inspect, edit, build, test, and format. A session in a managed worktree may read main, but any shell command that writes, moves, or deletes a path under main is refused — see [workflow.md#stage-1-pickup](docs/development/workflow.md#stage-1-pickup).
-- Run a gated Git command from main, where most now get an in-session prompt. `git commit` is the exception: it always needs a worktree, or a session-wide `AHKFLOW_ALLOW_MAIN=1` set before the session starts, and it never gets a prompt. Full rules: [`docs/agents/cross-agent-git-guardrails.md`](docs/agents/cross-agent-git-guardrails.md) — see [workflow.md#stage-1-pickup](docs/development/workflow.md#stage-1-pickup).
+- Use GitHub Flow: branch from `main`, and merge every change through a pull request — see [Stage 1](docs/development/workflow.md#stage-1-pickup).
+- Name a branch `feature/`, `fix/`, `chore/` or `hotfix/<issueid>-` plus a short topic. A branch born in an agent worktree adds `wt-` after the prefix, as in `fix/wt-<topic>`. No branch or worktree name holds a backlog number — see [Stage 0](docs/development/workflow.md#stage-0-intake).
+- The housekeeping round always uses the worktree `wt-backlog-housekeeping` and the branch `chore/wt-backlog-housekeeping`. Never name it after one of its chores — see [Stage 1](docs/development/workflow.md#stage-1-pickup).
+- Create every worktree with `scripts/new-worktree.ps1`, state its base, and pass `-BaseRef` for work on an unmerged branch. Then work from inside it — see [Stage 1](docs/development/workflow.md#stage-1-pickup).
+- Write conventional commits: `feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `chore:`. Make one logical change per commit, with a body that says why — see [Stage 4](docs/development/workflow.md#stage-4-execute).
+- File a backlog item in two steps: create its worktree with `scripts/new-worktree.ps1 -Title`, and inside that worktree run `scripts/new-backlog-item.ps1`. Never pick a number by hand. `tests/BacklogNumbering.Tests.ps1` fails when two items share one — see [Stage 0](docs/development/workflow.md#stage-0-intake).
+- Tick acceptance boxes at Document. A box that is not true stays unticked, with the reason in the item — see [Stage 7](docs/development/workflow.md#stage-7-document).
+- Close the item in the pull request that ships its work, never in a separate one: `git mv` it into `backlog/done/`. `scripts/check-shipping-pr-closes-item.ps1` fails a ready pull request whose item has every box ticked but is still open. `tests/BacklogStaleOpen.Tests.ps1` fails an item still open well after its work merged — see [Stage 9](docs/development/workflow.md#stage-9-ship).
+- Move an item that waits on something outside this repository into `backlog/blocked/`, with a note near the top on what would unblock it — see [Stage 1](docs/development/workflow.md#stage-1-pickup).
+- Move an item that is possible today, but that nobody judges worth doing, into `backlog/icebox/`. It keeps its number and its unticked boxes, stays at `Stage: 0-intake`, and says near the top what would make it worth doing — see [Stage 1](docs/development/workflow.md#stage-1-pickup).
+- Add a `backlog/` folder to `$script:BacklogItemSubfolder` in `scripts/backlog.common.ps1`, and to `$WorktreeBacklogSubfolderPattern` in `scripts/worktree-git.common.ps1`. `tests/BacklogFolderParity.Tests.ps1` fails when the two disagree — see [Stage 1](docs/development/workflow.md#stage-1-pickup).
+- Never commit on `main`, merge into it locally, or force-push it. `.githooks/pre-commit` and `.githooks/pre-merge-commit` refuse the first two, and `AHKFLOW_ALLOW_MAIN=1` allows a deliberate one — see [Stage 1](docs/development/workflow.md#stage-1-pickup).
+- Run the Gate before you mark a pull request ready: [testing-workflow.md](docs/development/testing-workflow.md#canonical-pre-pr-gate) — see [Stage 6](docs/development/workflow.md#stage-6-verify).
+- Keep a pull request to one concern. Split a large change into stacked pull requests — see [Stage 8](docs/development/workflow.md#stage-8-review).
+- Treat the main checkout as the human's. A worktree session may read main, but never write to it. Which git commands need a worktree: [`cross-agent-git-guardrails.md`](docs/agents/cross-agent-git-guardrails.md) — see [Stage 1](docs/development/workflow.md#stage-1-pickup).
 
 ## Commands and next steps
 
-These rules apply in every stage. So each line links to its rule in `workflow.md`, not to a
-stage. The `handover-commands` skill has worked examples.
+These rules apply in every stage. The `handover-commands` skill has worked examples.
 
-- Hand the human only commands that run from any directory. Each line names its own target: `git -C <absolute path>`, `gh --repo s205109/AHKFlowApp`, or an absolute path. No line changes the directory for a later one — see [workflow.md#handed-over-commands](docs/development/workflow.md#handed-over-commands).
-- Write a handed-over command without a `!` prefix. That prefix belongs to the Claude Code prompt, and a real shell reads it as an operator — see [workflow.md#handed-over-commands](docs/development/workflow.md#handed-over-commands).
-- End every turn that used a tool with a Next-step line: `Next:` and one or two concrete steps, or `Nothing pending.` Lead the final message with a one-sentence Recap — see [workflow.md#next-step-line](docs/development/workflow.md#next-step-line).
-- Put `(backlog NNN)` in a pull request title. At your session's first push, add one bullet for it to the `Sessions:` list in the description — see [workflow.md#pull-request-title-and-sessions](docs/development/workflow.md#pull-request-title-and-sessions).
+- Hand the human only commands that run from any directory, and write them without a `!` prefix — see [handed-over commands](docs/development/workflow.md#handed-over-commands).
+- Lead the final message of a turn that used a tool with a one-sentence Recap, and end the turn with a Next-step line. The Stop hook `.claude/hooks/stop-next-step.ps1` checks only the Next-step line — see [Next-step line](docs/development/workflow.md#next-step-line).
+- Put `(backlog NNN)` in a pull request title. At your first push, add your session to the `Sessions:` list in its description — see [title and Sessions](docs/development/workflow.md#pull-request-title-and-sessions).
 
 ## Agent skills
 
@@ -320,14 +297,9 @@ The AHK v2 syntax we emit — option flags, escaping, `#HotIf`, bodies per kind 
 
 ### Personal defaults
 
-[`.github/instructions/personal-defaults.md`](.github/instructions/personal-defaults.md) is the single source for personal defaults — the tech stack, coding, testing, and collaboration preferences that also apply outside this repository. GitHub Copilot reads it directly through its `applyTo: "**"` key. Repository instructions always win over it.
+[`.github/instructions/personal-defaults.md`](.github/instructions/personal-defaults.md) holds the personal defaults: preferences that also apply outside this repository. GitHub Copilot reads it directly. Repository instructions always win over it.
 
-The Claude web preferences box holds a **copy**. No tool can read that box, so no test can check it. The file carries a sync marker instead: an HTML comment with the hash of its body and the date somebody last pasted it into the box. `tests/PersonalDefaultsSyncMarker.Tests.ps1` fails when the body changed and the hash did not.
-
-After you edit the file, do both steps:
-
-1. Paste the whole file into the Claude web preferences box.
-2. Run `pwsh ./scripts/update-personal-defaults-marker.ps1`.
+After you edit it, paste the whole file into the Claude web preferences box, then run `pwsh ./scripts/update-personal-defaults-marker.ps1`. `tests/PersonalDefaultsSyncMarker.Tests.ps1` fails when the body changed and the marker did not.
 
 ## Prerequisites
 

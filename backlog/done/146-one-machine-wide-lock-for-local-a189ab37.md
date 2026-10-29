@@ -28,7 +28,7 @@ with the first, so that I do not have to remember to halve the worker count by h
 - [x] `-Mode PowerShell` takes part. It returns today before the lock is taken: the mode block
       starts at (`scripts/test-fast.ps1:361`, "    if ($Mode -eq 'PowerShell') {") and the lock
       is taken after it at
-      (`scripts/test-fast.ps1:396`, "    $testRunLock = Enter-AhkFlowTestRunLock -RepoRoot $repoRoot -Mode $Mode").
+      (`scripts/test-fast.ps1:398`, "    $testRunLock = Enter-AhkFlowTestRunLock -RepoRoot $repoRoot -Mode $Mode").
 - [x] The design records which of two shapes it chose, and why: refuse the second run, or let
       both run and divide one worker budget between them. The measurement below supports
       dividing, because two runs at 4 workers each both passed and neither waited.

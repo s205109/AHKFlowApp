@@ -92,6 +92,65 @@ applies to it too. A branch that changed only one of those thirteen scripts stil
 the fast slice locally, while CI skips its .NET steps. That is the intended direction: the hook is
 stricter than CI on those paths, and never looser.
 
+### Gate reuse
+
+The Gate's PowerShell step can skip a Suite that already passed on exactly the same inputs.
+Backlog 188 added this. Only PowerShell Suites are reused, and only the ones whose manifest entry
+in `tests/powershell-suites.json` says `"reuse": { "eligible": true }`. The build, the format
+check and the coverage slice always run.
+
+A Suite's result is reused only when nothing it depends on has changed. The runner lists every
+file the Suite reads, plus its `extraInputs`, and every file the runner itself reads. It hashes
+them together with the job, the platform, the Lane role, and the pwsh, dotnet and git versions.
+When it finds evidence of a pass under that key, it prints `REUSED <name>` and does not run the
+Suite. The results table shows the Suite as `reused`. When the runner cannot follow a file the
+Suite loads, the Suite runs.
+
+Evidence lives in `TestResults/gate-evidence/`, one folder per Suite. Git ignores `TestResults/`,
+so evidence never leaves your worktree. Delete the folder to clear it. Set
+`AHKFLOW_GATE_EVIDENCE_ROOT` to keep it somewhere else.
+
+Every `pwsh .\scripts\test-fast.ps1 -Mode PowerShell` run counts as a Gate run, whether or not it
+is part of a full Gate. It reuses evidence, checks the Suite time budgets, and appends one line to
+`TestResults/gate-log.jsonl`. The line names the Suites that ran and the Suites that were reused,
+and how long the step took. A direct `pwsh .\scripts\run-powershell-suites.ps1` run does none of
+that.
+
+To run every Suite anyway, switch reuse off for the session:
+
+```powershell
+$env:AHKFLOW_GATE_REUSE = 'off'
+```
+
+CI never reuses. Inside GitHub Actions the runner prints `Gate evidence: off (GitHub Actions)` and
+runs every Suite.
+
+### Suite time budget
+
+Each Suite's `baselineSeconds` in `tests/powershell-suites.json` is its time budget. In a Gate
+run, a Suite that takes more than 1.3 times its budget prints a line like this:
+
+```text
+BUDGET WatchTask.Tests.ps1: 61.2 s against a budget of 44.3 s (+38 %)
+```
+
+A budget under 5 seconds, or a null one, never warns. A reused Suite took no time, so it never
+warns. CI checks no budget. A warning never fails the run. The Gate log line names the Suites that
+warned, under `budgetWarnings`.
+
+When the same Suite warns in two runs in a row that executed it, the runner suggests an audit:
+
+```text
+These Suites ran over budget in two runs in a row: WatchTask.Tests.ps1. To audit them, type in Claude Code: Run /test-audit on WatchTask.Tests.ps1
+```
+
+The audit never starts by itself. `docs/development/test-audit-workflow.md` describes it. The
+runner keeps the count in `TestResults/progress/budget-streak.json`. A run that executes the Suite
+without a warning sets its count back to 0.
+
+When a Suite is slower for a good reason, accept the new time: change its `baselineSeconds` in a
+commit whose message says why.
+
 ## Fast inner loop
 
 ```bash
@@ -122,6 +181,10 @@ assembly, and that filter keeps a test carrying no `Category` trait, so the thre
 never needed a filter lose nothing.
 
 Use this for domain logic, validators, pure handlers, CLI parser/unit behavior, and Blazor component changes that do not require SQL Server, WebApplicationFactory, or browser automation.
+
+To count the cases of an xUnit theory, run `dotnet vstest <dll> --ListTests`. It prints one
+name per case. `--ListFullyQualifiedTests` prints one name per method and never expands data
+rows.
 
 ## SQL and API-backed tests
 
@@ -522,6 +585,39 @@ measurement of the three looked like the tightest. Read the `built` line for col
 ```bash
 pwsh .\scripts\measure-test-modes.ps1 -Soak tests/AHKFlowApp.Infrastructure.Tests -Runs 30
 ```
+
+### Measuring the Gate
+
+`-Mode Gate` times the five steps of the [Gate](#canonical-pre-pr-gate) instead of one test Mode.
+One run is the build, the format check, the PowerShell Mode, the Coverage Mode, and
+`git diff --check`. Each run writes the time of every step into its `run.json`. Each session writes
+a `record.json` with the revision and the median of each step.
+
+There are three cases. Run them in this order:
+
+```bash
+pwsh .\scripts\measure-test-modes.ps1 -Mode Gate -BaseRef HEAD -NoEvidenceReuse
+pwsh .\scripts\measure-test-modes.ps1 -Mode Gate -BaseRef HEAD -Change Docs,Script,Code
+pwsh .\scripts\measure-test-modes.ps1 -Mode Gate -BaseRef HEAD
+```
+
+1. **A full Gate.** `-NoEvidenceReuse` sets `AHKFLOW_GATE_REUSE=off` around each run, so every
+   Suite runs.
+2. **The first Gate after a change.** One preparation run on the unchanged tree saves the evidence.
+   Then, for each change, every run puts that evidence back, appends one line to one file, runs the
+   Gate, and writes the file's original bytes back. `Docs` changes a docs file, `Script` changes a
+   script a Suite loads, and `Code` changes a `.cs` file, so the build and the coverage step run.
+3. **A second Gate with nothing changed.** Each run follows the one before it.
+
+**Pass `-BaseRef HEAD` every time.** The coverage step and `git diff --check` compare the tree
+against this base. With `HEAD`, they see only the fixed change. Against the branch's real base, the
+branch's own diff decides whether coverage runs, so a before and an after measurement would not
+measure the same work.
+
+**The run budget is 1 warm-up and 3 counted runs per case.** Gate Mode uses those numbers when you
+pass no `-WarmUpRuns` or `-Runs`. Case 2 adds the one preparation run. Gate Mode has no settle
+clock, because every run builds, so the tree never ages. It refuses `-SettleSeconds` above 0,
+`-NoBuild`, `-KeepBuildInRun`, and `-Soak`.
 
 ## Trait contract
 

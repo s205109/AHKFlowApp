@@ -6,6 +6,9 @@ authoritative source is [the official v2 docs](https://www.autohotkey.com/docs/v
 (the [Hotstrings page](https://www.autohotkey.com/docs/v2/Hotstrings.htm) covers most of what's here).
 The site 403s automated fetchers; the same content is fetchable from the
 [AutoHotkeyDocs source repo](https://github.com/AutoHotkey/AutoHotkeyDocs/blob/v2/docs/Hotstrings.htm).
+To read a page from the shell:
+`gh api 'repos/AutoHotkey/AutoHotkeyDocs/contents/docs/Hotstrings.htm?ref=v2' --jq .content | base64 -d`.
+The default branch is `v1`, so always pass `ref=v2`.
 
 We generate `.ahk` files; we never run them. Nothing below is validated by executing AutoHotkey, so
 the emitters are the only thing standing between a user's input and a broken script on their machine.

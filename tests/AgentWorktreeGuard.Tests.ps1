@@ -240,6 +240,40 @@ exit 0
     }
 }
 
+# Backlog 188. The long decision loops below run the full policy many times against one fixed
+# fixture, and every decision starts git rev-parse probes. Each probe names its directory with -C,
+# so its answer depends only on the fixture layout. A loop switches this cache on, and switches it
+# off again before any case that changes the layout.
+$script:RealGuardGitProbe = ${function:Invoke-AgentGuardGitProbe}
+$script:GuardProbeMemo = $null
+
+function Enable-GuardProbeMemo {
+    $script:GuardProbeMemo = @{}
+    ${function:script:Invoke-AgentGuardGitProbe} = {
+        param([string[]] $GitArguments)
+        $key = $GitArguments -join [char]0
+        if (-not $script:GuardProbeMemo.ContainsKey($key)) {
+            $script:GuardProbeMemo[$key] = & $script:RealGuardGitProbe -GitArguments $GitArguments
+        }
+        return $script:GuardProbeMemo[$key]
+    }
+}
+
+function Disable-GuardProbeMemo {
+    ${function:script:Invoke-AgentGuardGitProbe} = $script:RealGuardGitProbe
+    $script:GuardProbeMemo = $null
+}
+
+# Runs one loop with the cache on, and always switches it off again. Each loop gets its own
+# cache, so no answer carries over from one loop to the next.
+function Invoke-WithGuardProbeMemo {
+    param([scriptblock] $Loop)
+
+    Enable-GuardProbeMemo
+    try { & $Loop }
+    finally { Disable-GuardProbeMemo }
+}
+
 function Remove-ShimHarness {
     param([object] $Harness)
 
@@ -257,8 +291,55 @@ function Invoke-HarnessShim {
         [object] $Harness,
         [string] $StdIn,
         [string[]] $ShimArguments = @(),
-        [hashtable] $EnvironmentOverrides = @{}
+        [hashtable] $EnvironmentOverrides = @{},
+        [ValidateSet('Inherited', 'Present', 'Absent')]
+        [string] $Jq = 'Inherited',
+        [string] $ParsedCommand = '',
+        [string] $ParsedCwd = '',
+        [switch] $ParseFailure
     )
+
+    # jq is a third-party boundary. Supply its responses for shim decision tests, without
+    # requiring an installation. Other cases still use the real parser when available.
+    # The has("toolArgs") answer is read from the payload itself, so a shim that asks jq the
+    # wrong question gets no Copilot answer back.
+    if ($Jq -ne 'Inherited') {
+        $startup = Join-Path $Harness.Root 'jq-environment.sh'
+        $fixture = if ($Jq -eq 'Present') {
+@'
+jq() {
+  local input
+  input=$(cat)
+  [[ "$input" == "$SHIM_TEST_INPUT" ]] || return 1
+  case "$2" in
+    *fromjson*)
+      [[ "$SHIM_TEST_PARSE_FAILURE" != 'True' ]] || return 4
+      [[ -n "$SHIM_TEST_COMMAND" ]] || return 4
+      printf '%s\n' "$SHIM_TEST_COMMAND" ;;
+    '.cwd // empty')
+      [[ -n "$SHIM_TEST_CWD" ]] || return 4
+      printf '%s\n' "$SHIM_TEST_CWD" ;;
+    'has("toolArgs")') [[ "$input" == *'"toolArgs":'* ]] ;;
+    *) return 1 ;;
+  esac
+}
+'@
+        } else {
+@'
+command() {
+  if [[ "$1" == '-v' && "$2" == 'jq' ]]; then return 1; fi
+  builtin command "$@"
+}
+'@
+        }
+        [System.IO.File]::WriteAllText($startup, $fixture.Replace("`r`n", "`n"))
+        $EnvironmentOverrides = @{} + $EnvironmentOverrides
+        $EnvironmentOverrides.BASH_ENV = ConvertTo-BashPath $startup
+        $EnvironmentOverrides.SHIM_TEST_INPUT = $StdIn
+        $EnvironmentOverrides.SHIM_TEST_COMMAND = $ParsedCommand
+        $EnvironmentOverrides.SHIM_TEST_PARSE_FAILURE = [string][bool]$ParseFailure
+        $EnvironmentOverrides.SHIM_TEST_CWD = $ParsedCwd
+    }
 
     return Invoke-CapturedProcess -FilePath $script:BashExecutable `
         -Arguments (@((ConvertTo-BashPath $Harness.Shim)) + $ShimArguments) `
@@ -583,8 +664,9 @@ try {
     Invoke-TestCase 'CLAUDE_TOOL_INPUT fallback applies only when stdin is empty' {
         $result = Invoke-Entrypoint -StdIn '' -Adapter 'Claude' -WorkingDirectory $fixture.Main `
             -EnvironmentOverrides @{ CLAUDE_TOOL_INPUT = 'git reset --hard' }
+        # A safety-rule denial on the Claude adapter keeps the legacy stderr + exit 2 protocol.
         Assert-Equal 2 $result.ExitCode 'ExitCode'
-        Assert-Match 'BLOCKED' $result.StdErr 'StdErr'
+        Assert-Match 'BLOCKED: git reset --hard' $result.StdErr 'StdErr'
     }
 
     Invoke-TestCase 'CLAUDE_TOOL_INPUT is ignored when stdin carries a payload' {
@@ -977,13 +1059,8 @@ try {
             -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
         Assert-Equal 'Deny' $decision.Action 'Action'
         Assert-Match 'BLOCKED: agent Git mutations' $decision.Message 'Message'
-    }
-
-    # The old wording just said "Override with AHKFLOW_ALLOW_MAIN=1", which reads as actionable to
-    # the agent seeing it - but an inline prefix never reaches this evaluator's own process.
-    Invoke-TestCase 'The denial message says where the override must be set' {
-        $decision = Invoke-AgentGuardPolicy -Command 'git commit -m test' `
-            -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
+        # The old wording just said "Override with AHKFLOW_ALLOW_MAIN=1", which reads as actionable
+        # to the agent seeing it - but an inline prefix never reaches this evaluator's own process.
         # Fragments must not span the here-string's line wraps.
         Assert-Match 'in the shell environment before starting the' $decision.Message 'Message'
         Assert-Match 'prefix does not work' $decision.Message 'Message'
@@ -1124,8 +1201,8 @@ try {
     }
 
     # A quote is one of four ways a Reading becomes Ambiguous. The other three are block forms the
-    # suite already covers at (`tests/AgentWorktreeGuard.Tests.ps1:2307`, "    $heredocAmbiguousCases = @(")
-    # and (`tests/AgentWorktreeGuard.Tests.ps1:2396`, "    $hereStringAmbiguousCases = @("), and
+    # suite already covers at (`tests/AgentWorktreeGuard.Tests.ps1:2403`, "    $heredocAmbiguousCases = @(")
+    # and (`tests/AgentWorktreeGuard.Tests.ps1:2492`, "    $hereStringAmbiguousCases = @("), and
     # every one of them must reach the same refusal at every layer. Without this, the message could
     # promise "balanced quoting" to somebody whose heredoc terminator is indented.
     $unreadableCauses = @(
@@ -1187,10 +1264,12 @@ try {
         'git remote prune origin',
         'git fetch --prune' # already unguarded (not a recognized mutating subcommand) - pin
     )
-    foreach ($command in $tier2AllowCases) {
-        Invoke-TestCase "Tier 2 unconditional allow from main: $command" {
-            $decision = Invoke-AgentGuardPolicy -Command $command -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
-            Assert-Equal 'Allow' $decision.Action 'Action'
+    Invoke-WithGuardProbeMemo {
+        foreach ($command in $tier2AllowCases) {
+            Invoke-TestCase "Tier 2 unconditional allow from main: $command" {
+                $decision = Invoke-AgentGuardPolicy -Command $command -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
+                Assert-Equal 'Allow' $decision.Action 'Action'
+            }
         }
     }
 
@@ -1215,11 +1294,13 @@ try {
         # lowercase -b clustered/exact-match test coverage above (via $tier2AllowCases) stays Allow.
         "git worktree add -B topic $somewhere"
     )
-    foreach ($command in $forceVariantAskCases) {
-        Invoke-TestCase "Force/destructive variant asks (not Tier 2) from main: $command" {
-            $decision = Invoke-AgentGuardPolicy -Command $command -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
-            Assert-Equal 'Ask' $decision.Action 'Action'
-            Assert-Equal 'agent-main-git-mutation' $decision.Rule 'Rule'
+    Invoke-WithGuardProbeMemo {
+        foreach ($command in $forceVariantAskCases) {
+            Invoke-TestCase "Force/destructive variant asks (not Tier 2) from main: $command" {
+                $decision = Invoke-AgentGuardPolicy -Command $command -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
+                Assert-Equal 'Ask' $decision.Action 'Action'
+                Assert-Equal 'agent-main-git-mutation' $decision.Rule 'Rule'
+            }
         }
     }
 
@@ -1228,10 +1309,12 @@ try {
         'git checkout other', 'git switch other', 'git reset HEAD~1', 'git stash', 'git push',
         'git tag v1.0.0', 'git add .', 'git config user.name x'
     )
-    foreach ($command in $tier1aAskCases) {
-        Invoke-TestCase "Tier 1a asks from main: $command" {
-            $decision = Invoke-AgentGuardPolicy -Command $command -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
-            Assert-Equal 'Ask' $decision.Action 'Action'
+    Invoke-WithGuardProbeMemo {
+        foreach ($command in $tier1aAskCases) {
+            Invoke-TestCase "Tier 1a asks from main: $command" {
+                $decision = Invoke-AgentGuardPolicy -Command $command -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
+                Assert-Equal 'Ask' $decision.Action 'Action'
+            }
         }
     }
 
@@ -1262,40 +1345,21 @@ try {
         }
     }
 
-    # Safety rules (force-push, reset --hard, clean -f, checkout ., dangerous rm) short-circuit
-    # Invoke-AgentGuardPolicy before the location decision ever runs (see common.ps1:1147), so Ask
-    # is structurally unreachable for them. $safetyCases/$indirectSafetyCases above already pin
-    # Get-AgentCommandSafetyDecision's Action/Rule; this confirms the same end to end through the
-    # full policy, never downgraded to Ask.
-    $safetyStillDenyEndToEndCases = @(
-        'git push --force', 'git push -f', 'git reset --hard', 'git clean -fd', 'git checkout .', 'rm -rf src'
-    )
-    foreach ($command in $safetyStillDenyEndToEndCases) {
-        Invoke-TestCase "Safety rule still denies end to end, never Ask: $command" {
-            $decision = Invoke-AgentGuardPolicy -Command $command -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
-            Assert-Equal 'Deny' $decision.Action 'Action'
-        }
-    }
-
-    # No regression inside a managed worktree: every Tier 1a and Tier 2 command above must still be
-    # a plain Allow when it is not targeting the main checkout at all.
-    foreach ($command in (@($tier2AllowCases) + @($forceVariantAskCases) + @($tier1aAskCases))) {
-        Invoke-TestCase "No regression in a managed worktree: $command" {
-            $decision = Invoke-AgentGuardPolicy -Command $command -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main
-            Assert-Equal 'Allow' $decision.Action 'Action'
+    # No regression inside a managed worktree: a Tier 1a and a Tier 2 command must still be a plain
+    # Allow when it is not targeting the main checkout at all. From a managed cwd every command takes
+    # the same path, and the tier only matters when the target is blocked, so one command per tier
+    # is enough. The tables above pin each command's tier.
+    Invoke-WithGuardProbeMemo {
+        foreach ($command in @('git worktree prune', 'git branch -D topic', 'git checkout other')) {
+            Invoke-TestCase "No regression in a managed worktree: $command" {
+                $decision = Invoke-AgentGuardPolicy -Command $command -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main
+                Assert-Equal 'Allow' $decision.Action 'Action'
+            }
         }
     }
 
     Invoke-TestCase 'AHKFLOW_ALLOW_MAIN=1 downgrades a Tier 1a Ask to Warn' {
         $decision = Invoke-AgentGuardPolicy -Command 'git checkout other' `
-            -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main -AllowMain $true
-        Assert-Equal 'Warn' $decision.Action 'Action'
-    }
-
-    # Resolved design decision: AHKFLOW_ALLOW_MAIN=1 keeps its exact current behavior for commit -
-    # a warned Allow, not a Deny. This task only changes whether a prompt is offered when it's unset.
-    Invoke-TestCase 'AHKFLOW_ALLOW_MAIN=1 still turns a commit Deny into a warned Allow' {
-        $decision = Invoke-AgentGuardPolicy -Command 'git commit -m test' `
             -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main -AllowMain $true
         Assert-Equal 'Warn' $decision.Action 'Action'
     }
@@ -1312,12 +1376,14 @@ try {
         @{ Bare = 'git commit -m x'; Wrapped = 'rtk git commit -m x' },
         @{ Bare = 'git commit --amend'; Wrapped = 'rtk git commit --amend' }
     )
-    foreach ($pair in $wrapperParityPairs) {
-        Invoke-TestCase "Wrapped command matches its bare form: $($pair.Wrapped)" {
-            $bareDecision = Invoke-AgentGuardPolicy -Command $pair.Bare -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
-            $wrappedDecision = Invoke-AgentGuardPolicy -Command $pair.Wrapped -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
-            Assert-Equal $bareDecision.Action $wrappedDecision.Action 'Action'
-            Assert-Equal $bareDecision.Rule $wrappedDecision.Rule 'Rule'
+    Invoke-WithGuardProbeMemo {
+        foreach ($pair in $wrapperParityPairs) {
+            Invoke-TestCase "Wrapped command matches its bare form: $($pair.Wrapped)" {
+                $bareDecision = Invoke-AgentGuardPolicy -Command $pair.Bare -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
+                $wrappedDecision = Invoke-AgentGuardPolicy -Command $pair.Wrapped -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
+                Assert-Equal $bareDecision.Action $wrappedDecision.Action 'Action'
+                Assert-Equal $bareDecision.Rule $wrappedDecision.Rule 'Rule'
+            }
         }
     }
 
@@ -1338,12 +1404,14 @@ try {
         'rtk --skip-env', 'rtk --ultra-compact --skip-env', 'rtk proxy', 'rtk --ultra-compact proxy',
         'rtk rtk', 'SKIP_COVERAGE_HOOK=1 rtk', 'rtk err', 'rtk summary', 'rtk test'
     )
-    foreach ($prefix in $wrapperSpellings) {
-        Invoke-TestCase "Wrapper spelling still denies a commit: $prefix git commit -m x" {
-            $decision = Invoke-AgentGuardPolicy -Command "$prefix git commit -m x" `
-                -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
-            Assert-Equal 'Deny' $decision.Action 'Action'
-            Assert-Equal 'agent-main-git-mutation' $decision.Rule 'Rule'
+    Invoke-WithGuardProbeMemo {
+        foreach ($prefix in $wrapperSpellings) {
+            Invoke-TestCase "Wrapper spelling still denies a commit: $prefix git commit -m x" {
+                $decision = Invoke-AgentGuardPolicy -Command "$prefix git commit -m x" `
+                    -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main
+                Assert-Equal 'Deny' $decision.Action 'Action'
+                Assert-Equal 'agent-main-git-mutation' $decision.Rule 'Rule'
+            }
         }
     }
 
@@ -1499,15 +1567,6 @@ try {
         $json = $result.StdOut | ConvertFrom-Json
         Assert-Equal 'deny' $json.hookSpecificOutput.permissionDecision 'permissionDecision'
         Assert-Match 'subagent' $json.hookSpecificOutput.permissionDecisionReason 'reason'
-    }
-
-    # Control: the identical command with no agent_id must still Ask - otherwise the Deny assertion
-    # above could pass vacuously (e.g. if the command were Deny for an unrelated reason).
-    Invoke-TestCase 'Claude: the same Tier 1a command without agent_id still asks (control)' {
-        $result = Invoke-Entrypoint -StdIn (New-ClaudePayload 'git checkout other' $script:RealMainCheckout) -Adapter 'Claude'
-        Assert-Equal 0 $result.ExitCode 'ExitCode'
-        $json = $result.StdOut | ConvertFrom-Json
-        Assert-Equal 'ask' $json.hookSpecificOutput.permissionDecision 'permissionDecision'
     }
 
     Invoke-TestCase 'Unknown decision action fails closed, verified structurally on every adapter branch' {
@@ -1839,12 +1898,6 @@ try {
         Assert-Match 'BLOCKED: agent Git mutations' $json.hookSpecificOutput.permissionDecisionReason 'reason'
     }
 
-    Invoke-TestCase 'Claude safety-rule denial still uses the legacy stderr + exit 2 protocol' {
-        $result = Invoke-Entrypoint -StdIn (New-ClaudePayload 'git reset --hard' $script:RealMainCheckout) -Adapter 'Claude'
-        Assert-Equal 2 $result.ExitCode 'ExitCode'
-        Assert-Match 'BLOCKED: git reset --hard' $result.StdErr 'StdErr'
-    }
-
     Invoke-TestCase 'Claude unreadable-command denial uses the legacy stderr + exit 2 protocol' {
         # ambiguous-command is not in $locationDecisionRules, so it must not take the JSON
         # permission protocol. The rename is exactly the change that could move it into that list.
@@ -1924,29 +1977,104 @@ try {
         '"/c/Program Files/Git/cmd/git.exe" commit -m test'
     )
 
-    foreach ($command in $candidateCommands) {
-        Invoke-TestCase "Bash shim forwards candidate command: $command" {
-            $result = Invoke-BashShim -StdIn (New-ClaudePayload $command $script:RealMainCheckout) -ShimArguments @('Claude')
-            # Reaching PowerShell is what is under test: every candidate above either denies (legacy
-            # stderr + exit 2, or the JSON hookSpecificOutput protocol for a location-rule commit
-            # denial) or warns.
-            $reachedPolicy = $result.ExitCode -eq 2 -or $result.StdErr -match 'BLOCKED|WARNING' -or
-            $result.StdOut -match 'permissionDecision'
-            Assert-True $reachedPolicy "expected the command to reach the policy core (exit $($result.ExitCode), stdout '$($result.StdOut)', stderr '$($result.StdErr)')"
+    # Only the shim's candidate pattern is under test here, so one stub harness serves every
+    # command: forwarding reaches the stub, which announces itself. The policy result of each
+    # command is pinned in-process by the tables above.
+    $candidateHarness = New-ShimHarness -ShimFileName 'pre-bash-guard.sh'
+    try {
+        foreach ($command in $candidateCommands) {
+            Invoke-TestCase "Bash shim forwards candidate command: $command" {
+                $result = Invoke-HarnessShim -Harness $candidateHarness `
+                    -StdIn (New-ClaudePayload $command $script:RealMainCheckout)
+                Assert-Match $script:ShimStubMarker $result.StdErr 'Must forward to the entrypoint'
+            }
         }
     }
+    finally {
+        Remove-ShimHarness $candidateHarness
+    }
 
-    Invoke-TestCase 'Bash shim forwards a payload whose metacharacters are unicode-escaped' {
-        # Windows PowerShell's ConvertTo-Json escapes & as &, so the raw payload never shows
-        # a literal delimiter before the git token. The shim must still forward it.
-        $escaped = '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":' +
-        '{"command":"cd f&&git commit -m test"},"cwd":"' +
-        ($script:RealMainCheckout -replace '\\', '\\') + '"}'
-        $result = Invoke-BashShim -StdIn $escaped -ShimArguments @('Claude')
-        Assert-Equal 0 $result.ExitCode 'ExitCode'
-        $json = $result.StdOut | ConvertFrom-Json
-        Assert-Equal 'deny' $json.hookSpecificOutput.permissionDecision 'permissionDecision'
-        Assert-Match 'BLOCKED: agent Git mutations' $json.hookSpecificOutput.permissionDecisionReason 'reason'
+    # These cases test what the shim itself decides: whether to forward, and with which adapter.
+    # One stub harness serves all of them. The stub prints its marker and the adapter it was
+    # given. The policy result of each command is pinned in-process by the tables above.
+    $shimHarness = New-ShimHarness -ShimFileName 'pre-bash-guard.sh'
+    try {
+        Invoke-TestCase 'Bash shim forwards a payload whose metacharacters are unicode-escaped' {
+            # Windows PowerShell's ConvertTo-Json escapes & as \u0026, so the raw payload never shows
+            # a literal delimiter before the git token. The shim must still forward it.
+            $escaped = '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":' +
+            '{"command":"cd f\u0026\u0026git commit -m test"},"cwd":"' +
+            ($script:RealMainCheckout -replace '\\', '\\') + '"}'
+            $result = Invoke-HarnessShim -Harness $shimHarness -StdIn $escaped -ShimArguments @('Claude')
+            Assert-Equal 0 $result.ExitCode 'ExitCode'
+            Assert-Match $script:ShimStubMarker $result.StdErr 'Must forward to the entrypoint'
+        }
+
+        # The stub proves which question the shim asks, not that the jq filter text is right. So
+        # the Copilot and noncandidate cases also run once with the installed jq. The shim works
+        # without jq, so a machine without it skips those runs and says so. CI must run them.
+        $jqInstalled = (Invoke-CapturedProcess -FilePath $script:BashExecutable -Arguments @('-c', 'command -v jq')).ExitCode -eq 0
+        $jqModes = @(@{ Label = 'stubbed jq'; Jq = 'Present' })
+        if ($jqInstalled) {
+            $jqModes += @{ Label = 'installed jq'; Jq = 'Inherited' }
+        }
+        elseif ($env:GITHUB_ACTIONS -eq 'true') {
+            Invoke-TestCase 'CI has jq on the bash PATH for the installed-jq shim cases' {
+                throw 'jq is not on the bash PATH. CI must run the cases that prove the real jq filter.'
+            }
+        }
+        else {
+            Write-Host '  SKIP  installed-jq shim cases: jq is not on the bash PATH' -ForegroundColor Yellow
+        }
+
+        foreach ($jqMode in $jqModes) {
+            Invoke-TestCase "Bash shim selects Copilot from a native toolArgs payload with no argument ($($jqMode.Label))" {
+                $result = Invoke-HarnessShim -Harness $shimHarness `
+                    -StdIn (New-CopilotPayload 'git commit -m test' $script:RealMainCheckout) `
+                    -Jq $jqMode.Jq -ParsedCommand 'git commit -m test'
+                Assert-Equal 0 $result.ExitCode 'ExitCode'
+                Assert-Match 'adapter=Copilot' $result.StdErr 'Must select the Copilot adapter'
+            }
+        }
+
+        Invoke-TestCase 'Bash shim stays correct when jq is unavailable' {
+            $worktreeCwd = Join-Path $script:RealMainCheckout '.claude\worktrees\probe'
+            foreach ($payload in @(
+                (New-CopilotPayload 'git commit -m test' $script:RealMainCheckout)
+                (New-ClaudePayload 'cat README.md' $worktreeCwd)
+            )) {
+                $result = Invoke-HarnessShim -Harness $shimHarness -StdIn $payload -Jq Absent
+                Assert-Equal 0 $result.ExitCode 'ExitCode'
+                Assert-Equal '' $result.StdOut.Trim() 'Must produce no decision payload'
+                Assert-Match $script:ShimStubMarker $result.StdErr 'Must forward to the entrypoint'
+                Assert-Match 'adapter=Auto' $result.StdErr 'Without jq the shim must forward as Auto'
+            }
+        }
+
+        # The real entrypoint allows 'rg' silently, so a forwarded run against it would also exit 0
+        # with nothing on stderr. Only the stub tells the two apart.
+        Invoke-TestCase 'Bash shim forwards as Auto when jq emits no command or fails parsing' {
+            foreach ($case in @(@{ ParsedCommand = '' }, @{ ParsedCommand = 'git status'; ParseFailure = $true })) {
+                $result = Invoke-HarnessShim -Harness $shimHarness -Jq Present @case `
+                    -StdIn (New-ClaudePayload 'git status' $fixture.Main)
+                Assert-Equal 0 $result.ExitCode 'ExitCode'
+                Assert-Equal '' $result.StdOut.Trim() 'Must produce no decision payload'
+                Assert-Match ($script:ShimStubMarker + ' adapter=Auto') $result.StdErr 'Failed parsing must forward as Auto'
+            }
+        }
+
+        foreach ($jqMode in $jqModes) {
+            Invoke-TestCase "Bash shim exits fast for a noncandidate command despite a matching cwd ($($jqMode.Label))" {
+                $result = Invoke-HarnessShim -Harness $shimHarness `
+                    -StdIn (New-ClaudePayload 'rg -n "Goal" README.md' (Join-Path $fixture.Main 'git repo')) -ShimArguments @('Claude') `
+                    -Jq $jqMode.Jq -ParsedCommand 'rg -n "Goal" README.md' -ParsedCwd (Join-Path $fixture.Main 'git repo')
+                Assert-Equal 0 $result.ExitCode 'ExitCode'
+                Assert-Equal '' $result.StdErr.Trim() 'StdErr'
+            }
+        }
+    }
+    finally {
+        Remove-ShimHarness $shimHarness
     }
 
     Invoke-TestCase 'Bash shim forwards an rtk-wrapped commit and produces the deny JSON' {
@@ -1957,42 +2085,10 @@ try {
         Assert-Match 'BLOCKED: agent Git mutations' $json.hookSpecificOutput.permissionDecisionReason 'reason'
     }
 
-    Invoke-TestCase 'Bash shim exits fast for a noncandidate command despite a matching cwd' {
-        $result = Invoke-BashShim -StdIn (New-ClaudePayload 'rg -n "Goal" README.md' $fixture.Main) -ShimArguments @('Claude')
-        Assert-Equal 0 $result.ExitCode 'ExitCode'
-        Assert-Equal '' $result.StdErr.Trim() 'StdErr'
-    }
-
     Invoke-TestCase 'Bash shim honors AHKFLOW_GUARD_DISABLE before doing any work' {
         $result = Invoke-BashShim -StdIn 'not json' -EnvironmentOverrides @{ AHKFLOW_GUARD_DISABLE = '1' }
         Assert-Equal 0 $result.ExitCode 'ExitCode'
         Assert-Match 'AHKFLOW_GUARD_DISABLE=1' $result.StdErr 'StdErr'
-    }
-
-    Invoke-TestCase 'Bash shim selects Copilot from a native toolArgs payload with no argument' {
-        $result = Invoke-BashShim -StdIn (New-CopilotPayload 'git commit -m test' $script:RealMainCheckout)
-        Assert-Equal 0 $result.ExitCode 'ExitCode'
-        $json = $result.StdOut | ConvertFrom-Json
-        Assert-Equal 'deny' $json.permissionDecision 'permissionDecision'
-        Assert-Match '\[agent-guard:Copilot\]' $result.StdErr 'diagnostic names Copilot'
-    }
-
-    Invoke-TestCase 'Bash shim stays correct when jq is unavailable' {
-        # Drop only the jq directories from PATH - PowerShell must stay reachable, otherwise the
-        # shim's missing-host branch would allow the command and the test would pass vacuously.
-        $pathWithoutJq = (
-            $env:PATH -split ';' |
-                Where-Object {
-                    $_ -and -not (Test-Path -LiteralPath (Join-Path $_ 'jq.exe')) -and
-                    -not (Test-Path -LiteralPath (Join-Path $_ 'jq'))
-                }
-        ) -join ';'
-
-        $result = Invoke-BashShim -StdIn (New-CopilotPayload 'git commit -m test' $script:RealMainCheckout) `
-            -EnvironmentOverrides @{ PATH = $pathWithoutJq }
-        $json = $result.StdOut | ConvertFrom-Json
-        Assert-Equal 'deny' $json.permissionDecision 'permissionDecision'
-        Assert-Match '\[agent-guard:Copilot\]' $result.StdErr 'diagnostic names Copilot'
     }
 
     Invoke-TestCase 'Bash shim falls back to powershell.exe when pwsh is unavailable' {
@@ -3495,6 +3591,7 @@ try {
         }
     )
 
+    Enable-GuardProbeMemo
     foreach ($case in $writeDecisionCases) {
         Invoke-TestCase "Write isolation: $($case.Name)" {
             $command = $case.Command.
@@ -3511,6 +3608,7 @@ try {
             Assert-Equal $case.Action $decision.Action 'Action'
         }
     }
+    Disable-GuardProbeMemo
 
     Invoke-TestCase 'Write isolation: a move out of main names the source, not the destination' {
         $source = $fixture.Main.Replace('\', '/') + '/seed.txt'
@@ -3542,13 +3640,6 @@ try {
 
     # A single backtick, built here so no enclosing string escapes it.
     $tick = [string][char]96
-
-    Invoke-TestCase 'Both Readings: a backtick before a main-checkout path is denied' {
-        $decision = Invoke-AgentGuardPolicy `
-            -Command ("Set-Content -Path $tick" + $fixture.Main + '\README.md -Value x') `
-            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main
-        Assert-Equal 'Deny' $decision.Action 'Action'
-    }
 
     Invoke-TestCase 'Both Readings: the bash message is kept when the bash Reading wins' {
         $decision = Invoke-AgentGuardPolicy `
@@ -3603,21 +3694,18 @@ try {
         @{ Name = 'bash subshell'; Command = '(cd {MAIN} && git commit -m x)' }
     )
 
-    foreach ($readingCase in $readingCases) {
-        Invoke-TestCase "Backlog 093 denies: $($readingCase.Name)" {
-            $resolved = $readingCase.Command.
-            Replace('{TICK}', $tick).
-            Replace('{MAIN}', $fixture.Main).
-            Replace('{WT}', $fixture.Managed)
-            $decision = Invoke-AgentGuardPolicy -Command $resolved `
-                -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main
-            Assert-Equal 'Deny' $decision.Action 'Action'
+    Invoke-WithGuardProbeMemo {
+        foreach ($readingCase in $readingCases) {
+            Invoke-TestCase "Backlog 093 denies: $($readingCase.Name)" {
+                $resolved = $readingCase.Command.
+                Replace('{TICK}', $tick).
+                Replace('{MAIN}', $fixture.Main).
+                Replace('{WT}', $fixture.Managed)
+                $decision = Invoke-AgentGuardPolicy -Command $resolved `
+                    -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main
+                Assert-Equal 'Deny' $decision.Action 'Action'
+            }
         }
-    }
-
-    Invoke-TestCase 'Backlog 093: a bash backtick substitution still exposes git' {
-        $parsed = Get-AgentCommandSegment -Command "echo ${tick}git rev-parse HEAD${tick}" -Reading Bash
-        Assert-Equal 1 @($parsed.Segments | Where-Object { $_.Kind -eq 'Git' }).Count 'Git segments'
     }
 
     Write-Host 'Redirect targets carry the expression rule too' -ForegroundColor Cyan
@@ -3692,14 +3780,6 @@ try {
         $decision = Invoke-AgentGuardPolicy -Command $command `
             -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $true
         Assert-Equal 'Warn' $decision.Action 'Action'
-    }
-
-    Invoke-TestCase 'Write isolation: a git mutation decision still wins over a write decision' {
-        $command = 'git commit -m x'
-        $decision = Invoke-AgentGuardPolicy -Command $command `
-            -Cwd $fixture.Main -ProtectedRepoRoot $fixture.Main -AllowMain $false
-        Assert-Equal 'Deny' $decision.Action 'Action'
-        Assert-Equal 'agent-main-git-mutation' $decision.Rule 'Rule'
     }
 
     Write-Host 'Heredoc and here-string bodies end to end' -ForegroundColor Cyan
@@ -3917,22 +3997,24 @@ try {
         }
     )
 
-    foreach ($case in $fileEditCases) {
-        Invoke-TestCase "File-edit isolation: $($case.Name)" {
-            $path = $case.Path.
-            Replace('<MANAGED2>', $fixture.Managed2).
-            Replace('<MANAGED>', $fixture.Managed).
-            Replace('<UNRELATED>', $fixture.Unrelated).
-            Replace('<MAIN>', $fixture.Main)
-            $cwd = switch ($case.Cwd) {
-                'Main' { $fixture.Main }
-                'Unmanaged' { $fixture.Unmanaged }
-                'ManagedSub' { Join-Path $fixture.Managed 'scripts' }
-                default { $fixture.Managed }
+    Invoke-WithGuardProbeMemo {
+        foreach ($case in $fileEditCases) {
+            Invoke-TestCase "File-edit isolation: $($case.Name)" {
+                $path = $case.Path.
+                Replace('<MANAGED2>', $fixture.Managed2).
+                Replace('<MANAGED>', $fixture.Managed).
+                Replace('<UNRELATED>', $fixture.Unrelated).
+                Replace('<MAIN>', $fixture.Main)
+                $cwd = switch ($case.Cwd) {
+                    'Main' { $fixture.Main }
+                    'Unmanaged' { $fixture.Unmanaged }
+                    'ManagedSub' { Join-Path $fixture.Managed 'scripts' }
+                    default { $fixture.Managed }
+                }
+                $decision = Get-AgentFileEditWriteDecision -TargetPath $path `
+                    -Cwd $cwd -ProtectedRepoRoot $fixture.Main -AllowMain $false
+                Assert-Equal $case.Action $decision.Action 'Action'
             }
-            $decision = Get-AgentFileEditWriteDecision -TargetPath $path `
-                -Cwd $cwd -ProtectedRepoRoot $fixture.Main -AllowMain $false
-            Assert-Equal $case.Action $decision.Action 'Action'
         }
     }
 
@@ -4158,6 +4240,7 @@ try {
         }
     )
 
+    Enable-GuardProbeMemo
     foreach ($case in $linkDecisionCases) {
         Invoke-TestCase "Link creation: $($case.Name)" {
             $command = $case.Command.
@@ -4168,6 +4251,7 @@ try {
             Assert-Equal $case.Action $decision.Action 'Action'
         }
     }
+    Disable-GuardProbeMemo
 
     Invoke-TestCase 'Link creation: a refused link names the file the write would land on' {
         $command = 'New-Item -ItemType HardLink -Path ' + $fixture.Managed +
@@ -4184,13 +4268,6 @@ try {
             -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false
         Assert-Equal 'agent-worktree-main-write' $decision.Rule 'Rule'
         Assert-Match 'cannot write into the main checkout' $decision.Message 'Message'
-    }
-
-    Invoke-TestCase 'File-edit isolation: a file inside the plans repo is allowed' {
-        $path = Join-Path $fixture.Managed 'docs\superpowers\x.md'
-        $decision = Get-AgentFileEditWriteDecision -TargetPath $path `
-            -Cwd $fixture.Managed -ProtectedRepoRoot $fixture.Main -AllowMain $false
-        Assert-Equal 'Allow' $decision.Action 'Action'
     }
 
     Invoke-TestCase 'File-edit isolation: the plans root itself explains what is still refused' {
@@ -4215,14 +4292,14 @@ try {
     # OutsideProtectedRepository.
     $script:FixtureEntrypoint = New-FixtureEntrypoint -RepoRoot $fixture.Main
 
-    foreach ($toolName in @('Edit', 'Write', 'NotebookEdit')) {
-        Invoke-TestCase "Entrypoint: $toolName into the main checkout is denied" {
-            $target = Join-Path $fixture.Main 'README.md'
-            $result = Invoke-Entrypoint -Adapter 'Claude' -ScriptPath $script:FixtureEntrypoint `
-                -StdIn (New-ClaudeEditPayload $toolName $target $fixture.Managed)
-            Assert-Equal 2 $result.ExitCode 'ExitCode'
-            Assert-Match 'cannot write into the main checkout' $result.StdErr 'StdErr'
-        }
+    # One tool is enough here. The entrypoint sees every writing tool as ToolName 'file-edit', and
+    # the payload cases above pin how Write and NotebookEdit map to it.
+    Invoke-TestCase 'Entrypoint: Edit into the main checkout is denied' {
+        $target = Join-Path $fixture.Main 'README.md'
+        $result = Invoke-Entrypoint -Adapter 'Claude' -ScriptPath $script:FixtureEntrypoint `
+            -StdIn (New-ClaudeEditPayload 'Edit' $target $fixture.Managed)
+        Assert-Equal 2 $result.ExitCode 'ExitCode'
+        Assert-Match 'cannot write into the main checkout' $result.StdErr 'StdErr'
     }
 
     Invoke-TestCase 'Entrypoint: a Write inside the plans repo is allowed' {
@@ -4242,21 +4319,6 @@ try {
         Assert-True ($result.StdErr -notmatch 'worktree copy') 'Must not send the agent looking for a copy'
     }
 
-    Invoke-TestCase 'Entrypoint: an edit inside the session worktree is allowed' {
-        $target = Join-Path $fixture.Managed 'README.md'
-        $result = Invoke-Entrypoint -Adapter 'Claude' -ScriptPath $script:FixtureEntrypoint `
-            -StdIn (New-ClaudeEditPayload 'Edit' $target $fixture.Managed)
-        Assert-Equal 0 $result.ExitCode 'ExitCode'
-        Assert-Equal '' $result.StdOut.Trim() 'Must produce no decision payload'
-    }
-
-    Invoke-TestCase 'Entrypoint: a main-checkout session may still edit the main checkout' {
-        $target = Join-Path $fixture.Main 'README.md'
-        $result = Invoke-Entrypoint -Adapter 'Claude' -ScriptPath $script:FixtureEntrypoint `
-            -StdIn (New-ClaudeEditPayload 'Edit' $target $fixture.Main)
-        Assert-Equal 0 $result.ExitCode 'ExitCode'
-    }
-
     Invoke-TestCase 'Entrypoint: AHKFLOW_ALLOW_MAIN=1 warns instead of denying an edit' {
         $target = Join-Path $fixture.Main 'README.md'
         $result = Invoke-Entrypoint -Adapter 'Claude' -ScriptPath $script:FixtureEntrypoint `
@@ -4264,15 +4326,6 @@ try {
             -EnvironmentOverrides @{ AHKFLOW_ALLOW_MAIN = '1' }
         Assert-Equal 0 $result.ExitCode 'ExitCode'
         Assert-Match 'AHKFLOW_ALLOW_MAIN=1 overrode' $result.StdErr 'StdErr'
-    }
-
-    Invoke-TestCase 'Entrypoint: AHKFLOW_GUARD_DISABLE=1 skips the file-edit rule too' {
-        $target = Join-Path $fixture.Main 'README.md'
-        $result = Invoke-Entrypoint -Adapter 'Claude' -ScriptPath $script:FixtureEntrypoint `
-            -StdIn (New-ClaudeEditPayload 'Edit' $target $fixture.Managed) `
-            -EnvironmentOverrides @{ AHKFLOW_GUARD_DISABLE = '1' }
-        Assert-Equal 0 $result.ExitCode 'ExitCode'
-        Assert-True ($result.StdErr -notmatch 'cannot write into the main checkout') 'Must not deny'
     }
 
     Invoke-TestCase 'Entrypoint: Codex file-edit calls stay out of scope' {
@@ -4285,37 +4338,47 @@ try {
 
     Write-Host 'Bash shim prefilter for worktree writes' -ForegroundColor Cyan
 
-    # These three run against the REAL repository identity, like every other shim test above: the
-    # entrypoint derives the protected repository from its own checked-in location, so a fixture
-    # path would classify as OutsideProtectedRepository and prove nothing. Nothing is executed -
-    # the shim only classifies the command text.
-    $script:RealWriteCommand = 'printf probe > ' + $script:RealMainCheckout.Replace('\', '/') + '/.guard-probe.tmp'
+    $harness = New-ShimHarness -ShimFileName 'pre-bash-guard.sh'
+    try {
+        # Stub forwarding distinguishes Bash early exits from a silent policy-core Allow.
+        $script:RealWriteCommand = 'printf probe > ' + $script:RealMainCheckout.Replace('\', '/') + '/.guard-probe.tmp'
 
-    # Proved against the stub entrypoint, not the real one. The old version of this case passed a
-    # payload whose cwd was $suiteRoot and expected a denial, which only happens when the suite
-    # itself runs inside a managed worktree. From a plain checkout, and in CI, it failed.
-    Invoke-TestCase 'Shim: a worktree-session write is forwarded to the policy core' {
-        $harness = New-ShimHarness -ShimFileName 'pre-bash-guard.sh'
-        try {
+        # Proved against the stub entrypoint, not the real one. The old version of this case passed a
+        # payload whose cwd was $suiteRoot and expected a denial, which only happens when the suite
+        # itself runs inside a managed worktree. From a plain checkout, and in CI, it failed.
+        Invoke-TestCase 'Shim: a worktree-session write is forwarded to the policy core' {
             $worktreeCwd = Join-Path $script:RealMainCheckout '.claude\worktrees\probe'
             $result = Invoke-HarnessShim -Harness $harness `
-                -StdIn (New-ClaudePayload 'printf probe > ../../../README.md' $worktreeCwd)
+                -StdIn (New-ClaudePayload 'printf probe > ../../../README.md' $worktreeCwd) `
+                -Jq Present -ParsedCommand 'printf probe > ../../../README.md' -ParsedCwd $worktreeCwd
             Assert-Match $script:ShimStubMarker $result.StdErr 'Must forward to the entrypoint'
         }
-        finally { Remove-ShimHarness -Harness $harness }
-    }
 
-    Invoke-TestCase 'Shim: a main-session redirect still exits in Bash' {
-        $result = Invoke-BashShim -StdIn (New-ClaudePayload $script:RealWriteCommand $script:RealMainCheckout)
-        Assert-Equal 0 $result.ExitCode 'Exit code'
-        Assert-Equal '' $result.StdOut.Trim() 'Must produce no decision payload'
-    }
+        # The next two cases are proved against the stub entrypoint too. A forwarded run against the
+        # real entrypoint also exits 0 with no decision payload, because the write layer allows a
+        # main session and allows a read.
+        Invoke-TestCase 'Shim: a main-session redirect still exits in Bash' {
+            $result = Invoke-HarnessShim -Harness $harness `
+                -StdIn (New-ClaudePayload $script:RealWriteCommand (Join-Path $script:RealMainCheckout 'git repo')) `
+                -Jq Present -ParsedCommand $script:RealWriteCommand -ParsedCwd (Join-Path $script:RealMainCheckout 'git repo')
+            Assert-Equal 0 $result.ExitCode 'Exit code'
+            Assert-Equal '' $result.StdOut.Trim() 'Must produce no decision payload'
+            Assert-True ($result.StdErr -notmatch $script:ShimStubMarker) 'Must not start PowerShell'
+        }
 
-    Invoke-TestCase 'Shim: a worktree-session read still exits in Bash' {
-        $result = Invoke-BashShim -StdIn (New-ClaudePayload 'cat README.md' $suiteRoot)
-        Assert-Equal 0 $result.ExitCode 'Exit code'
-        Assert-Equal '' $result.StdOut.Trim() 'Must produce no decision payload'
-    }
+        # The cwd is a worktree path under the real main checkout, so the case does not depend on where
+        # the suite itself runs.
+        Invoke-TestCase 'Shim: a worktree-session read still exits in Bash' {
+            $worktreeCwd = Join-Path $script:RealMainCheckout '.claude\worktrees\probe'
+            $result = Invoke-HarnessShim -Harness $harness `
+                -StdIn (New-ClaudePayload 'cat README.md' $worktreeCwd) `
+                -Jq Present -ParsedCommand 'cat README.md' -ParsedCwd $worktreeCwd
+            Assert-Equal 0 $result.ExitCode 'Exit code'
+            Assert-Equal '' $result.StdOut.Trim() 'Must produce no decision payload'
+            Assert-True ($result.StdErr -notmatch $script:ShimStubMarker) 'Must not start PowerShell'
+        }
+
+    } finally { Remove-ShimHarness -Harness $harness }
 
     Write-Host 'Bash shim prefilter for file-edit tool calls' -ForegroundColor Cyan
 

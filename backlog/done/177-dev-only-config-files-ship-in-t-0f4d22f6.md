@@ -6,7 +6,7 @@
 - **Type**: Chore
 - **Interfaces**: none (frontend project file, published output)
 - **Difficulty**: moderate
-- **Stage**: 1-pickup
+- **Stage**: 9-ship
 
 ## Summary
 
@@ -23,12 +23,12 @@ that it does not advertise a test-auth switch.
 
 ## Acceptance criteria
 
-- [ ] `appsettings.Local.json`, `appsettings.E2E.json` and `appsettings.NoAuth.json` are absent
+- [x] `appsettings.Local.json`, `appsettings.E2E.json` and `appsettings.NoAuth.json` are absent
       from the published `wwwroot`.
-- [ ] `appsettings.Development.json` is absent from the published `wwwroot` on a machine where
+- [x] `appsettings.Development.json` is absent from the published `wwwroot` on a machine where
       that file exists, which is every developer's machine.
-- [ ] Local development, the E2E run and the no-auth run all still read their config.
-- [ ] A check or a test proves a published bundle holds no `appsettings` file other than the ones
+- [x] Local development, the E2E run and the no-auth run all still read their config.
+- [x] A check or a test proves a published bundle holds no `appsettings` file other than the ones
       the app needs at run time.
 
 ## Out of scope
@@ -65,4 +65,4 @@ that it does not advertise a test-auth switch.
   The project knows the folder is public. These three files are dev-only, so they do not need to
   be in it.
 - Spec: none — this is a publish-exclusion change.
-- Plan: none — moderate work, goes straight to Plan at pickup.
+- Plan: `docs/superpowers/plans/2026-10-22-dev-only-config-publish-plan-177.md`

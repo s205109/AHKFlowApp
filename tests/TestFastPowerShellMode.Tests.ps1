@@ -138,6 +138,12 @@ function Invoke-Wrapper {
     $env:GITHUB_STEP_SUMMARY = $summaryPath
     $env:AHKFLOW_TESTFAST_MODE_TEST = '1'
 
+    # PowerShell Mode is a Gate run, so the runner writes a Gate log line. Point it at a scratch
+    # folder, so no case here writes the real log or real evidence.
+    $evidenceRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('ahkflow-testfast-mode-evidence-' + [guid]::NewGuid().ToString('N'))
+    $previousEvidence = $env:AHKFLOW_GATE_EVIDENCE_ROOT
+    $env:AHKFLOW_GATE_EVIDENCE_ROOT = Join-Path $evidenceRoot 'gate-evidence'
+
     try {
         $output = & $HostExe -NoProfile -File $script:WrapperPath `
             -Mode PowerShell -SuiteRoot $SuiteRoot 2>&1 | Out-String
@@ -147,7 +153,9 @@ function Invoke-Wrapper {
         foreach ($name in $previousLane.Keys) { [Environment]::SetEnvironmentVariable($name, $previousLane[$name]) }
         $env:GITHUB_STEP_SUMMARY = $previousSummary
         $env:AHKFLOW_TESTFAST_MODE_TEST = $previousGuard
+        $env:AHKFLOW_GATE_EVIDENCE_ROOT = $previousEvidence
         Remove-Item -LiteralPath $summaryPath -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $evidenceRoot -Recurse -Force -ErrorAction SilentlyContinue
     }
 
     return [pscustomobject]@{
@@ -155,6 +163,12 @@ function Invoke-Wrapper {
         Output   = $output
     }
 }
+
+# Backlog 188. Every PowerShell Mode run is a Gate run and writes a Gate log line. The Lane case
+# below starts the wrapper without Invoke-Wrapper, so the whole Suite points the log and the
+# evidence at a scratch folder, never at the real TestResults folder.
+$suiteEvidenceRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('ahkflow-testfast-mode-suite-evidence-' + [guid]::NewGuid().ToString('N'))
+$env:AHKFLOW_GATE_EVIDENCE_ROOT = Join-Path $suiteEvidenceRoot 'gate-evidence'
 
 Write-Host "Testing $script:WrapperPath"
 Assert-True (Test-Path -LiteralPath $script:WrapperPath) "Wrapper script not found at $script:WrapperPath."
@@ -174,6 +188,23 @@ Invoke-TestCase 'All suites pass -> exit code 0' {
         # runner it calls uses it. Checking them here covers the whole chain, not one link.
         Assert-True ($result.Output -match '\[\d/2 done\] 01-pass\.Tests\.ps1') "Expected a completion line through the wrapper. Output: $($result.Output)"
         Assert-True ($result.Output -match '\[\d/2 done\] 02-pass\.Tests\.ps1') "Expected a completion line for the second suite. Output: $($result.Output)"
+    }
+    finally {
+        Remove-SuiteFixture -Root $root
+    }
+}
+
+Invoke-TestCase 'PowerShell Mode passes -Gate to the runner' {
+    # Backlog 188. Every PowerShell Mode run is a Gate run: it may reuse evidence and it writes a
+    # Gate log line. The runner prints its evidence line only when it receives -Gate.
+    $root = New-SuiteFixture
+    try {
+        Add-FakeSuite -Root $root -Name '01-pass.Tests.ps1' -Ending 'pass'
+        Set-FixtureManifest -Root $root
+
+        $result = Invoke-Wrapper -SuiteRoot $root
+        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
+        Assert-True ($result.Output -match 'Gate evidence: ') "Expected the runner's Gate evidence line. Output: $($result.Output)"
     }
     finally {
         Remove-SuiteFixture -Root $root
@@ -308,6 +339,8 @@ Invoke-TestCase 'PowerShell wrapper forwards all Lane settings and restores fixt
     } finally { Remove-SuiteFixture $root; Remove-PinnedLanePool $pool }
 }
 
+
+Remove-Item -LiteralPath $suiteEvidenceRoot -Recurse -Force -ErrorAction SilentlyContinue
 
 Write-Host ''
 if ($script:Failures.Count -gt 0) {

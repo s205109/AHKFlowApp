@@ -11,6 +11,10 @@
 > **Iceboxed.** The failure is rare and nobody is blocked by it. It would become worth doing if
 > this suite starts failing in CI, or if a second person loses time to it. Backlog 137 shows the
 > cost of leaving this class alone: a red pull request teaches people to re-run the job.
+>
+> **Update 2026-10-28.** The first of those conditions is now met: the suite failed once in CI, on
+> PR #461. See "Second failure, in CI" under Evidence. The item stays in the icebox until the human
+> decides to pick it up.
 
 ## Summary
 
@@ -37,7 +41,7 @@ FAILED: WorktreeMergedCleanupSweep.Tests.ps1 (exit code 1)
   - The second worktree must be removed.
 ```
 
-The assertion is (`tests/WorktreeMergedCleanupSweep.Tests.ps1:370`, "The second worktree must be removed. Stderr:").
+The assertion is (`tests/WorktreeMergedCleanupSweep.Tests.ps1:376`, "The second worktree must be removed. Stderr:").
 It creates two merged worktrees, runs one sweep, and expects both to be removed. The hook
 diagnostics show the two branches judged differently:
 
@@ -51,6 +55,31 @@ refused to delete an apparently unmerged branch, which is correct behaviour give
 
 The same run also logged `cleanup: GitHub lookup unavailable (gh-failed); deciding on local
 history only.` That fallback is by design, so it may be unrelated.
+
+### Second failure, in CI
+
+Observed on 2026-10-27 in the `powershell-suites` job of CI run `40477106001`, on PR #461 at
+commit `6be5785f`. That pull request changed three backlog `.md` files and no script or test.
+The job runs every suite in parallel on a GitHub runner.
+
+The suite stopped with a different message from the first failure:
+
+```
+WorktreeMergedCleanupSweep.Tests.ps1: Cannot process argument transformation on parameter 'Condition'. Cannot convert value "System.Object[]" to type "System.Boolean". Boolean parameters accept only Boolean values and numbers, such as $True, $False, 1 or 0.
+FAILED: WorktreeMergedCleanupSweep.Tests.ps1 (exit code 1)
+```
+
+- The `Condition` parameter belongs to the suite's `Assert-True` helper
+  (`tests/WorktreeMergedCleanup.Common.ps1:26`, "param([bool] $Condition, [string] $Message)").
+  So one `Assert-True` call received an array, not a bool. A function whose result feeds that
+  call wrote extra output to the pipeline.
+- The log names no line, so the call is not known. Several calls in the suite pass the result of
+  `Test-BranchOwnWorkWasMerged` straight into `Assert-True`. Those are the first place to look.
+  This is not proven.
+- It is not proven that this failure and the first one share a root cause. Both appeared only
+  under parallel load.
+- Rerunning the failed job, with no change, passed every suite. Other branches passed this suite
+  in CI on the same days.
 
 ## What is already known
 

@@ -47,7 +47,7 @@ Which flavour of Hotstring a definition is — Text, Date & time, Macro, or Raw.
 _Avoid_: type, mode
 
 **Action**:
-What a Hotkey does when it fires — one of SendText, SendKeys, Run, Window, Remap, Disable, or Raw. Decides which fields that Hotkey carries and how its line is generated; it is to a Hotkey what Kind is to a Hotstring.
+What a Hotkey does when it fires — one of Send text, Send keys, Run, Window, Remap, Disable, or Raw. Code spells the first two `SendText` and `SendKeys`, the same way it spells the Kind Date & time `DateTime`; text an owner reads uses the spaced form. Decides which fields that Hotkey carries and how its line is generated; it is to a Hotkey what Kind is to a Hotstring.
 _Avoid_: type, command, operation
 
 **Macro**:
@@ -261,10 +261,32 @@ skips the .NET build and tests in CI, and before a push. The local checks still 
 changes a script they use.
 _Avoid_: config-only change, short route, short gate, local gate
 
+**Gate input**:
+A file whose content can change the result of one Gate step or one Suite. A Suite's Gate inputs
+are its own file, every script it loads, and every path it declares. A Suite with no list of Gate
+inputs counts every file as one.
+_Avoid_: dependency, affected file, watch list
+
+**Gate evidence**:
+The stored record that one Gate step or one Suite passed for one exact set of Gate inputs. A later
+Gate run reuses it, instead of running that step or Suite again, while those inputs stay unchanged.
+_Avoid_: cache, gate cache, result cache, green stamp
+
+**Outside review**:
+A review the human starts in a separate terminal, with a model family other than the one doing the
+work, such as OpenCode with an OpenAI model. It reads the same revision as the Claude reviewer, and
+the human pastes its result back into the session.
+_Avoid_: Codex review, second review, external review
+
 **Suite**:
 One `tests/*.Tests.ps1` file. The runner starts each Suite as its own process and runs several at
 once, so one Suite's failure cannot stop another. `tests/powershell-suites.json` lists every Suite.
 _Avoid_: test file, test script, spec, run
+
+**Suite time**:
+The seconds one Suite takes when it runs alone on a machine that is doing nothing else. The same
+Suite takes longer inside a Gate, because there it shares the machine with other Suites.
+_Avoid_: runtime, duration, Gate time
 
 **Slice**:
 One .NET test project plus the trait filter the runner applies to it. `AHKFlowApp.CLI.Tests` with

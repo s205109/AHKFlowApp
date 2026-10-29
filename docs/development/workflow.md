@@ -466,6 +466,51 @@ this rule. CI cannot run it, because CI cannot see `docs/superpowers/`.
 The reasons, and the rules that were rejected, are in
 [`docs/adr/0019-a-plan-declares-its-split-and-its-extension.md`](../adr/0019-a-plan-declares-its-split-and-its-extension.md).
 
+#### The fabrication check
+
+Run it on your own draft before anyone else reads it. Prove every claim the plan makes:
+
+- An identifier defined in this repository: cite the `file:line` that defines it, in the
+  checkable form below.
+- A .NET or NuGet identifier: cite the official documentation for the version in
+  `Directory.Packages.props`. Never cite an external API from memory.
+- A MudBlazor or other component parameter: cite that component's API for the version in
+  `Directory.Packages.props`.
+- A CSS selector or a `data-test` value: cite the `file:line` in the `.razor` file that
+  renders it.
+- An emitted AHK construct: cite [`ahk-v2-syntax.md`](ahk-v2-syntax.md) or the official AHK v2
+  docs.
+- A claim about branch or file state: run a `git` or filesystem command, and keep its output.
+
+Mark anything you cannot prove **FABRICATED** in the draft. Do not delete it and do not soften
+it. List the fabricated items, revise, then present the plan.
+
+#### Citations
+
+The checkable form is `` (`path:line`, "text from that line") ``. The quoted text cannot hold a
+double quote: the check reads it up to the next one. `scripts/check-citation-freshness.ps1`
+fails a citation on an added or edited line when it does not use this form. An untouched
+citation keeps working, so no bulk rewrite is needed.
+
+- Suppress one citation with `citation-check:ignore` on the same line. Suppress a whole file
+  with `citation-check:ignore-file` alone on its own line, inside the first five non-blank
+  lines.
+- A citation to a line your own plan will create is a forward reference, not a proven claim.
+  Mark it `citation-check:ignore` with the reason, and prove it after the task runs.
+- Freeze a plan or spec when its item ships: `citation-check:ignore-file` at the top, plus a
+  comment that says why. A shipped plan records the tree as it was, not the tree as it is.
+- A run with no arguments reads only this repository, so it never opens a plan. To check your
+  own plan, run the worktree's copy of the script:
+  `pwsh ./scripts/check-citation-freshness.ps1 -ScanRoot docs/superpowers -OnlyPath plans/<file>.md`.
+- The check lists the files git tracks, then reads their contents from disk. So add a new plan
+  to git with `git -C docs/superpowers add plans/<file>.md` before you run it. Until then the
+  check skips the plan and still reports success.
+- Pre-push checks only the plans this branch owns. `docs/superpowers` is one shared working
+  tree, so another branch's live plan cites lines that are right on its branch and wrong on
+  yours. Never repair a plan that belongs to somebody else's open item.
+- CI checks citations on the merge result with `main`. Merge `main` into your branch before
+  you trust a green local run.
+
 <a id="stage-4-execute"></a>
 
 ### Stage 4 — Execute
@@ -536,7 +581,7 @@ The reasons, and the rules that were rejected, are in
 - **Entry** — behaviour, vocabulary, or a rule moved — or the check that none did
 - **Who** — Sonnet, default effort
 - **Technique** — docs edit plus `CONTEXT.md` and skill updates
-- **Action** — tick the item's acceptance boxes against what the branch actually does, and leave any box that is not true unticked with the reason written into the item; then update docs, README, and skills, or state the verdict. The tick happens here, and not at Ship, so that Review reads the claims next to the diff
+- **Action** — tick the item's acceptance boxes against what the branch actually does, and leave any box that is not true unticked with the reason written into the item; then update docs, README, and skills, or state the verdict. The tick happens here, and not at Ship, so that Review reads the claims next to the diff. When one criterion has an exception, check every other criterion against that same exception before you tick it
 - **Exit** — Docs updated or verdict 'nothing to document' stated
 - **Next** — `8-review`
 - **Context** — safe to clear
@@ -821,10 +866,15 @@ session has entered the worktree: Claude Code then refuses every command that se
 the harness and not from this repository.
 
 So an entered session commits the artifact with the step-outside cycle. Leave the worktree
-and keep it (`ExitWorktree` with `keep`), run `git -C docs/superpowers commit` staging the
-files by name, then enter the same path again (`EnterWorktree` with `path`). An agent that
+and keep it (`ExitWorktree` with `keep`), run `git -C docs/superpowers commit -m "..." -- <file>`
+with each file named, then enter the same path again (`EnterWorktree` with `path`). An agent that
 never entered a worktree — Codex or Copilot — commits in place, because the harness isolation
 reads a session flag those agents do not set.
+
+Stage the file with `git -C docs/superpowers add <file>`, then commit it with
+`git -C docs/superpowers commit -m "..." -- <file>`. A commit without the path takes every file
+another session has staged there. Never run `reset` in that repository to undo a mistake:
+another session may already have committed on top of yours.
 
 If the session stops between the exit and the re-enter, the next resume starts in the main
 checkout. The Design and Plan resume edges check for this and re-enter the worktree first.
@@ -835,7 +885,7 @@ deleting `docs/superpowers` breaks the link every worktree depends on. And
 `docs/superpowers/.git`, because destroying it destroys history that was never pushed.
 
 So Design and Plan write the artifact inside the worktree, then commit it from the main
-checkout with `git -C docs/superpowers commit` and re-enter.
+checkout with `git -C docs/superpowers commit -m "..." -- <file>` and re-enter.
 
 **Push boundaries.** Push at every pre-merge stage completion that has a live branch and a
 transition commit — stages 1 to 9. A tracked item's Pickup push is the first push and opens
@@ -902,6 +952,14 @@ the records — the boxes are unticked, or the file never moved to `backlog/done
 left to execute, so there is no pickup to classify. Ticking the boxes, setting
 `Stage: 9-ship`, and running `git mv` into `backlog/done/` is trivial work, and a housekeeping
 round carries it like any other trivial change.
+
+After `git mv`, run `git add` on the new path before you commit. `git mv` moves the staged
+copy, so an edit you made before it stays unstaged. Check the commit with
+`git show HEAD:<new path>`, not with the file on disk.
+
+Use this records-only path only when the implementation already merged. Otherwise close the
+item in its shipping pull request, as Stage 9 says. Check each criterion against the final fix,
+and never count CI runs from before that fix as evidence.
 
 It gets no new backlog item. The Git Workflow rule in `AGENTS.md` forbids a separate pull
 request to mark an item done, and filing an item for the closure produces exactly that pull

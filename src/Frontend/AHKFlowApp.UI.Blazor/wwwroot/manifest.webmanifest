@@ -1,6 +1,7 @@
 {
-  "name": "AHKFlowApp.UI.Blazor",
-  "short_name": "AHKFlowApp.UI.Blazor",
+  "name": "AHKFlowApp — AutoHotkey Hotstring Manager",
+  "short_name": "AHKFlowApp",
+  "description": "Manage your AutoHotkey hotstrings and hotkeys in one place.",
   "id": "./",
   "start_url": "./",
   "display": "standalone",

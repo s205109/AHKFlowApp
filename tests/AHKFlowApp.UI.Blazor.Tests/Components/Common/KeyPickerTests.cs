@@ -114,4 +114,30 @@ public sealed class KeyPickerTests : BunitContext, IAsyncLifetime
         // Ordinal: "Function keys" < "Letters & digits", so F1 precedes c.
         matches.Should().ContainInOrder("F1", "c");
     }
+
+    // Backlog 189. The inline key field has no visible label, so AriaLabel is its name.
+    [Fact]
+    public void AriaLabel_WhenSet_NamesTheInput()
+    {
+        SetupCatalog();
+        IRenderedComponent<KeyPicker> cut = RenderPicker(p => p
+            .Add(x => x.Role, "HotkeyKey")
+            .Add(x => x.DataTest, "key-input")
+            .Add(x => x.AriaLabel, "Key"));
+
+        cut.Find("input[data-test=\"key-input\"]").GetAttribute("aria-label").Should().Be("Key");
+    }
+
+    // A dialog key field is named by its visible Label. An aria-label would replace that name.
+    [Fact]
+    public void AriaLabel_WhenUnset_RendersNoAriaLabel()
+    {
+        SetupCatalog();
+        IRenderedComponent<KeyPicker> cut = RenderPicker(p => p
+            .Add(x => x.Role, "HotkeyKey")
+            .Add(x => x.Label, "Key")
+            .Add(x => x.DataTest, "key-picker"));
+
+        cut.Find("input[data-test=\"key-picker\"]").HasAttribute("aria-label").Should().BeFalse();
+    }
 }

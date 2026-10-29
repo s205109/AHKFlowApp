@@ -46,7 +46,7 @@ removed because it normalizes whitespace, skips merge commits, and ignores autho
 signature, and empty-commit intent
 (`scripts/worktree-git.common.ps1:340`, "normalizes whitespace, it skips merge commits entirely").
 A regression test holds that line
-(`tests/WorktreeMergedCleanup.Tests.ps1:445`, "Content that differs only in whitespace must still count as discarded work.").
+(`tests/WorktreeMergedCleanup.Tests.ps1:428`, "Content that differs only in whitespace must still count as discarded work.").
 So whatever answers this item must not reintroduce patch-text comparison. Finding the safe rule is
 the pickup's job; this item states the outcome only.
 
@@ -81,17 +81,17 @@ of the log cannot tell a real refusal from "there was nothing here".
       worktree, even though the base never received the dropped commit. The redo test proves this
       exception. Its replacement has different content, no branch contains the dropped commit, and
       the test still requires removal
-      (`tests/WorktreeMergedCleanup.Tests.ps1:654`, "A reset the branch then redid under the same subject and author must not keep the worktree.").
+      (`tests/WorktreeMergedCleanup.Tests.ps1:625`, "A reset the branch then redid under the same subject and author must not keep the worktree.").
       This is the same accepted cost criterion 3 describes.
 - [ ] The sweep keeps a merged worktree whose dropped commit differs from what the base holds only in
       whitespace, in being a merge commit, or in author, message, signature, or empty-commit intent
-      (`tests/WorktreeMergedCleanup.Tests.ps1:445`, "Content that differs only in whitespace must still count as discarded work.")
+      (`tests/WorktreeMergedCleanup.Tests.ps1:428`, "Content that differs only in whitespace must still count as discarded work.")
       — **only partly true.** The sweep keeps the worktree when no later commit on the branch
       carries the dropped commit's subject line and author. The whitespace and discarded-merge
       fixtures prove that. So do the tests for a different subject
-      (`tests/WorktreeMergedCleanup.Tests.ps1:708`, "A later commit with a different subject must not clear a reset.")
+      (`tests/WorktreeMergedCleanup.Tests.ps1:675`, "A later commit with a different subject must not clear a reset.")
       and for a different author
-      (`tests/WorktreeMergedCleanup.Tests.ps1:749`, "A worktree whose redo carries another author must never be eligible.").
+      (`tests/WorktreeMergedCleanup.Tests.ps1:708`, "The same subject under a different author must not clear a reset.").
       When a later commit on the branch does carry the same subject line and author, the sweep
       removes the worktree. A difference in whitespace, message body, signature, empty-commit
       intent, or merge shape does not stop that. Pull request #410 chose this on purpose, and the

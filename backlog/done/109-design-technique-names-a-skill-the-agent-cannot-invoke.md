@@ -32,7 +32,7 @@ skipped without anybody noticing.
 - (`docs/development/workflow.md:373`, "mp-grill-with-docs") sets the Stage 2
   Technique. (`docs/development/workflow.md:1012`, "is the Design technique")
   repeats it as a mandatory rule.
-- (`.claude/CLAUDE.md:27`, "before you write code, not after") repeats it a third
+- (`.claude/CLAUDE.md:27`, "before you write code, not after") repeats it a third <!-- citation-check:ignore: backlog 192 reworded this line; the citation records the tree at shipping. -->
   time.
 - `.agents/mp-grilling/SKILL.md` mentions no docs, no ADRs, and no `CONTEXT.md`,
   so nothing in it routes an agent to the domain-modeling half.
@@ -58,7 +58,7 @@ skill changes its invocation flag.
       states the technique agrees: (`docs/development/workflow.md:373`, "mp-grill-with-docs"),
       (`docs/development/workflow.md:1012`, "is the Design technique"),
       (`docs/development/workflow.html:227`, "mp-grill-with-docs"),
-      and (`.claude/CLAUDE.md:27`, "before you write code, not after"). All four now
+      and (`.claude/CLAUDE.md:27`, "before you write code, not after"). All four now <!-- citation-check:ignore: backlog 192 reworded this line; the citation records the tree at shipping. -->
       name `mp-grilling` and `mp-domain-modeling`, run together.
 - [x] `/mp-grill-with-docs` keeps working as the human's shortcut, and its
       `disable-model-invocation` flag is unchanged. No file under `.agents/` changed.

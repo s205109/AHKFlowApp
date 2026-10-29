@@ -6,6 +6,7 @@
         <MudIcon Icon="@MudBlazor.Icons.Material.Filled.Terminal" />
         <MudText Typo="Typo.h6">CLI quickstart</MudText>
     </MudStack>
+    <MudText Typo="Typo.body2" Class="mb-2" data-test="cli-profile-hint">Replace <code>work</code> with an existing profile name.</MudText>
     <div class="cli-block">
         @foreach (string cmd in _commands)
         {
@@ -26,8 +27,8 @@
 @code {
     private static readonly string[] _commands =
     [
-        "ahkflow new \"yw\" \"you're welcome\" --profile work",
-        "ahkflow list --profile work --grep \"typo\"",
+        "ahkflow hotstring new --trigger \"yw\" --replacement \"you're welcome\" --profile work",
+        "ahkflow hotstring list --profile work --grep \"typo\"",
         "ahkflow download ahk --profile work",
     ];
 

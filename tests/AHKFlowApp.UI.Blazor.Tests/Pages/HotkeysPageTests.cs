@@ -935,4 +935,28 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
             cut.Find("[data-test=\"template-warning\"]").TextContent
                 .Should().Be("The header template in Work also uses CapsLock. Your hotkey may not fire."));
     }
+
+    // Backlog 186. The action field is named by the chip beside it, so it says what it holds.
+    [Theory]
+    [InlineData(HotkeyActionKind.Run, "run-target-input", "Run")]
+    [InlineData(HotkeyActionKind.SendText, "text-input", "Send text")]
+    public void EditRow_Fields_NameWhatTheyHold(HotkeyActionKind kind, string actionField, string actionName)
+    {
+        IRenderedComponent<Hotkeys> cut = StartInlineEdit(OneHotkeyOfKind(kind));
+
+        cut.Find("input[data-test=\"description-input\"]").GetAttribute("aria-label").Should().Be("Description");
+        cut.Find($"input[data-test=\"{actionField}\"]").GetAttribute("aria-label").Should().Be(actionName);
+    }
+
+    // Backlog 189. The key field is named Key, as in the hotkey dialog: its Hotkey column also
+    // holds the modifier checkboxes, so the column title would name the whole binding.
+    [Fact]
+    public void EditRow_Pickers_NameWhatTheyHold()
+    {
+        IRenderedComponent<Hotkeys> cut = StartInlineEdit(MakeHotkey() with { AppliesToAllProfiles = false });
+
+        cut.Find("input[data-test=\"key-input\"]").GetAttribute("aria-label").Should().Be("Key");
+        cut.Find("input[data-test=\"profile-select\"]").GetAttribute("aria-label").Should().Be("Profiles");
+        cut.Find("input[data-test=\"category-select\"]").GetAttribute("aria-label").Should().Be("Categories");
+    }
 }
