@@ -55,27 +55,14 @@ try {
 
     # Redirected non-interactive runs skip removal without prompting. Backlog 201 moved this run
     # into the matrix fixture. It is report-only, so it changes nothing the checks above read.
-    $stdinFile = Join-Path (Split-Path -Parent $repo) 'cleanup-stdin.txt'
-    $stdoutFile = Join-Path (Split-Path -Parent $repo) 'cleanup-stdout.txt'
-    $stderrFile = Join-Path (Split-Path -Parent $repo) 'cleanup-stderr.txt'
-    Set-Content -LiteralPath $stdinFile -Value '' -Encoding utf8
+    $run = Invoke-CleanupChild -RepoDir $repo
 
-    $psExe = [System.Diagnostics.Process]::GetCurrentProcess().Path
-    $cleanupScript = Join-Path $scriptsDir 'cleanup-merged-worktrees.ps1'
-    $proc = Start-Process -FilePath $psExe `
-        -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $cleanupScript, '-RepoRoot', $repo, '-MainRef', 'main') `
-        -WorkingDirectory $suiteRoot `
-        -RedirectStandardInput $stdinFile `
-        -RedirectStandardOutput $stdoutFile `
-        -RedirectStandardError $stderrFile `
-        -NoNewWindow -PassThru -Wait
+    Assert-Equal 0 $run.ExitCode "cleanup-merged-worktrees.ps1 non-interactive path should exit 0. Stderr: $($run.Stderr)"
 
-    Assert-Equal 0 $proc.ExitCode "cleanup-merged-worktrees.ps1 non-interactive path should exit 0. Stderr: $(Get-Content -Raw -LiteralPath $stderrFile)"
-
-    $stdout = Get-Content -Raw -LiteralPath $stdoutFile
+    $stdout = $run.Stdout
     Assert-True ([string]::IsNullOrWhiteSpace($stdout)) "Non-interactive cleanup must not write to stdout. Got: $stdout"
 
-    $stderrText = Get-Content -Raw -LiteralPath $stderrFile
+    $stderrText = $run.Stderr
     Assert-True ($stderrText -match 'cleanup: eligible merged worktree') "Expected cleanup detection output on stderr. Stderr: $stderrText"
     Assert-True ($stderrText -match 'cleanup: report-only; nothing removed\.') "Expected non-interactive report-only output on stderr. Stderr: $stderrText"
 

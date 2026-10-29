@@ -77,10 +77,16 @@ function New-TempGitRepoRoot {
 }
 
 # Copies a seed into a fresh throwaway root. The '*' also matches the hidden .git folder.
+# A copy that fails partway removes its root, because nothing else holds the path yet.
 function Copy-TempGitRepoSeed {
     param([object] $Seed, [string] $Prefix = 'wtclean-')
     $repo = New-TempGitRepoRoot -Prefix $Prefix
-    Copy-Item -Path (Join-Path $Seed.Repo '*') -Destination $repo -Recurse -Force
+    try {
+        Copy-Item -Path (Join-Path $Seed.Repo '*') -Destination $repo -Recurse -Force
+    } catch {
+        Remove-TempTree $repo
+        throw
+    }
     return (Resolve-Path -LiteralPath $repo).Path
 }
 
@@ -90,23 +96,29 @@ function New-TempGitRepoSeedRecord {
     return [pscustomobject]@{ Repo = (Resolve-Path -LiteralPath $Repo).Path; Head = $head }
 }
 
+# The seed enters $script:TempGitRepoSeeds only after this returns, so the suite's trap cannot
+# see a seed whose build failed. The catch removes that root itself.
 function New-TempGitRepoSeed {
     $repo = New-TempGitRepoRoot -Prefix 'wtclean-seed-'
+    try {
+        & git -C $repo init *> $null
+        # Force the initial branch to 'main' independent of the host's init.defaultBranch.
+        & git -C $repo symbolic-ref HEAD refs/heads/main *> $null
+        & git -C $repo config user.email 'test@example.com' *> $null
+        & git -C $repo config user.name 'Cleanup Test' *> $null
 
-    & git -C $repo init *> $null
-    # Force the initial branch to 'main' independent of the host's init.defaultBranch.
-    & git -C $repo symbolic-ref HEAD refs/heads/main *> $null
-    & git -C $repo config user.email 'test@example.com' *> $null
-    & git -C $repo config user.name 'Cleanup Test' *> $null
+        Set-Content -LiteralPath (Join-Path $repo 'README.md') -Value 'seed' -Encoding utf8
+        Invoke-TestGit $repo @('add', '-A') | Out-Null
+        Invoke-TestGit $repo @('commit', '-m', 'seed') | Out-Null
 
-    Set-Content -LiteralPath (Join-Path $repo 'README.md') -Value 'seed' -Encoding utf8
-    Invoke-TestGit $repo @('add', '-A') | Out-Null
-    Invoke-TestGit $repo @('commit', '-m', 'seed') | Out-Null
+        # Git never runs the sample hooks, and they are about half the files each copy writes.
+        Remove-Item -Path (Join-Path (Join-Path (Join-Path $repo '.git') 'hooks') '*.sample') -Force
 
-    # Git never runs the sample hooks, and they are about half the files each copy writes.
-    Remove-Item -Path (Join-Path (Join-Path (Join-Path $repo '.git') 'hooks') '*.sample') -Force
-
-    return (New-TempGitRepoSeedRecord -Repo $repo)
+        return (New-TempGitRepoSeedRecord -Repo $repo)
+    } catch {
+        Remove-TempTree $repo
+        throw
+    }
 }
 
 # The plain seed, built on first use.
@@ -296,25 +308,30 @@ function New-WorktreeToolingRepo {
         return (Copy-TempGitRepoSeed -Seed $script:TempGitRepoSeeds[$key])
     }
 
-    # The tooling seed is a copy of the plain seed plus one commit.
+    # The tooling seed is a copy of the plain seed plus one commit. Like New-TempGitRepoSeed, it
+    # removes its own root when the build fails before the seed is registered.
     $repo = Copy-TempGitRepoSeed -Seed (Get-PlainTempGitRepoSeed) -Prefix 'wtclean-seed-'
+    try {
+        $repoScripts = Join-Path $repo 'scripts'
+        New-Item -ItemType Directory -Path $repoScripts -Force | Out-Null
+        # Top-level *.ps1 only: the worktree contract files, without ci/ or a stray .env.worktree.
+        Copy-Item -Path (Join-Path $ScriptsSource '*.ps1') -Destination $repoScripts -Force
 
-    $repoScripts = Join-Path $repo 'scripts'
-    New-Item -ItemType Directory -Path $repoScripts -Force | Out-Null
-    # Top-level *.ps1 only: the worktree contract files, without ci/ or a stray .env.worktree.
-    Copy-Item -Path (Join-Path $ScriptsSource '*.ps1') -Destination $repoScripts -Force
+        $appSettingsDir = Join-Path $repo 'src\Backend\AHKFlowApp.API'
+        New-Item -ItemType Directory -Path $appSettingsDir -Force | Out-Null
+        $appSettings = '{ "ConnectionStrings": { "DefaultConnection": "Server=localhost;Database=AHKFlowApp;Trusted_Connection=True;" }, "Cors": { "AllowedOrigins": [] } }'
+        Set-Content -LiteralPath (Join-Path $appSettingsDir 'appsettings.json') -Value $appSettings -Encoding utf8
 
-    $appSettingsDir = Join-Path $repo 'src\Backend\AHKFlowApp.API'
-    New-Item -ItemType Directory -Path $appSettingsDir -Force | Out-Null
-    $appSettings = '{ "ConnectionStrings": { "DefaultConnection": "Server=localhost;Database=AHKFlowApp;Trusted_Connection=True;" }, "Cors": { "AllowedOrigins": [] } }'
-    Set-Content -LiteralPath (Join-Path $appSettingsDir 'appsettings.json') -Value $appSettings -Encoding utf8
+        Set-Content -LiteralPath (Join-Path $repo 'AHKFlowApp.slnx') -Value '<Solution />' -Encoding utf8
 
-    Set-Content -LiteralPath (Join-Path $repo 'AHKFlowApp.slnx') -Value '<Solution />' -Encoding utf8
+        Invoke-TestGit $repo @('add', '-A') | Out-Null
+        Invoke-TestGit $repo @('commit', '-m', 'worktree tooling') | Out-Null
 
-    Invoke-TestGit $repo @('add', '-A') | Out-Null
-    Invoke-TestGit $repo @('commit', '-m', 'worktree tooling') | Out-Null
-
-    $script:TempGitRepoSeeds[$key] = New-TempGitRepoSeedRecord -Repo $repo
+        $script:TempGitRepoSeeds[$key] = New-TempGitRepoSeedRecord -Repo $repo
+    } catch {
+        Remove-TempTree $repo
+        throw
+    }
     return (Copy-TempGitRepoSeed -Seed $script:TempGitRepoSeeds[$key])
 }
 

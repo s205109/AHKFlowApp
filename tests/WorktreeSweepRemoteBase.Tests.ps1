@@ -63,40 +63,47 @@ function Invoke-FixtureGit {
 $script:RemoteFixtureSeeds = @{}
 
 # The bare 'origin' and the clone-shaped 'repo' whose main tracks it, pushed once. No worktree.
+# The seed enters $script:RemoteFixtureSeeds only after this returns, so the suite's trap cannot
+# see a seed whose build failed. The catch removes that root itself.
 function New-RemoteFixtureSeed {
     param([bool] $WithScripts)
 
     $root = Join-Path ([System.IO.Path]::GetTempPath()) ('wtremote-seed-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
     $origin = Join-Path $root 'origin.git'
     $repo = Join-Path $root 'repo'
-    New-Item -ItemType Directory -Path $repo -Force | Out-Null
-    New-Item -ItemType Directory -Path $origin -Force | Out-Null
+    try {
+        New-Item -ItemType Directory -Path $repo -Force | Out-Null
+        New-Item -ItemType Directory -Path $origin -Force | Out-Null
 
-    & git init --bare --quiet $origin
-    & git -C $repo init --quiet
-    & git -C $repo symbolic-ref HEAD refs/heads/main
-    & git -C $repo config user.email 'test@example.com'
-    & git -C $repo config user.name 'Sweep Remote Base Test'
+        & git init --bare --quiet $origin
+        & git -C $repo init --quiet
+        & git -C $repo symbolic-ref HEAD refs/heads/main
+        & git -C $repo config user.email 'test@example.com'
+        & git -C $repo config user.name 'Sweep Remote Base Test'
 
-    Set-Content -LiteralPath (Join-Path $repo 'README.md') -Value 'seed' -Encoding utf8
-    if ($WithScripts) {
-        # The sweep spawns <repo>\scripts\remove-worktree-local-dev.ps1, so a fixture that must
-        # really remove something needs the worktree scripts in place. Top-level *.ps1 only.
-        $repoScripts = Join-Path $repo 'scripts'
-        New-Item -ItemType Directory -Path $repoScripts -Force | Out-Null
-        Copy-Item -Path (Join-Path $scriptsDir '*.ps1') -Destination $repoScripts -Force
+        Set-Content -LiteralPath (Join-Path $repo 'README.md') -Value 'seed' -Encoding utf8
+        if ($WithScripts) {
+            # The sweep spawns <repo>\scripts\remove-worktree-local-dev.ps1, so a fixture that must
+            # really remove something needs the worktree scripts in place. Top-level *.ps1 only.
+            $repoScripts = Join-Path $repo 'scripts'
+            New-Item -ItemType Directory -Path $repoScripts -Force | Out-Null
+            Copy-Item -Path (Join-Path $scriptsDir '*.ps1') -Destination $repoScripts -Force
+        }
+        Invoke-FixtureGit $repo @('add', '-A') | Out-Null
+        Invoke-FixtureGit $repo @('commit', '--quiet', '-m', 'seed') | Out-Null
+        Invoke-FixtureGit $repo @('remote', 'add', 'origin', $origin) | Out-Null
+        # -u writes branch.main.remote and branch.main.merge, which is what the resolver reads.
+        Invoke-FixtureGit $repo @('push', '--quiet', '-u', 'origin', 'main') | Out-Null
+
+        # Git never runs the sample hooks, and they are most of the files each copy writes.
+        Remove-Item -Path (Join-Path (Join-Path (Join-Path $repo '.git') 'hooks') '*.sample') -Force
+        Remove-Item -Path (Join-Path (Join-Path $origin 'hooks') '*.sample') -Force
+
+        return [pscustomobject]@{ Root = $root; Head = (Get-RefSha $repo 'refs/heads/main') }
+    } catch {
+        Remove-Fixture $root
+        throw
     }
-    Invoke-FixtureGit $repo @('add', '-A') | Out-Null
-    Invoke-FixtureGit $repo @('commit', '--quiet', '-m', 'seed') | Out-Null
-    Invoke-FixtureGit $repo @('remote', 'add', 'origin', $origin) | Out-Null
-    # -u writes branch.main.remote and branch.main.merge, which is what the resolver reads.
-    Invoke-FixtureGit $repo @('push', '--quiet', '-u', 'origin', 'main') | Out-Null
-
-    # Git never runs the sample hooks, and they are most of the files each copy writes.
-    Remove-Item -Path (Join-Path (Join-Path (Join-Path $repo '.git') 'hooks') '*.sample') -Force
-    Remove-Item -Path (Join-Path (Join-Path $origin 'hooks') '*.sample') -Force
-
-    return [pscustomobject]@{ Root = $root; Head = (Get-RefSha $repo 'refs/heads/main') }
 }
 
 # A bare 'origin', a clone-shaped 'repo' whose main tracks it, and one worktree branch with a
@@ -169,7 +176,8 @@ function Remove-Fixture {
 }
 
 # Removes every seed. Unless -NoCheck, it first checks that each seed repo still has a clean status
-# and main at its original SHA, and throws after the removal when one does not. A fixture that
+# and main at its original SHA, and that the seed's origin.git still has main at that same SHA. It
+# throws after the removal when one does not. A fixture that
 # wrote into a seed would hand every later copy a changed repository, and a case could then pass
 # for the wrong reason. The suite calls it just before its final line, and its trap calls it with
 # -NoCheck.
@@ -181,6 +189,9 @@ function Remove-RemoteFixtureSeeds {
             $seedRepo = Join-Path $seed.Root 'repo'
             $status = @(Invoke-FixtureGit $seedRepo @('status', '--porcelain') | Where-Object { $_ })
             if ($status.Count -gt 0 -or (Get-RefSha $seedRepo 'refs/heads/main') -ne $seed.Head) { $written += $seedRepo }
+            # A fixture whose origin URL still pointed at the seed would push into this bare repo.
+            $seedOrigin = Join-Path $seed.Root 'origin.git'
+            if ((Get-RefSha $seedOrigin 'refs/heads/main') -ne $seed.Head) { $written += $seedOrigin }
         }
         Remove-Fixture $seed.Root
     }
