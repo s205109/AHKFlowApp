@@ -653,22 +653,24 @@ test Lane pool with:" would not count. No run printed it.
 
 ### Final Suite time, run alone
 
-These after measurements cover the review fixes, including the restored full transition loop.
-Each final Suite had one warm-up and three counted runs. No run shared the Lane pool.
+These after measurements cover the final code, at `2b527da5`. That includes the second review
+round: the installed-jq shim runs and the reused-fixture checks. Each Suite had one warm-up and
+three counted runs. No run shared the Lane pool.
 
 | Suite | Historical before (s) | Final counted runs (s) | Final median (s) |
 |---|---|---|---|
-| `WatchTask.Tests.ps1` | 42.0 | 27.7, 28.3, 28.6 | 28.3 |
-| `CiPowerShellSuiteRunner.Tests.ps1` | 113.4 | 78.1, 79.2, 78.2 | 78.2 |
-| `StageTransition.Tests.ps1` | 92.8 | 68.3, 68.4, 69.0 | 68.4 |
-| `AgentWorktreeGuard.Tests.ps1` | 42.6 | 45.1, 44.9, 44.7 | 44.9 |
+| `WatchTask.Tests.ps1` | 42.0 | 27.9, 29.0, 27.5 | 27.9 |
+| `CiPowerShellSuiteRunner.Tests.ps1` | 113.4 | 82.0, 82.2, 87.3 | 82.2 |
+| `StageTransition.Tests.ps1` | 92.8 | 75.4, 72.7, 69.6 | 72.7 |
+| `AgentWorktreeGuard.Tests.ps1` | 42.6 | 47.4, 46.4, 45.9 | 46.4 |
 
 The before sets come from the original task measurements, on earlier machine load.
 They provide historical context, not a controlled measurement of this recovery's saving.
-The final after medians replace 31.2, 82.0, 65.5 and 38.6 s from earlier code.
-AgentWorktreeGuard now includes the later shim coverage repairs; its final median is higher.
+These medians replace two earlier sets from earlier code: 31.2, 82.0, 65.5 and 38.6 s, then
+28.3, 78.2, 68.4 and 44.9 s at `4989055f`. AgentWorktreeGuard is higher than both, because
+it gained the shim coverage repairs and the installed-jq runs.
 The original samples and discarded drifted sets remain in commit a539e7db.
-Current samples are saved locally in `.superpowers/review2-final-medians.json` and matching logs.
+The samples are saved locally in `.superpowers/review4-medians.json` and matching logs.
 
 ### Changes timed on their own
 
@@ -829,7 +831,26 @@ Earlier S-A and isolated Suite timings are historical measurements of earlier re
 
 ### Current review recovery
 
-Final isolated medians are recorded above. The quiet reuse-off Gate remains pending.
+Final isolated medians are recorded above.
+
+The full Gate ran at `2b527da5` with `AHKFLOW_GATE_REUSE=off`. All five steps passed: all 73
+Suites, and 94.8% line and 83.2% branch coverage. Another worktree shared the Lane pool during
+its PowerShell step, so its Suite durations are not used. The PowerShell step then ran again on
+its own, at the same revision and with reuse off. The first retry also shared the pool and was
+discarded. The second retry shared nothing, and all 73 Suites passed.
+
+`baselineSeconds` in `tests/powershell-suites.json` now holds that quiet run's durations:
+
+| Suite | Before 195 | After 195 |
+|---|---|---|
+| `AgentWorktreeGuard.Tests.ps1` | 86.7 | 89.7 |
+| `CiPowerShellSuiteRunner.Tests.ps1` | 150.6 | 130.4 |
+| `StageTransition.Tests.ps1` | 136.6 | 127.6 |
+| `WatchTask.Tests.ps1` | 70.2 | 49.0 |
+
+A Gate duration is one run among six parallel workers, so it is higher than a median taken alone.
+The logs are saved locally in `.superpowers/review4-gate.log` and
+`.superpowers/review4-quiet-powershell-2.log`.
 The production worker-count contract is unchanged. Row 41 is now rejected: the 1500 ms watcher grace is restored.
 
 Fresh recovery proofs:
