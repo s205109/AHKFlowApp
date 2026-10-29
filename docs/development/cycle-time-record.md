@@ -651,26 +651,24 @@ Backlog 195 applied or rejected the deferred rows of four Suites. Each Suite ran
 numbers below are the medians of the counted runs, in seconds. A run that printed "Sharing the
 test Lane pool with:" would not count. No run printed it.
 
-### Suite time, run alone
+### Final Suite time, run alone
 
-| Suite | Before | After |
-|---|---|---|
-| `WatchTask.Tests.ps1` | 42.0 | 31.2 |
-| `CiPowerShellSuiteRunner.Tests.ps1` | 113.4 | 82.0 |
-| `StageTransition.Tests.ps1` | 92.8 | 65.5 |
-| `AgentWorktreeGuard.Tests.ps1` | 42.6 | 38.6 |
+These after measurements cover the review fixes, including the restored full transition loop.
+Each final Suite had one warm-up and three counted runs. No run shared the Lane pool.
 
-The `CiPowerShellSuiteRunner` before runs spread wide: 113.4, 115.1 and 94.7 s. Its after runs
-were 82.0, 83.0 and 80.0 s, so even the fastest before run is 11.7 s above the slowest after run.
-The `StageTransition` before runs were 93.6, 81.6 and 92.8 s, and its after runs 63.4, 65.5 and
-66.5 s, a gap of at least 15.1 s.
+| Suite | Historical before (s) | Final counted runs (s) | Final median (s) |
+|---|---|---|---|
+| `WatchTask.Tests.ps1` | 42.0 | 27.7, 28.3, 28.6 | 28.3 |
+| `CiPowerShellSuiteRunner.Tests.ps1` | 113.4 | 78.1, 79.2, 78.2 | 78.2 |
+| `StageTransition.Tests.ps1` | 92.8 | 68.3, 68.4, 69.0 | 68.4 |
+| `AgentWorktreeGuard.Tests.ps1` | 42.6 | 45.1, 44.9, 44.7 | 44.9 |
 
-The machine changed speed twice while `AgentWorktreeGuard` was timed. Another session ran a build
-during the first before set, so that set was dropped. The second before set ran at a steady slow
-speed, with a median of 136.5 s. The machine then sped up during the after set of G-A. So the
-before and after rows above come from one pair of sets at the end, run back to back at one
-speed. The after set ran first: 41.0, 38.6 and 38.5 s. Then the Suite file of the task's base
-commit ran with the same stopwatch: 42.4, 42.6 and 43.0 s.
+The before sets come from the original task measurements, on earlier machine load.
+They provide historical context, not a controlled measurement of this recovery's saving.
+The final after medians replace 31.2, 82.0, 65.5 and 38.6 s from earlier code.
+AgentWorktreeGuard now includes the later shim coverage repairs; its final median is higher.
+The original samples and discarded drifted sets remain in commit a539e7db.
+Current samples are saved locally in `.superpowers/review2-final-medians.json` and matching logs.
 
 ### Changes timed on their own
 
@@ -700,6 +698,22 @@ median either way.
 The G-A row comes from the back-to-back pair at the end. Its first pair read 13.01 s before and
 2.36 s after, but the machine sped up between the two sets, so that pair overstates the gain.
 Even at the slow speed, the first after run read 3.39 s.
+
+The review replaced the entry-point helpers with fresh runspaces. The original helper timings
+above are historical. A new comparison ran the actual affected cases in focused Suite slices.
+Only the invocation helper was timed. Fixtures and assertions were identical for both variants.
+Each variant had one warm-up and three counted runs, back to back.
+
+| Calls | Child-process samples (s) | Runspace samples (s) | Child median | Runspace median | Verdict |
+|---|---|---|---|---|---|
+| WatchTask entry points | 10.255, 9.904, 9.878 | 1.759, 1.790, 1.778 | 9.904 | 1.778 | kept; saving exceeds 1 s |
+| Runner pre-suite refusals | 5.266, 5.300, 5.425 | 0.959, 0.933, 0.924 | 5.300 | 0.933 | kept; saving exceeds 1 s |
+
+The runner comparison includes the retained bad-environment-value entry point and the C-B cases.
+Its first child warm-up was discarded: the scratch wrapper returned zero for a binding error.
+After fixing that wrapper, the complete runner comparison restarted before any samples counted.
+The WatchTask child cases did not hit that wrapper defect.
+No timing instrumentation is present in tracked code.
 
 ### Mutations
 
@@ -743,7 +757,7 @@ the changed case:
   "Got: Alpha.Tests.ps1,Alpha.Tests.ps1".
 - Row 40: with group markers printed outside GitHub Actions too, the Workers-line case fails.
 - Row 41: with a timings save after each Suite, the watcher fails with "The timings file existed
-  while a suite was still running", at the new 500 ms grace.
+  while a suite was still running", at the then-current 500 ms grace. Review restored 1500 ms for scheduling tolerance.
 
 Two more mutations changed `Resolve-TransitionTarget` in `scripts/stage-transition.common.ps1`:
 
@@ -785,74 +799,16 @@ The `AgentWorktreeGuard` mutations changed `scripts/agents/invoke-agent-worktree
   failed. With a line on stderr, the noncandidate case failed. Before the review fix, all three
   cases passed under both mutations.
 
-### Gate at Verify
+### Earlier recovery evidence
 
-The Gate ran at `a2a9d9e4` with `AHKFLOW_GATE_REUSE=off`, and every step passed. The PowerShell
-step printed `Gate evidence: off (AHKFLOW_GATE_REUSE=off)` and no `REUSED` line. It printed
-`Workers: 6 (AHKFLOW_SUITE_MAX_PARALLEL)`, because the user-level environment sets that variable
-to 6. Two runs from other worktrees shared the test Lane pool: a PowerShell run and a Fast run. So
-these seconds come from a loaded machine, as most Gates on it do.
+The earlier Gate tables are superseded. Their complete results remain in commit a539e7db.
+Those Gates passed, but shared the Lane pool with other worktrees.
+They do not supply the current quiet-Gate baselines.
 
-| Suite | Seconds |
-|---|---|
-| `WatchTask.Tests.ps1` | 43.6 |
-| `CiPowerShellSuiteRunner.Tests.ps1` | 118.3 |
-| `StageTransition.Tests.ps1` | 109.7 |
-| `AgentWorktreeGuard.Tests.ps1` | 77.9 |
-
-The first Gate at Verify, at `da0ed8e4`, was red. `CitationFreshness.Tests.ps1` failed on two
-citations in a comment of `tests/AgentWorktreeGuard.Tests.ps1`. The comment cites two tables in
-its own file, and Task 4 and Simplify moved both tables down by 25 lines. A citation into its own
-file also finds its quoted text on its own line. So the check found the text on two lines, and the
-move was an error, not a warning. Commit `d7c02d19` fixed the two line numbers. The four Suites
-of this item passed in that run as well.
-
-### Baselines refreshed
-
-`baselineSeconds` in `tests/powershell-suites.json` now holds each Suite's seconds from the Gate
-above:
-
-| Suite | Before | After |
-|---|---|---|
-| `WatchTask.Tests.ps1` | 70.2 | 43.6 |
-| `CiPowerShellSuiteRunner.Tests.ps1` | 150.6 | 118.3 |
-| `StageTransition.Tests.ps1` | 136.6 | 109.7 |
-| `AgentWorktreeGuard.Tests.ps1` | 86.7 | 77.9 |
-
-The before values come from the backlog 188 run, on a different load. So the difference between
-the two columns does not measure this item's gain. The run-alone medians at the top of this
-section measure it.
-
-### Review recovery after 0112b0b0
-
-Both P2 findings were confirmed. The Review failure edge returned item 195 to Execute at b54ecb8f.
-
-- The Copilot adapter and worktree-read shim cases now use explicit responses from a jq fixture.
-  The fixture checks its stdin and recognizes the queries used by the production shim.
-  It tests shim decisions, not jq parsing. Other integration cases retain the real parser when available.
-  A separate fixture hides jq discovery while leaving PowerShell available.
-  Both Copilot and worktree-read payloads must then forward as Auto.
-- The legal-edge loop again runs Ship failure with existing progress and no closure history.
-  It asserts success, the landed Stage, and preservation of the original progress prefix.
-  The post-closure restoration case remains separate.
-
-The two full Suites passed together: AgentWorktreeGuard 67.4 s and StageTransition 97.5 s.
-These are verification runs, not isolated medians or replacement baselines.
-The earlier S-A medians describe four skipped edges; the first correction retained three skips. The final D2 recovery below removes all skips.
-
-Focused real-script slices passed before and after each mutation:
-- Replacing the Copilot adapter with Claude failed the adapter assertion.
-- Making the write pattern match a read failed the no-forwarding assertion.
-- Removing the existing-progress guard failed the success and landed-Stage assertions.
-Production files were restored byte-for-byte after the probes.
-
-Recovery commits: 148fa7cc (jq fixtures), 38f36a3e (existing-progress recovery).
-The Gate ran against these working-tree changes before their commits, with HEAD at b54ecb8f.
-Build and format passed. All 73 PowerShell Suites ran with reuse off and six Workers; none reused evidence.
-Coverage ran in full, including 108 browser tests. All thresholds passed: 94.8% line and 83.2% branch.
-The final committed-range whitespace check found the failure transition's blank line at EOF in PLAN-PROGRESS.md.
-The recovery entries remove that EOF blank line. The final staged-tree and committed-range checks are checked separately.
-Timing-budget warnings affected 28 Suites and did not fail the run. No baseline was changed.
+The first recovery controlled jq availability and restored the existing-progress Ship-failure case.
+The latter starts without closure history and must preserve the existing progress prefix.
+Focused mutations caught a wrong Copilot adapter, read forwarding, and removal of the existing-progress guard.
+Production files were restored byte-for-byte after each probe.
 
 ### Final S-A verdict after recovery
 
@@ -871,29 +827,21 @@ The skip table and skip condition are removed. Every legal edge runs again.
 Existing-progress success and preservation assertions remain.
 Earlier S-A and isolated Suite timings are historical measurements of earlier revisions.
 
-### Final recovery Gate at Verify
+### Current review recovery
 
-The five-step Gate passed at dc4fb579 on 2026-10-28.
-Build and format passed. All 73 PowerShell Suites executed with AHKFLOW_GATE_REUSE=off.
-Workers: 6 (AHKFLOW_SUITE_MAX_PARALLEL). No Suite reused evidence.
-The Lane pool was shared with Measure:Gate in wt-speed-up-the-development-cycle.
-These are loaded-machine Gate durations, not isolated comparisons.
+Final isolated medians are recorded above. The quiet reuse-off Gate remains pending.
+The production worker-count contract is unchanged. Row 41 is now rejected: the 1500 ms watcher grace is restored.
 
-Full coverage passed, including 108 browser tests: 94.8% line and 83.2% branch.
-The final committed-range whitespace check passed.
-The durable verification artifacts are the updated guard and transition Suites.
-Their three recovery mutations were caught before the final Gate.
-The all-edge transition Suite also passed alone in 68.6 s after S-A was rejected.
+Fresh recovery proofs:
 
-The four baselines are refreshed from this final Gate:
+- Output-discard and caller-variable-inheritance mutations fail the durable runspace regression case.
+- Redirecting the fixture back to the real summary fails the environment-isolation case.
+- Omitting the second exclusive or parallel entry produces only three acquisition errors; the case requires four.
+- Saving immediately after the first completed Suite fails the watcher's runtime ordering assertion at 1500 ms.
+- An injected NoFollow throw records failures in both cases; execution reaches the end of the slice.
+- The validation error ID is stable under en-US, nl-NL, and de-DE.
+- Bypassing either parsed shim condition fails the corrected cases.
+- Making jq's empty extraction succeed fails the Auto-forwarding case.
 
-| Suite | Previous baseline (s) | Final Gate baseline (s) |
-|---|---|---|
-| WatchTask.Tests.ps1 | 43.6 | 45.5 |
-| CiPowerShellSuiteRunner.Tests.ps1 | 118.3 | 114.1 |
-| StageTransition.Tests.ps1 | 109.7 | 144.8 |
-| AgentWorktreeGuard.Tests.ps1 | 77.9 | 81.2 |
-
-Local logs: .superpowers/review-195-verify-gate.log and .superpowers/review-195-verify-gate.json.
-The latter records exit 0 for all five steps.
-Verdict: verification passed; ready for Document and local Review.
+The new common helper loads in Windows PowerShell 5.1. All four final Suites passed their timing runs.
+The worker-count API and production scripts are unchanged by this recovery.
