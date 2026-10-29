@@ -70,3 +70,4 @@ Local review confirms locale-sensitive validation, incomplete in-process isolati
 
 **Recovery task:** Fix review findings 1-11; apply S1 S2 S4 S6 S7 S9 and stale comments; preserve worker-count API; prove regressions and refresh isolated medians and quiet reuse-off Gate baselines.
 
+- Review recovery implementation: locale-independent validation; fresh runspace isolation and retained output; protected summary and Lane environment; parsed shim branches and jq failure behavior; restored missing-manifest and multi-entry Lane coverage; 1500 ms watcher grace restored. All four targeted Suites passed. Final timing sets and the quiet Gate remain pending.

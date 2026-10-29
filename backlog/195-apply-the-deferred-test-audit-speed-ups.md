@@ -27,14 +27,14 @@ The four Suites are `StageTransition`, `WatchTask`, `CiPowerShellSuiteRunner` an
 
 - [x] Every row of the four Suites in `docs/development/test-audit-deferred.md` is marked applied
       or rejected, with a one-line reason for each rejection.
-- [x] `docs/development/cycle-time-record.md` holds the before and after median of each of the
+- [ ] `docs/development/cycle-time-record.md` holds the before and after median of each of the
       four Suites, each Suite run alone, one warm-up plus three counted runs.
 - [x] Every row timed on its own under D2 of the spec has its two medians recorded, and no kept
       change saved less than 1 s.
 - [x] Every applied MERGE or REMOVE, and every reworked case removed under D5 of the spec, names in
       its commit body the test that still catches the defect, or the behaviour that is gone.
-- [x] Every Suite this item changes passes in the Gate.
-- [x] `baselineSeconds` in `tests/powershell-suites.json` of every changed Suite comes from a
+- [ ] Every Suite this item changes passes in the Gate.
+- [ ] `baselineSeconds` in `tests/powershell-suites.json` of every changed Suite comes from a
       Gate run at Verify with evidence reuse off.
 
 ## Out of scope
@@ -58,7 +58,9 @@ The four Suites are `StageTransition`, `WatchTask`, `CiPowerShellSuiteRunner` an
 - Plan: `docs/superpowers/plans/2026-10-27-apply-the-deferred-test-audit-speed-ups-plan-195.md`.
 - Final recovery: rows 22 and 53 are rejected. All legal transition edges run; the existing-progress
   Ship recovery check remains. Explicit jq fixtures cover parsed and absent-parser shim behavior.
-- Final Verify: the five-step Gate passed at dc4fb579 with reuse off and six Workers.
+- Previous Verify: the five-step Gate passed at dc4fb579 with reuse off and six Workers.
   All 73 PowerShell Suites and full coverage passed. Baselines were refreshed in 4bb7eb09.
-- Document recheck: all six acceptance criteria remain satisfied. The cycle-time record preserves
-  historical medians and identifies the final S-A rejection at 0.999 s saving.
+- Previous Document recheck used historical medians. The current recovery replaces them with
+  final measurements and keeps the S-A rejection at 0.999 s saving.
+
+- Current recovery: final isolated medians and a quiet reuse-off Gate remain pending.
