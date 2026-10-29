@@ -105,39 +105,11 @@ function Test-TaskFileHeldOpen {
 }
 '@
 
-# Runs the script in this process, the way the range case below does. A pwsh child per call cost
-# about 0.65 s. The script ends with 'exit $code', which sets $LASTEXITCODE here and returns.
-#
-# An array splat passes '-Root' to a script as a value, not as a parameter name, so the arguments
-# become a hashtable first. A switch takes no value. The parameter list is read once, not per call.
-$script:WatchScriptParameters = (Get-Command -Name $watchScript).Parameters
-
+# Each entry-point call gets a fresh session, without paying for another process.
+. (Join-Path $PSScriptRoot 'ScriptRunspace.Common.ps1')
 function Invoke-WatchScript {
-    param([string[]] $ScriptArgs)
-
-    $parameters = $script:WatchScriptParameters
-    $bound = @{}
-    for ($i = 0; $i -lt $ScriptArgs.Count; $i++) {
-        $name = $ScriptArgs[$i].TrimStart('-')
-        if ($parameters[$name].SwitchParameter) {
-            $bound[$name] = $true
-        }
-        else {
-            $i++
-            $bound[$name] = $ScriptArgs[$i]
-        }
-    }
-
-    $global:LASTEXITCODE = 0
-    try {
-        $output = & $watchScript @bound *>&1 | Out-String
-        $exitCode = $global:LASTEXITCODE
-    }
-    catch {
-        $output = $_ | Out-String
-        $exitCode = 1
-    }
-    return [pscustomobject]@{ Output = $output; ExitCode = $exitCode }
+    param([hashtable] $Argument)
+    Invoke-TestScriptRunspace -Path $watchScript -Argument $Argument
 }
 
 # The lines a function printed with Write-Host, taken from the information stream and separated
@@ -601,7 +573,7 @@ try {
     $emptyTask = New-FakeTaskOutput -Root $root -ProjectFolder "$prefix-empty" -LastWrite (Get-Date) -Lines @()
     [System.IO.File]::WriteAllText($emptyTask, '')
 
-    $result = Invoke-WatchScript -ScriptArgs @('-Root', $root, '-NoFollow')
+    $result = Invoke-WatchScript @{ Root = $root; NoFollow = $true }
 
     Assert-True ($result.Output -notmatch 'Cannot bind argument') `
         "Zero bytes: the watcher must not report a binding failure. Output: $($result.Output)"
@@ -685,7 +657,7 @@ try {
         (Open-FakeTaskWriter -Path $newestRunning)
     )
 
-    $result = Invoke-WatchScript -ScriptArgs @('-Root', $root, '-NoFollow')
+    $result = Invoke-WatchScript @{ Root = $root; NoFollow = $true }
 
     Assert-True ($result.ExitCode -eq 0) "Newest running: exit code must be 0, got $($result.ExitCode). Output: $($result.Output)"
     Assert-True ($result.Output -match 'NEWEST-RUNNING-MARKER') "Newest running: the newest running file must be tailed. Output: $($result.Output)"
@@ -799,7 +771,7 @@ try {
         'newer finished run', 'NEW-FINISHED-MARKER', '[exited with code 7]', ''
     )
 
-    $result = Invoke-WatchScript -ScriptArgs @('-Root', $root, '-NoFollow')
+    $result = Invoke-WatchScript @{ Root = $root; NoFollow = $true }
 
     Assert-True ($result.ExitCode -eq 0) "Nothing running: exit code must be 0, got $($result.ExitCode). Output: $($result.Output)"
     Assert-True ($result.Output -match 'No task is running now') "Nothing running: the line must say so. Output: $($result.Output)"
@@ -834,7 +806,7 @@ try {
     $writers = @((Open-FakeTaskWriter -Path $mine), (Open-FakeTaskWriter -Path $theirs))
 
     $env:CLAUDE_CODE_SESSION_ID = $mySession
-    $result = Invoke-WatchScript -ScriptArgs @('-Root', $root, '-NoFollow')
+    $result = Invoke-WatchScript @{ Root = $root; NoFollow = $true }
 
     Assert-True ($result.Output -match 'MY-SESSION-MARKER') `
         "Session preference: the caller's own session must be tailed, even though it is older. Output: $($result.Output)"
@@ -847,7 +819,7 @@ try {
 
     # With the variable gone, the newest running task wins again.
     $env:CLAUDE_CODE_SESSION_ID = $null
-    $without = Invoke-WatchScript -ScriptArgs @('-Root', $root, '-NoFollow')
+    $without = Invoke-WatchScript @{ Root = $root; NoFollow = $true }
     Assert-True ($without.Output -match 'OTHER-SESSION-MARKER') `
         "Session preference: with no session id the newest running task wins. Output: $($without.Output)"
     Assert-True ($without.Output -match [regex]::Escape("Session: $otherSession")) `
@@ -965,17 +937,17 @@ try {
 
     # Not $list. That name is case-insensitively the [switch] $List variable the dot-sourced
     # script left in this scope, and a PSCustomObject cannot be stored in it.
-    $listResult = Invoke-WatchScript -ScriptArgs @('-Root', $root, '-List')
+    $listResult = Invoke-WatchScript @{ Root = $root; List = $true }
     $runningRows = @($listResult.Output -split "`r?`n" | Where-Object { $_ -match '\brunning\b' })
     Assert-True ($runningRows.Count -eq $runningCount) `
         "List window: -List must print a row for every running task. Expected $runningCount, got $($runningRows.Count). Output: $($listResult.Output)"
 
-    $default = Invoke-WatchScript -ScriptArgs @('-Root', $root, '-NoFollow')
+    $default = Invoke-WatchScript @{ Root = $root; NoFollow = $true }
     Assert-True ($default.Output -match "$($runningCount - 1) other tasks are also running") `
         "List window: the count line must name every other running task. Output: $($default.Output)"
 
     # The oldest running task sits past the old twenty-row window, and -Index must still reach it.
-    $byIndex = Invoke-WatchScript -ScriptArgs @('-Root', $root, '-NoFollow', '-Index', "$runningCount")
+    $byIndex = Invoke-WatchScript @{ Root = $root; NoFollow = $true; Index = "$runningCount" }
     Assert-True ($byIndex.Output -match "RUN-MARKER-$($runningCount - 1)") `
         "List window: -Index must reach the last running task. Output: $($byIndex.Output)"
 }
@@ -996,7 +968,7 @@ try {
         'work started', 'NO-MARKER-MARKER'
     )
 
-    $newest = Invoke-WatchScript -ScriptArgs @('-Root', $root, '-NoFollow')
+    $newest = Invoke-WatchScript @{ Root = $root; NoFollow = $true }
     Assert-True ($newest.Output -match 'No task is running now') `
         "No marker: a file nobody holds open is not running. Output: $($newest.Output)"
     Assert-True ($newest.Output -match 'State: stopped without a terminal marker') `
@@ -1004,11 +976,11 @@ try {
     Assert-True ($newest.Output -notmatch 'State: killed') `
         "No marker: killed must not be claimed without a killed marker. Output: $($newest.Output)"
 
-    $listOut = Invoke-WatchScript -ScriptArgs @('-Root', $root, '-List')
+    $listOut = Invoke-WatchScript @{ Root = $root; List = $true }
     Assert-True ($listOut.Output -match 'stopped \(no marker\)') `
         "No marker: the list column must name the third state. Output: $($listOut.Output)"
 
-    $picked = Invoke-WatchScript -ScriptArgs @('-Root', $root, '-NoFollow', '-Index', '1')
+    $picked = Invoke-WatchScript @{ Root = $root; NoFollow = $true; Index = '1' }
     Assert-True ($picked.Output -match 'This task has already stopped. State: stopped without a terminal marker') `
         "No marker: picking the task by index must name the third state. Output: $($picked.Output)"
     Assert-True ($picked.Output.Contains($noMarker)) `
@@ -1026,13 +998,13 @@ try {
         'work started', '[killed]'
     ) | Out-Null
 
-    $result = Invoke-WatchScript -ScriptArgs @('-Root', $root, '-NoFollow')
+    $result = Invoke-WatchScript @{ Root = $root; NoFollow = $true }
     Assert-True ($result.Output -match 'State: killed') `
         "Killed marker: a [killed] marker must still report killed. Output: $($result.Output)"
     Assert-True ($result.Output -notmatch 'without a terminal marker') `
         "Killed marker: a killed task must not be called marker-less. Output: $($result.Output)"
 
-    $listOut = Invoke-WatchScript -ScriptArgs @('-Root', $root, '-List')
+    $listOut = Invoke-WatchScript @{ Root = $root; List = $true }
     Assert-True ($listOut.Output -match '\bkilled\b') `
         "Killed marker: the list column must still say killed. Output: $($listOut.Output)"
 }
@@ -1044,7 +1016,7 @@ finally {
 
 $root = New-WatchTestRoot
 try {
-    $result = Invoke-WatchScript -ScriptArgs @('-Root', $root, '-NoFollow')
+    $result = Invoke-WatchScript @{ Root = $root; NoFollow = $true }
     Assert-True ($result.ExitCode -eq 1) "No files: exit code must be 1, got $($result.ExitCode). Output: $($result.Output)"
     Assert-True ($result.Output -match 'No task output files found') "No files: the message must say so. Output: $($result.Output)"
 }
@@ -1084,7 +1056,7 @@ try {
     }
 
     # The first valid index still selects, which proves the range check did not break selection.
-    $result = Invoke-WatchScript -ScriptArgs @('-Root', $root, '-NoFollow', '-Index', '1')
+    $result = Invoke-WatchScript @{ Root = $root; NoFollow = $true; Index = '1' }
     Assert-True ($result.ExitCode -eq 0) "Range: -Index 1 must work, got $($result.ExitCode). Output: $($result.Output)"
     Assert-True ($result.Output -match 'ONLY-MARKER') "Range: -Index 1 must tail the first task. Output: $($result.Output)"
 }
@@ -2180,7 +2152,15 @@ try {
     # In this process: -NoFollow has no loop, and every seam a case above replaces is restored by
     # now. Only the Write-Host lines count, as only they reached the screen of the old child.
     $record = [pscustomobject]@{ Path = $stalePath; LastWrite = (Get-Date); Running = $true; ExitCode = $null }
-    $output = (Get-ShownLine -Record @(Watch-Record -Record $record -Tail 40 -NoFollow 6>&1)) -join "`n"
+    $captured = [System.Collections.Generic.List[object]]::new()
+    try {
+        Watch-Record -Record $record -Tail 40 -NoFollow *>&1 | ForEach-Object { $captured.Add($_) }
+    } catch {
+        $captured.Add($_)
+    }
+    $errors = @($captured | Where-Object { $_ -is [System.Management.Automation.ErrorRecord] })
+    Assert-True ($errors.Count -eq 0) "NoFollow must not throw or write errors: $errors"
+    $output = (Get-ShownLine -Record $captured.ToArray()) -join "`n"
 
     Assert-True ($output -notmatch 'still running') "Stale running with -NoFollow: the watcher must not say the task is still running. Output: $output"
     Assert-True ($output -match 'Exit code: 5') "Stale running with -NoFollow: the exit code must be reported. Output: $output"
@@ -2264,7 +2244,15 @@ try {
     # In this process: -NoFollow has no loop, and every seam a case above replaces is restored by
     # now. Only the Write-Host lines count, as only they reached the screen of the old child.
     $record = [pscustomobject]@{ Path = $stalePath; LastWrite = (Get-Date); Running = $true; ExitCode = $null }
-    $output = (Get-ShownLine -Record @(Watch-Record -Record $record -Tail 40 -NoFollow 6>&1)) -join "`n"
+    $captured = [System.Collections.Generic.List[object]]::new()
+    try {
+        Watch-Record -Record $record -Tail 40 -NoFollow *>&1 | ForEach-Object { $captured.Add($_) }
+    } catch {
+        $captured.Add($_)
+    }
+    $errors = @($captured | Where-Object { $_ -is [System.Management.Automation.ErrorRecord] })
+    Assert-True ($errors.Count -eq 0) "NoFollow must not throw or write errors: $errors"
+    $output = (Get-ShownLine -Record $captured.ToArray()) -join "`n"
 
     Assert-True ($output -notmatch 'still running') "No final newline: the watcher must not say the task is still running. Output: $output"
     Assert-True ($output -match 'Exit code: 5') "No final newline: the exit code must be reported. Output: $output"

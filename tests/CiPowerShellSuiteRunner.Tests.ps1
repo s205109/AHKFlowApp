@@ -12,8 +12,8 @@ The fake suites cover both endings the real suites use: an explicit 'exit', and 
 run off the end. One fake suite leaves $LASTEXITCODE dirty on its success path, which is the trap
 that makes an in-process exit-code check report a passing suite as failed.
 
-This suite declares 7.0 because the driver it tests does. Each case spawns the driver with the
-current host, so a 5.1 host would spawn a 5.1 child and hit the driver's own '#Requires'.
+This suite declares 7.0 because the driver it tests does. Entry-point cases use the current host.
+Pre-suite refusal cases use a fresh runspace, with the same PowerShell version requirement.
 #>
 [CmdletBinding()]
 param()
@@ -287,61 +287,96 @@ function Invoke-Driver {
         ''
     }
 
-    # Saved and restored so one case cannot leak a value into the next one.
-    $previousEnv = @{}
-    foreach ($name in $EnvVar.Keys) {
-        $previousEnv[$name] = [System.Environment]::GetEnvironmentVariable($name)
-        [System.Environment]::SetEnvironmentVariable($name, $EnvVar[$name])
-    }
-
-    try {
+    Invoke-WithEnvironment -EnvVar $EnvVar -Action {
         $command = "& $(ConvertTo-ScriptLiteral $script:DriverPath) -SuiteRoot $(ConvertTo-ScriptLiteral $SuiteRoot)$suiteLiteral$parallelLiteral; exit `$LASTEXITCODE"
         return Invoke-RunnerProcess -ArgumentList @('-NoProfile', '-Command', $command)
+    }
+}
+
+. (Join-Path $PSScriptRoot 'ScriptRunspace.Common.ps1')
+
+function Invoke-WithEnvironment {
+    param([hashtable] $EnvVar, [scriptblock] $Action)
+    $previous = @{}
+    try {
+        foreach ($name in $EnvVar.Keys) {
+            $previous[$name] = [Environment]::GetEnvironmentVariable($name)
+            [Environment]::SetEnvironmentVariable($name, $EnvVar[$name])
+        }
+        & $Action
     } finally {
-        foreach ($name in $previousEnv.Keys) {
-            [System.Environment]::SetEnvironmentVariable($name, $previousEnv[$name])
+        foreach ($name in $previous.Keys) {
+            [Environment]::SetEnvironmentVariable($name, $previous[$name])
         }
     }
 }
 
-# Runs a runner in this process, for a run that fails before its first Suite starts. Such a run
-# starts no child, so the process start Invoke-Driver pays buys nothing there. A run that reaches a
-# Suite still goes through Invoke-Driver.
-#
-# The runner changes no process state before its worker chain: no environment write, no
-# Set-Location, no global variable. 'exit 1' inside a script called with '&' sets $LASTEXITCODE
-# here and returns, and '*>&1' captures Write-Host. A thrown error, such as a parameter binding
-# error, gives exit code 1 and the error text as Output.
+# Refusals use a fresh session. Protect the real summary and Lane ownership even if
+# a regression lets the runner continue past its expected refusal.
 function Invoke-RunnerInProcess {
     param([string] $RunnerPath = $script:DriverPath, [hashtable] $Argument = @{}, [hashtable] $EnvVar = @{})
-
-    # Saved and restored so one case cannot leak a value into the next one, the same way
-    # Invoke-Driver does it.
-    $previousEnv = @{}
-    foreach ($name in $EnvVar.Keys) {
-        $previousEnv[$name] = [System.Environment]::GetEnvironmentVariable($name)
-        [System.Environment]::SetEnvironmentVariable($name, $EnvVar[$name])
-    }
-
-    try {
-        # Reset first, so an exit code left by an earlier case can never pass for this run's.
-        $global:LASTEXITCODE = 0
-        $output = & $RunnerPath @Argument *>&1 | Out-String
-        $exitCode = $LASTEXITCODE
-    } catch {
-        $output = $_ | Out-String
-        $exitCode = 1
-    } finally {
-        foreach ($name in $previousEnv.Keys) {
-            [System.Environment]::SetEnvironmentVariable($name, $previousEnv[$name])
+    Invoke-WithEnvironment -EnvVar $EnvVar -Action {
+        $summaryPath = Join-Path ([IO.Path]::GetTempPath()) ('ahkflow-summary-' + [guid]::NewGuid() + '.md')
+        $isolated = @{ GITHUB_STEP_SUMMARY = $summaryPath }
+        if ([string]::IsNullOrWhiteSpace($env:AHKFLOW_TEST_LANES_ROOT) -and
+            [string]::IsNullOrWhiteSpace($env:AHKFLOW_TEST_LANES_HOLDER)) {
+            $isolated.AHKFLOW_TEST_LANES_HOLDER = [string]$PID
+        }
+        try {
+            Invoke-WithEnvironment -EnvVar $isolated -Action {
+                Invoke-TestScriptRunspace -Path $RunnerPath -Argument $Argument
+            }
+        } finally {
+            Remove-Item -LiteralPath $summaryPath -Force -ErrorAction SilentlyContinue
         }
     }
-
-    return [pscustomobject]@{ Output = $output; ExitCode = $exitCode }
 }
 
 Write-Host "Testing $script:DriverPath"
 Assert-True (Test-Path -LiteralPath $script:DriverPath) "Driver script not found at $script:DriverPath."
+
+Invoke-TestCase 'Runspace calls preserve output before a throw and cannot read caller variables' {
+    $root = New-SuiteFixture
+    $probe = Join-Path $root 'probe.ps1'
+    try {
+        Set-Content $probe @('Write-Output "BEFORE-THROW"', 'throw "PROBE-FAIL"')
+        $result = Invoke-RunnerInProcess -RunnerPath $probe
+        Assert-True ($result.ExitCode -eq 1) 'A throw must fail the call.'
+        Assert-True ($result.Output -match '(?m)^BEFORE-THROW\r?$') 'Output before a throw was lost.'
+        Assert-True ($result.Output -match 'PROBE-FAIL') 'The thrown error was lost.'
+        $callerOnlySentinel = 'must not be inherited'
+        Set-Content $probe @('Set-StrictMode -Version Latest', '$callerOnlySentinel')
+        $result = Invoke-RunnerInProcess -RunnerPath $probe
+        Assert-True ($result.ExitCode -eq 1) 'Caller variables must not hide a missing assignment.'
+        Assert-True ($result.Output -match 'callerOnlySentinel') 'The missing variable must be reported.'
+        Set-Content $probe 'exit 7'
+        $result = Invoke-RunnerInProcess -RunnerPath $probe
+        Assert-True ($result.ExitCode -eq 7) 'Explicit script exit must survive runspace isolation.'
+    } finally { Remove-SuiteFixture $root }
+}
+
+Invoke-TestCase 'In-process calls isolate job summaries and restore environment after failure' {
+    $root = New-SuiteFixture
+    $probe = Join-Path $root 'probe.ps1'
+    $summary = Join-Path $root 'real-summary.md'
+    try {
+        Set-Content $summary 'ORIGINAL'
+        Set-Content $probe @(
+            'Write-Output "holder=$env:AHKFLOW_TEST_LANES_HOLDER"'
+            'Add-Content $env:GITHUB_STEP_SUMMARY "FAKE-TABLE"'
+            'throw "EXPECTED"'
+        )
+        Invoke-WithEnvironment -EnvVar @{ GITHUB_STEP_SUMMARY = $summary; AHKFLOW_TEST_LANES_ROOT = ''; AHKFLOW_TEST_LANES_HOLDER = '' } -Action {
+            $result = Invoke-RunnerInProcess -RunnerPath $probe
+            Assert-True ($result.Output -match "holder=$PID") 'The runner must inherit this test process as its Lane holder.'
+            Assert-True ((Get-Content $summary -Raw).Trim() -eq 'ORIGINAL') 'A fixture wrote into the real summary.'
+            Assert-True ($env:GITHUB_STEP_SUMMARY -eq $summary) 'Summary environment was not restored.'
+            Assert-True ([string]::IsNullOrEmpty($env:AHKFLOW_TEST_LANES_HOLDER)) 'Lane holder was not restored.'
+        }
+        $result = Invoke-RunnerInProcess -RunnerPath $probe -EnvVar @{ AHKFLOW_TEST_LANES_ROOT = $root; AHKFLOW_TEST_LANES_HOLDER = 'controlled-holder' }
+        Assert-True ($result.Output -match 'holder=controlled-holder') 'Explicit fixture Lane settings must be preserved.'
+    } finally { Remove-SuiteFixture $root }
+}
 
 Invoke-TestCase 'The driver prints a progress line per suite and saves no timings for a fixture run' {
     $root = New-SuiteFixture
@@ -534,16 +569,19 @@ function New-ManifestFile {
     return $path
 }
 
+function Get-ThrownMessage {
+    param([scriptblock] $Action)
+    try { & $Action | Out-Null } catch { return $_.Exception.Message }
+    throw 'Expected the action to throw, but it completed.'
+}
+
 # The three cases below were runner runs. The throws live in Read-SuiteManifest, so they call it
 # directly. 'A suite file missing from the manifest fails the run' and 'A blank -Suite wildcard
 # fails the run' still prove that a throw inside the runner's manifest block fails the run before
 # any Suite starts.
 Invoke-TestCase 'A missing manifest fails the manifest read' {
     $path = Join-Path (Join-Path ([System.IO.Path]::GetTempPath()) ('ahkflow-manifest-missing-' + [guid]::NewGuid().ToString('N'))) 'powershell-suites.json'
-    $threw = $false
-    $message = ''
-    try { Read-SuiteManifest -Path $path -DiscoveredName @('01-pass.Tests.ps1') } catch { $threw = $true; $message = $_.Exception.Message }
-    Assert-True $threw 'A missing manifest must throw.'
+    $message = Get-ThrownMessage { Read-SuiteManifest -Path $path -DiscoveredName @('01-pass.Tests.ps1') }
     Assert-True ($message -match 'powershell-suites\.json') "The message must name the manifest file. Got: $message"
 }
 
@@ -553,10 +591,7 @@ Invoke-TestCase 'A manifest entry with no suite file fails the manifest' {
         [ordered]@{ name = 'NotThere.Tests.ps1'; jobs = @('suites'); platform = @('windows', 'linux'); execution = 'parallel'; baselineSeconds = $null }
     )
     try {
-        $threw = $false
-        $message = ''
-        try { Read-SuiteManifest -Path $path -DiscoveredName @('01-pass.Tests.ps1') } catch { $threw = $true; $message = $_.Exception.Message }
-        Assert-True $threw 'A stale manifest entry must throw.'
+        $message = Get-ThrownMessage { Read-SuiteManifest -Path $path -DiscoveredName @('01-pass.Tests.ps1') }
         Assert-True ($message -match 'NotThere\.Tests\.ps1') "The message must name the stale entry. Got: $message"
     } finally {
         Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
@@ -569,10 +604,7 @@ Invoke-TestCase 'A duplicate manifest entry fails the manifest' {
         [ordered]@{ name = '01-pass.Tests.ps1'; jobs = @('suites'); platform = @('windows', 'linux'); execution = 'parallel'; baselineSeconds = 2 }
     )
     try {
-        $threw = $false
-        $message = ''
-        try { Read-SuiteManifest -Path $path -DiscoveredName @('01-pass.Tests.ps1') } catch { $threw = $true; $message = $_.Exception.Message }
-        Assert-True $threw 'A duplicate manifest entry must throw.'
+        $message = Get-ThrownMessage { Read-SuiteManifest -Path $path -DiscoveredName @('01-pass.Tests.ps1') }
         Assert-True ($message -match 'more than once') "The message must say the name repeats. Got: $message"
     } finally {
         Remove-Item -LiteralPath $path -Force -ErrorAction SilentlyContinue
@@ -1642,22 +1674,20 @@ function Invoke-DriverAt {
     }
     $command += '; exit $LASTEXITCODE'
 
-    # Saved and restored so one case cannot leak a value into the next one, the same way
-    # Invoke-Driver does it. A case that asserts a default has to clear both AHKFLOW_SUITE_MAX_PARALLEL
-    # and GITHUB_ACTIONS, because this suite runs inside Actions with a developer's own shell values.
-    $previousEnv = @{}
-    foreach ($name in $EnvVar.Keys) {
-        $previousEnv[$name] = [System.Environment]::GetEnvironmentVariable($name)
-        [System.Environment]::SetEnvironmentVariable($name, $EnvVar[$name])
-    }
-
-    try {
+    Invoke-WithEnvironment -EnvVar $EnvVar -Action {
         return Invoke-RunnerProcess -ArgumentList @('-NoProfile', '-Command', $command)
-    } finally {
-        foreach ($name in $previousEnv.Keys) {
-            [System.Environment]::SetEnvironmentVariable($name, $previousEnv[$name])
-        }
     }
+}
+
+Invoke-TestCase 'A missing manifest refuses the runner before any Suite starts' {
+    $repo = New-StoringRepoFixture -Suite @('one.Tests.ps1')
+    try {
+        Remove-Item -LiteralPath (Join-Path $repo 'tests/powershell-suites.json')
+        $result = Invoke-DriverAt -Repo $repo -MaxParallel 1
+        Assert-True ($result.ExitCode -ne 0) 'A missing manifest must refuse the runner.'
+        Assert-True ($result.Output -match 'powershell-suites\.json') 'The refusal must name the manifest.'
+        Assert-True (-not (Test-Path (Join-Path $repo 'markers/one.Tests.ps1'))) 'No Suite may start without its manifest.'
+    } finally { Remove-SuiteFixture $repo }
 }
 
 Invoke-TestCase 'Only the adaptive default asks the machine about its hardware' {
@@ -1737,8 +1767,8 @@ Invoke-TestCase 'The timings file is written once, after the last suite ends' {
             "`$watch = [System.Diagnostics.Stopwatch]::StartNew()"
             'while ($watch.Elapsed.TotalSeconds -lt 15 -and -not (Test-Path -LiteralPath $done)) { Start-Sleep -Milliseconds 25 }'
             'if (-not (Test-Path -LiteralPath $done)) { throw ''01-first never finished; the watcher proved nothing.'' }'
-            # A per-suite save lands within milliseconds of 01-first ending, so 500 ms is enough.
-            'Start-Sleep -Milliseconds 500'
+            # Allow scheduling delays before checking for an incorrect per-suite save.
+            'Start-Sleep -Milliseconds 1500'
             "`$timings = $(ConvertTo-ScriptLiteral (Join-Path $fake 'TestResults\progress\run-powershell-suites.json'))"
             "`$seen = if (Test-Path -LiteralPath `$timings) { 'present' } else { 'absent' }"
             "Set-Content -LiteralPath $(ConvertTo-ScriptLiteral (Join-Path $fake 'markers\sawtimings')) -Value `$seen -Encoding ascii"
@@ -2269,24 +2299,25 @@ Invoke-TestCase 'Lane invalid opt-out fails before any Suite starts' {
     } finally { Remove-SuiteFixture $repo; Remove-PinnedLanePool $pool }
 }
 Invoke-TestCase 'Lane acquisition failures produce named failures in exclusive and parallel execution' {
-    # One exclusive and one parallel entry, so one run reaches both catch paths. The missing-result
+    # Two entries per path prove the runner continues after each refusal. The missing-result
     # fallback also prints FAILED for a Suite, so the catch-path message must appear once per Suite.
     $pool = New-PinnedLanePool 2
-    $repo = New-StoringRepoFixture -Suite @('one.Tests.ps1', 'two.Tests.ps1')
+    $repo = New-StoringRepoFixture -Suite @('one.Tests.ps1', 'two.Tests.ps1', 'three.Tests.ps1', 'four.Tests.ps1')
     try {
         $manifestPath = Join-Path $repo 'tests/powershell-suites.json'
         $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
-        $exclusive = @($manifest.suites | Where-Object { $_.name -eq 'one.Tests.ps1' })[0]
-        $exclusive.execution = 'exclusive'
-        $exclusive | Add-Member -NotePropertyName reason -NotePropertyValue 'Controlled exclusive acquisition fixture.'
+        foreach ($exclusive in @($manifest.suites | Where-Object { $_.name -in @('one.Tests.ps1', 'two.Tests.ps1') })) {
+            $exclusive.execution = 'exclusive'
+            $exclusive | Add-Member -NotePropertyName reason -NotePropertyValue 'Controlled exclusive acquisition fixture.'
+        }
         $manifest | ConvertTo-Json -Depth 6 | Set-Content $manifestPath
         Add-Content -LiteralPath (Join-Path $repo 'scripts/test-lanes.common.ps1') -Value 'function Enter-AhkFlowLanes { param($PoolRoot, $Share, $Proposal, $Run); throw "injected acquisition failure" }'
         $result = Invoke-DriverAt -Repo $repo -MaxParallel 2 -EnvVar @{ AHKFLOW_TEST_LANES_ROOT = $pool.Root; AHKFLOW_TEST_LANES_HOLDER = ''; AHKFLOW_TEST_LANES = '' }
         Assert-True ($result.ExitCode -ne 0) 'Acquisition failure must fail the runner.'
-        foreach ($name in @('one.Tests.ps1', 'two.Tests.ps1')) { Assert-True ($result.Output -match "FAILED: $([regex]::Escape($name))") "Missing named failure for $name. $($result.Output)" }
+        foreach ($name in @('one.Tests.ps1', 'two.Tests.ps1', 'three.Tests.ps1', 'four.Tests.ps1')) { Assert-True ($result.Output -match "FAILED: $([regex]::Escape($name))") "Missing named failure for $name. $($result.Output)" }
         Assert-True ($result.Output -notmatch 'All \d+ suite\(s\) passed') 'Missing results cannot summarize as success.'
         $shown = [regex]::Matches($result.Output, 'Could not run the suite: injected acquisition failure').Count
-        Assert-True ($shown -eq 2) "Both the exclusive and the parallel catch path must show the acquisition error, got $shown. $($result.Output)"
+        Assert-True ($shown -eq 4) "Every entry on both paths must attempt acquisition and show its error, got $shown. $($result.Output)"
     } finally { Remove-SuiteFixture $repo; Remove-PinnedLanePool $pool }
 }
 Invoke-TestCase 'Lane missing Worker results cannot produce a passing summary' {
