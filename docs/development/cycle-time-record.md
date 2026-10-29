@@ -884,6 +884,7 @@ pool. A D2 time comes from a temporary stopwatch that was never committed.
 | `WorktreeMergedCleanupEligibility.Tests.ps1` | 34.4 | 30.7 |
 | `WorktreeSweepRemoteBase.Tests.ps1` | 34.6 | 27.2 |
 | `BacklogStaleOpen.Tests.ps1` | 23.8 | 17.1 |
+| `MeasureTestModes.Tests.ps1` | 48.5 | 47.7 |
 
 ### Changes timed on their own
 
@@ -935,6 +936,11 @@ pool. A D2 time comes from a temporary stopwatch that was never committed.
   commits through one `git fast-import --done` stream on `main`, in place of an add and a commit
   per commit. Commit `0b77939e`. The stopwatch spans the helper. Before 7.66 s, after 1.47 s.
   Kept: it fell by 6.2 s. The Suite median went from 23.8 s to 17.1 s in the same runs.
+- **Rows 134 and 135**, `MeasureTestModes.Tests.ps1`: two merges, each under 1 s, so neither
+  was timed on its own. Commit `d9741b0c` moves the lock assertions into "Soak mode prepares one
+  container for the whole soak and leaves it running". Commit `0e5c6cba` removes "A failing soak
+  run is counted and named, and the soak still finishes". "A soak run that fails with a
+  half-written TRX is counted, not thrown" makes the same four assertions.
 
 ### Mutations
 
@@ -971,6 +977,12 @@ pool. A D2 time comes from a temporary stopwatch that was never committed.
   `BacklogStaleOpen` failed with "Backlog stale-open tests failed with 3 problem(s)."
 - B-A, write nothing: the early return taken for every call. `BacklogStaleOpen` failed with
   "Backlog stale-open tests failed with 5 problem(s)."
+- Row 134: `Exit-AhkFlowTestRunLock -Handle $lock; $lock = $null` added right after the soak
+  container's connection string is set, in `scripts/measure-test-modes.ps1`. The merged case
+  failed with "Soak mode calls dotnet test directly, so it holds the lock throughout."
+- Row 135, `break` after `$failed += $run`: the half-written-TRX case failed with "The soak must
+  finish all 3 runs after run 2 dies mid-write."
+- Row 135, the exit-code check changed to `if ($false) {`: the half-written-TRX case failed.
 
 ### Linux runs
 
@@ -984,3 +996,13 @@ pool. A D2 time comes from a temporary stopwatch that was never committed.
   `mcr.microsoft.com/dotnet/sdk@sha256:2fa828c68761b1b8c23d7662dc134421b9d3b59fe1425fdbc80804e390cdb24d`,
   kernel `Linux 6.18.54.1-microsoft-standard-WSL2`, PowerShell 7.6.6, git 2.43.0. The runner
   printed "Platform: linux". The Suite passed, and `LINUX_EXIT=0`.
+- Before list for Task 8: `MeasureTestModes.Tests.ps1` at
+  `316389e758dc766f06c1c2cfc99dfd06befb3779`, before any change of Task 7. Log
+  `.superpowers/201-linux/linux-316389e7-20261029-190558.log`; the case list is in
+  `.superpowers/201-linux/before-cases.txt`. Same image, kernel, PowerShell and git as above. The
+  runner printed "Platform: linux". 34 cases passed. `A slow head is discarded and the median is
+  the flat tail` failed with the known error, "Get-AhkFlowRelativeSpread needs a median above
+  zero." A second case, `The discarded runs are printed, with how many there were`, failed with
+  the same error. Its cause is the one in issue #468: on Linux the stub's runs round to 0.00 s, so
+  the median is 0. No file under `scripts/`, and not this Suite, differs from `main`, so the cause
+  lies outside this item. It stays in the before list as a `FAIL` line, as a baseline exception.

@@ -131,5 +131,5 @@ one before you apply it.
 
 #### MERGE, not refuted (2 cases, about 1.6 s)
 
-- `MeasureTestModes`, "Soak mode holds the lock for every repetition" (0.8 s): Same harness arguments as 'Soak mode prepares one container for the whole soak and leaves it running' (:840 vs :659: -Soak tests/FakeProject -Runs 3 -NoBuild). Assert the three owner=True test signals (:843-847) in that case and drop one child harness run.
-- `MeasureTestModes`, "A failing soak run is counted and named, and the soak still finishes" (0.8 s): 'A soak run that fails with a half-written TRX is counted, not thrown' sets the same fail-run.txt=2 plus a malformed TRX and makes the same four assertions (:721-734 vs :680-693).
+- `MeasureTestModes`, "Soak mode holds the lock for every repetition" (0.8 s): Same harness arguments as 'Soak mode prepares one container for the whole soak and leaves it running' (:840 vs :659: -Soak tests/FakeProject -Runs 3 -NoBuild). Assert the three owner=True test signals (:843-847) in that case and drop one child harness run. **201: applied** in d9741b0c. Not timed under D2: it removes less than 1 s.
+- `MeasureTestModes`, "A failing soak run is counted and named, and the soak still finishes" (0.8 s): 'A soak run that fails with a half-written TRX is counted, not thrown' sets the same fail-run.txt=2 plus a malformed TRX and makes the same four assertions (:721-734 vs :680-693). **201: applied** in 0e5c6cba. Not timed under D2: it removes less than 1 s.
