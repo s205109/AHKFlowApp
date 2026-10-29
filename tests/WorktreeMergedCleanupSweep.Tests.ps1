@@ -250,6 +250,11 @@ try {
 }
 
 
+# One day ahead of now, for the two cases below that need a ref-log stamp strictly later than every
+# stamp the seed and the fixture wrote. It is computed, not a literal date, so it can never fall
+# behind the clock. Ref-log stamps have one-second resolution.
+$futureCommitterDate = (Get-Date).ToUniversalTime().AddDays(1).ToString('yyyy-MM-ddTHH:mm:ss+00:00', [System.Globalization.CultureInfo]::InvariantCulture)
+
 # --- Test: Get-BaseRefAtBranchCreation ---------------------------------------------------
 # The branch's oldest ref-log entry carries its creation time. The base ref's own ref log carries
 # every position it has held. The answer is the newest base position STRICTLY EARLIER than that
@@ -257,12 +262,12 @@ try {
 # signal 5 instead of refusing on a guess.
 $repo = New-TempGitRepo
 try {
-    # main's position before anything else happens. The branch is created under a fixed committer
-    # date in the future, so its ref-log stamp is strictly later than that entry. Without it every
+    # main's position before anything else happens. The branch is created under a committer date
+    # in the future, so its ref-log stamp is strictly later than that entry. Without it every
     # stamp can land in the same second, and the function correctly reports that it cannot answer.
     $mainBefore = ((Invoke-TestGit $repo @('rev-parse', 'main')) -join '').Trim()
 
-    $env:GIT_COMMITTER_DATE = '2030-01-01T00:00:00+00:00'
+    $env:GIT_COMMITTER_DATE = $futureCommitterDate
     try {
         Add-TestWorktree -RepoDir $repo -BranchName 'feat-base-probe' | Out-Null
     } finally {
@@ -310,11 +315,11 @@ try {
     $mergeParents = (Invoke-TestGit $repo @('rev-list', '--min-parents=2', '--format=%P', 'main')) -join ' '
     Assert-True ($mergeParents -match [regex]::Escape($donorTip)) 'Sanity check: the donor branch must already be a merged non-first parent.'
 
-    # A fixed committer date in the future, so the victim's creation stamp is strictly later than
+    # A committer date in the future, so the victim's creation stamp is strictly later than
     # main's move. Ref-log stamps have one-second resolution. Without this the fixture can build
     # everything inside one second, Get-BaseRefAtBranchCreation correctly reports that it cannot
     # answer, and signal 5 is skipped -- so the test would fail while proving nothing.
-    $env:GIT_COMMITTER_DATE = '2030-01-01T00:00:00+00:00'
+    $env:GIT_COMMITTER_DATE = $futureCommitterDate
     try {
         $victimPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-ff-victim' -NoCommits -BaseRef 'main^'
         Invoke-TestGitWithReflogAction -RepoDir $victimPath -Action 'commit' -GitArgs @('merge', '--ff-only', $donorTip) | Out-Null
