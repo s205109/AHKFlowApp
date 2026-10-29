@@ -52,6 +52,36 @@ try {
     $excluded = Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'main' -ExcludePath $cleanPath
     $excludedKeys = @($excluded | ForEach-Object { ConvertTo-Key $_.Path })
     Assert-True (-not ($excludedKeys -contains (ConvertTo-Key $cleanPath))) '-ExcludePath must exclude the target worktree even though it is merged+clean.'
+
+    # Redirected non-interactive runs skip removal without prompting. Backlog 201 moved this run
+    # into the matrix fixture. It is report-only, so it changes nothing the checks above read.
+    $stdinFile = Join-Path (Split-Path -Parent $repo) 'cleanup-stdin.txt'
+    $stdoutFile = Join-Path (Split-Path -Parent $repo) 'cleanup-stdout.txt'
+    $stderrFile = Join-Path (Split-Path -Parent $repo) 'cleanup-stderr.txt'
+    Set-Content -LiteralPath $stdinFile -Value '' -Encoding utf8
+
+    $psExe = [System.Diagnostics.Process]::GetCurrentProcess().Path
+    $cleanupScript = Join-Path $scriptsDir 'cleanup-merged-worktrees.ps1'
+    $proc = Start-Process -FilePath $psExe `
+        -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $cleanupScript, '-RepoRoot', $repo, '-MainRef', 'main') `
+        -WorkingDirectory $suiteRoot `
+        -RedirectStandardInput $stdinFile `
+        -RedirectStandardOutput $stdoutFile `
+        -RedirectStandardError $stderrFile `
+        -NoNewWindow -PassThru -Wait
+
+    Assert-Equal 0 $proc.ExitCode "cleanup-merged-worktrees.ps1 non-interactive path should exit 0. Stderr: $(Get-Content -Raw -LiteralPath $stderrFile)"
+
+    $stdout = Get-Content -Raw -LiteralPath $stdoutFile
+    Assert-True ([string]::IsNullOrWhiteSpace($stdout)) "Non-interactive cleanup must not write to stdout. Got: $stdout"
+
+    $stderrText = Get-Content -Raw -LiteralPath $stderrFile
+    Assert-True ($stderrText -match 'cleanup: eligible merged worktree') "Expected cleanup detection output on stderr. Stderr: $stderrText"
+    Assert-True ($stderrText -match 'cleanup: report-only; nothing removed\.') "Expected non-interactive report-only output on stderr. Stderr: $stderrText"
+
+    Assert-True (Test-Path -LiteralPath $cleanPath) 'Non-interactive cleanup without -Cleanup must not remove the eligible worktree folder.'
+    $branches = (Invoke-TestGit $repo @('branch', '--list', 'feat-clean')) -join "`n"
+    Assert-True ($branches -match 'feat-clean') 'Non-interactive cleanup without -Cleanup must not delete the eligible branch.'
 } finally {
     Remove-TempTree $repo
 }
@@ -105,42 +135,6 @@ try {
     $keys = @($eligible | ForEach-Object { ConvertTo-Key $_.Path })
 
     Assert-True (-not ($keys -contains (ConvertTo-Key $repo))) 'The main-ref worktree must never be eligible when -MainRef is the fully-qualified refs/heads/main form.'
-} finally {
-    Remove-TempTree $repo
-}
-
-# --- Test: redirected non-interactive runs skip removal without prompting -------
-$repo = New-TempGitRepo
-try {
-    $skipPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-noninteractive'
-
-    $stdinFile = Join-Path (Split-Path -Parent $repo) 'cleanup-stdin.txt'
-    $stdoutFile = Join-Path (Split-Path -Parent $repo) 'cleanup-stdout.txt'
-    $stderrFile = Join-Path (Split-Path -Parent $repo) 'cleanup-stderr.txt'
-    Set-Content -LiteralPath $stdinFile -Value '' -Encoding utf8
-
-    $psExe = [System.Diagnostics.Process]::GetCurrentProcess().Path
-    $cleanupScript = Join-Path $scriptsDir 'cleanup-merged-worktrees.ps1'
-    $proc = Start-Process -FilePath $psExe `
-        -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $cleanupScript, '-RepoRoot', $repo, '-MainRef', 'main') `
-        -WorkingDirectory $suiteRoot `
-        -RedirectStandardInput $stdinFile `
-        -RedirectStandardOutput $stdoutFile `
-        -RedirectStandardError $stderrFile `
-        -NoNewWindow -PassThru -Wait
-
-    Assert-Equal 0 $proc.ExitCode "cleanup-merged-worktrees.ps1 non-interactive path should exit 0. Stderr: $(Get-Content -Raw -LiteralPath $stderrFile)"
-
-    $stdout = Get-Content -Raw -LiteralPath $stdoutFile
-    Assert-True ([string]::IsNullOrWhiteSpace($stdout)) "Non-interactive cleanup must not write to stdout. Got: $stdout"
-
-    $stderrText = Get-Content -Raw -LiteralPath $stderrFile
-    Assert-True ($stderrText -match 'cleanup: eligible merged worktree') "Expected cleanup detection output on stderr. Stderr: $stderrText"
-    Assert-True ($stderrText -match 'cleanup: report-only; nothing removed\.') "Expected non-interactive report-only output on stderr. Stderr: $stderrText"
-
-    Assert-True (Test-Path -LiteralPath $skipPath) 'Non-interactive cleanup without -Cleanup must not remove the eligible worktree folder.'
-    $branches = (Invoke-TestGit $repo @('branch', '--list', 'feat-noninteractive')) -join "`n"
-    Assert-True ($branches -match 'feat-noninteractive') 'Non-interactive cleanup without -Cleanup must not delete the eligible branch.'
 } finally {
     Remove-TempTree $repo
 }
