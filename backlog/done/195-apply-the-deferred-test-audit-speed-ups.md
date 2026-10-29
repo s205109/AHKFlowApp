@@ -6,7 +6,7 @@
 - **Type**: Tooling
 - **Interfaces**: none (test suites)
 - **Difficulty**: complex
-- **Stage**: 8-review
+- **Stage**: 9-ship
 
 ## Summary
 
@@ -27,14 +27,14 @@ The four Suites are `StageTransition`, `WatchTask`, `CiPowerShellSuiteRunner` an
 
 - [x] Every row of the four Suites in `docs/development/test-audit-deferred.md` is marked applied
       or rejected, with a one-line reason for each rejection.
-- [ ] `docs/development/cycle-time-record.md` holds the before and after median of each of the
+- [x] `docs/development/cycle-time-record.md` holds the before and after median of each of the
       four Suites, each Suite run alone, one warm-up plus three counted runs.
 - [x] Every row timed on its own under D2 of the spec has its two medians recorded, and no kept
       change saved less than 1 s.
 - [x] Every applied MERGE or REMOVE, and every reworked case removed under D5 of the spec, names in
       its commit body the test that still catches the defect, or the behaviour that is gone.
-- [ ] Every Suite this item changes passes in the Gate.
-- [ ] `baselineSeconds` in `tests/powershell-suites.json` of every changed Suite comes from a
+- [x] Every Suite this item changes passes in the Gate.
+- [x] `baselineSeconds` in `tests/powershell-suites.json` of every changed Suite comes from a
       Gate run at Verify with evidence reuse off.
 
 ## Out of scope
@@ -63,4 +63,8 @@ The four Suites are `StageTransition`, `WatchTask`, `CiPowerShellSuiteRunner` an
 - Previous Document recheck used historical medians. The current recovery replaces them with
   final measurements and keeps the S-A rejection at 0.999 s saving.
 
-- Current recovery: final isolated medians and a quiet reuse-off Gate remain pending.
+- Current recovery: final isolated medians and the quiet baselines are recorded at `2b527da5`.
+- Closure: the full reuse-off Gate passed at `2b527da5`, but another worktree shared its Lane
+  pool. The baselines therefore come from a quiet, reuse-off rerun of the Gate's PowerShell step at
+  the same revision. `docs/development/cycle-time-record.md` records both runs. PR 463 merged
+  without the Ship transition, so a housekeeping round closed the records.
