@@ -35,3 +35,17 @@ This repository must hold no stale citation, found 2:
 **Recovery task:** R1: re-point the backlog/done/137 citations that R-B moved (committed as 660915b1). R2: derive the S-A committer date from the current time, so it never falls behind the seed commit (final review, Important 1).
 
 - Recovery R1 and R2: done at b2b6584d. R1 re-pointed the backlog/done/137 citations (660915b1); CitationFreshness passes. R2 derives the S-A date from the clock; the Sweep Suite passes, and a date one day back fails the first S-A case. Deferrals: none.
+
+## Failure edge to 4-execute (2026-10-29)
+
+**Red evidence:**
+
+```
+$env:AHKFLOW_GATE_REUSE = 'off'; pwsh .\scripts\test-fast.ps1 -Mode PowerShell   (at db2d938c)
+**1 of 73 suite(s) failed:** CitationFreshness.Tests.ps1
+This repository must hold no stale citation, found 2: PLAN-PROGRESS.md lines 31 and 32.
+They are the old item 137 citations, quoted word for word as evidence in the first failure record.
+```
+
+**Recovery task:** R3: mark the two quoted evidence lines in PLAN-PROGRESS.md with citation-check:ignore, so the checker skips them.
+
