@@ -51,3 +51,14 @@ They are the old item 137 citations, quoted word for word as evidence in the fir
 
 - Recovery R3: done at bd5fcb0b. The two quoted evidence lines carry citation-check:ignore; CitationFreshness passes. Deferrals: none.
 - Task 8 (Gate, baselines, record): done at 5bfd655d. Gate green at c68c321b with reuse off, 73 of 73 Suites, 6 Workers. Linux run at the Gate revision: only the two expected removed cases differ, plus the timing-dependent issue 468 case. Baselines refreshed (12e8422f). CI run 40945588900 green; BacklogStaleOpen passed in repo-invariants on Linux. Deferrals: none.
+
+## Failure edge to 4-execute (2026-10-29)
+
+**Red evidence:**
+
+```
+Review on PR 466 (pullrequestreview-5704534985): three threads need code changes. 1) seed builders leak their temp root when construction fails (tests/WorktreeMergedCleanup.Common.ps1 and the remote seed builder). 2) the Eligibility non-interactive case duplicates Invoke-CleanupChild. 3) Remove-RemoteFixtureSeeds does not check the seed origin.git main ref. Injected failures before the fix left 1 temp root per builder (3 in total).
+```
+
+**Recovery task:** R4: seed builders remove their own root on a failed build, then rethrow. R5: the Eligibility non-interactive case calls Invoke-CleanupChild. R6: Remove-RemoteFixtureSeeds also compares origin.git refs/heads/main with the seed Head. The fixes landed in a53c922a before this record, and 03492db2 re-points the backlog/done/137 citations they moved.
+
