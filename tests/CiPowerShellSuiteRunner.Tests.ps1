@@ -295,22 +295,6 @@ function Invoke-Driver {
 
 . (Join-Path $PSScriptRoot 'ScriptRunspace.Common.ps1')
 
-function Invoke-WithEnvironment {
-    param([hashtable] $EnvVar, [scriptblock] $Action)
-    $previous = @{}
-    try {
-        foreach ($name in $EnvVar.Keys) {
-            $previous[$name] = [Environment]::GetEnvironmentVariable($name)
-            [Environment]::SetEnvironmentVariable($name, $EnvVar[$name])
-        }
-        & $Action
-    } finally {
-        foreach ($name in $previous.Keys) {
-            [Environment]::SetEnvironmentVariable($name, $previous[$name])
-        }
-    }
-}
-
 # Refusals use a fresh session. Protect the real summary and Lane ownership even if
 # a regression lets the runner continue past its expected refusal.
 function Invoke-RunnerInProcess {
@@ -2295,6 +2279,8 @@ Invoke-TestCase 'Lane invalid opt-out fails before any Suite starts' {
     try {
         $result = Invoke-RunnerInProcess -RunnerPath (Join-Path $repo 'scripts/run-powershell-suites.ps1') -Argument @{ MaxParallel = '1' } -EnvVar @{ AHKFLOW_TEST_LANES_ROOT = $pool.Root; AHKFLOW_TEST_LANES_HOLDER = ''; AHKFLOW_TEST_LANES = 'false' }
         Assert-True ($result.ExitCode -ne 0) 'Invalid opt-out must fail.'
+        # Every exception becomes exit code 1 in the runspace, so only the text proves which refusal ran.
+        Assert-True ($result.Output -match "AHKFLOW_TEST_LANES must be empty or 'off'\. Got 'false'\.") "Invalid opt-out must name the setting. $($result.Output)"
         Assert-True (-not (Test-Path (Join-Path $repo 'markers/one.Tests.ps1'))) 'Invalid opt-out started a Suite.'
     } finally { Remove-SuiteFixture $repo; Remove-PinnedLanePool $pool }
 }

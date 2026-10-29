@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 
 # A fresh session prevents the tested script from reading variables in its caller.
-# Environment variables remain process-wide; callers must save and restore overrides.
+# Environment variables remain process-wide; callers set them with Invoke-WithEnvironment.
 function Invoke-TestScriptRunspace {
     param([Parameter(Mandatory)][string] $Path, [hashtable] $Argument = @{})
 
@@ -27,5 +27,25 @@ function Invoke-TestScriptRunspace {
         return $result[0]
     } finally {
         $shell.Dispose()
+    }
+}
+
+# Sets each named process environment variable for the length of Action, then puts back the value
+# it had before. A $null or empty value removes the variable. Only the named keys are touched.
+function Invoke-WithEnvironment {
+    param([hashtable] $EnvVar = @{}, [Parameter(Mandatory)][scriptblock] $Action)
+
+    $previous = @{}
+    try {
+        foreach ($name in $EnvVar.Keys) {
+            $previous[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
+            $value = if ($null -eq $EnvVar[$name]) { $null } else { [string] $EnvVar[$name] }
+            [Environment]::SetEnvironmentVariable($name, $value, 'Process')
+        }
+        & $Action
+    } finally {
+        foreach ($name in $previous.Keys) {
+            [Environment]::SetEnvironmentVariable($name, $previous[$name], 'Process')
+        }
     }
 }

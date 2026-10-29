@@ -447,6 +447,8 @@ try {
         "The blocked edge must be refused by the parameter itself. Got: $blockedErrorId"
     Assert-Equal '2-design' (Get-SingleBacklogStage -Lines (Get-Content -LiteralPath $fx.ItemPath)) `
         'Parameter validation must leave the Stage unchanged'
+    Assert-Equal $before ((& git -C $fx.Root rev-parse HEAD).Trim()) `
+        'The blocked refusal must leave the commit log untouched'
 
     # --- The main checkout is refused ---
     # $fx's main clone is a plain repository, which is what Test-LinkedWorktree must reject.
@@ -455,6 +457,8 @@ try {
     Assert-True ($LASTEXITCODE -ne 0) 'The main checkout must be refused'
     Assert-True ($mainOutput.Contains("REFUSED: '$fxMain' is the main checkout, not a linked worktree.")) `
         "The refusal must say the path is the main checkout. Output: $mainOutput"
+    Assert-Equal $before ((& git -C $fx.Root rev-parse HEAD).Trim()) `
+        'The main-checkout refusal must leave the worktree commit log untouched'
 
     # --- An item worktree with -Pr and no -Item is refused, not treated as a round (finding 3) ---
     # The refusal reads only the branch name, so $fx's item branch is enough.
@@ -467,6 +471,10 @@ try {
         "The refusal must ask for -Item. Output: $($r3Output)"
     Assert-True ((Get-Content -Raw -LiteralPath $r3Gh.BodyFile) -match '(?m)^Stage: 5-simplify\r?$') `
         'A refused run must not rewrite any pull request body'
+    Assert-Equal $before ((& git -C $fx.Root rev-parse HEAD).Trim()) `
+        'The missing -Item refusal must leave the commit log untouched'
+    Assert-Equal '2-design' (Get-SingleBacklogStage -Lines (Get-Content -LiteralPath $fx.ItemPath)) `
+        'The missing -Item refusal must leave the Stage unchanged'
 
     # The ordinary transition itself, on the $fx the four refusals above left unchanged.
     & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $fx.Root -Item '081' -Edge 'success' *> $null
@@ -597,6 +605,7 @@ try {
 
     # --- An unticked box refuses the flip ---
     $sh2 = New-TransitionFixture -Stage '8-review' -Difficulty 'complex' -AsWorktree -WithProgress
+    $sh2Head = (& git -C $sh2.Root rev-parse HEAD).Trim()
     $shGh2 = New-FakeGh
     Invoke-WithFakeGh -Gh $shGh2 -Action {
         & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $sh2.Root -Item '081' -Edge 'success' -Pr 421 *> $null
@@ -606,6 +615,16 @@ try {
     # What it must never do is flip one.
     Assert-True (((Get-Content -Raw -LiteralPath $shGh2.Log) -join "`n") -notmatch 'pr ready') `
         'A refused Ship must not flip the pull request'
+    # The undo cases below reuse $sh2, so the refusal must leave it exactly as it was.
+    Assert-Equal $sh2Head ((& git -C $sh2.Root rev-parse HEAD).Trim()) 'A refused Ship must not commit'
+    Assert-Equal '8-review' (Get-FixtureStage -Root $sh2.Root) 'A refused Ship must leave the Stage at 8-review'
+    Assert-True (Test-Path -LiteralPath (Join-Path $sh2.Root 'backlog/081-automate-stage-transitions.md')) `
+        'A refused Ship must leave the item in backlog/'
+    Assert-True (-not (Test-Path -LiteralPath (Join-Path $sh2.Root 'backlog/done/081-automate-stage-transitions.md'))) `
+        'A refused Ship must not put a copy of the item in backlog/done/'
+    # Scoped to the closure paths: the fixture's linked plan is untracked on purpose.
+    Assert-Equal '' ((& git -C $sh2.Root status --porcelain -- backlog PLAN-PROGRESS.md) -join '') `
+        'A refused Ship must leave the closure paths unchanged'
 
     # --- A branch that never wrote PLAN-PROGRESS.md still closes (backlog 164) ---
     # git treats a pathspec that matches nothing as fatal and stages NOTHING, so one 'git add'
@@ -663,6 +682,12 @@ try {
     $psFrom = 'backlog/081-automate-stage-transitions.md'
     $psTo = 'backlog/done/081-automate-stage-transitions.md'
     $psCall = { (Get-ClosurePathspec -Worktree $psFix.Root -From $psFrom -To $psTo) -join ',' }
+
+    # Prove the first state from git itself, not through the function under test.
+    Assert-Equal '' ((& git -C $psFix.Root ls-files -- PLAN-PROGRESS.md) -join '') `
+        'The reused Ship fixture must not track PLAN-PROGRESS.md'
+    Assert-True (-not (Test-Path -LiteralPath $psProgress)) `
+        'The reused Ship fixture must hold no PLAN-PROGRESS.md on disk'
 
     Assert-Equal "$psFrom,$psTo" (& $psCall) `
         'No progress path anywhere must give the two item paths alone'

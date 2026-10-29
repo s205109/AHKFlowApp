@@ -296,12 +296,13 @@ function Invoke-HarnessShim {
         [string] $Jq = 'Inherited',
         [string] $ParsedCommand = '',
         [string] $ParsedCwd = '',
-        [switch] $ParseFailure,
-        [switch] $Copilot
+        [switch] $ParseFailure
     )
 
     # jq is a third-party boundary. Supply its responses for shim decision tests, without
     # requiring an installation. Other cases still use the real parser when available.
+    # The has("toolArgs") answer is read from the payload itself, so a shim that asks jq the
+    # wrong question gets no Copilot answer back.
     if ($Jq -ne 'Inherited') {
         $startup = Join-Path $Harness.Root 'jq-environment.sh'
         $fixture = if ($Jq -eq 'Present') {
@@ -318,7 +319,7 @@ jq() {
     '.cwd // empty')
       [[ -n "$SHIM_TEST_CWD" ]] || return 4
       printf '%s\n' "$SHIM_TEST_CWD" ;;
-    'has("toolArgs")') [[ "$SHIM_TEST_COPILOT" == 'True' ]] ;;
+    'has("toolArgs")') [[ "$input" == *'"toolArgs":'* ]] ;;
     *) return 1 ;;
   esac
 }
@@ -338,7 +339,6 @@ command() {
         $EnvironmentOverrides.SHIM_TEST_COMMAND = $ParsedCommand
         $EnvironmentOverrides.SHIM_TEST_PARSE_FAILURE = [string][bool]$ParseFailure
         $EnvironmentOverrides.SHIM_TEST_CWD = $ParsedCwd
-        $EnvironmentOverrides.SHIM_TEST_COPILOT = [string][bool]$Copilot
     }
 
     return Invoke-CapturedProcess -FilePath $script:BashExecutable `
@@ -1994,8 +1994,8 @@ try {
         Remove-ShimHarness $candidateHarness
     }
 
-    # These four cases test what the shim itself decides: whether to forward, and with which
-    # adapter. One stub harness serves all four. The stub prints its marker and the adapter it was
+    # These cases test what the shim itself decides: whether to forward, and with which adapter.
+    # One stub harness serves all of them. The stub prints its marker and the adapter it was
     # given. The policy result of each command is pinned in-process by the tables above.
     $shimHarness = New-ShimHarness -ShimFileName 'pre-bash-guard.sh'
     try {
@@ -2010,12 +2010,25 @@ try {
             Assert-Match $script:ShimStubMarker $result.StdErr 'Must forward to the entrypoint'
         }
 
-        Invoke-TestCase 'Bash shim selects Copilot from a native toolArgs payload with no argument' {
-            $result = Invoke-HarnessShim -Harness $shimHarness `
-                -StdIn (New-CopilotPayload 'git commit -m test' $script:RealMainCheckout) `
-                -Jq Present -ParsedCommand 'git commit -m test' -Copilot
-            Assert-Equal 0 $result.ExitCode 'ExitCode'
-            Assert-Match 'adapter=Copilot' $result.StdErr 'Must select the Copilot adapter'
+        # The stub proves which question the shim asks, not that the jq filter text is right. So
+        # the Copilot and noncandidate cases also run once with the installed jq.
+        $jqInstalled = (Invoke-CapturedProcess -FilePath $script:BashExecutable -Arguments @('-c', 'command -v jq')).ExitCode -eq 0
+        $jqModes = @(
+            @{ Label = 'stubbed jq'; Jq = 'Present' },
+            @{ Label = 'installed jq'; Jq = 'Inherited' }
+        )
+
+        foreach ($jqMode in $jqModes) {
+            Invoke-TestCase "Bash shim selects Copilot from a native toolArgs payload with no argument ($($jqMode.Label))" {
+                if ($jqMode.Jq -eq 'Inherited' -and -not $jqInstalled) {
+                    throw 'jq is not on the bash PATH. Install jq, because this case proves the real jq filter.'
+                }
+                $result = Invoke-HarnessShim -Harness $shimHarness `
+                    -StdIn (New-CopilotPayload 'git commit -m test' $script:RealMainCheckout) `
+                    -Jq $jqMode.Jq -ParsedCommand 'git commit -m test'
+                Assert-Equal 0 $result.ExitCode 'ExitCode'
+                Assert-Match 'adapter=Copilot' $result.StdErr 'Must select the Copilot adapter'
+            }
         }
 
         Invoke-TestCase 'Bash shim stays correct when jq is unavailable' {
@@ -2044,12 +2057,17 @@ try {
             }
         }
 
-        Invoke-TestCase 'Bash shim exits fast for a noncandidate command despite a matching cwd' {
-            $result = Invoke-HarnessShim -Harness $shimHarness `
-                -StdIn (New-ClaudePayload 'rg -n "Goal" README.md' (Join-Path $fixture.Main 'git repo')) -ShimArguments @('Claude') `
-                -Jq Present -ParsedCommand 'rg -n "Goal" README.md' -ParsedCwd (Join-Path $fixture.Main 'git repo')
-            Assert-Equal 0 $result.ExitCode 'ExitCode'
-            Assert-Equal '' $result.StdErr.Trim() 'StdErr'
+        foreach ($jqMode in $jqModes) {
+            Invoke-TestCase "Bash shim exits fast for a noncandidate command despite a matching cwd ($($jqMode.Label))" {
+                if ($jqMode.Jq -eq 'Inherited' -and -not $jqInstalled) {
+                    throw 'jq is not on the bash PATH. Install jq, because this case proves the real jq filter.'
+                }
+                $result = Invoke-HarnessShim -Harness $shimHarness `
+                    -StdIn (New-ClaudePayload 'rg -n "Goal" README.md' (Join-Path $fixture.Main 'git repo')) -ShimArguments @('Claude') `
+                    -Jq $jqMode.Jq -ParsedCommand 'rg -n "Goal" README.md' -ParsedCwd (Join-Path $fixture.Main 'git repo')
+                Assert-Equal 0 $result.ExitCode 'ExitCode'
+                Assert-Equal '' $result.StdErr.Trim() 'StdErr'
+            }
         }
     }
     finally {

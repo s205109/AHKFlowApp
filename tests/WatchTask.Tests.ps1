@@ -124,6 +124,34 @@ function Get-ShownLine {
     )
 }
 
+# Runs Watch-Record -NoFollow on a running record in this process, and returns the text it
+# showed. -NoFollow has no loop, so call it only once every replaced seam is restored. Only the
+# Write-Host lines count, as only they reached the screen of the old child.
+function Get-NoFollowShownText {
+    param([Parameter(Mandatory)][string] $Path)
+
+    $record = [pscustomobject]@{ Path = $Path; LastWrite = (Get-Date); Running = $true; ExitCode = $null }
+    $captured = [System.Collections.Generic.List[object]]::new()
+    try {
+        Watch-Record -Record $record -Tail 40 -NoFollow *>&1 | ForEach-Object { $captured.Add($_) }
+    } catch {
+        $captured.Add($_)
+    }
+    $errors = @($captured | Where-Object { $_ -is [System.Management.Automation.ErrorRecord] })
+    Assert-True ($errors.Count -eq 0) "NoFollow must not throw or write errors: $errors"
+    return (Get-ShownLine -Record $captured.ToArray()) -join "`n"
+}
+
+# Caps every wait in a child session, so a fixture that answers by call count, not by time, does
+# not pay the real poll interval. Positional and -Seconds calls are converted, not dropped.
+$fastSleepStub = @'
+function Start-Sleep {
+    param([Parameter(Position = 0)][double] $Seconds, [int] $Milliseconds)
+    $wait = [int] ($Seconds * 1000) + $Milliseconds
+    Microsoft.PowerShell.Utility\Start-Sleep -Milliseconds ([Math]::Min($wait, 50))
+}
+'@
+
 # --- The project folder name mangling, pinned against real observed names ---
 
 Assert-True (
@@ -1434,8 +1462,7 @@ try {
     $output = & $hostExe -NoProfile -Command @"
 . '$watchScript'
 $heldStub
-# The stubs below answer by call count, not by time, so a 50 ms wait takes the same path as 500 ms.
-function Start-Sleep { param([int] `$Milliseconds) Microsoft.PowerShell.Utility\Start-Sleep -Milliseconds ([Math]::Min(`$Milliseconds, 50)) }
+$fastSleepStub
 `$script:readCall = 0
 function Read-TailText {
     param([object] `$Reader)
@@ -2149,18 +2176,8 @@ $stalePath = Join-Path ([System.IO.Path]::GetTempPath()) ("watch-task-stale-nofo
 try {
     [System.IO.File]::WriteAllText($stalePath, "ALREADY-DONE`n[exited with code 5]`n")
 
-    # In this process: -NoFollow has no loop, and every seam a case above replaces is restored by
-    # now. Only the Write-Host lines count, as only they reached the screen of the old child.
-    $record = [pscustomobject]@{ Path = $stalePath; LastWrite = (Get-Date); Running = $true; ExitCode = $null }
-    $captured = [System.Collections.Generic.List[object]]::new()
-    try {
-        Watch-Record -Record $record -Tail 40 -NoFollow *>&1 | ForEach-Object { $captured.Add($_) }
-    } catch {
-        $captured.Add($_)
-    }
-    $errors = @($captured | Where-Object { $_ -is [System.Management.Automation.ErrorRecord] })
-    Assert-True ($errors.Count -eq 0) "NoFollow must not throw or write errors: $errors"
-    $output = (Get-ShownLine -Record $captured.ToArray()) -join "`n"
+    # Every seam a case above replaces is restored by now.
+    $output = Get-NoFollowShownText -Path $stalePath
 
     Assert-True ($output -notmatch 'still running') "Stale running with -NoFollow: the watcher must not say the task is still running. Output: $output"
     Assert-True ($output -match 'Exit code: 5') "Stale running with -NoFollow: the exit code must be reported. Output: $output"
@@ -2241,18 +2258,8 @@ $stalePath = Join-Path ([System.IO.Path]::GetTempPath()) ("watch-task-nonewline-
 try {
     [System.IO.File]::WriteAllText($stalePath, "ALREADY-DONE`n[exited with code 5]")
 
-    # In this process: -NoFollow has no loop, and every seam a case above replaces is restored by
-    # now. Only the Write-Host lines count, as only they reached the screen of the old child.
-    $record = [pscustomobject]@{ Path = $stalePath; LastWrite = (Get-Date); Running = $true; ExitCode = $null }
-    $captured = [System.Collections.Generic.List[object]]::new()
-    try {
-        Watch-Record -Record $record -Tail 40 -NoFollow *>&1 | ForEach-Object { $captured.Add($_) }
-    } catch {
-        $captured.Add($_)
-    }
-    $errors = @($captured | Where-Object { $_ -is [System.Management.Automation.ErrorRecord] })
-    Assert-True ($errors.Count -eq 0) "NoFollow must not throw or write errors: $errors"
-    $output = (Get-ShownLine -Record $captured.ToArray()) -join "`n"
+    # Every seam a case above replaces is restored by now.
+    $output = Get-NoFollowShownText -Path $stalePath
 
     Assert-True ($output -notmatch 'still running') "No final newline: the watcher must not say the task is still running. Output: $output"
     Assert-True ($output -match 'Exit code: 5') "No final newline: the exit code must be reported. Output: $output"
@@ -2402,12 +2409,11 @@ try {
     [System.IO.File]::WriteAllText($settlePath, "ONLY-LINE`n")
 
     $job = Start-ThreadJob -ScriptBlock {
-        param($exe, $script, $path, $heldStub)
+        param($exe, $script, $path, $heldStub, $fastSleepStub)
         & $exe -NoProfile -Command @"
 . '$script'
 $heldStub
-# The stub below answers by call count, not by time, so a 50 ms wait takes the same path as 500 ms.
-function Start-Sleep { param([int] `$Milliseconds) Microsoft.PowerShell.Utility\Start-Sleep -Milliseconds ([Math]::Min(`$Milliseconds, 50)) }
+$fastSleepStub
 
 `$script:stateCalls = 0
 function Get-TaskState {
@@ -2423,7 +2429,7 @@ function Get-TaskState {
 `$record = [pscustomobject]@{ Path = '$path'; LastWrite = (Get-Date); Running = `$true; ExitCode = `$null }
 exit (Watch-Record -Record `$record -Tail 40)
 "@ 2>&1
-    } -ArgumentList $hostExe, $watchScript, $settlePath, $heldStub
+    } -ArgumentList $hostExe, $watchScript, $settlePath, $heldStub, $fastSleepStub
 
     $finished = Wait-Job -Job $job -Timeout 25
     Assert-True ($null -ne $finished) `
