@@ -879,7 +879,7 @@ pool. A D2 time comes from a temporary stopwatch that was never committed.
 
 | Suite | Before (s) | After (s) |
 |---|---|---|
-| `WorktreeMergedCleanup.Tests.ps1` | 34.6 | |
+| `WorktreeMergedCleanup.Tests.ps1` | 34.6 | 25.3 |
 | `WorktreeMergedCleanupSweep.Tests.ps1` | 31.1 | |
 | `WorktreeMergedCleanupEligibility.Tests.ps1` | 34.4 | |
 
@@ -899,6 +899,16 @@ pool. A D2 time comes from a temporary stopwatch that was never committed.
   Kept: the sum fell by 9.94 s. The Suite medians in the same runs were 25.3 s, 31.9 s and
   37.4 s. Only `WorktreeMergedCleanup` fell as a whole Suite. The other two did not: their counted
   runs spread over 28.5 to 32.0 s and 34.3 to 38.6 s, wider than the 2 to 3 s that T-A saves there.
+
+- **M-A**, row 120, and **M-B**, row 121: one shared repo for the eleven reset-rule sections, and
+  for the four positive own-work sections. Both were bounded first (plan P5), from the T-A after
+  runs. The `M-A parts` stopwatch timed the eleven `New-TempGitRepo` calls and their
+  `Remove-TempTree` calls: median 0.528 s. The `M-B parts` stopwatch timed the four: median
+  0.217 s. A shared repo still pays one build and one removal, so the bound is 10/11 and 3/4 of
+  those medians: 0.48 s and 0.16 s. Both are below 1 s, so both rows are rejected and neither
+  change was built. A bound stands in for the two medians on these rows.
+  `WorktreeMergedCleanup.Tests.ps1` did not change after T-A, so its after median is the T-A
+  after median, 25.3 s.
 
 ### Mutations
 
