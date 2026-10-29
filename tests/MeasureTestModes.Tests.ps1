@@ -670,6 +670,13 @@ Invoke-TestCase 'Soak mode prepares one container for the whole soak and leaves 
         # And no stop at all. A soak that removed its container would hide the very state the
         # reuse exists to soak.
         Assert-True ($stopped.Count -eq 0) "Expected no container stop, got $($stopped.Count). Log: $($sql -join ' | ')"
+
+        # The same run holds the lock for every repetition. Backlog 201 merged that check here.
+        $signals = @(Get-Content -LiteralPath (Join-Path $root 'stub\signals.txt'))
+        $runs = @($signals | Where-Object { $_ -like 'test *' })
+        Assert-True ($runs.Count -eq 3) "Expected three soak runs, got $($runs.Count)."
+        Assert-True (@($runs | Where-Object { $_ -match 'owner=True' }).Count -eq 3) `
+            "Soak mode calls dotnet test directly, so it holds the lock throughout. Signals: $($signals -join ' | ')"
     }
     finally { Remove-HarnessFixture -Root $root }
 }
@@ -832,21 +839,6 @@ Invoke-TestCase 'The build runs inside the lock, and timing mode releases it bef
         Assert-True ($modeRuns.Count -eq 2) "Expected two Mode runs, got $($modeRuns.Count)."
         Assert-True (@($modeRuns | Where-Object { $_ -match 'owner=False' }).Count -eq 2) `
             "Timing mode must release the lock before calling test-fast.ps1, which takes it itself. Signals: $($signals -join ' | ')"
-    }
-    finally { Remove-HarnessFixture -Root $root }
-}
-
-Invoke-TestCase 'Soak mode holds the lock for every repetition' {
-    $root = New-HarnessFixture
-    try {
-        $result = Invoke-Harness -Root $root -Arguments @('-Soak', 'tests/FakeProject', '-Runs', '3', '-NoBuild')
-        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
-
-        $signals = @(Get-Content -LiteralPath (Join-Path $root 'stub\signals.txt'))
-        $runs = @($signals | Where-Object { $_ -like 'test *' })
-        Assert-True ($runs.Count -eq 3) "Expected three soak runs, got $($runs.Count)."
-        Assert-True (@($runs | Where-Object { $_ -match 'owner=True' }).Count -eq 3) `
-            "Soak mode calls dotnet test directly, so it holds the lock throughout. Signals: $($signals -join ' | ')"
     }
     finally { Remove-HarnessFixture -Root $root }
 }
