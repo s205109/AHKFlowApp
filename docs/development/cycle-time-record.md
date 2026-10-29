@@ -883,6 +883,7 @@ pool. A D2 time comes from a temporary stopwatch that was never committed.
 | `WorktreeMergedCleanupSweep.Tests.ps1` | 31.1 | 25.6 |
 | `WorktreeMergedCleanupEligibility.Tests.ps1` | 34.4 | 30.7 |
 | `WorktreeSweepRemoteBase.Tests.ps1` | 34.6 | 27.2 |
+| `BacklogStaleOpen.Tests.ps1` | 23.8 | 17.1 |
 
 ### Changes timed on their own
 
@@ -930,6 +931,10 @@ pool. A D2 time comes from a temporary stopwatch that was never committed.
   `R-B parts` stopwatch timed the four fixture builds and removals at 2.38 s, which is 1 s or
   more, so the change was built. R-B touches 8 of the 13 fixtures, so D2 timed the whole Suite:
   29.1 s before, 27.2 s after. Kept: it fell by 1.9 s.
+- **B-A**, row 118: `Add-FixtureFiller` in `BacklogStaleOpen.Tests.ps1` writes all its filler
+  commits through one `git fast-import --done` stream on `main`, in place of an add and a commit
+  per commit. Commit `0b77939e`. The stopwatch spans the helper. Before 7.66 s, after 1.47 s.
+  Kept: it fell by 6.2 s. The Suite median went from 23.8 s to 17.1 s in the same runs.
 
 ### Mutations
 
@@ -956,17 +961,26 @@ pool. A D2 time comes from a temporary stopwatch that was never committed.
   first call passed, and the fully-qualified call failed its log check with the same line.
 - R-A seed check: a stray file written into the `'False'` seed's `repo` just before the final
   `Remove-RemoteFixtureSeeds` call. `WorktreeSweepRemoteBase` failed with "A case wrote into the
-  shared seed repository '...\\wtremote-seed-0ea124a6\\repo'." No `wtremote-seed-*` folder was left.
+  shared seed repository '...\wtremote-seed-0ea124a6\repo'." No `wtremote-seed-*` folder was left.
   The file then parsed in Windows PowerShell 5.1 with 0 errors, after R-A and again after R-B.
 - R-B, row 130: in `scripts/remove-worktree-local-dev.ps1`, the merge-gate base message written
   only when the reason is not `remote-stale`, and the "could not be refreshed, so it may be behind
   the remote" line deleted. The hook case failed with "The hook must say why it refused to
   decide." The diagnostics log it read held only the hook's own lines.
+- B-A, one commit fewer: the loop bound changed from `-le $Count` to `-lt $Count`.
+  `BacklogStaleOpen` failed with "Backlog stale-open tests failed with 3 problem(s)."
+- B-A, write nothing: the early return taken for every call. `BacklogStaleOpen` failed with
+  "Backlog stale-open tests failed with 5 problem(s)."
 
 ### Linux runs
 
 - `WorktreeMergedCleanup.Tests.ps1` at `9fc1869108df0a6d79ea191fa24363ad0c0cb5b8`. Log
   `.superpowers/201-linux/linux-9fc18691-20261029-181729.log`. Image
+  `mcr.microsoft.com/dotnet/sdk@sha256:2fa828c68761b1b8c23d7662dc134421b9d3b59fe1425fdbc80804e390cdb24d`,
+  kernel `Linux 6.18.54.1-microsoft-standard-WSL2`, PowerShell 7.6.6, git 2.43.0. The runner
+  printed "Platform: linux". The Suite passed, and `LINUX_EXIT=0`.
+- `BacklogStaleOpen.Tests.ps1` at `0b77939e19b45dfabe21402e5c96170f8713a398`. Log
+  `.superpowers/201-linux/linux-0b77939e-20261029-190009.log`. Image
   `mcr.microsoft.com/dotnet/sdk@sha256:2fa828c68761b1b8c23d7662dc134421b9d3b59fe1425fdbc80804e390cdb24d`,
   kernel `Linux 6.18.54.1-microsoft-standard-WSL2`, PowerShell 7.6.6, git 2.43.0. The runner
   printed "Platform: linux". The Suite passed, and `LINUX_EXIT=0`.
