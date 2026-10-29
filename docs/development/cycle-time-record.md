@@ -881,7 +881,7 @@ pool. A D2 time comes from a temporary stopwatch that was never committed.
 |---|---|---|
 | `WorktreeMergedCleanup.Tests.ps1` | 34.6 | 25.3 |
 | `WorktreeMergedCleanupSweep.Tests.ps1` | 31.1 | 25.6 |
-| `WorktreeMergedCleanupEligibility.Tests.ps1` | 34.4 | |
+| `WorktreeMergedCleanupEligibility.Tests.ps1` | 34.4 | 30.7 |
 
 ### Changes timed on their own
 
@@ -915,6 +915,11 @@ pool. A D2 time comes from a temporary stopwatch that was never committed.
   stopwatch spans both cases. Before 5.89 s, from the T-A after runs; after 1.78 s. Kept: it fell
   by 4.1 s. The Suite median in the same runs was 25.6 s.
 
+- Rows 94 to 98, 106 and 107 in `WorktreeMergedCleanupEligibility.Tests.ps1` are small or REWORK
+  rows, so D2 did not time them one by one (plan P4). Row 94 drops a child run. Rows 95 to 98
+  move a check into a fixture of the same shape. Rows 106 and 107 share one reworked fixture. The
+  Suite median after all seven, and after T-A, is 30.7 s.
+
 ### Mutations
 
 - T-A seed check: a stray file written into the plain seed just before the final
@@ -928,6 +933,16 @@ pool. A D2 time comes from a temporary stopwatch that was never committed.
   after."
 - S-A, row 124: the same past date in that case's block alone. The case failed with "Sanity
   check: signal 5 must have a base position to judge against, or this test proves nothing."
+- Row 94, hint branch always true (`} elseif ($true) {` in
+  `scripts/cleanup-merged-worktrees.ps1`): `WorktreeMergedCleanupEligibility` failed with "Expected
+  non-interactive report-only output on stderr."
+- Row 94, the resolver shows the hint for a config-false hook (`ShowHint = $IsHook`):
+  `WorktreeMergedCleanup` failed on the resolver row with "ShowHint mismatch for [C=False H=True
+  Cfg=false Env=none I=False]. (expected 'False', got 'True')".
+- Rows 106 and 107, the branch compare never matches (`$false -and` in front of it): the first
+  call failed its log check. The log held "repo  Kept: no merge of this branch reached the base."
+- Rows 106 and 107, the short-name resolution never runs (`$false -and` in front of it): the
+  first call passed, and the fully-qualified call failed its log check with the same line.
 
 ### Linux runs
 
