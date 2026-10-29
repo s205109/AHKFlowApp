@@ -1201,8 +1201,8 @@ try {
     }
 
     # A quote is one of four ways a Reading becomes Ambiguous. The other three are block forms the
-    # suite already covers at (`tests/AgentWorktreeGuard.Tests.ps1:2382`, "    $heredocAmbiguousCases = @(")
-    # and (`tests/AgentWorktreeGuard.Tests.ps1:2471`, "    $hereStringAmbiguousCases = @("), and
+    # suite already covers at (`tests/AgentWorktreeGuard.Tests.ps1:2403`, "    $heredocAmbiguousCases = @(")
+    # and (`tests/AgentWorktreeGuard.Tests.ps1:2492`, "    $hereStringAmbiguousCases = @("), and
     # every one of them must reach the same refusal at every layer. Without this, the message could
     # promise "balanced quoting" to somebody whose heredoc terminator is indented.
     $unreadableCauses = @(
@@ -2011,18 +2011,24 @@ try {
         }
 
         # The stub proves which question the shim asks, not that the jq filter text is right. So
-        # the Copilot and noncandidate cases also run once with the installed jq.
+        # the Copilot and noncandidate cases also run once with the installed jq. The shim works
+        # without jq, so a machine without it skips those runs and says so. CI must run them.
         $jqInstalled = (Invoke-CapturedProcess -FilePath $script:BashExecutable -Arguments @('-c', 'command -v jq')).ExitCode -eq 0
-        $jqModes = @(
-            @{ Label = 'stubbed jq'; Jq = 'Present' },
-            @{ Label = 'installed jq'; Jq = 'Inherited' }
-        )
+        $jqModes = @(@{ Label = 'stubbed jq'; Jq = 'Present' })
+        if ($jqInstalled) {
+            $jqModes += @{ Label = 'installed jq'; Jq = 'Inherited' }
+        }
+        elseif ($env:GITHUB_ACTIONS -eq 'true') {
+            Invoke-TestCase 'CI has jq on the bash PATH for the installed-jq shim cases' {
+                throw 'jq is not on the bash PATH. CI must run the cases that prove the real jq filter.'
+            }
+        }
+        else {
+            Write-Host '  SKIP  installed-jq shim cases: jq is not on the bash PATH' -ForegroundColor Yellow
+        }
 
         foreach ($jqMode in $jqModes) {
             Invoke-TestCase "Bash shim selects Copilot from a native toolArgs payload with no argument ($($jqMode.Label))" {
-                if ($jqMode.Jq -eq 'Inherited' -and -not $jqInstalled) {
-                    throw 'jq is not on the bash PATH. Install jq, because this case proves the real jq filter.'
-                }
                 $result = Invoke-HarnessShim -Harness $shimHarness `
                     -StdIn (New-CopilotPayload 'git commit -m test' $script:RealMainCheckout) `
                     -Jq $jqMode.Jq -ParsedCommand 'git commit -m test'
@@ -2059,9 +2065,6 @@ try {
 
         foreach ($jqMode in $jqModes) {
             Invoke-TestCase "Bash shim exits fast for a noncandidate command despite a matching cwd ($($jqMode.Label))" {
-                if ($jqMode.Jq -eq 'Inherited' -and -not $jqInstalled) {
-                    throw 'jq is not on the bash PATH. Install jq, because this case proves the real jq filter.'
-                }
                 $result = Invoke-HarnessShim -Harness $shimHarness `
                     -StdIn (New-ClaudePayload 'rg -n "Goal" README.md' (Join-Path $fixture.Main 'git repo')) -ShimArguments @('Claude') `
                     -Jq $jqMode.Jq -ParsedCommand 'rg -n "Goal" README.md' -ParsedCwd (Join-Path $fixture.Main 'git repo')
