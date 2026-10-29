@@ -50,3 +50,4 @@ They are the old item 137 citations, quoted word for word as evidence in the fir
 **Recovery task:** R3: mark the two quoted evidence lines in PLAN-PROGRESS.md with citation-check:ignore, so the checker skips them.
 
 - Recovery R3: done at bd5fcb0b. The two quoted evidence lines carry citation-check:ignore; CitationFreshness passes. Deferrals: none.
+- Task 8 (Gate, baselines, record): done at 5bfd655d. Gate green at c68c321b with reuse off, 73 of 73 Suites, 6 Workers. Linux run at the Gate revision: only the two expected removed cases differ, plus the timing-dependent issue 468 case. Baselines refreshed (12e8422f). CI run 40945588900 green; BacklogStaleOpen passed in repo-invariants on Linux. Deferrals: none.
