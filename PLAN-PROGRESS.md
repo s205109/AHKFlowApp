@@ -62,3 +62,4 @@ Review on PR 466 (pullrequestreview-5704534985): three threads need code changes
 
 **Recovery task:** R4: seed builders remove their own root on a failed build, then rethrow. R5: the Eligibility non-interactive case calls Invoke-CleanupChild. R6: Remove-RemoteFixtureSeeds also compares origin.git refs/heads/main with the seed Head. The fixes landed in a53c922a before this record, and 03492db2 re-points the backlog/done/137 citations they moved.
 
+- Recovery R4, R5 and R6: done at a53c922a, citations re-pointed at 03492db2. R4: an injected git failure in each of the three seed builders left 1 temp root each before the fix and 0 after. R6: a commit pushed into a seed origin.git now makes Remove-RemoteFixtureSeeds throw. The four affected Suites pass alone; CitationFreshness passes. Deferrals: none.
