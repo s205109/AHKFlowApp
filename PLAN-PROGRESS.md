@@ -49,3 +49,4 @@ They are the old item 137 citations, quoted word for word as evidence in the fir
 
 **Recovery task:** R3: mark the two quoted evidence lines in PLAN-PROGRESS.md with citation-check:ignore, so the checker skips them.
 
+- Recovery R3: done at bd5fcb0b. The two quoted evidence lines carry citation-check:ignore; CitationFreshness passes. Deferrals: none.
