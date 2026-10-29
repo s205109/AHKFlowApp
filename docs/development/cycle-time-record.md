@@ -882,6 +882,7 @@ pool. A D2 time comes from a temporary stopwatch that was never committed.
 | `WorktreeMergedCleanup.Tests.ps1` | 34.6 | 25.3 |
 | `WorktreeMergedCleanupSweep.Tests.ps1` | 31.1 | 25.6 |
 | `WorktreeMergedCleanupEligibility.Tests.ps1` | 34.4 | 30.7 |
+| `WorktreeSweepRemoteBase.Tests.ps1` | 34.6 | 27.2 |
 
 ### Changes timed on their own
 
@@ -920,6 +921,16 @@ pool. A D2 time comes from a temporary stopwatch that was never committed.
   move a check into a fixture of the same shape. Rows 106 and 107 share one reworked fixture. The
   Suite median after all seven, and after T-A, is 30.7 s.
 
+- **R-A**, row 125: one seed per `-WithScripts` value in `WorktreeSweepRemoteBase.Tests.ps1`,
+  copied for every `New-RemoteFixture` call. Commit `5ee392cb`. The stopwatch spans the builder
+  and the final seed check and removal. Before 15.62 s, after 10.98 s. Kept: it fell by 4.6 s.
+  The Suite median went from 34.6 s to 29.1 s in the same runs.
+- **R-B**, rows 126 to 130: four cases move into kept fixtures of the same shape, and their four
+  fixtures go. Commit `6c1b99e2`. Bounded first (plan P5), from the R-A after runs: the
+  `R-B parts` stopwatch timed the four fixture builds and removals at 2.38 s, which is 1 s or
+  more, so the change was built. R-B touches 8 of the 13 fixtures, so D2 timed the whole Suite:
+  29.1 s before, 27.2 s after. Kept: it fell by 1.9 s.
+
 ### Mutations
 
 - T-A seed check: a stray file written into the plain seed just before the final
@@ -943,6 +954,14 @@ pool. A D2 time comes from a temporary stopwatch that was never committed.
   call failed its log check. The log held "repo  Kept: no merge of this branch reached the base."
 - Rows 106 and 107, the short-name resolution never runs (`$false -and` in front of it): the
   first call passed, and the fully-qualified call failed its log check with the same line.
+- R-A seed check: a stray file written into the `'False'` seed's `repo` just before the final
+  `Remove-RemoteFixtureSeeds` call. `WorktreeSweepRemoteBase` failed with "A case wrote into the
+  shared seed repository '...\\wtremote-seed-0ea124a6\\repo'." No `wtremote-seed-*` folder was left.
+  The file then parsed in Windows PowerShell 5.1 with 0 errors, after R-A and again after R-B.
+- R-B, row 130: in `scripts/remove-worktree-local-dev.ps1`, the merge-gate base message written
+  only when the reason is not `remote-stale`, and the "could not be refreshed, so it may be behind
+  the remote" line deleted. The hook case failed with "The hook must say why it refused to
+  decide." The diagnostics log it read held only the hook's own lines.
 
 ### Linux runs
 
