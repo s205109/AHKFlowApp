@@ -51,7 +51,7 @@ Each criterion is refined in the spec named below. Tick a box only when its word
   188's branch. Pick this item up after 188's audit batches, or after 188 merges.
 - Spec: `docs/superpowers/specs/2026-10-18-speed-up-the-development-cycle-design-188.md`
 - Pilot design spec: `docs/superpowers/specs/2026-10-29-architecture-pilot-on-one-tested-module-design-193.md`
-- Plan: none — the spec is the design; Plan comes at pickup.
+- Plan: `docs/superpowers/plans/2026-10-29-architecture-pilot-on-one-tested-module-plan-193.md`
 
 ## Pilot record
 
