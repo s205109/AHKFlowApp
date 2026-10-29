@@ -44,6 +44,14 @@ try {
     Assert-Equal 'feat-clean' $eligible[0].Branch 'Eligible branch short name should be feat-clean.'
     $mainKey = ConvertTo-Key $repo
     Assert-True (-not ($keys -contains $mainKey)) 'The main checkout must never be eligible.'
+
+    # ExcludePath protects the worktree this run is about to create/reuse. The matrix above
+    # already proved feat-clean eligible, so passing it as -ExcludePath must remove it from the
+    # eligible set: a run that is about to create/reuse this exact path can never race its own
+    # async removal. Backlog 201 moved this check into the matrix fixture.
+    $excluded = Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'main' -ExcludePath $cleanPath
+    $excludedKeys = @($excluded | ForEach-Object { ConvertTo-Key $_.Path })
+    Assert-True (-not ($excludedKeys -contains (ConvertTo-Key $cleanPath))) '-ExcludePath must exclude the target worktree even though it is merged+clean.'
 } finally {
     Remove-TempTree $repo
 }
@@ -97,24 +105,6 @@ try {
     $keys = @($eligible | ForEach-Object { ConvertTo-Key $_.Path })
 
     Assert-True (-not ($keys -contains (ConvertTo-Key $repo))) 'The main-ref worktree must never be eligible when -MainRef is the fully-qualified refs/heads/main form.'
-} finally {
-    Remove-TempTree $repo
-}
-
-# --- Test: ExcludePath protects the worktree this run is about to create/reuse ---
-$repo = New-TempGitRepo
-try {
-    $targetPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-target'
-
-    # Without exclusion the target itself would be eligible (merged + clean)...
-    $eligible = Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'main'
-    Assert-True ((@($eligible | ForEach-Object { ConvertTo-Key $_.Path })) -contains (ConvertTo-Key $targetPath)) 'Sanity check: the target worktree must be eligible before exclusion is applied.'
-
-    # ...but passing -ExcludePath must remove it from the eligible set, so a run that is
-    # about to create/reuse this exact path can never race its own async removal.
-    $excluded = Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'main' -ExcludePath $targetPath
-    $excludedKeys = @($excluded | ForEach-Object { ConvertTo-Key $_.Path })
-    Assert-True (-not ($excludedKeys -contains (ConvertTo-Key $targetPath))) '-ExcludePath must exclude the target worktree even though it is merged+clean.'
 } finally {
     Remove-TempTree $repo
 }
