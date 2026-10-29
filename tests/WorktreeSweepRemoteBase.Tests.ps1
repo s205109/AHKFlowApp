@@ -56,13 +56,17 @@ function Invoke-FixtureGit {
     return $out
 }
 
-# A bare 'origin', a clone-shaped 'repo' whose main tracks it, and one worktree branch with a
-# commit on it. -Merged performs the merge, pushes it, and then rewinds BOTH local refs, which is
-# what a session sees right after `gh pr merge`: the work is on the remote and invisible locally.
-function New-RemoteFixture {
-    param([switch] $Merged, [switch] $KeepTrackingRef, [switch] $WithScripts)
+# Seed fixtures, built once per suite run and copied for every fixture. Backlog 201. A copy costs
+# far less than two 'git init' calls, a commit and a push. The keys are 'True' and 'False', the
+# -WithScripts value. Each value holds the seed's root and its main SHA, so
+# Remove-RemoteFixtureSeeds can prove that no fixture wrote into a seed.
+$script:RemoteFixtureSeeds = @{}
 
-    $root = Join-Path ([System.IO.Path]::GetTempPath()) ('wtremote-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+# The bare 'origin' and the clone-shaped 'repo' whose main tracks it, pushed once. No worktree.
+function New-RemoteFixtureSeed {
+    param([bool] $WithScripts)
+
+    $root = Join-Path ([System.IO.Path]::GetTempPath()) ('wtremote-seed-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
     $origin = Join-Path $root 'origin.git'
     $repo = Join-Path $root 'repo'
     New-Item -ItemType Directory -Path $repo -Force | Out-Null
@@ -87,6 +91,33 @@ function New-RemoteFixture {
     Invoke-FixtureGit $repo @('remote', 'add', 'origin', $origin) | Out-Null
     # -u writes branch.main.remote and branch.main.merge, which is what the resolver reads.
     Invoke-FixtureGit $repo @('push', '--quiet', '-u', 'origin', 'main') | Out-Null
+
+    # Git never runs the sample hooks, and they are most of the files each copy writes.
+    Remove-Item -Path (Join-Path (Join-Path (Join-Path $repo '.git') 'hooks') '*.sample') -Force
+    Remove-Item -Path (Join-Path (Join-Path $origin 'hooks') '*.sample') -Force
+
+    return [pscustomobject]@{ Root = $root; Head = (Get-RefSha $repo 'refs/heads/main') }
+}
+
+# A bare 'origin', a clone-shaped 'repo' whose main tracks it, and one worktree branch with a
+# commit on it. -Merged performs the merge, pushes it, and then rewinds BOTH local refs, which is
+# what a session sees right after `gh pr merge`: the work is on the remote and invisible locally.
+function New-RemoteFixture {
+    param([switch] $Merged, [switch] $KeepTrackingRef, [switch] $WithScripts)
+
+    $key = [string] [bool] $WithScripts
+    if (-not $script:RemoteFixtureSeeds.ContainsKey($key)) {
+        $script:RemoteFixtureSeeds[$key] = New-RemoteFixtureSeed -WithScripts ([bool] $WithScripts)
+    }
+    $root = Join-Path ([System.IO.Path]::GetTempPath()) ('wtremote-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+    $origin = Join-Path $root 'origin.git'
+    $repo = Join-Path $root 'repo'
+    New-Item -ItemType Directory -Path $root -Force | Out-Null
+    # The '*' copies origin.git and repo, with the hidden .git folder inside repo.
+    Copy-Item -Path (Join-Path $script:RemoteFixtureSeeds[$key].Root '*') -Destination $root -Recurse -Force
+    # The copied config keeps the upstream the seed's push wrote, and the copied
+    # refs/remotes/origin/main matches the copied origin.git. Only the URL points at the seed.
+    Invoke-FixtureGit $repo @('remote', 'set-url', 'origin', $origin) | Out-Null
 
     $branch = 'fix/wt-remote-base'
     $worktree = Join-Path $root 'wt-remote-base'
@@ -136,6 +167,31 @@ function Remove-Fixture {
         }
     }
 }
+
+# Removes every seed. Unless -NoCheck, it first checks that each seed repo still has a clean status
+# and main at its original SHA, and throws after the removal when one does not. A fixture that
+# wrote into a seed would hand every later copy a changed repository, and a case could then pass
+# for the wrong reason. The suite calls it just before its final line, and its trap calls it with
+# -NoCheck.
+function Remove-RemoteFixtureSeeds {
+    param([switch] $NoCheck)
+    $written = @()
+    foreach ($seed in @($script:RemoteFixtureSeeds.Values)) {
+        if (-not $NoCheck) {
+            $seedRepo = Join-Path $seed.Root 'repo'
+            $status = @(Invoke-FixtureGit $seedRepo @('status', '--porcelain') | Where-Object { $_ })
+            if ($status.Count -gt 0 -or (Get-RefSha $seedRepo 'refs/heads/main') -ne $seed.Head) { $written += $seedRepo }
+        }
+        Remove-Fixture $seed.Root
+    }
+    $script:RemoteFixtureSeeds.Clear()
+    if ($written.Count -gt 0) {
+        throw "A case wrote into the shared seed repository '$($written -join "', '")'. Every repository copied from it after that write did not start fresh."
+    }
+}
+
+# A failed run must not leave the seed fixtures in the temp folder. Backlog 201.
+trap { Remove-RemoteFixtureSeeds -NoCheck; break }
 
 # Runs the real sweep as a child process. Stdin is redirected from an empty file, so the sweep is
 # never interactive and stays in report-only mode while ahkflow.worktreeCleanup is unset.
@@ -515,4 +571,5 @@ try {
     Remove-Item -LiteralPath $parentMarkerObserved -Force -ErrorAction SilentlyContinue
 }
 
+Remove-RemoteFixtureSeeds
 Write-Host 'Worktree sweep remote-base tests passed.'
