@@ -257,13 +257,17 @@ try {
 # signal 5 instead of refusing on a guess.
 $repo = New-TempGitRepo
 try {
-    # main's position before anything else happens. The sleep makes that entry strictly earlier
-    # than the branch created next; without it every stamp lands in the same second and the
-    # function correctly reports that it cannot answer.
+    # main's position before anything else happens. The branch is created under a fixed committer
+    # date in the future, so its ref-log stamp is strictly later than that entry. Without it every
+    # stamp can land in the same second, and the function correctly reports that it cannot answer.
     $mainBefore = ((Invoke-TestGit $repo @('rev-parse', 'main')) -join '').Trim()
-    Start-Sleep -Seconds 2
 
-    Add-TestWorktree -RepoDir $repo -BranchName 'feat-base-probe' | Out-Null
+    $env:GIT_COMMITTER_DATE = '2030-01-01T00:00:00+00:00'
+    try {
+        Add-TestWorktree -RepoDir $repo -BranchName 'feat-base-probe' | Out-Null
+    } finally {
+        Remove-Item -LiteralPath 'Env:\GIT_COMMITTER_DATE' -ErrorAction SilentlyContinue
+    }
 
     $resolved = Get-BaseRefAtBranchCreation -RepoRoot $repo -Branch 'feat-base-probe' -MainRef 'main'
     Assert-True ($resolved -eq $mainBefore) 'The base position must be where main stood before the branch was created, not after.'
@@ -306,14 +310,17 @@ try {
     $mergeParents = (Invoke-TestGit $repo @('rev-list', '--min-parents=2', '--format=%P', 'main')) -join ' '
     Assert-True ($mergeParents -match [regex]::Escape($donorTip)) 'Sanity check: the donor branch must already be a merged non-first parent.'
 
-    # Two seconds of separation, so the victim's creation stamp is strictly later than main's move.
-    # Ref-log stamps have one-second resolution. Without this the fixture can build everything
-    # inside one second, Get-BaseRefAtBranchCreation correctly reports that it cannot answer, and
-    # signal 5 is skipped -- so the test would fail while proving nothing.
-    Start-Sleep -Seconds 2
-
-    $victimPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-ff-victim' -NoCommits -BaseRef 'main^'
-    Invoke-TestGitWithReflogAction -RepoDir $victimPath -Action 'commit' -GitArgs @('merge', '--ff-only', $donorTip) | Out-Null
+    # A fixed committer date in the future, so the victim's creation stamp is strictly later than
+    # main's move. Ref-log stamps have one-second resolution. Without this the fixture can build
+    # everything inside one second, Get-BaseRefAtBranchCreation correctly reports that it cannot
+    # answer, and signal 5 is skipped -- so the test would fail while proving nothing.
+    $env:GIT_COMMITTER_DATE = '2030-01-01T00:00:00+00:00'
+    try {
+        $victimPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-ff-victim' -NoCommits -BaseRef 'main^'
+        Invoke-TestGitWithReflogAction -RepoDir $victimPath -Action 'commit' -GitArgs @('merge', '--ff-only', $donorTip) | Out-Null
+    } finally {
+        Remove-Item -LiteralPath 'Env:\GIT_COMMITTER_DATE' -ErrorAction SilentlyContinue
+    }
 
     $entries = (Invoke-TestGit $repo @('reflog', 'show', '--format=%H %gs', 'refs/heads/feat-ff-victim')) -join "`n"
     Assert-True ($entries -match '(?m)commit: Fast-forward') 'Sanity check: the fast-forward must really have written a forged "commit:" subject.'
