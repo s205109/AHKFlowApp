@@ -643,3 +643,226 @@ audit changed, and of `GateEvidence.Tests.ps1`, from the final-revision run abov
 
 `TestFastPowerShellMode.Tests.ps1` warned in 7 runs but was not audited, so its baseline is
 unchanged.
+
+## Backlog 195
+
+Backlog 195 applied or rejected the deferred rows of four Suites. Each Suite ran alone with
+`scripts/run-powershell-suites.ps1 -Suite <file>`: one warm-up run, then three counted runs. The
+numbers below are the medians of the counted runs, in seconds. A run that printed "Sharing the
+test Lane pool with:" would not count. No run printed it.
+
+### Final Suite time, run alone
+
+These after measurements cover the final code, at `2b527da5`. That includes the second review
+round: the installed-jq shim runs and the reused-fixture checks. Each Suite had one warm-up and
+three counted runs. No run shared the Lane pool.
+
+| Suite | Historical before (s) | Final counted runs (s) | Final median (s) |
+|---|---|---|---|
+| `WatchTask.Tests.ps1` | 42.0 | 27.9, 29.0, 27.5 | 27.9 |
+| `CiPowerShellSuiteRunner.Tests.ps1` | 113.4 | 82.0, 82.2, 87.3 | 82.2 |
+| `StageTransition.Tests.ps1` | 92.8 | 75.4, 72.7, 69.6 | 72.7 |
+| `AgentWorktreeGuard.Tests.ps1` | 42.6 | 47.4, 46.4, 45.9 | 46.4 |
+
+The before sets come from the original task measurements, on earlier machine load.
+They provide historical context, not a controlled measurement of this recovery's saving.
+These medians replace two earlier sets from earlier code: 31.2, 82.0, 65.5 and 38.6 s, then
+28.3, 78.2, 68.4 and 44.9 s at `4989055f`. AgentWorktreeGuard is higher than both, because
+it gained the shim coverage repairs and the installed-jq runs.
+The original samples and discarded drifted sets remain in commit a539e7db.
+The samples are saved locally in `.superpowers/review4-medians.json` and matching logs.
+
+### Changes timed on their own
+
+A change timed on its own had a stopwatch around the code it touched. The Suite printed the
+stopwatch at its end, and the stopwatch was never committed. The three runs after one change are
+the before set of the next change. A change stays only when its median fell by 1 s or more.
+
+| Suite | Change | Rows | Before | After | Verdict |
+|---|---|---|---|---|---|
+| `WatchTask` | W-A: run the script in this process | 71, 72, 75, 76, 87 to 90 | 9.06 | 1.91 | kept |
+| `WatchTask` | W-B: `Start-ThreadJob` in all 15 job cases | 73, 77 to 86 | 26.32 | 21.90 | kept |
+| `WatchTask` | W-C: cap the stubbed 500 ms sleeps at 50 ms | 70, 74 | 4.54 | 1.41 | kept |
+| `CiPowerShellSuiteRunner` | C-B: runs that fail before any Suite run in this process | 37, 42, 43, 44, 48 to 52 | 6.96 | 0.82 | kept |
+| `CiPowerShellSuiteRunner` | C-A: `Resolve-SuiteWorkerCount`, its cases, and two runner runs kept | 31, 32, 34, 35 | 11.19 | 3.47 | kept |
+| `StageTransition` | S-A: the loop skips four edges that named cases prove | 53 | 23.69 | 19.83 | superseded; rejected after recovery |
+| `StageTransition` | S-B: four driver refusals run on `$fx` | 54, 56, 60, 69 | 2.86 | 0.52 | kept |
+| `StageTransition` | S-C: six round cases run on `$rd` | 61, 62, 63, 65, 66, 67 | 6.69 | 2.22 | kept |
+| `AgentWorktreeGuard` | G-A: seven decision loops run inside the probe memo | 20, 21, 23 to 27 | 4.02 | 1.62 | kept |
+
+The W-B stopwatch read 24.29 s in the first before set, and 26.32 s after W-A. Its cases did not
+change in between, so the difference is machine drift. Both numbers are more than 1 s above its
+after median. The C-A stopwatch read 12.66 s in the first before set, and 11.19 s after C-B, for
+the same reason. The S-B stopwatch read 2.40 s in the first before set and 2.86 s after S-A. The
+S-C stopwatch read 7.25 s, then 6.93 s, then 6.69 s. Each is more than 1 s above its after
+median either way.
+
+The G-A row comes from the back-to-back pair at the end. Its first pair read 13.01 s before and
+2.36 s after, but the machine sped up between the two sets, so that pair overstates the gain.
+Even at the slow speed, the first after run read 3.39 s.
+
+The review replaced the entry-point helpers with fresh runspaces. The original helper timings
+above are historical. A new comparison ran the actual affected cases in focused Suite slices.
+Only the invocation helper was timed. Fixtures and assertions were identical for both variants.
+Each variant had one warm-up and three counted runs, back to back.
+
+| Calls | Child-process samples (s) | Runspace samples (s) | Child median | Runspace median | Verdict |
+|---|---|---|---|---|---|
+| WatchTask entry points | 10.255, 9.904, 9.878 | 1.759, 1.790, 1.778 | 9.904 | 1.778 | kept; saving exceeds 1 s |
+| Runner pre-suite refusals | 5.266, 5.300, 5.425 | 0.959, 0.933, 0.924 | 5.300 | 0.933 | kept; saving exceeds 1 s |
+
+The runner comparison includes the retained bad-environment-value entry point and the C-B cases.
+Its first child warm-up was discarded: the scratch wrapper returned zero for a binding error.
+After fixing that wrapper, the complete runner comparison restarted before any samples counted.
+The WatchTask child cases did not hit that wrapper defect.
+No timing instrumentation is present in tracked code.
+
+### Mutations
+
+Each mutation changed one line of a script and was undone with `git checkout`.
+
+- `WatchTask`: the no-files path in `scripts/watch-task.ps1` returns 0. Only "No files: exit code
+  must be 1, got 0" failed. So a run in this process still passes its exit code to the case.
+- `WatchTask`: the unfinished-tail branch of `Show-Tail` never runs. Both "No final newline"
+  assertions failed.
+- `WatchTask`: the UTF-8 switch before `git worktree list` is gone. Only "Accented worktree"
+  failed, which now sits in the checkout-preference case.
+- `WatchTask`: the follow loop asks for the task state only after a pass read new text. The
+  reworked same-size case failed with "the watcher must still stop, but it was running after
+  25s". The old version of the case passed under the same mutation.
+- `WatchTask`: the state check that ends the follow loop never runs. The old and the new same-size
+  case both failed. The whole Suite cannot run under this mutation, because the read-retry case
+  starts a child with no timeout, and that child never ends. Both cases ran alone instead.
+- `CiPowerShellSuiteRunner`: the runner uses 1 in place of the count from
+  `Resolve-SuiteWorkerCount`. Eight cases failed, among them "An explicit -MaxParallel is named
+  on the Workers line".
+- `CiPowerShellSuiteRunner`: the runner passes `-MaxParallel ''` and no `-MaxParallelGiven`. Five
+  cases failed, among them the Workers-line case and "A -MaxParallel that is not a whole number of
+  at least one fails the run".
+- `CiPowerShellSuiteRunner`: the runner passes `-EnvMaxParallel $null`. Two cases failed: "A bad
+  AHKFLOW_SUITE_MAX_PARALLEL fails the run and names the variable" and "Only the adaptive default
+  asks the machine about its hardware".
+- `CiPowerShellSuiteRunner`: the runner leaves out `-InActions`. Two cases failed: "A run inside
+  GitHub Actions uses every logical processor" and the hardware-probe case.
+- `CiPowerShellSuiteRunner`: the runner's whole `Error` branch is gone, so a refused value carries
+  on with a count of 0. Exactly two cases failed: the bad-variable case and the `-MaxParallel`
+  value loop. Both runs still ended with exit code 1, from a later error. Only the missing message
+  told them apart, so the cases must keep asserting the message.
+
+Four small changes narrow a check, so each also ran on a scratch slice of the Suite that held only
+the changed case:
+
+- Row 36: when either Lane catch path returns no result, the merged case fails with "got 1". The
+  runner still prints `FAILED:` for both Suites through its missing-result fallback, so the case
+  counts the catch-path message once per Suite.
+- Row 39: with de-duplication removed from `Select-SuiteEntry`, the in-process case fails with
+  "Got: Alpha.Tests.ps1,Alpha.Tests.ps1".
+- Row 40: with group markers printed outside GitHub Actions too, the Workers-line case fails.
+- Row 41: with a timings save after each Suite, the watcher fails with "The timings file existed
+  while a suite was still running", at the then-current 500 ms grace. Review restored 1500 ms for scheduling tolerance.
+
+Two more mutations changed `Resolve-TransitionTarget` in `scripts/stage-transition.common.ps1`:
+
+- `StageTransition`: four edges return `5-simplify`: 2-design success, 6-verify failure, 8-review
+  success and 9-ship failure. The whole Suite cannot run under this mutation. The old Ship case
+  reads a gh log that the mutated Ship never writes, and that `Get-Content` error stops the Suite
+  before three of the four named cases run. So the four named cases ran alone, as a slice. Each
+  one failed: "Design success must write 3-plan into the item", "Verify failure must target
+  4-execute", "A Ship with no PLAN-PROGRESS.md must write 9-ship" and "A Ship failure must set
+  6-verify".
+- `StageTransition`: only 9-ship failure returns `5-simplify`. Under the first mutation, the
+  9-ship failure case's own setup Ship is mutated too. Alone, exactly one assertion failed: "A
+  Ship failure must set 6-verify".
+
+After review, rows 62 and 67 also assert their exact refusal text. Two mutations of
+`Invoke-RoundTransition` in `scripts/take-stage-transition.ps1` proved it, each on a slice. One
+refused every round before the evidence check, and the other refused it after the pull request
+check. Under each, only the new text assertion of its own case failed. The old exit-code and body
+assertions passed under both.
+
+The `AgentWorktreeGuard` mutations changed `scripts/agents/invoke-agent-worktree-guard.ps1` or
+`.claude/hooks/pre-bash-guard.sh`. Each was undone by writing back the file's saved bytes.
+
+- Row 22: the Claude run left "Allow paths emit no JSON on any adapter", and the Claude Bash
+  Allow exit printed `{}` before `exit 0`, on the same line. Only "Unknown decision action fails
+  closed, verified structurally on every adapter branch" failed. That case only looks for the
+  text of the Allow line, and this mutation changed that text. A second mutation kept the line
+  and printed `{}` on the line before it. The whole Suite passed, so row 22 was rejected.
+- Row 28: the raw prefilter got the same leading boundary as `CANDIDATE_PATTERN`. With the old
+  payload, which held a literal `&&`, the case passed. With `\u0026\u0026`, "Bash shim forwards a
+  payload whose metacharacters are unicode-escaped" failed. Both ran on a slice of the Suite.
+- Rows 102 to 104: one pattern at a time was set to `.`, which matches every input. With both
+  candidate patterns changed, all three reworked cases failed. With `WORKTREE_SESSION_PATTERN`
+  changed, only "Shim: a main-session redirect still exits in Bash" failed. With
+  `WRITE_CANDIDATE_PATTERN` changed, only "Shim: a worktree-session read still exits in Bash"
+  failed. These ran on a slice of the Suite.
+- Rows 102 to 104, after review: two more mutations made the shim print at both of its early
+  exits. With `{}` on stdout, the main-session redirect case and the worktree-session read case
+  failed. With a line on stderr, the noncandidate case failed. Before the review fix, all three
+  cases passed under both mutations.
+
+### Earlier recovery evidence
+
+The earlier Gate tables are superseded. Their complete results remain in commit a539e7db.
+Those Gates passed, but shared the Lane pool with other worktrees.
+They do not supply the current quiet-Gate baselines.
+
+The first recovery controlled jq availability and restored the existing-progress Ship-failure case.
+The latter starts without closure history and must preserve the existing progress prefix.
+Focused mutations caught a wrong Copilot adapter, read forwarding, and removal of the existing-progress guard.
+Production files were restored byte-for-byte after each probe.
+
+### Final S-A verdict after recovery
+
+At 4b9244eb, the current loop ran alone against the same loop with the skip disabled.
+Both versions retained the new existing-progress assertions. Each had one warm-up and three counted runs.
+A scratch Stopwatch covered the loop; no tracked source contained timing instrumentation.
+
+| Variant | Warm-up | Counted runs (s) | Median (s) |
+|---|---|---|---|
+| All legal edges | 23.819 | 24.307, 23.813, 23.423 | 23.813 |
+| Three skipped edges | 19.956 | 19.414, 22.814, 24.483 | 22.814 |
+
+Saving: 0.999 s. D2 requires at least 1 s, so row 53 is rejected.
+The after set drifted upward; it is not evidence for rounding the saving up or keeping the change.
+The skip table and skip condition are removed. Every legal edge runs again.
+Existing-progress success and preservation assertions remain.
+Earlier S-A and isolated Suite timings are historical measurements of earlier revisions.
+
+### Current review recovery
+
+Final isolated medians are recorded above.
+
+The full Gate ran at `2b527da5` with `AHKFLOW_GATE_REUSE=off`. All five steps passed: all 73
+Suites, and 94.8% line and 83.2% branch coverage. Another worktree shared the Lane pool during
+its PowerShell step, so its Suite durations are not used. The PowerShell step then ran again on
+its own, at the same revision and with reuse off. The first retry also shared the pool and was
+discarded. The second retry shared nothing, and all 73 Suites passed.
+
+`baselineSeconds` in `tests/powershell-suites.json` now holds that quiet run's durations:
+
+| Suite | Before 195 | After 195 |
+|---|---|---|
+| `AgentWorktreeGuard.Tests.ps1` | 86.7 | 89.7 |
+| `CiPowerShellSuiteRunner.Tests.ps1` | 150.6 | 130.4 |
+| `StageTransition.Tests.ps1` | 136.6 | 127.6 |
+| `WatchTask.Tests.ps1` | 70.2 | 49.0 |
+
+A Gate duration is one run among six parallel workers, so it is higher than a median taken alone.
+The logs are saved locally in `.superpowers/review4-gate.log` and
+`.superpowers/review4-quiet-powershell-2.log`.
+The production worker-count contract is unchanged. Row 41 is now rejected: the 1500 ms watcher grace is restored.
+
+Fresh recovery proofs:
+
+- Output-discard and caller-variable-inheritance mutations fail the durable runspace regression case.
+- Redirecting the fixture back to the real summary fails the environment-isolation case.
+- Omitting the second exclusive or parallel entry produces only three acquisition errors; the case requires four.
+- Saving immediately after the first completed Suite fails the watcher's runtime ordering assertion at 1500 ms.
+- An injected NoFollow throw records failures in both cases; execution reaches the end of the slice.
+- The validation error ID is stable under en-US, nl-NL, and de-DE.
+- Bypassing either parsed shim condition fails the corrected cases.
+- Making jq's empty extraction succeed fails the Auto-forwarding case.
+
+The new common helper loads in Windows PowerShell 5.1. All four final Suites passed their timing runs.
+The worker-count API and production scripts are unchanged by this recovery.

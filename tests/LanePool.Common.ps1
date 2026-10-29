@@ -18,13 +18,33 @@ function Remove-PinnedLanePool {
 
 function Get-RunLaneCount { param($Pool); (Get-AhkFlowHeldLaneCount -PoolRoot $Pool.Root) - 1 }
 
+# Sets each named process environment variable for the length of Action, then puts back the value
+# it had before. A $null or empty value removes the variable. Only the named keys are touched.
+# It lives here, not in a file of its own, because fixtures copy this file alone.
+function Invoke-WithEnvironment {
+    param([hashtable] $EnvVar = @{}, [Parameter(Mandatory)][scriptblock] $Action)
+
+    $previous = @{}
+    try {
+        foreach ($name in $EnvVar.Keys) {
+            $previous[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
+            $value = if ($null -eq $EnvVar[$name]) { $null } else { [string] $EnvVar[$name] }
+            [Environment]::SetEnvironmentVariable($name, $value, 'Process')
+        }
+        & $Action
+    } finally {
+        foreach ($name in $previous.Keys) {
+            [Environment]::SetEnvironmentVariable($name, $previous[$name], 'Process')
+        }
+    }
+}
+
+# Clears every Lane variable, then sets the given ones. Invoke-WithEnvironment restores them all.
 function Use-LaneEnvironment {
     param([hashtable] $Value = @{}, [Parameter(Mandatory = $true)][scriptblock] $Body)
-    $names = @('AHKFLOW_TEST_LANES', 'AHKFLOW_TEST_LANES_HOLDER', 'AHKFLOW_TEST_LANES_ROOT')
-    $saved = @{}
-    foreach ($name in $names) { $saved[$name] = [Environment]::GetEnvironmentVariable($name, 'Process'); [Environment]::SetEnvironmentVariable($name, $null, 'Process') }
-    try { foreach ($name in $Value.Keys) { [Environment]::SetEnvironmentVariable($name, [string]$Value[$name], 'Process') }; & $Body }
-    finally { foreach ($name in $names) { [Environment]::SetEnvironmentVariable($name, $saved[$name], 'Process') } }
+    $environment = @{ AHKFLOW_TEST_LANES = $null; AHKFLOW_TEST_LANES_HOLDER = $null; AHKFLOW_TEST_LANES_ROOT = $null }
+    foreach ($name in $Value.Keys) { $environment[$name] = $Value[$name] }
+    Invoke-WithEnvironment -EnvVar $environment -Action $Body
 }
 
 function ConvertTo-LaneEncodedCommand([string] $Text) {

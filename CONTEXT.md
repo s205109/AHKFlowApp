@@ -283,6 +283,11 @@ One `tests/*.Tests.ps1` file. The runner starts each Suite as its own process an
 once, so one Suite's failure cannot stop another. `tests/powershell-suites.json` lists every Suite.
 _Avoid_: test file, test script, spec, run
 
+**Suite time**:
+The seconds one Suite takes when it runs alone on a machine that is doing nothing else. The same
+Suite takes longer inside a Gate, because there it shares the machine with other Suites.
+_Avoid_: runtime, duration, Gate time
+
 **Slice**:
 One .NET test project plus the trait filter the runner applies to it. `AHKFlowApp.CLI.Tests` with
 `Category!=Integration` is one Slice, and the same project with `Category=Integration` is a

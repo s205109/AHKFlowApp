@@ -198,53 +198,24 @@ if ($reuseOn) {
 
 $suites = @($selected | ForEach-Object { $byName[$_.Name] })
 
-# Reading the variable's text here does not settle precedence - the branches below do, in order.
-# "An explicit value wins over the variable" has to mean this: validating the variable's text
-# before the -MaxParallel branch is checked would fail the run on a value the caller has already
-# overridden. A blank or whitespace variable is no value, so it falls through to the default.
-$envMaxParallel = $env:AHKFLOW_SUITE_MAX_PARALLEL
-$hasPhysicalCoreCount = $false
-
 # Backlog 145. Get-DefaultSuiteWorkerCount in suite-worker-count.common.ps1 carries the measurement
 # behind the 75%, the reason a hosted runner takes every processor instead, and the reason an
-# unreadable core count falls back to the old rule.
+# unreadable core count falls back to the old rule. Resolve-SuiteWorkerCount there is the one
+# chain, highest precedence first, and only its last branch looks at the hardware.
 #
-# One chain, highest precedence first, and only the last branch looks at the hardware.
-if ($PSBoundParameters.ContainsKey('MaxParallel')) {
-    $parsedMaxParallel = 0
-    if (-not [int]::TryParse($MaxParallel.Trim(), [ref] $parsedMaxParallel) -or $parsedMaxParallel -lt 1) {
-        Write-Failure "-MaxParallel must be a whole number of at least one. Got: '$MaxParallel'"
-        exit 1
-    }
-    $workerCount = $parsedMaxParallel
-    $workerSource = '-MaxParallel'
-} elseif (-not [string]::IsNullOrWhiteSpace($envMaxParallel)) {
-    $parsedMaxParallel = 0
-    if (-not [int]::TryParse($envMaxParallel.Trim(), [ref] $parsedMaxParallel) -or $parsedMaxParallel -lt 1) {
-        # Falling back to the default here would hide a misconfigured CI job for months.
-        Write-Failure "AHKFLOW_SUITE_MAX_PARALLEL must be a whole number of at least one. Got: '$envMaxParallel'"
-        exit 1
-    }
-    $workerCount = $parsedMaxParallel
-    $workerSource = 'AHKFLOW_SUITE_MAX_PARALLEL'
-} elseif ($inActions) {
-    $workerCount = Get-DefaultSuiteWorkerCount -PhysicalCoreCount 0 -AllProcessors
-    $workerSource = "GitHub Actions: all $([Environment]::ProcessorCount) logical processors"
-} else {
-    # Adaptive Worker sizing queries hardware here. Owners reuse this result for their Lane proposal.
-    # Overrides skip this query; only an owner still needs a proposal below.
-    $physicalCoreCount = Get-PhysicalCoreCount
-    $hasPhysicalCoreCount = $true
-    $logicalProcessorCount = [Environment]::ProcessorCount
-
-    $workerCount = Get-DefaultSuiteWorkerCount -PhysicalCoreCount $physicalCoreCount -LogicalProcessorCount $logicalProcessorCount
-    $workerSource = 'default: ' + (Get-DefaultSuiteWorkerReason -PhysicalCoreCount $physicalCoreCount -LogicalProcessorCount $logicalProcessorCount)
+# Passing the variable's text does not settle precedence - the function's branches do, in order.
+$sizing = Resolve-SuiteWorkerCount -MaxParallel $MaxParallel -MaxParallelGiven:($PSBoundParameters.ContainsKey('MaxParallel')) -EnvMaxParallel $env:AHKFLOW_SUITE_MAX_PARALLEL -InActions:$inActions
+if ($null -ne $sizing.Error) {
+    Write-Failure $sizing.Error
+    exit 1
 }
+$workerCount = $sizing.Count
+$workerSource = $sizing.Source
 
 $laneProposal = 0
 if ($laneRole -eq 'owner') {
-    $laneProposal = if ($hasPhysicalCoreCount) {
-        Get-AhkFlowLaneProposal -PhysicalCoreCount $physicalCoreCount
+    $laneProposal = if ($null -ne $sizing.PhysicalCoreCount) {
+        Get-AhkFlowLaneProposal -PhysicalCoreCount $sizing.PhysicalCoreCount
     } else {
         Get-AhkFlowLaneProposal
     }
