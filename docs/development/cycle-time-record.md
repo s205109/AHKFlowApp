@@ -897,8 +897,8 @@ pool. A D2 time comes from a temporary stopwatch that was never committed.
   | Sum | 16.76 | 6.82 |
 
   Kept: the sum fell by 9.94 s. The Suite medians in the same runs were 25.3 s, 31.9 s and
-  37.4 s. Only `WorktreeMergedCleanup` fell as a whole Suite. In the other two, the time each
-  run spends in child processes varies by more than the 2 to 3 s that T-A saves there.
+  37.4 s. Only `WorktreeMergedCleanup` fell as a whole Suite. The other two did not: their counted
+  runs spread over 28.5 to 32.0 s and 34.3 to 38.6 s, wider than the 2 to 3 s that T-A saves there.
 
 ### Mutations
 
