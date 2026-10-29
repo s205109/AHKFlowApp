@@ -1010,3 +1010,54 @@ pool. A D2 time comes from a temporary stopwatch that was never committed.
   the same error. Its cause is the one in issue #468: on Linux the stub's runs round to 0.00 s, so
   the median is 0. No file under `scripts/`, and not this Suite, differs from `main`, so the cause
   lies outside this item. It stays in the before list as a `FAIL` line, as a baseline exception.
+- The three Linux-capable Suites at the Gate revision,
+  `c68c321be6e9876fa302ff1730fa1162b1689895`. Log
+  `.superpowers/201-linux/linux-c68c321b-20261029-205611.log`. Same image, kernel, PowerShell and
+  git as above. The runner printed "Platform: linux". `BacklogStaleOpen` passed in 5.3 s, and
+  `WorktreeMergedCleanup` passed in 6.3 s. `MeasureTestModes` failed only on the known case, with
+  the known error, so `LINUX_EXIT=1`. Compared with the before list, the case list shows three
+  lines:
+  - `<=` `PASS Soak mode holds the lock for every repetition`, removed by row 134.
+  - `<=` `PASS A failing soak run is counted and named, and the soak still finishes`, removed by
+    row 135.
+  - `The discarded runs are printed, with how many there were` went from `FAIL` to `PASS`. This is
+    the issue #468 case, whose result depends on timing. The baseline exception of Task 7 covers
+    it, so it is not a failure of this item.
+
+### Gate at Verify
+
+The Gate passed at `c68c321be6e9876fa302ff1730fa1162b1689895`, with `AHKFLOW_GATE_REUSE=off`.
+It printed "Gate evidence: off (AHKFLOW_GATE_REUSE=off)" and no `REUSED` line, with
+`Workers: 6`. All 73 Suites passed, and so did build, format, Coverage and `git diff --check`.
+
+Two earlier Gate runs failed on `CitationFreshness`, and each took the failure edge back to
+Execute:
+
+- At `3d113d68`: R-B moved lines that `backlog/done/137` cites. Recovery task R1 re-pointed them.
+  The final review's date finding went into the same round as R2.
+- At `db2d938c`: the first failure record quoted those old citations word for word. Recovery task
+  R3 marked the two quoted lines with `citation-check:ignore`.
+
+The seconds of each changed Suite at `c68c321b`:
+
+| Suite | Seconds |
+|---|---|
+| `BacklogStaleOpen.Tests.ps1` | 27.8 |
+| `MeasureTestModes.Tests.ps1` | 64.5 |
+| `WorktreeMergedCleanup.Tests.ps1` | 44.6 |
+| `WorktreeMergedCleanupEligibility.Tests.ps1` | 49.9 |
+| `WorktreeMergedCleanupSweep.Tests.ps1` | 41.8 |
+| `WorktreeSweepRemoteBase.Tests.ps1` | 42.6 |
+
+### Baselines refreshed
+
+`baselineSeconds` in `tests/powershell-suites.json`, from the Gate above. Commit `12e8422f`.
+
+| Suite | Old | New |
+|---|---|---|
+| `BacklogStaleOpen.Tests.ps1` | 41.0 | 27.8 |
+| `MeasureTestModes.Tests.ps1` | 68.9 | 64.5 |
+| `WorktreeMergedCleanup.Tests.ps1` | 55.9 | 44.6 |
+| `WorktreeMergedCleanupEligibility.Tests.ps1` | 65.0 | 49.9 |
+| `WorktreeMergedCleanupSweep.Tests.ps1` | 52.0 | 41.8 |
+| `WorktreeSweepRemoteBase.Tests.ps1` | 55.6 | 42.6 |
