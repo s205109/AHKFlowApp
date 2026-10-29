@@ -19,3 +19,18 @@ Plan: `docs/superpowers/plans/2026-10-29-apply-the-deferred-git-fixture-test-spe
 - Recovery task R1: update the seven citations of that paragraph to the current lines.
 - Recovery task R2, from the final review: the S-A committer date `2030-01-01` stops being in the
   future on that date, and both S-A cases then fail. Derive the date from the current time.
+
+## Failure edge to 4-execute (2026-10-29)
+
+**Red evidence:**
+
+```
+$env:AHKFLOW_GATE_REUSE = 'off'; pwsh .\scripts\test-fast.ps1 -Mode PowerShell   (at 3d113d68)
+**1 of 73 suite(s) failed:** CitationFreshness.Tests.ps1
+This repository must hold no stale citation, found 2:
+  backlog/done/137-powershell-worktree-suites-fail-13b421fb.md:68 tier 2: (`tests/WorktreeSweepRemoteBase.Tests.ps1:478`, "Test-Path -LiteralPath '$parentMarkerObserved'") does not match, and the text is on lines 519, 520.
+  backlog/done/137-powershell-worktree-suites-fail-13b421fb.md:76 tier 2: (`tests/WorktreeSweepRemoteBase.Tests.ps1:510`, "foreach ($id in @($parent.Id, $childId))") does not match, and the text is on lines 545, 551.
+```
+
+**Recovery task:** R1: re-point the backlog/done/137 citations that R-B moved (committed as 660915b1). R2: derive the S-A committer date from the current time, so it never falls behind the seed commit (final review, Important 1).
+
