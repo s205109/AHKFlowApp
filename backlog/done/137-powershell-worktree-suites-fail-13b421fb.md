@@ -64,16 +64,16 @@ temporary paths overlap.
 
 `WorktreeSweepRemoteBase.Tests.ps1` used to wait only until a process marker path existed. The
 fixture now makes that race deterministic. It creates the empty marker
-(`tests/WorktreeSweepRemoteBase.Tests.ps1:476`, "New-Item -ItemType File -Path"), then waits for
-the parent-observation signal (`tests/WorktreeSweepRemoteBase.Tests.ps1:478`, "Test-Path -LiteralPath '$parentMarkerObserved'") before writing the PID
-(`tests/WorktreeSweepRemoteBase.Tests.ps1:482`, "Set-Content -LiteralPath '$parentMarker'"). The
+(`tests/WorktreeSweepRemoteBase.Tests.ps1:528`, "New-Item -ItemType File -Path"), then waits for
+the parent-observation signal (`tests/WorktreeSweepRemoteBase.Tests.ps1:530`, "Test-Path -LiteralPath '$parentMarkerObserved'") before writing the PID
+(`tests/WorktreeSweepRemoteBase.Tests.ps1:534`, "Set-Content -LiteralPath '$parentMarker'"). The
 old path-only wait could read `$null` and call `.Trim()`, which produced the exact CI error. The
-fixed wait reads the content (`tests/WorktreeSweepRemoteBase.Tests.ps1:489`, "$markerValue = Get-Content -Raw -LiteralPath $parentMarker -ErrorAction SilentlyContinue") and accepts only a
-positive parsed PID (`tests/WorktreeSweepRemoteBase.Tests.ps1:491`, "[int]::TryParse([string] $markerValue, [ref] $candidateChildId)"). It signals that the empty marker was observed before
-the child can continue (`tests/WorktreeSweepRemoteBase.Tests.ps1:496`, "Set-Content -LiteralPath $parentMarkerObserved -Value 'observed'").
+fixed wait reads the content (`tests/WorktreeSweepRemoteBase.Tests.ps1:541`, "$markerValue = Get-Content -Raw -LiteralPath $parentMarker -ErrorAction SilentlyContinue") and accepts only a
+positive parsed PID (`tests/WorktreeSweepRemoteBase.Tests.ps1:543`, "[int]::TryParse([string] $markerValue, [ref] $candidateChildId)"). It signals that the empty marker was observed before
+the child can continue (`tests/WorktreeSweepRemoteBase.Tests.ps1:548`, "Set-Content -LiteralPath $parentMarkerObserved -Value 'observed'").
 
 The failure cleanup also stops both known process IDs
-(`tests/WorktreeSweepRemoteBase.Tests.ps1:510`, "foreach ($id in @($parent.Id, $childId))"). An
+(`tests/WorktreeSweepRemoteBase.Tests.ps1:562`, "foreach ($id in @($parent.Id, $childId))"). An
 early assertion can no longer leave the fixture child running until its own timeout.
 
 `WorktreeRemoveHook.Tests.ps1` used to wait only until the worktree folder was gone

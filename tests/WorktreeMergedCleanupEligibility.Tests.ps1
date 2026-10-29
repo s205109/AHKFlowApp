@@ -18,6 +18,9 @@ $env:AHKFLOW_SKIP_ORPHAN_PRUNE = '1'
 
 . (Join-Path $PSScriptRoot 'WorktreeMergedCleanup.Common.ps1')
 
+# A failed run must not leave the seed repositories in the temp folder. Backlog 201.
+trap { Remove-TempGitRepoSeeds -NoCheck; break }
+
 # --- Test: eligibility matrix -------------------------------------------------
 $repo = New-TempGitRepo
 try {
@@ -41,6 +44,31 @@ try {
     Assert-Equal 'feat-clean' $eligible[0].Branch 'Eligible branch short name should be feat-clean.'
     $mainKey = ConvertTo-Key $repo
     Assert-True (-not ($keys -contains $mainKey)) 'The main checkout must never be eligible.'
+
+    # ExcludePath protects the worktree this run is about to create/reuse. The matrix above
+    # already proved feat-clean eligible, so passing it as -ExcludePath must remove it from the
+    # eligible set: a run that is about to create/reuse this exact path can never race its own
+    # async removal. Backlog 201 moved this check into the matrix fixture.
+    $excluded = Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'main' -ExcludePath $cleanPath
+    $excludedKeys = @($excluded | ForEach-Object { ConvertTo-Key $_.Path })
+    Assert-True (-not ($excludedKeys -contains (ConvertTo-Key $cleanPath))) '-ExcludePath must exclude the target worktree even though it is merged+clean.'
+
+    # Redirected non-interactive runs skip removal without prompting. Backlog 201 moved this run
+    # into the matrix fixture. It is report-only, so it changes nothing the checks above read.
+    $run = Invoke-CleanupChild -RepoDir $repo
+
+    Assert-Equal 0 $run.ExitCode "cleanup-merged-worktrees.ps1 non-interactive path should exit 0. Stderr: $($run.Stderr)"
+
+    $stdout = $run.Stdout
+    Assert-True ([string]::IsNullOrWhiteSpace($stdout)) "Non-interactive cleanup must not write to stdout. Got: $stdout"
+
+    $stderrText = $run.Stderr
+    Assert-True ($stderrText -match 'cleanup: eligible merged worktree') "Expected cleanup detection output on stderr. Stderr: $stderrText"
+    Assert-True ($stderrText -match 'cleanup: report-only; nothing removed\.') "Expected non-interactive report-only output on stderr. Stderr: $stderrText"
+
+    Assert-True (Test-Path -LiteralPath $cleanPath) 'Non-interactive cleanup without -Cleanup must not remove the eligible worktree folder.'
+    $branches = (Invoke-TestGit $repo @('branch', '--list', 'feat-clean')) -join "`n"
+    Assert-True ($branches -match 'feat-clean') 'Non-interactive cleanup without -Cleanup must not delete the eligible branch.'
 } finally {
     Remove-TempTree $repo
 }
@@ -70,84 +98,28 @@ try {
 # Assert-MainCheckout gate) resolves $RepoRoot to that linked worktree, not the real main
 # checkout. Since `git branch --merged main` always includes `main` itself, the path-based
 # exclusion alone previously let the main checkout slip into the eligible set.
+#
+# Main is never eligible anyway: when the exclusion fails, the merged check refuses main by
+# signal 2, and the sweep writes a 'Kept:' line for it to the outcome log under -RepoRoot. So
+# the check that can fail is that the log holds no line for the main checkout, whose folder is
+# named 'repo'. A log line reads '<date> <time>  <worktree leaf>  <message>'. Backlog 201.
+#
+# The second call proves -MainRef 'refs/heads/main' excludes main the same way -MainRef 'main'
+# does. $wt.Branch is always a short name, so a naive string compare against an unresolved
+# 'refs/heads/main' never matches.
 $repo = New-TempGitRepo
 try {
     $otherPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-other'
+    $outcomeLog = Join-Path (Join-Path (Join-Path $otherPath '.claude') 'worktrees') 'worktree-removal.log'
 
-    $eligible = Get-EligibleMergedWorktrees -RepoRoot $otherPath -MainRef 'main'
-    $keys = @($eligible | ForEach-Object { ConvertTo-Key $_.Path })
-
-    Assert-True (-not ($keys -contains (ConvertTo-Key $repo))) 'The main-ref worktree must never be eligible, even when $RepoRoot is a different (linked) worktree.'
-} finally {
-    Remove-TempTree $repo
-}
-
-# --- Test: main-ref exclusion matches a fully-qualified -MainRef too ------------
-# Regression guard: -MainRef 'refs/heads/main' must exclude the main checkout the same
-# way -MainRef 'main' does. $wt.Branch is always a short name, so a naive string compare
-# against an unresolved 'refs/heads/main' never matches.
-$repo = New-TempGitRepo
-try {
-    Add-TestWorktree -RepoDir $repo -BranchName 'feat-other' | Out-Null
-
-    $eligible = Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'refs/heads/main'
-    $keys = @($eligible | ForEach-Object { ConvertTo-Key $_.Path })
-
-    Assert-True (-not ($keys -contains (ConvertTo-Key $repo))) 'The main-ref worktree must never be eligible when -MainRef is the fully-qualified refs/heads/main form.'
-} finally {
-    Remove-TempTree $repo
-}
-
-# --- Test: ExcludePath protects the worktree this run is about to create/reuse ---
-$repo = New-TempGitRepo
-try {
-    $targetPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-target'
-
-    # Without exclusion the target itself would be eligible (merged + clean)...
-    $eligible = Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'main'
-    Assert-True ((@($eligible | ForEach-Object { ConvertTo-Key $_.Path })) -contains (ConvertTo-Key $targetPath)) 'Sanity check: the target worktree must be eligible before exclusion is applied.'
-
-    # ...but passing -ExcludePath must remove it from the eligible set, so a run that is
-    # about to create/reuse this exact path can never race its own async removal.
-    $excluded = Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'main' -ExcludePath $targetPath
-    $excludedKeys = @($excluded | ForEach-Object { ConvertTo-Key $_.Path })
-    Assert-True (-not ($excludedKeys -contains (ConvertTo-Key $targetPath))) '-ExcludePath must exclude the target worktree even though it is merged+clean.'
-} finally {
-    Remove-TempTree $repo
-}
-
-# --- Test: redirected non-interactive runs skip removal without prompting -------
-$repo = New-TempGitRepo
-try {
-    $skipPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-noninteractive'
-
-    $stdinFile = Join-Path (Split-Path -Parent $repo) 'cleanup-stdin.txt'
-    $stdoutFile = Join-Path (Split-Path -Parent $repo) 'cleanup-stdout.txt'
-    $stderrFile = Join-Path (Split-Path -Parent $repo) 'cleanup-stderr.txt'
-    Set-Content -LiteralPath $stdinFile -Value '' -Encoding utf8
-
-    $psExe = [System.Diagnostics.Process]::GetCurrentProcess().Path
-    $cleanupScript = Join-Path $scriptsDir 'cleanup-merged-worktrees.ps1'
-    $proc = Start-Process -FilePath $psExe `
-        -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $cleanupScript, '-RepoRoot', $repo, '-MainRef', 'main') `
-        -WorkingDirectory $suiteRoot `
-        -RedirectStandardInput $stdinFile `
-        -RedirectStandardOutput $stdoutFile `
-        -RedirectStandardError $stderrFile `
-        -NoNewWindow -PassThru -Wait
-
-    Assert-Equal 0 $proc.ExitCode "cleanup-merged-worktrees.ps1 non-interactive path should exit 0. Stderr: $(Get-Content -Raw -LiteralPath $stderrFile)"
-
-    $stdout = Get-Content -Raw -LiteralPath $stdoutFile
-    Assert-True ([string]::IsNullOrWhiteSpace($stdout)) "Non-interactive cleanup must not write to stdout. Got: $stdout"
-
-    $stderrText = Get-Content -Raw -LiteralPath $stderrFile
-    Assert-True ($stderrText -match 'cleanup: eligible merged worktree') "Expected cleanup detection output on stderr. Stderr: $stderrText"
-    Assert-True ($stderrText -match 'cleanup: report-only; nothing removed\.') "Expected non-interactive report-only output on stderr. Stderr: $stderrText"
-
-    Assert-True (Test-Path -LiteralPath $skipPath) 'Non-interactive cleanup without -Cleanup must not remove the eligible worktree folder.'
-    $branches = (Invoke-TestGit $repo @('branch', '--list', 'feat-noninteractive')) -join "`n"
-    Assert-True ($branches -match 'feat-noninteractive') 'Non-interactive cleanup without -Cleanup must not delete the eligible branch.'
+    foreach ($mainRef in @('main', 'refs/heads/main')) {
+        Remove-Item -LiteralPath $outcomeLog -Force -ErrorAction SilentlyContinue
+        $eligible = Get-EligibleMergedWorktrees -RepoRoot $otherPath -MainRef $mainRef
+        $keys = @($eligible | ForEach-Object { ConvertTo-Key $_.Path })
+        Assert-True (-not ($keys -contains (ConvertTo-Key $repo))) "The main-ref worktree must never be eligible, even when `$RepoRoot is a different (linked) worktree. -MainRef '$mainRef'."
+        $mainLines = @(if (Test-Path -LiteralPath $outcomeLog) { Get-Content -LiteralPath $outcomeLog | Where-Object { $_ -match '^\S+ \S+  repo  ' } })
+        Assert-Equal 0 $mainLines.Count "The main-ref exclusion must skip the main checkout before the merged check, so the log has no line for it. -MainRef '$mainRef'. Lines: $($mainLines -join ' | ')"
+    }
 } finally {
     Remove-TempTree $repo
 }
@@ -204,32 +176,12 @@ try {
     $kept = Add-TestWorktree -RepoDir $repo -BranchName 'feat-cfgfalse'
     Invoke-TestGit $repo @('config', '--local', 'ahkflow.worktreeCleanup', 'false') | Out-Null
 
-    $hook = Invoke-CleanupChild -RepoDir $repo -ExtraArgs @('-IsHook')
-    Assert-Equal 0 $hook.ExitCode "Hook + config false should exit 0. Stderr: $($hook.Stderr)"
-    Assert-True ($hook.Stderr -match 'cleanup: eligible merged worktree') 'Config-false hook must still detect.'
-    Assert-True (-not ($hook.Stderr -match 'ahkflow\.worktreeCleanup true')) 'Config-false hook must NOT print the enable hint.'
-    Assert-True (-not ($hook.Stderr -match 'cleanup: removing')) 'Config-false hook must not remove.'
-    Assert-True (Test-Path -LiteralPath $kept) 'Config-false must leave the worktree folder.'
-
+    # Only the direct child runs here. It is the only end-to-end proof of the Skip branch. The hook
+    # side of config false is covered by the resolver row in WorktreeMergedCleanup.Tests.ps1, and
+    # the hint branch by the non-interactive case above. Backlog 201.
     $direct = Invoke-CleanupChild -RepoDir $repo
     Assert-True (-not ($direct.Stderr -match 'cleanup: removing')) 'Config-false direct call must skip.'
     Assert-True (Test-Path -LiteralPath $kept) 'Config-false direct call must leave the worktree folder.'
-} finally {
-    Remove-TempTree $repo
-}
-
-# --- Test: invalid config fails closed to report-only with a warning -----------
-$repo = New-TempGitRepo
-try {
-    $kept = Add-TestWorktree -RepoDir $repo -BranchName 'feat-invalidcfg'
-    Invoke-TestGit $repo @('config', '--local', 'ahkflow.worktreeCleanup', 'banana') | Out-Null
-
-    $res = Invoke-CleanupChild -RepoDir $repo -ExtraArgs @('-IsHook')
-    Assert-Equal 0 $res.ExitCode "Invalid config should not crash. Stderr: $($res.Stderr)"
-    Assert-True ($res.Stderr -match 'invalid or duplicated') 'Invalid config must warn.'
-    Assert-True ($res.Stderr -match 'git config --local --unset-all ahkflow\.worktreeCleanup') 'Warning must include the repair command.'
-    Assert-True (-not ($res.Stderr -match 'cleanup: removing')) 'Invalid config must not remove (fail closed).'
-    Assert-True (Test-Path -LiteralPath $kept) 'Invalid config must leave the worktree folder.'
 } finally {
     Remove-TempTree $repo
 }
@@ -245,6 +197,15 @@ foreach ($override in @(
     try {
         $target = Add-TestWorktree -RepoDir $repo -BranchName "feat-invalid-$([guid]::NewGuid().ToString('N').Substring(0,6))"
         Invoke-TestGit $repo @('config', '--local', 'ahkflow.worktreeCleanup', 'banana') | Out-Null
+
+        # Invalid config fails closed to report-only with a warning. This hook run removes
+        # nothing, so the override run below still finds the worktree. Backlog 201 moved it here.
+        $invalid = Invoke-CleanupChild -RepoDir $repo -ExtraArgs @('-IsHook')
+        Assert-Equal 0 $invalid.ExitCode "Invalid config should not crash. Stderr: $($invalid.Stderr)"
+        Assert-True ($invalid.Stderr -match 'invalid or duplicated') 'Invalid config must warn.'
+        Assert-True ($invalid.Stderr -match 'git config --local --unset-all ahkflow\.worktreeCleanup') 'Warning must include the repair command.'
+        Assert-True (-not ($invalid.Stderr -match 'cleanup: removing')) 'Invalid config must not remove (fail closed).'
+        Assert-True (Test-Path -LiteralPath $target) 'Invalid config must leave the worktree folder.'
 
         $res = Invoke-CleanupChild -RepoDir $repo -ExtraArgs $override.Args -EnvVars $override.Env
         Assert-True (-not ($res.Stderr -match 'treating as report-only')) "$($override.Label) over invalid config must not print a report-only warning. Stderr: $($res.Stderr)"
@@ -263,6 +224,12 @@ foreach ($mode in @(@{ Args = @('-IsHook'); Label = 'hook' })) {
         $target = Add-TestWorktree -RepoDir $repo -BranchName "feat-cfgtrue-$($mode.Label)"
         Invoke-TestGit $repo @('config', '--local', 'ahkflow.worktreeCleanup', 'true') | Out-Null
 
+        # env '0' + config true -> report-only in hook context, so nothing is removed and the run
+        # below still finds the worktree. Backlog 201 moved this check into this fixture.
+        $disabled = Invoke-CleanupChild -RepoDir $repo -ExtraArgs @('-IsHook') -EnvVars @{ 'AHKFLOW_WORKTREE_CLEANUP' = '0' }
+        Assert-True (-not ($disabled.Stderr -match 'cleanup: removing')) "env '0' must override config true in hook context. Stderr: $($disabled.Stderr)"
+        Assert-True (Test-Path -LiteralPath $target) "env '0' must leave the worktree folder even with config true."
+
         $res = Invoke-CleanupChild -RepoDir $repo -ExtraArgs $mode.Args
         Assert-Equal 0 $res.ExitCode "config true ($($mode.Label)) should exit 0. Stderr: $($res.Stderr)"
         Assert-True ($res.Stderr -match 'cleanup: removing merged worktree') "config true ($($mode.Label)) must request removal. Stderr: $($res.Stderr)"
@@ -280,18 +247,6 @@ try {
     Invoke-TestGit $repo @('config', '--local', 'ahkflow.worktreeCleanup', 'false') | Out-Null
     $res = Invoke-CleanupChild -RepoDir $repo -ExtraArgs @('-IsHook') -EnvVars @{ 'AHKFLOW_WORKTREE_CLEANUP' = '1' }
     Assert-True (Wait-ForWorktreeCleaned -RepoDir $repo -WorktreePath $target) "env '1' must override config false in hook context. Stderr: $($res.Stderr)"
-} finally {
-    Remove-TempTree $repo
-}
-
-# env '0' + config true -> report-only (nothing removed).
-$repo = New-TempGitRepo
-try {
-    $kept = Add-TestWorktree -RepoDir $repo -BranchName 'feat-env0-cfgtrue'
-    Invoke-TestGit $repo @('config', '--local', 'ahkflow.worktreeCleanup', 'true') | Out-Null
-    $res = Invoke-CleanupChild -RepoDir $repo -ExtraArgs @('-IsHook') -EnvVars @{ 'AHKFLOW_WORKTREE_CLEANUP' = '0' }
-    Assert-True (-not ($res.Stderr -match 'cleanup: removing')) "env '0' must override config true in hook context. Stderr: $($res.Stderr)"
-    Assert-True (Test-Path -LiteralPath $kept) "env '0' must leave the worktree folder even with config true."
 } finally {
     Remove-TempTree $repo
 }
@@ -380,4 +335,5 @@ try {
     Remove-TempTree $repo
 }
 
+Remove-TempGitRepoSeeds
 Write-Host 'Worktree merged-cleanup eligibility tests passed.'

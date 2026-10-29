@@ -866,3 +866,198 @@ Fresh recovery proofs:
 
 The new common helper loads in Windows PowerShell 5.1. All four final Suites passed their timing runs.
 The worker-count API and production scripts are unchanged by this recovery.
+
+## Backlog 201
+
+Backlog 201 applies or rejects the 22 deferred rows of the six git-fixture Suites. The plan is
+`docs/superpowers/plans/2026-10-29-apply-the-deferred-git-fixture-test-speed-ups-plan-201.md`.
+Each time below is a median of three counted runs after one warm-up run, with the Suite run
+alone through `scripts/run-powershell-suites.ps1 -Suite <file>`. No timed run shared the Lane
+pool. A D2 time comes from a temporary stopwatch that was never committed.
+
+### Suite time, run alone
+
+| Suite | Before (s) | After (s) |
+|---|---|---|
+| `WorktreeMergedCleanup.Tests.ps1` | 34.6 | 25.3 |
+| `WorktreeMergedCleanupSweep.Tests.ps1` | 31.1 | 25.6 |
+| `WorktreeMergedCleanupEligibility.Tests.ps1` | 34.4 | 30.7 |
+| `WorktreeSweepRemoteBase.Tests.ps1` | 34.6 | 27.2 |
+| `BacklogStaleOpen.Tests.ps1` | 23.8 | 17.1 |
+| `MeasureTestModes.Tests.ps1` | 48.5 | 47.7 |
+
+### Changes timed on their own
+
+- **T-A**, rows 119 and 122: one seed repository per Suite run, copied for every
+  `New-TempGitRepo` and `New-WorktreeToolingRepo` call. Commit `9fc18691`. The stopwatch spans
+  both builders and the final seed check and removal.
+
+  | Suite | T-A before (s) | T-A after (s) |
+  |---|---|---|
+  | `WorktreeMergedCleanup.Tests.ps1` | 6.49 | 1.29 |
+  | `WorktreeMergedCleanupSweep.Tests.ps1` | 4.49 | 2.24 |
+  | `WorktreeMergedCleanupEligibility.Tests.ps1` | 5.78 | 3.29 |
+  | Sum | 16.76 | 6.82 |
+
+  Kept: the sum fell by 9.94 s. The Suite medians in the same runs were 25.3 s, 31.9 s and
+  37.4 s. Only `WorktreeMergedCleanup` fell as a whole Suite. The other two did not: their counted
+  runs spread over 28.5 to 32.0 s and 34.3 to 38.6 s, wider than the 2 to 3 s that T-A saves there.
+
+- **M-A**, row 120, and **M-B**, row 121: one shared repo for the eleven reset-rule sections, and
+  for the four positive own-work sections. Both were bounded first (plan P5), from the T-A after
+  runs. The `M-A parts` stopwatch timed the eleven `New-TempGitRepo` calls and their
+  `Remove-TempTree` calls: median 0.528 s. The `M-B parts` stopwatch timed the four: median
+  0.217 s. A shared repo still pays one build and one removal, so the bound is 10/11 and 3/4 of
+  those medians: 0.48 s and 0.16 s. Both are below 1 s, so both rows are rejected and neither
+  change was built. A bound stands in for the two medians on these rows.
+  `WorktreeMergedCleanup.Tests.ps1` did not change after T-A, so its after median is the T-A
+  after median, 25.3 s.
+
+- **S-A**, rows 123 and 124: a fixed committer date in the future, `2030-01-01T00:00:00+00:00`,
+  around the branch creation in place of two `Start-Sleep -Seconds 2`. Commit `63e3d388`. The
+  stopwatch spans both cases. Before 5.89 s, from the T-A after runs; after 1.78 s. Kept: it fell
+  by 4.1 s. The Suite median in the same runs was 25.6 s. At Verify, the final review found that
+  the literal date stops being in the future on 2030-01-01. Recovery task R2 replaced it with a date
+  one day after the current time, computed when the Suite starts. With one day back instead, the
+  first case fails with "The base position must be where main stood before the branch was created,
+  not after."
+
+- Rows 94 to 98, 106 and 107 in `WorktreeMergedCleanupEligibility.Tests.ps1` are small or REWORK
+  rows, so D2 did not time them one by one (plan P4). Row 94 drops a child run. Rows 95 to 98
+  move a check into a fixture of the same shape. Rows 106 and 107 share one reworked fixture. The
+  Suite median after all seven, and after T-A, is 30.7 s.
+
+- **R-A**, row 125: one seed per `-WithScripts` value in `WorktreeSweepRemoteBase.Tests.ps1`,
+  copied for every `New-RemoteFixture` call. Commit `5ee392cb`. The stopwatch spans the builder
+  and the final seed check and removal. Before 15.62 s, after 10.98 s. Kept: it fell by 4.6 s.
+  The Suite median went from 34.6 s to 29.1 s in the same runs.
+- **R-B**, rows 126 to 130: four cases move into kept fixtures of the same shape, and their four
+  fixtures go. Commit `6c1b99e2`. Bounded first (plan P5), from the R-A after runs: the
+  `R-B parts` stopwatch timed the four fixture builds and removals at 2.38 s, which is 1 s or
+  more, so the change was built. R-B touches 8 of the 13 fixtures, so D2 timed the whole Suite:
+  29.1 s before, 27.2 s after. Kept: it fell by 1.9 s.
+- **B-A**, row 118: `Add-FixtureFiller` in `BacklogStaleOpen.Tests.ps1` writes all its filler
+  commits through one `git fast-import --done` stream on `main`, in place of an add and a commit
+  per commit. Commit `0b77939e`. The stopwatch spans the helper. Before 7.66 s, after 1.47 s.
+  Kept: it fell by 6.2 s. The Suite median went from 23.8 s to 17.1 s in the same runs.
+- **Rows 134 and 135**, `MeasureTestModes.Tests.ps1`: two merges, each under 1 s, so neither
+  was timed on its own. Commit `d9741b0c` moves the lock assertions into "Soak mode prepares one
+  container for the whole soak and leaves it running". Commit `0e5c6cba` removes "A failing soak
+  run is counted and named, and the soak still finishes". "A soak run that fails with a
+  half-written TRX is counted, not thrown" makes the same four assertions.
+
+### Mutations
+
+- T-A seed check: a stray file written into the plain seed just before the final
+  `Remove-TempGitRepoSeeds` call. `WorktreeMergedCleanup` failed with "A case wrote into the
+  shared seed repository '...\wtclean-seed-42c32906\repo'." No `wtclean-seed-*` folder was left.
+- T-A trap: the Suite's first `Assert-Equal` made to fail. The run failed with "No config value
+  must read as unset. (expected 'MUTATED', got 'unset')". The count of `wtclean-seed-*` folders
+  in the temp folder was 0 before the run and 0 after it.
+- S-A, row 123: the date set to `2000-01-01T00:00:00+00:00` in that case's block alone. The case
+  failed with "The base position must be where main stood before the branch was created, not
+  after."
+- S-A, row 124: the same past date in that case's block alone. The case failed with "Sanity
+  check: signal 5 must have a base position to judge against, or this test proves nothing."
+- Row 94, hint branch always true (`} elseif ($true) {` in
+  `scripts/cleanup-merged-worktrees.ps1`): `WorktreeMergedCleanupEligibility` failed with "Expected
+  non-interactive report-only output on stderr."
+- Row 94, the resolver shows the hint for a config-false hook (`ShowHint = $IsHook`):
+  `WorktreeMergedCleanup` failed on the resolver row with "ShowHint mismatch for [C=False H=True
+  Cfg=false Env=none I=False]. (expected 'False', got 'True')".
+- Rows 106 and 107, the branch compare never matches (`$false -and` in front of it): the first
+  call failed its log check. The log held "repo  Kept: no merge of this branch reached the base."
+- Rows 106 and 107, the short-name resolution never runs (`$false -and` in front of it): the
+  first call passed, and the fully-qualified call failed its log check with the same line.
+- R-A seed check: a stray file written into the `'False'` seed's `repo` just before the final
+  `Remove-RemoteFixtureSeeds` call. `WorktreeSweepRemoteBase` failed with "A case wrote into the
+  shared seed repository '...\wtremote-seed-0ea124a6\repo'." No `wtremote-seed-*` folder was left.
+  The file then parsed in Windows PowerShell 5.1 with 0 errors, after R-A and again after R-B.
+- R-B, row 130: in `scripts/remove-worktree-local-dev.ps1`, the merge-gate base message written
+  only when the reason is not `remote-stale`, and the "could not be refreshed, so it may be behind
+  the remote" line deleted. The hook case failed with "The hook must say why it refused to
+  decide." The diagnostics log it read held only the hook's own lines.
+- B-A, one commit fewer: the loop bound changed from `-le $Count` to `-lt $Count`.
+  `BacklogStaleOpen` failed with "Backlog stale-open tests failed with 3 problem(s)."
+- B-A, write nothing: the early return taken for every call. `BacklogStaleOpen` failed with
+  "Backlog stale-open tests failed with 5 problem(s)."
+- Row 134: `Exit-AhkFlowTestRunLock -Handle $lock; $lock = $null` added right after the soak
+  container's connection string is set, in `scripts/measure-test-modes.ps1`. The merged case
+  failed with "Soak mode calls dotnet test directly, so it holds the lock throughout."
+- Row 135, `break` after `$failed += $run`: the half-written-TRX case failed with "The soak must
+  finish all 3 runs after run 2 dies mid-write."
+- Row 135, the exit-code check changed to `if ($false) {`: the half-written-TRX case failed.
+
+### Linux runs
+
+- `WorktreeMergedCleanup.Tests.ps1` at `9fc1869108df0a6d79ea191fa24363ad0c0cb5b8`. Log
+  `.superpowers/201-linux/linux-9fc18691-20261029-181729.log`. Image
+  `mcr.microsoft.com/dotnet/sdk@sha256:2fa828c68761b1b8c23d7662dc134421b9d3b59fe1425fdbc80804e390cdb24d`,
+  kernel `Linux 6.18.54.1-microsoft-standard-WSL2`, PowerShell 7.6.6, git 2.43.0. The runner
+  printed "Platform: linux". The Suite passed, and `LINUX_EXIT=0`.
+- `BacklogStaleOpen.Tests.ps1` at `0b77939e19b45dfabe21402e5c96170f8713a398`. Log
+  `.superpowers/201-linux/linux-0b77939e-20261029-190009.log`. Image
+  `mcr.microsoft.com/dotnet/sdk@sha256:2fa828c68761b1b8c23d7662dc134421b9d3b59fe1425fdbc80804e390cdb24d`,
+  kernel `Linux 6.18.54.1-microsoft-standard-WSL2`, PowerShell 7.6.6, git 2.43.0. The runner
+  printed "Platform: linux". The Suite passed, and `LINUX_EXIT=0`.
+- Before list for Task 8: `MeasureTestModes.Tests.ps1` at
+  `316389e758dc766f06c1c2cfc99dfd06befb3779`, before any change of Task 7. Log
+  `.superpowers/201-linux/linux-316389e7-20261029-190558.log`; the case list is in
+  `.superpowers/201-linux/before-cases.txt`. Same image, kernel, PowerShell and git as above. The
+  runner printed "Platform: linux". 34 cases passed. `A slow head is discarded and the median is
+  the flat tail` failed with the known error, "Get-AhkFlowRelativeSpread needs a median above
+  zero." A second case, `The discarded runs are printed, with how many there were`, failed with
+  the same error. Its cause is the one in issue #468: on Linux the stub's runs round to 0.00 s, so
+  the median is 0. No file under `scripts/`, and not this Suite, differs from `main`, so the cause
+  lies outside this item. It stays in the before list as a `FAIL` line, as a baseline exception.
+- The three Linux-capable Suites at the Gate revision,
+  `c68c321be6e9876fa302ff1730fa1162b1689895`. Log
+  `.superpowers/201-linux/linux-c68c321b-20261029-205611.log`. Same image, kernel, PowerShell and
+  git as above. The runner printed "Platform: linux". `BacklogStaleOpen` passed in 5.3 s, and
+  `WorktreeMergedCleanup` passed in 6.3 s. `MeasureTestModes` failed only on the known case, with
+  the known error, so `LINUX_EXIT=1`. Compared with the before list, the case list shows three
+  lines:
+  - `<=` `PASS Soak mode holds the lock for every repetition`, removed by row 134.
+  - `<=` `PASS A failing soak run is counted and named, and the soak still finishes`, removed by
+    row 135.
+  - `The discarded runs are printed, with how many there were` went from `FAIL` to `PASS`. This is
+    the issue #468 case, whose result depends on timing. The baseline exception of Task 7 covers
+    it, so it is not a failure of this item.
+
+### Gate at Verify
+
+The Gate passed at `c68c321be6e9876fa302ff1730fa1162b1689895`, with `AHKFLOW_GATE_REUSE=off`.
+It printed "Gate evidence: off (AHKFLOW_GATE_REUSE=off)" and no `REUSED` line, with
+`Workers: 6`. All 73 Suites passed, and so did build, format, Coverage and `git diff --check`.
+
+Two earlier Gate runs failed on `CitationFreshness`, and each took the failure edge back to
+Execute:
+
+- At `3d113d68`: R-B moved lines that `backlog/done/137` cites. Recovery task R1 re-pointed them.
+  The final review's date finding went into the same round as R2.
+- At `db2d938c`: the first failure record quoted those old citations word for word. Recovery task
+  R3 marked the two quoted lines with `citation-check:ignore`.
+
+The seconds of each changed Suite at `c68c321b`:
+
+| Suite | Seconds |
+|---|---|
+| `BacklogStaleOpen.Tests.ps1` | 27.8 |
+| `MeasureTestModes.Tests.ps1` | 64.5 |
+| `WorktreeMergedCleanup.Tests.ps1` | 44.6 |
+| `WorktreeMergedCleanupEligibility.Tests.ps1` | 49.9 |
+| `WorktreeMergedCleanupSweep.Tests.ps1` | 41.8 |
+| `WorktreeSweepRemoteBase.Tests.ps1` | 42.6 |
+
+### Baselines refreshed
+
+`baselineSeconds` in `tests/powershell-suites.json`, from the Gate above. Commit `12e8422f`.
+
+| Suite | Old | New |
+|---|---|---|
+| `BacklogStaleOpen.Tests.ps1` | 41.0 | 27.8 |
+| `MeasureTestModes.Tests.ps1` | 68.9 | 64.5 |
+| `WorktreeMergedCleanup.Tests.ps1` | 55.9 | 44.6 |
+| `WorktreeMergedCleanupEligibility.Tests.ps1` | 65.0 | 49.9 |
+| `WorktreeMergedCleanupSweep.Tests.ps1` | 52.0 | 41.8 |
+| `WorktreeSweepRemoteBase.Tests.ps1` | 55.6 | 42.6 |

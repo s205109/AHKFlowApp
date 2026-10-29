@@ -670,27 +670,13 @@ Invoke-TestCase 'Soak mode prepares one container for the whole soak and leaves 
         # And no stop at all. A soak that removed its container would hide the very state the
         # reuse exists to soak.
         Assert-True ($stopped.Count -eq 0) "Expected no container stop, got $($stopped.Count). Log: $($sql -join ' | ')"
-    }
-    finally { Remove-HarnessFixture -Root $root }
-}
 
-Invoke-TestCase 'A failing soak run is counted and named, and the soak still finishes' {
-    $root = New-HarnessFixture
-    try {
-        Set-Content -LiteralPath (Join-Path $root 'stub\fail-run.txt') -Value '2' -Encoding utf8
-
-        $result = Invoke-Harness -Root $root -Arguments @('-Soak', 'tests/FakeProject', '-Runs', '3', '-NoBuild')
-        $text = $result.Output -join "`n"
-
-        # All three repetitions must have run. Stopping at the first failure is the defect. The
-        # container starts once now, so a run count comes from the test invocations instead.
+        # The same run holds the lock for every repetition. Backlog 201 merged that check here.
         $signals = @(Get-Content -LiteralPath (Join-Path $root 'stub\signals.txt'))
-        $testCalls = @($signals | Where-Object { $_ -like 'test *' })
-        Assert-True ($testCalls.Count -eq 3) `
-            "The soak must finish all 3 runs after run 2 fails. Signals: $($signals -join ' | ')"
-        Assert-True ($text -match 'passed\s+:\s+2 of 3') "Expected 'passed : 2 of 3'. Output: $text"
-        Assert-True ($text -match 'failed runs\s+:\s+2') "Expected run 2 named. Output: $text"
-        Assert-True ($result.ExitCode -ne 0) 'A soak with a failed run must fail overall.'
+        $runs = @($signals | Where-Object { $_ -like 'test *' })
+        Assert-True ($runs.Count -eq 3) "Expected three soak runs, got $($runs.Count)."
+        Assert-True (@($runs | Where-Object { $_ -match 'owner=True' }).Count -eq 3) `
+            "Soak mode calls dotnet test directly, so it holds the lock throughout. Signals: $($signals -join ' | ')"
     }
     finally { Remove-HarnessFixture -Root $root }
 }
@@ -718,6 +704,8 @@ Invoke-TestCase 'A soak run that fails with a half-written TRX is counted, not t
         # Run 2 dies part-way: it exits non-zero AND leaves a TRX whose XML never closes. The
         # soak used to read the count before it checked the exit code, so the parse error escaped
         # the loop and run 3 never happened. A failed run is data; it must not end the soak.
+        # This case also covers a plain failing run: all three runs, 'passed : 2 of 3', run 2
+        # named, and a failed exit. Backlog 201 removed that separate case.
         Set-Content -LiteralPath (Join-Path $root 'stub\fail-run.txt') -Value '2' -Encoding utf8
         Set-Content -LiteralPath (Join-Path $root 'stub\malformed-run.txt') -Value '2' -Encoding utf8
 
@@ -832,21 +820,6 @@ Invoke-TestCase 'The build runs inside the lock, and timing mode releases it bef
         Assert-True ($modeRuns.Count -eq 2) "Expected two Mode runs, got $($modeRuns.Count)."
         Assert-True (@($modeRuns | Where-Object { $_ -match 'owner=False' }).Count -eq 2) `
             "Timing mode must release the lock before calling test-fast.ps1, which takes it itself. Signals: $($signals -join ' | ')"
-    }
-    finally { Remove-HarnessFixture -Root $root }
-}
-
-Invoke-TestCase 'Soak mode holds the lock for every repetition' {
-    $root = New-HarnessFixture
-    try {
-        $result = Invoke-Harness -Root $root -Arguments @('-Soak', 'tests/FakeProject', '-Runs', '3', '-NoBuild')
-        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
-
-        $signals = @(Get-Content -LiteralPath (Join-Path $root 'stub\signals.txt'))
-        $runs = @($signals | Where-Object { $_ -like 'test *' })
-        Assert-True ($runs.Count -eq 3) "Expected three soak runs, got $($runs.Count)."
-        Assert-True (@($runs | Where-Object { $_ -match 'owner=True' }).Count -eq 3) `
-            "Soak mode calls dotnet test directly, so it holds the lock throughout. Signals: $($signals -join ' | ')"
     }
     finally { Remove-HarnessFixture -Root $root }
 }

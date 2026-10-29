@@ -51,13 +51,34 @@ function Write-FixtureItem {
     Set-Content -LiteralPath $Path -Value (($lines -join "`n") + "`n") -Encoding utf8
 }
 
+
+# Adds $Count commits to main. Every caller runs it on main. Backlog 201: one git fast-import
+# stream writes all of them, in place of an add and a commit per commit. The commits change no
+# file. That is enough, because the check finds the stamp with -G on the item's own path and
+# counts first-parent commits, and a filler commit never touched the item before either.
 function Add-FixtureFiller {
     param([string] $RepoDir, [int] $Count, [string] $Prefix = 'filler')
-    for ($i = 1; $i -le $Count; $i++) {
-        Set-Content -LiteralPath (Join-Path $RepoDir "$Prefix-$i.txt") -Value "$Prefix $i" -Encoding utf8
-        Invoke-FixtureGit $RepoDir @('add', '-A') | Out-Null
-        Invoke-FixtureGit $RepoDir @('commit', '--quiet', '-m', "$Prefix $i") | Out-Null
+    if ($Count -le 0) {
+        return
     }
+
+    $lines = @()
+    for ($i = 1; $i -le $Count; $i++) {
+        $lines += 'commit refs/heads/main'
+        $lines += 'committer Stale Open Test <test@example.com> now'
+        $lines += 'data <<EOT'
+        $lines += "$Prefix $i"
+        $lines += 'EOT'
+        if ($i -eq 1) { $lines += 'from refs/heads/main^0' }
+        $lines += ''
+    }
+    $lines += 'done'
+    # The last line break matters. PowerShell adds the platform's line ending when it pipes a
+    # string to a native command. On Windows that ends the last line with a carriage return, and
+    # git then fails with "unsupported command: done".
+    $stream = ($lines -join "`n") + "`n"
+    $out = $stream | & git -C $RepoDir fast-import --quiet --done --date-format=now 2>&1
+    if ($LASTEXITCODE -ne 0) { throw "git fast-import --quiet --done --date-format=now failed: $out" }
 }
 
 # A repository whose main branch holds one item. -Stage is stamped on a branch and merged into
