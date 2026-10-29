@@ -916,7 +916,11 @@ pool. A D2 time comes from a temporary stopwatch that was never committed.
 - **S-A**, rows 123 and 124: a fixed committer date in the future, `2030-01-01T00:00:00+00:00`,
   around the branch creation in place of two `Start-Sleep -Seconds 2`. Commit `63e3d388`. The
   stopwatch spans both cases. Before 5.89 s, from the T-A after runs; after 1.78 s. Kept: it fell
-  by 4.1 s. The Suite median in the same runs was 25.6 s.
+  by 4.1 s. The Suite median in the same runs was 25.6 s. At Verify, the final review found that
+  the literal date stops being in the future on 2030-01-01. Recovery task R2 replaced it with a date
+  one day after the current time, computed when the Suite starts. With one day back instead, the
+  first case fails with "The base position must be where main stood before the branch was created,
+  not after."
 
 - Rows 94 to 98, 106 and 107 in `WorktreeMergedCleanupEligibility.Tests.ps1` are small or REWORK
   rows, so D2 did not time them one by one (plan P4). Row 94 drops a child run. Rows 95 to 98
