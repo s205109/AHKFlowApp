@@ -125,18 +125,14 @@ try {
     $otherPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-other'
     $outcomeLog = Join-Path (Join-Path (Join-Path $otherPath '.claude') 'worktrees') 'worktree-removal.log'
 
-    $eligible = Get-EligibleMergedWorktrees -RepoRoot $otherPath -MainRef 'main'
-    $keys = @($eligible | ForEach-Object { ConvertTo-Key $_.Path })
-    Assert-True (-not ($keys -contains (ConvertTo-Key $repo))) 'The main-ref worktree must never be eligible, even when $RepoRoot is a different (linked) worktree.'
-    $mainLines = @(if (Test-Path -LiteralPath $outcomeLog) { Get-Content -LiteralPath $outcomeLog | Where-Object { $_ -match '^\S+ \S+  repo  ' } })
-    Assert-Equal 0 $mainLines.Count "The main-ref exclusion must skip the main checkout before the merged check, so the log has no line for it. Lines: $($mainLines -join ' | ')"
-
-    Remove-Item -LiteralPath $outcomeLog -Force -ErrorAction SilentlyContinue
-    $eligible = Get-EligibleMergedWorktrees -RepoRoot $otherPath -MainRef 'refs/heads/main'
-    $keys = @($eligible | ForEach-Object { ConvertTo-Key $_.Path })
-    Assert-True (-not ($keys -contains (ConvertTo-Key $repo))) 'The main-ref worktree must never be eligible when -MainRef is the fully-qualified refs/heads/main form.'
-    $mainLines = @(if (Test-Path -LiteralPath $outcomeLog) { Get-Content -LiteralPath $outcomeLog | Where-Object { $_ -match '^\S+ \S+  repo  ' } })
-    Assert-Equal 0 $mainLines.Count "The main-ref exclusion must skip the main checkout for the fully-qualified refs/heads/main form too, so the log has no line for it. Lines: $($mainLines -join ' | ')"
+    foreach ($mainRef in @('main', 'refs/heads/main')) {
+        Remove-Item -LiteralPath $outcomeLog -Force -ErrorAction SilentlyContinue
+        $eligible = Get-EligibleMergedWorktrees -RepoRoot $otherPath -MainRef $mainRef
+        $keys = @($eligible | ForEach-Object { ConvertTo-Key $_.Path })
+        Assert-True (-not ($keys -contains (ConvertTo-Key $repo))) "The main-ref worktree must never be eligible, even when `$RepoRoot is a different (linked) worktree. -MainRef '$mainRef'."
+        $mainLines = @(if (Test-Path -LiteralPath $outcomeLog) { Get-Content -LiteralPath $outcomeLog | Where-Object { $_ -match '^\S+ \S+  repo  ' } })
+        Assert-Equal 0 $mainLines.Count "The main-ref exclusion must skip the main checkout before the merged check, so the log has no line for it. -MainRef '$mainRef'. Lines: $($mainLines -join ' | ')"
+    }
 } finally {
     Remove-TempTree $repo
 }

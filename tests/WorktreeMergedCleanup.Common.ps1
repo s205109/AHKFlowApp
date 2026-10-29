@@ -109,14 +109,18 @@ function New-TempGitRepoSeed {
     return (New-TempGitRepoSeedRecord -Repo $repo)
 }
 
-# Fresh main-checkout repo under a throwaway root. Returns the repo path; its parent
-# is the root to delete (worktrees are created as siblings of the repo).
-function New-TempGitRepo {
+# The plain seed, built on first use.
+function Get-PlainTempGitRepoSeed {
     if (-not $script:TempGitRepoSeeds.ContainsKey('plain')) {
         $script:TempGitRepoSeeds['plain'] = New-TempGitRepoSeed
     }
-    $repo = Copy-TempGitRepoSeed -Seed $script:TempGitRepoSeeds['plain']
-    return $repo
+    return $script:TempGitRepoSeeds['plain']
+}
+
+# Fresh main-checkout repo under a throwaway root. Returns the repo path; its parent
+# is the root to delete (worktrees are created as siblings of the repo).
+function New-TempGitRepo {
+    return (Copy-TempGitRepoSeed -Seed (Get-PlainTempGitRepoSeed))
 }
 
 # Adds a linked worktree on a new branch off main. By default the branch gets one commit and is
@@ -289,15 +293,11 @@ function New-WorktreeToolingRepo {
 
     $key = 'tooling|' + $ScriptsSource
     if ($script:TempGitRepoSeeds.ContainsKey($key)) {
-        $repo = Copy-TempGitRepoSeed -Seed $script:TempGitRepoSeeds[$key]
-        return $repo
+        return (Copy-TempGitRepoSeed -Seed $script:TempGitRepoSeeds[$key])
     }
 
     # The tooling seed is a copy of the plain seed plus one commit.
-    if (-not $script:TempGitRepoSeeds.ContainsKey('plain')) {
-        $script:TempGitRepoSeeds['plain'] = New-TempGitRepoSeed
-    }
-    $repo = Copy-TempGitRepoSeed -Seed $script:TempGitRepoSeeds['plain'] -Prefix 'wtclean-seed-'
+    $repo = Copy-TempGitRepoSeed -Seed (Get-PlainTempGitRepoSeed) -Prefix 'wtclean-seed-'
 
     $repoScripts = Join-Path $repo 'scripts'
     New-Item -ItemType Directory -Path $repoScripts -Force | Out-Null
@@ -315,8 +315,7 @@ function New-WorktreeToolingRepo {
     Invoke-TestGit $repo @('commit', '-m', 'worktree tooling') | Out-Null
 
     $script:TempGitRepoSeeds[$key] = New-TempGitRepoSeedRecord -Repo $repo
-    $copy = Copy-TempGitRepoSeed -Seed $script:TempGitRepoSeeds[$key]
-    return $copy
+    return (Copy-TempGitRepoSeed -Seed $script:TempGitRepoSeeds[$key])
 }
 
 # Removes every seed. Unless -NoCheck, it first checks that each seed still has a clean status and

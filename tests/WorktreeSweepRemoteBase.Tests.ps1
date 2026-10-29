@@ -324,8 +324,6 @@ try {
     Remove-Fixture $fixture.Root
 }
 
-# Unreachable remote: the offline sweep fixture below asks the resolver first. Backlog 201.
-
 # No upstream at all: the local branch is the only base there is.
 $fixture = New-RemoteFixture
 try {
