@@ -17,6 +17,9 @@ $ErrorActionPreference = 'Stop'
 
 . (Join-Path $PSScriptRoot 'WorktreeMergedCleanup.Common.ps1')
 
+# A failed run must not leave the seed repositories in the temp folder. Backlog 201.
+trap { Remove-TempGitRepoSeeds -NoCheck; break }
+
 # --- Test: the parser reads real gh output --------------------------------------
 # Captured from this repository on 2026-08-19 with:
 #   gh pr list --repo s205109/AHKFlowApp --state merged --base main --limit 3 #     --json number,headRefName,headRefOid
@@ -623,4 +626,5 @@ try {
     Remove-TempTree $repo
 }
 
+Remove-TempGitRepoSeeds
 Write-Host 'Worktree merged-cleanup sweep tests passed.'

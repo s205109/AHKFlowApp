@@ -18,6 +18,9 @@ $env:AHKFLOW_SKIP_ORPHAN_PRUNE = '1'
 
 . (Join-Path $PSScriptRoot 'WorktreeMergedCleanup.Common.ps1')
 
+# A failed run must not leave the seed repositories in the temp folder. Backlog 201.
+trap { Remove-TempGitRepoSeeds -NoCheck; break }
+
 # --- Test: eligibility matrix -------------------------------------------------
 $repo = New-TempGitRepo
 try {
@@ -380,4 +383,5 @@ try {
     Remove-TempTree $repo
 }
 
+Remove-TempGitRepoSeeds
 Write-Host 'Worktree merged-cleanup eligibility tests passed.'

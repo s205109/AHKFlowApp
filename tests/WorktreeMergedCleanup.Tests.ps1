@@ -19,6 +19,9 @@ $ErrorActionPreference = 'Stop'
 
 . (Join-Path $PSScriptRoot 'WorktreeMergedCleanup.Common.ps1')
 
+# A failed run must not leave the seed repositories in the temp folder. Backlog 201.
+trap { Remove-TempGitRepoSeeds -NoCheck; break }
+
 # --- Test: the cleanup config and the ask-once answer, in one repository ------------
 # The three blocks only read and write ahkflow.worktreeCleanup, so they share one repository and
 # clear the key between blocks.
@@ -1029,4 +1032,5 @@ try {
     Remove-TempTree $repo
 }
 
+Remove-TempGitRepoSeeds
 Write-Host 'Worktree merged-cleanup pure-function and merge-proof tests passed.'
