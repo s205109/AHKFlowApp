@@ -681,27 +681,6 @@ Invoke-TestCase 'Soak mode prepares one container for the whole soak and leaves 
     finally { Remove-HarnessFixture -Root $root }
 }
 
-Invoke-TestCase 'A failing soak run is counted and named, and the soak still finishes' {
-    $root = New-HarnessFixture
-    try {
-        Set-Content -LiteralPath (Join-Path $root 'stub\fail-run.txt') -Value '2' -Encoding utf8
-
-        $result = Invoke-Harness -Root $root -Arguments @('-Soak', 'tests/FakeProject', '-Runs', '3', '-NoBuild')
-        $text = $result.Output -join "`n"
-
-        # All three repetitions must have run. Stopping at the first failure is the defect. The
-        # container starts once now, so a run count comes from the test invocations instead.
-        $signals = @(Get-Content -LiteralPath (Join-Path $root 'stub\signals.txt'))
-        $testCalls = @($signals | Where-Object { $_ -like 'test *' })
-        Assert-True ($testCalls.Count -eq 3) `
-            "The soak must finish all 3 runs after run 2 fails. Signals: $($signals -join ' | ')"
-        Assert-True ($text -match 'passed\s+:\s+2 of 3') "Expected 'passed : 2 of 3'. Output: $text"
-        Assert-True ($text -match 'failed runs\s+:\s+2') "Expected run 2 named. Output: $text"
-        Assert-True ($result.ExitCode -ne 0) 'A soak with a failed run must fail overall.'
-    }
-    finally { Remove-HarnessFixture -Root $root }
-}
-
 Invoke-TestCase 'A soak run that exits zero with an empty TRX is not a pass' {
     $root = New-HarnessFixture
     try {
@@ -725,6 +704,8 @@ Invoke-TestCase 'A soak run that fails with a half-written TRX is counted, not t
         # Run 2 dies part-way: it exits non-zero AND leaves a TRX whose XML never closes. The
         # soak used to read the count before it checked the exit code, so the parse error escaped
         # the loop and run 3 never happened. A failed run is data; it must not end the soak.
+        # This case also covers a plain failing run: all three runs, 'passed : 2 of 3', run 2
+        # named, and a failed exit. Backlog 201 removed that separate case.
         Set-Content -LiteralPath (Join-Path $root 'stub\fail-run.txt') -Value '2' -Encoding utf8
         Set-Content -LiteralPath (Join-Path $root 'stub\malformed-run.txt') -Value '2' -Encoding utf8
 
