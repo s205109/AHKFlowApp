@@ -866,3 +866,53 @@ Fresh recovery proofs:
 
 The new common helper loads in Windows PowerShell 5.1. All four final Suites passed their timing runs.
 The worker-count API and production scripts are unchanged by this recovery.
+
+## Backlog 201
+
+Backlog 201 applies or rejects the 22 deferred rows of the six git-fixture Suites. The plan is
+`docs/superpowers/plans/2026-10-29-apply-the-deferred-git-fixture-test-speed-ups-plan-201.md`.
+Each time below is a median of three counted runs after one warm-up run, with the Suite run
+alone through `scripts/run-powershell-suites.ps1 -Suite <file>`. No timed run shared the Lane
+pool. A D2 time comes from a temporary stopwatch that was never committed.
+
+### Suite time, run alone
+
+| Suite | Before (s) | After (s) |
+|---|---|---|
+| `WorktreeMergedCleanup.Tests.ps1` | 34.6 | |
+| `WorktreeMergedCleanupSweep.Tests.ps1` | 31.1 | |
+| `WorktreeMergedCleanupEligibility.Tests.ps1` | 34.4 | |
+
+### Changes timed on their own
+
+- **T-A**, rows 119 and 122: one seed repository per Suite run, copied for every
+  `New-TempGitRepo` and `New-WorktreeToolingRepo` call. Commit `9fc18691`. The stopwatch spans
+  both builders and the final seed check and removal.
+
+  | Suite | T-A before (s) | T-A after (s) |
+  |---|---|---|
+  | `WorktreeMergedCleanup.Tests.ps1` | 6.49 | 1.29 |
+  | `WorktreeMergedCleanupSweep.Tests.ps1` | 4.49 | 2.24 |
+  | `WorktreeMergedCleanupEligibility.Tests.ps1` | 5.78 | 3.29 |
+  | Sum | 16.76 | 6.82 |
+
+  Kept: the sum fell by 9.94 s. The Suite medians in the same runs were 25.3 s, 31.9 s and
+  37.4 s. Only `WorktreeMergedCleanup` fell as a whole Suite. In the other two, the time each
+  run spends in child processes varies by more than the 2 to 3 s that T-A saves there.
+
+### Mutations
+
+- T-A seed check: a stray file written into the plain seed just before the final
+  `Remove-TempGitRepoSeeds` call. `WorktreeMergedCleanup` failed with "A case wrote into the
+  shared seed repository '...\wtclean-seed-42c32906\repo'." No `wtclean-seed-*` folder was left.
+- T-A trap: the Suite's first `Assert-Equal` made to fail. The run failed with "No config value
+  must read as unset. (expected 'MUTATED', got 'unset')". The count of `wtclean-seed-*` folders
+  in the temp folder was 0 before the run and 0 after it.
+
+### Linux runs
+
+- `WorktreeMergedCleanup.Tests.ps1` at `9fc1869108df0a6d79ea191fa24363ad0c0cb5b8`. Log
+  `.superpowers/201-linux/linux-9fc18691-20261029-181729.log`. Image
+  `mcr.microsoft.com/dotnet/sdk@sha256:2fa828c68761b1b8c23d7662dc134421b9d3b59fe1425fdbc80804e390cdb24d`,
+  kernel `Linux 6.18.54.1-microsoft-standard-WSL2`, PowerShell 7.6.6, git 2.43.0. The runner
+  printed "Platform: linux". The Suite passed, and `LINUX_EXIT=0`.
