@@ -310,6 +310,16 @@ time share it, so together they never do more work at once than the pool allows.
 only while no Lane is taken.
 _Avoid_: budget, semaphore, machine lock
 
+**Lane share**:
+How many Lanes one test run holds: one Lane for each Suite while it runs, half the Lane pool
+rounded up, or the whole Lane pool.
+_Avoid_: quota, allotment, reservation
+
+**Nested run**:
+A test run started inside another test run. It takes no Lanes, because the run outside it already
+holds them.
+_Avoid_: child run, inner run
+
 **Worker**:
 One of the places inside a single run of the Suite runner where a Suite can run. The worker count
 belongs to that run alone. A Worker still needs a free Lane before its Suite starts.
