@@ -49,9 +49,9 @@ The six Suites are `WorktreeMergedCleanupEligibility`, `WorktreeMergedCleanup`,
 
 - Split from backlog 195 at its Design, decision D8 of the spec. Decisions D1 to D6 and D9 of that
   spec apply here too, narrowed to these six Suites.
-- Stacked on `fix/wt-apply-the-deferred-test-audit-speed-ups`, because both items edit the
-  deferred list, the cycle-time record and `tests/powershell-suites.json`. Open the draft pull
-  request against that branch, or against `main` once 195 has merged.
+- Based on `main`. Backlog 195 merged as pull request 463, so this item no longer stacks on its
+  branch. Both items edit the deferred list, the cycle-time record and
+  `tests/powershell-suites.json`, so this item starts from the state 195 left them in.
 - Most rows need new fixture code, so D2 times almost every row on its own. Backlog 188's seed
   cache saved 1.7 of an estimated 17 seconds.
 - `tests/WorktreeMergedCleanup.Common.ps1` is shared by `WorktreeMergedCleanup`,
