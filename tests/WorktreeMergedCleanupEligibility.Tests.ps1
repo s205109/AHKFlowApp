@@ -207,13 +207,9 @@ try {
     $kept = Add-TestWorktree -RepoDir $repo -BranchName 'feat-cfgfalse'
     Invoke-TestGit $repo @('config', '--local', 'ahkflow.worktreeCleanup', 'false') | Out-Null
 
-    $hook = Invoke-CleanupChild -RepoDir $repo -ExtraArgs @('-IsHook')
-    Assert-Equal 0 $hook.ExitCode "Hook + config false should exit 0. Stderr: $($hook.Stderr)"
-    Assert-True ($hook.Stderr -match 'cleanup: eligible merged worktree') 'Config-false hook must still detect.'
-    Assert-True (-not ($hook.Stderr -match 'ahkflow\.worktreeCleanup true')) 'Config-false hook must NOT print the enable hint.'
-    Assert-True (-not ($hook.Stderr -match 'cleanup: removing')) 'Config-false hook must not remove.'
-    Assert-True (Test-Path -LiteralPath $kept) 'Config-false must leave the worktree folder.'
-
+    # Only the direct child runs here. It is the only end-to-end proof of the Skip branch. The hook
+    # side of config false is covered by the resolver row in WorktreeMergedCleanup.Tests.ps1, and
+    # the hint branch by the non-interactive case above. Backlog 201.
     $direct = Invoke-CleanupChild -RepoDir $repo
     Assert-True (-not ($direct.Stderr -match 'cleanup: removing')) 'Config-false direct call must skip.'
     Assert-True (Test-Path -LiteralPath $kept) 'Config-false direct call must leave the worktree folder.'
