@@ -880,7 +880,7 @@ pool. A D2 time comes from a temporary stopwatch that was never committed.
 | Suite | Before (s) | After (s) |
 |---|---|---|
 | `WorktreeMergedCleanup.Tests.ps1` | 34.6 | 25.3 |
-| `WorktreeMergedCleanupSweep.Tests.ps1` | 31.1 | |
+| `WorktreeMergedCleanupSweep.Tests.ps1` | 31.1 | 25.6 |
 | `WorktreeMergedCleanupEligibility.Tests.ps1` | 34.4 | |
 
 ### Changes timed on their own
@@ -910,6 +910,11 @@ pool. A D2 time comes from a temporary stopwatch that was never committed.
   `WorktreeMergedCleanup.Tests.ps1` did not change after T-A, so its after median is the T-A
   after median, 25.3 s.
 
+- **S-A**, rows 123 and 124: a fixed committer date in the future, `2030-01-01T00:00:00+00:00`,
+  around the branch creation in place of two `Start-Sleep -Seconds 2`. Commit `63e3d388`. The
+  stopwatch spans both cases. Before 5.89 s, from the T-A after runs; after 1.78 s. Kept: it fell
+  by 4.1 s. The Suite median in the same runs was 25.6 s.
+
 ### Mutations
 
 - T-A seed check: a stray file written into the plain seed just before the final
@@ -918,6 +923,11 @@ pool. A D2 time comes from a temporary stopwatch that was never committed.
 - T-A trap: the Suite's first `Assert-Equal` made to fail. The run failed with "No config value
   must read as unset. (expected 'MUTATED', got 'unset')". The count of `wtclean-seed-*` folders
   in the temp folder was 0 before the run and 0 after it.
+- S-A, row 123: the date set to `2000-01-01T00:00:00+00:00` in that case's block alone. The case
+  failed with "The base position must be where main stood before the branch was created, not
+  after."
+- S-A, row 124: the same past date in that case's block alone. The case failed with "Sanity
+  check: signal 5 must have a base position to judge against, or this test proves nothing."
 
 ### Linux runs
 
