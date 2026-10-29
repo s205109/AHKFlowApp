@@ -201,22 +201,6 @@ try {
     Remove-TempTree $repo
 }
 
-# --- Test: invalid config fails closed to report-only with a warning -----------
-$repo = New-TempGitRepo
-try {
-    $kept = Add-TestWorktree -RepoDir $repo -BranchName 'feat-invalidcfg'
-    Invoke-TestGit $repo @('config', '--local', 'ahkflow.worktreeCleanup', 'banana') | Out-Null
-
-    $res = Invoke-CleanupChild -RepoDir $repo -ExtraArgs @('-IsHook')
-    Assert-Equal 0 $res.ExitCode "Invalid config should not crash. Stderr: $($res.Stderr)"
-    Assert-True ($res.Stderr -match 'invalid or duplicated') 'Invalid config must warn.'
-    Assert-True ($res.Stderr -match 'git config --local --unset-all ahkflow\.worktreeCleanup') 'Warning must include the repair command.'
-    Assert-True (-not ($res.Stderr -match 'cleanup: removing')) 'Invalid config must not remove (fail closed).'
-    Assert-True (Test-Path -LiteralPath $kept) 'Invalid config must leave the worktree folder.'
-} finally {
-    Remove-TempTree $repo
-}
-
 # --- Test: explicit override cleans over invalid config, without a misleading warning ---
 # The invalid-config warning must fire only when the resolved action is report-only. An
 # explicit -Cleanup that legitimately cleans must NOT claim report-only. Hook env enable takes the
@@ -228,6 +212,15 @@ foreach ($override in @(
     try {
         $target = Add-TestWorktree -RepoDir $repo -BranchName "feat-invalid-$([guid]::NewGuid().ToString('N').Substring(0,6))"
         Invoke-TestGit $repo @('config', '--local', 'ahkflow.worktreeCleanup', 'banana') | Out-Null
+
+        # Invalid config fails closed to report-only with a warning. This hook run removes
+        # nothing, so the override run below still finds the worktree. Backlog 201 moved it here.
+        $invalid = Invoke-CleanupChild -RepoDir $repo -ExtraArgs @('-IsHook')
+        Assert-Equal 0 $invalid.ExitCode "Invalid config should not crash. Stderr: $($invalid.Stderr)"
+        Assert-True ($invalid.Stderr -match 'invalid or duplicated') 'Invalid config must warn.'
+        Assert-True ($invalid.Stderr -match 'git config --local --unset-all ahkflow\.worktreeCleanup') 'Warning must include the repair command.'
+        Assert-True (-not ($invalid.Stderr -match 'cleanup: removing')) 'Invalid config must not remove (fail closed).'
+        Assert-True (Test-Path -LiteralPath $target) 'Invalid config must leave the worktree folder.'
 
         $res = Invoke-CleanupChild -RepoDir $repo -ExtraArgs $override.Args -EnvVars $override.Env
         Assert-True (-not ($res.Stderr -match 'treating as report-only')) "$($override.Label) over invalid config must not print a report-only warning. Stderr: $($res.Stderr)"
