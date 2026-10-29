@@ -288,6 +288,13 @@ function Wait-ForWorktreeGone {
 
 # --- Resolve-MergedBaseRef: the three answers it can give ----------------------
 
+# Windows PowerShell 5.1 is a declared target (`#Requires -Version 5.1`), and it reports
+# Start-Process -PassThru exit codes as $null when -Wait was not used. The resolver read that as a
+# failed fetch, so on 5.1 every base was reported stale — and with the stale-base rule further
+# down, that alone would stop every automatic removal. The resolver must answer the same on both
+# hosts. Backlog 201 runs that check on the first fixture below.
+$windowsPowerShell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+
 $fixture = New-RemoteFixture -Merged
 try {
     $base = Resolve-MergedBaseRef -RepoRoot $fixture.Repo
@@ -301,22 +308,23 @@ try {
     Assert-True ($LASTEXITCODE -eq 0) 'After the fetch, origin/main must contain the merge.'
     & git -C $fixture.Repo merge-base --is-ancestor $fixture.Branch 'main'
     Assert-True ($LASTEXITCODE -ne 0) 'Local main must still be behind, or the fixture proves nothing.'
+
+    # The same answer from Windows PowerShell 5.1. It asks only for 'remote-fetched', which a
+    # second fetch still gives.
+    if (Test-Path -LiteralPath $windowsPowerShell) {
+        $command = "Set-StrictMode -Version Latest; . '$scriptsDir\worktree-git.common.ps1'; " +
+            "`$b = Resolve-MergedBaseRef -RepoRoot '$($fixture.Repo)'; Write-Output `$b.Reason"
+        $reason = (& $windowsPowerShell -NoProfile -ExecutionPolicy Bypass -Command $command 2>&1 | Select-Object -Last 1)
+        Assert-True ("$reason".Trim() -eq 'remote-fetched') `
+            "Windows PowerShell 5.1 must report a successful fetch, got '$reason'."
+    } else {
+        Write-Host "Skipped the Windows PowerShell 5.1 check: $windowsPowerShell not found."
+    }
 } finally {
     Remove-Fixture $fixture.Root
 }
 
-# Unreachable remote: the cached tracking ref still answers, and the reason says it may be behind.
-$fixture = New-RemoteFixture -Merged
-try {
-    Invoke-FixtureGit $fixture.Repo @('remote', 'set-url', 'origin', (Join-Path $fixture.Root 'no-such-origin.git')) | Out-Null
-
-    $base = Resolve-MergedBaseRef -RepoRoot $fixture.Repo
-    Assert-True ($base.Ref -eq 'origin/main') "Offline, the cached tracking ref is still the base, got '$($base.Ref)'."
-    Assert-True (-not $base.Fetched) 'An unreachable remote cannot report a successful fetch.'
-    Assert-True ($base.Reason -eq 'remote-stale') "Expected reason 'remote-stale', got '$($base.Reason)'."
-} finally {
-    Remove-Fixture $fixture.Root
-}
+# Unreachable remote: the offline sweep fixture below asks the resolver first. Backlog 201.
 
 # No upstream at all: the local branch is the only base there is.
 $fixture = New-RemoteFixture
@@ -327,26 +335,6 @@ try {
     Assert-True ($base.Ref -eq 'main') "Without an upstream the base is local main, got '$($base.Ref)'."
     Assert-True (-not $base.Fetched) 'Nothing can be fetched without an upstream.'
     Assert-True ($base.Reason -eq 'no-upstream') "Expected reason 'no-upstream', got '$($base.Reason)'."
-} finally {
-    Remove-Fixture $fixture.Root
-}
-
-# --- SSH transport ------------------------------------------------------------
-#
-# Batch mode stops ssh asking for a passphrase, but `GIT_SSH_COMMAND` is also how a caller points
-# git at an identity file, a proxy, or a different ssh client. Overwriting it makes the fetch fail
-# for those remotes, which leaves the sweep permanently in the stale-base, remove-nothing state.
-# So it is set only when nobody else has chosen a transport.
-$fixture = New-RemoteFixture
-try {
-    Assert-True ((Resolve-BatchModeSshCommand -RepoRoot $fixture.Repo -ExistingCommand '') -eq 'ssh -oBatchMode=yes') `
-        'With no transport configured, batch mode must be applied.'
-    Assert-True ($null -eq (Resolve-BatchModeSshCommand -RepoRoot $fixture.Repo -ExistingCommand 'ssh -i C:\keys\id_ed25519')) `
-        "A caller's GIT_SSH_COMMAND must be left alone."
-
-    Invoke-FixtureGit $fixture.Repo @('config', 'core.sshCommand', 'ssh -i C:\keys\id_ed25519') | Out-Null
-    Assert-True ($null -eq (Resolve-BatchModeSshCommand -RepoRoot $fixture.Repo -ExistingCommand '')) `
-        'A configured core.sshCommand must be left alone: the environment variable would override it.'
 } finally {
     Remove-Fixture $fixture.Root
 }
@@ -435,6 +423,18 @@ try {
     Assert-NotContains $offline.Stderr 'removing merged worktree' 'A stale base must not remove anything.'
     Assert-NotContains (Get-RemovalDiagnostics $fixture.Repo) 'Merged-cleanup requested removal' 'A stale base must not ask for a removal.'
     Assert-True (Test-Path -LiteralPath $fixture.Worktree) 'The worktree must survive an unreachable remote.'
+
+    # The hook resolves its own base, so it inherits the same rule: a base it could not refresh is
+    # not proof of anything, and removal is destructive. Backlog 201 runs it on this fixture. The
+    # sweep above wrote its own lines to both logs, so remove them first: the hook's assertions
+    # must read only the hook's own lines.
+    Remove-Item -LiteralPath (Join-Path $fixture.Repo '.claude\worktrees\worktree-removal.log') -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath (Join-Path $fixture.Repo '.claude\worktrees\worktree-removal-diagnostics.log') -Force -ErrorAction SilentlyContinue
+    $offlineHook = Invoke-RemoveHook -WorktreePath $fixture.Worktree
+    Assert-True ($offlineHook.ExitCode -eq 0) "The hook must exit 0, got $($offlineHook.ExitCode)."
+    Assert-Contains (Get-RemovalDiagnostics $fixture.Repo) 'may be behind the remote' 'The hook must say why it refused to decide.'
+    Assert-Contains (Get-RemovalLog $fixture.Repo) 'Kept: the base branch could not be refreshed.' 'The outcome log must carry the one Kept line.'
+    Assert-True (Test-Path -LiteralPath $fixture.Worktree) 'A base that could not be refreshed must preserve the worktree.'
 } finally {
     Remove-Fixture $fixture.Root
 }
@@ -445,6 +445,22 @@ try {
     $sweep = Invoke-Sweep -RepoDir $fixture.Repo
     Assert-True ($sweep.ExitCode -eq 0) "The sweep must exit 0, got $($sweep.ExitCode). Stderr: $($sweep.Stderr)"
     Assert-Contains $sweep.Stderr 'no merged worktrees eligible for cleanup.' 'An unmerged worktree must be preserved.'
+
+    # --- SSH transport, on the same fixture. Backlog 201. It runs after the sweep, because it
+    # writes core.sshCommand.
+    #
+    # Batch mode stops ssh asking for a passphrase, but `GIT_SSH_COMMAND` is also how a caller points
+    # git at an identity file, a proxy, or a different ssh client. Overwriting it makes the fetch fail
+    # for those remotes, which leaves the sweep permanently in the stale-base, remove-nothing state.
+    # So it is set only when nobody else has chosen a transport.
+    Assert-True ((Resolve-BatchModeSshCommand -RepoRoot $fixture.Repo -ExistingCommand '') -eq 'ssh -oBatchMode=yes') `
+        'With no transport configured, batch mode must be applied.'
+    Assert-True ($null -eq (Resolve-BatchModeSshCommand -RepoRoot $fixture.Repo -ExistingCommand 'ssh -i C:\keys\id_ed25519')) `
+        "A caller's GIT_SSH_COMMAND must be left alone."
+
+    Invoke-FixtureGit $fixture.Repo @('config', 'core.sshCommand', 'ssh -i C:\keys\id_ed25519') | Out-Null
+    Assert-True ($null -eq (Resolve-BatchModeSshCommand -RepoRoot $fixture.Repo -ExistingCommand '')) `
+        'A configured core.sshCommand must be left alone: the environment variable would override it.'
 } finally {
     Remove-Fixture $fixture.Root
 }
@@ -453,6 +469,13 @@ try {
 $fixture = New-RemoteFixture -Merged
 try {
     Invoke-FixtureGit $fixture.Repo @('remote', 'set-url', 'origin', (Join-Path $fixture.Root 'no-such-origin.git')) | Out-Null
+
+    # Unreachable remote: the cached tracking ref still answers, and the reason says it may be
+    # behind. A failed fetch changes no ref, so the sweep below sees the same fixture.
+    $base = Resolve-MergedBaseRef -RepoRoot $fixture.Repo
+    Assert-True ($base.Ref -eq 'origin/main') "Offline, the cached tracking ref is still the base, got '$($base.Ref)'."
+    Assert-True (-not $base.Fetched) 'An unreachable remote cannot report a successful fetch.'
+    Assert-True ($base.Reason -eq 'remote-stale') "Expected reason 'remote-stale', got '$($base.Reason)'."
 
     $sweep = Invoke-Sweep -RepoDir $fixture.Repo
     Assert-True ($sweep.ExitCode -eq 0) "A failed fetch must not fail the sweep, got exit $($sweep.ExitCode). Stderr: $($sweep.Stderr)"
@@ -487,43 +510,7 @@ try {
     Remove-Fixture $fixture.Root
 }
 
-# The hook resolves its own base, so it inherits the same rule: a base it could not refresh is not
-# proof of anything, and removal is destructive.
-$fixture = New-RemoteFixture -Merged -KeepTrackingRef
-try {
-    Invoke-FixtureGit $fixture.Origin @('update-ref', 'refs/heads/main', $fixture.PreMerge) | Out-Null
-    Invoke-FixtureGit $fixture.Repo @('remote', 'set-url', 'origin', (Join-Path $fixture.Root 'no-such-origin.git')) | Out-Null
-
-    $offlineHook = Invoke-RemoveHook -WorktreePath $fixture.Worktree
-    Assert-True ($offlineHook.ExitCode -eq 0) "The hook must exit 0, got $($offlineHook.ExitCode)."
-    Assert-Contains (Get-RemovalDiagnostics $fixture.Repo) 'may be behind the remote' 'The hook must say why it refused to decide.'
-    Assert-Contains (Get-RemovalLog $fixture.Repo) 'Kept: the base branch could not be refreshed.' 'The outcome log must carry the one Kept line.'
-    Assert-True (Test-Path -LiteralPath $fixture.Worktree) 'A base that could not be refreshed must preserve the worktree.'
-} finally {
-    Remove-Fixture $fixture.Root
-}
-
 # --- The fetch child process ---------------------------------------------------
-
-# Windows PowerShell 5.1 is a declared target (`#Requires -Version 5.1`), and it reports
-# Start-Process -PassThru exit codes as $null when -Wait was not used. The resolver read that as a
-# failed fetch, so on 5.1 every base was reported stale — and with the rule above, that alone would
-# stop every automatic removal. The resolver must answer the same on both hosts.
-$windowsPowerShell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
-if (Test-Path -LiteralPath $windowsPowerShell) {
-    $fixture = New-RemoteFixture -Merged
-    try {
-        $command = "Set-StrictMode -Version Latest; . '$scriptsDir\worktree-git.common.ps1'; " +
-            "`$b = Resolve-MergedBaseRef -RepoRoot '$($fixture.Repo)'; Write-Output `$b.Reason"
-        $reason = (& $windowsPowerShell -NoProfile -ExecutionPolicy Bypass -Command $command 2>&1 | Select-Object -Last 1)
-        Assert-True ("$reason".Trim() -eq 'remote-fetched') `
-            "Windows PowerShell 5.1 must report a successful fetch, got '$reason'."
-    } finally {
-        Remove-Fixture $fixture.Root
-    }
-} else {
-    Write-Host "Skipped the Windows PowerShell 5.1 check: $windowsPowerShell not found."
-}
 
 # A timed-out fetch must take its helpers with it. Git starts askpass, SSH, and credential helpers
 # as children, and killing only the parent leaves whichever one is waiting for input alive.
