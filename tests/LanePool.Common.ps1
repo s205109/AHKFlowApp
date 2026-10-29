@@ -18,7 +18,26 @@ function Remove-PinnedLanePool {
 
 function Get-RunLaneCount { param($Pool); (Get-AhkFlowHeldLaneCount -PoolRoot $Pool.Root) - 1 }
 
-. (Join-Path $PSScriptRoot 'ScriptRunspace.Common.ps1')
+# Sets each named process environment variable for the length of Action, then puts back the value
+# it had before. A $null or empty value removes the variable. Only the named keys are touched.
+# It lives here, not in a file of its own, because fixtures copy this file alone.
+function Invoke-WithEnvironment {
+    param([hashtable] $EnvVar = @{}, [Parameter(Mandatory)][scriptblock] $Action)
+
+    $previous = @{}
+    try {
+        foreach ($name in $EnvVar.Keys) {
+            $previous[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
+            $value = if ($null -eq $EnvVar[$name]) { $null } else { [string] $EnvVar[$name] }
+            [Environment]::SetEnvironmentVariable($name, $value, 'Process')
+        }
+        & $Action
+    } finally {
+        foreach ($name in $previous.Keys) {
+            [Environment]::SetEnvironmentVariable($name, $previous[$name], 'Process')
+        }
+    }
+}
 
 # Clears every Lane variable, then sets the given ones. Invoke-WithEnvironment restores them all.
 function Use-LaneEnvironment {

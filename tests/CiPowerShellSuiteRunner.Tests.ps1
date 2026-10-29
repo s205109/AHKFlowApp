@@ -294,6 +294,7 @@ function Invoke-Driver {
 }
 
 . (Join-Path $PSScriptRoot 'ScriptRunspace.Common.ps1')
+. (Join-Path $PSScriptRoot 'LanePool.Common.ps1')
 
 # Refusals use a fresh session. Protect the real summary and Lane ownership even if
 # a regression lets the runner continue past its expected refusal.
