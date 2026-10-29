@@ -7,3 +7,4 @@ Plan: `docs/superpowers/plans/2026-10-29-apply-the-deferred-git-fixture-test-spe
 - Task 3 (WorktreeMergedCleanupSweep rows 123, 124): done at 63e3d388. Tests: Sweep Suite passes alone; both past-date mutations fail their case. Suite median 31.1 s before, 25.6 s after; S-A 5.9 s before, 1.8 s after. Deferrals: none.
 - Task 4 (WorktreeMergedCleanupEligibility rows 94-98, 106, 107): done at d368dd9c. Tests: Suite passes alone after each row; four mutations each fail the named case. Suite median 34.4 s before, 30.7 s after. Deferrals: none.
 - Task 5 (WorktreeSweepRemoteBase rows 125-130): done at 6c1b99e2. Tests: Suite passes alone; seed-check and hook-log mutations fail; parses in Windows PowerShell 5.1. Suite median 34.6 s before, 27.2 s after. Deferrals: none.
+- Task 6 (BacklogStaleOpen row 118): done at 0b77939e. Tests: Suite passes alone and on Linux; one-fewer and write-nothing mutations fail. Suite median 23.8 s before, 17.1 s after. Deferrals: none.
