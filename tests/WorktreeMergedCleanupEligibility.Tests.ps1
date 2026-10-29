@@ -111,30 +111,32 @@ try {
 # Assert-MainCheckout gate) resolves $RepoRoot to that linked worktree, not the real main
 # checkout. Since `git branch --merged main` always includes `main` itself, the path-based
 # exclusion alone previously let the main checkout slip into the eligible set.
+#
+# Main is never eligible anyway: when the exclusion fails, the merged check refuses main by
+# signal 2, and the sweep writes a 'Kept:' line for it to the outcome log under -RepoRoot. So
+# the check that can fail is that the log holds no line for the main checkout, whose folder is
+# named 'repo'. A log line reads '<date> <time>  <worktree leaf>  <message>'. Backlog 201.
+#
+# The second call proves -MainRef 'refs/heads/main' excludes main the same way -MainRef 'main'
+# does. $wt.Branch is always a short name, so a naive string compare against an unresolved
+# 'refs/heads/main' never matches.
 $repo = New-TempGitRepo
 try {
     $otherPath = Add-TestWorktree -RepoDir $repo -BranchName 'feat-other'
+    $outcomeLog = Join-Path (Join-Path (Join-Path $otherPath '.claude') 'worktrees') 'worktree-removal.log'
 
     $eligible = Get-EligibleMergedWorktrees -RepoRoot $otherPath -MainRef 'main'
     $keys = @($eligible | ForEach-Object { ConvertTo-Key $_.Path })
-
     Assert-True (-not ($keys -contains (ConvertTo-Key $repo))) 'The main-ref worktree must never be eligible, even when $RepoRoot is a different (linked) worktree.'
-} finally {
-    Remove-TempTree $repo
-}
+    $mainLines = @(if (Test-Path -LiteralPath $outcomeLog) { Get-Content -LiteralPath $outcomeLog | Where-Object { $_ -match '^\S+ \S+  repo  ' } })
+    Assert-Equal 0 $mainLines.Count "The main-ref exclusion must skip the main checkout before the merged check, so the log has no line for it. Lines: $($mainLines -join ' | ')"
 
-# --- Test: main-ref exclusion matches a fully-qualified -MainRef too ------------
-# Regression guard: -MainRef 'refs/heads/main' must exclude the main checkout the same
-# way -MainRef 'main' does. $wt.Branch is always a short name, so a naive string compare
-# against an unresolved 'refs/heads/main' never matches.
-$repo = New-TempGitRepo
-try {
-    Add-TestWorktree -RepoDir $repo -BranchName 'feat-other' | Out-Null
-
-    $eligible = Get-EligibleMergedWorktrees -RepoRoot $repo -MainRef 'refs/heads/main'
+    Remove-Item -LiteralPath $outcomeLog -Force -ErrorAction SilentlyContinue
+    $eligible = Get-EligibleMergedWorktrees -RepoRoot $otherPath -MainRef 'refs/heads/main'
     $keys = @($eligible | ForEach-Object { ConvertTo-Key $_.Path })
-
     Assert-True (-not ($keys -contains (ConvertTo-Key $repo))) 'The main-ref worktree must never be eligible when -MainRef is the fully-qualified refs/heads/main form.'
+    $mainLines = @(if (Test-Path -LiteralPath $outcomeLog) { Get-Content -LiteralPath $outcomeLog | Where-Object { $_ -match '^\S+ \S+  repo  ' } })
+    Assert-Equal 0 $mainLines.Count "The main-ref exclusion must skip the main checkout for the fully-qualified refs/heads/main form too, so the log has no line for it. Lines: $($mainLines -join ' | ')"
 } finally {
     Remove-TempTree $repo
 }
