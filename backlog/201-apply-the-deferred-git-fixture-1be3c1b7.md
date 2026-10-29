@@ -60,4 +60,4 @@ The six Suites are `WorktreeMergedCleanupEligibility`, `WorktreeMergedCleanup`,
 - The two MERGE rows in `MeasureTestModes` were never tested by a refuter. Prove each with a
   mutation before you apply it (D5).
 - Spec: `docs/superpowers/specs/2026-10-27-apply-the-deferred-test-audit-speed-ups-design-195.md`
-- Plan: none yet — written at Stage 3.
+- Plan: `docs/superpowers/plans/2026-10-29-apply-the-deferred-git-fixture-test-speed-ups-plan-201.md`.
