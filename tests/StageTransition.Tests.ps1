@@ -216,6 +216,7 @@ function New-TransitionFixture {
 
     return [pscustomobject]@{
         Root     = (Resolve-Path -LiteralPath $acting).Path
+        Main     = (Resolve-Path -LiteralPath $root).Path
         # Where core.hooksPath points. A case that needs a commit to fail writes a pre-commit hook
         # here, after its own setup commits are safely in.
         HookDir  = (Join-Path $root '.nohooks')
@@ -436,18 +437,20 @@ try {
     # --- 'blocked' is not a transition this script performs ---
     # Moving an item into backlog/blocked/ is a manual git mv, so the parameter must refuse the
     # word rather than accept it and fail later with a message about a missing stage.
-    $blockedMessage = ''
+    $blockedErrorId = ''
     try {
         & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $fx.Root -Item '081' -Edge 'blocked' *> $null
     } catch {
-        $blockedMessage = $_.Exception.Message
+        $blockedErrorId = $_.FullyQualifiedErrorId
     }
-    Assert-True ($blockedMessage.Contains('The argument "blocked" does not belong to the set "success,failure,not applicable"')) `
-        "The blocked edge must be refused by the parameter itself. Got: $blockedMessage"
+    Assert-True ($blockedErrorId -like 'ParameterArgumentValidationError*') `
+        "The blocked edge must be refused by the parameter itself. Got: $blockedErrorId"
+    Assert-Equal '2-design' (Get-SingleBacklogStage -Lines (Get-Content -LiteralPath $fx.ItemPath)) `
+        'Parameter validation must leave the Stage unchanged'
 
     # --- The main checkout is refused ---
     # $fx's main clone is a plain repository, which is what Test-LinkedWorktree must reject.
-    $fxMain = Split-Path -Parent $fx.HookDir
+    $fxMain = $fx.Main
     $mainOutput = (& "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $fxMain -Item '081' -Edge 'success' *>&1) -join "`n"
     Assert-True ($LASTEXITCODE -ne 0) 'The main checkout must be refused'
     Assert-True ($mainOutput.Contains("REFUSED: '$fxMain' is the main checkout, not a linked worktree.")) `
@@ -456,13 +459,12 @@ try {
     # --- An item worktree with -Pr and no -Item is refused, not treated as a round (finding 3) ---
     # The refusal reads only the branch name, so $fx's item branch is enough.
     $r3Gh = New-FakeGh -Body "Stage: 5-simplify"
-    $script:r3Output = ''
-    Invoke-WithFakeGh -Gh $r3Gh -Action {
-        $script:r3Output = ((& "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $fx.Root -Edge 'success' -Pr 500 *>&1) -join "`n")
+    $r3Output = Invoke-WithFakeGh -Gh $r3Gh -Action {
+        ((& "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $fx.Root -Edge 'success' -Pr 500 *>&1) -join "`n")
     }
     Assert-True ($script:LastTransitionExit -ne 0) 'A missing -Item on an item branch must be refused'
-    Assert-True ($script:r3Output.Contains("REFUSED: This worktree is on 'feature/wt-transition-test', which is not the housekeeping round branch 'chore/wt-backlog-housekeeping'. A tracked transition needs -Item.")) `
-        "The refusal must ask for -Item. Output: $($script:r3Output)"
+    Assert-True ($r3Output.Contains("REFUSED: This worktree is on 'feature/wt-transition-test', which is not the housekeeping round branch 'chore/wt-backlog-housekeeping'. A tracked transition needs -Item.")) `
+        "The refusal must ask for -Item. Output: $($r3Output)"
     Assert-True ((Get-Content -Raw -LiteralPath $r3Gh.BodyFile) -match '(?m)^Stage: 5-simplify\r?$') `
         'A refused run must not rewrite any pull request body'
 
@@ -556,14 +558,13 @@ try {
     # --- Ship refuses a pull request number pointing at another branch (review finding 2) ---
     # Assert-PrOnBranch refuses before any write or push, so this runs on $sh before its own Ship.
     $r2Gh = New-FakeGh -HeadRefName 'feature/wt-somebody-else'
-    $script:r2Output = ''
-    Invoke-WithFakeGh -Gh $r2Gh -Action {
-        $script:r2Output = ((& "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $sh.Root -Item '081' `
+    $r2Output = Invoke-WithFakeGh -Gh $r2Gh -Action {
+        ((& "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $sh.Root -Item '081' `
             -Edge 'success' -Pr 999 *>&1) -join "`n")
     }
     Assert-True ($script:LastTransitionExit -ne 0) 'Ship must refuse a pull request on another branch'
-    Assert-True ($script:r2Output.Contains("REFUSED: Pull request 999 belongs to branch 'feature/wt-somebody-else', but this worktree is on 'feature/wt-transition-test'. Nothing was changed.")) `
-        "The refusal must name the other branch. Output: $($script:r2Output)"
+    Assert-True ($r2Output.Contains("REFUSED: Pull request 999 belongs to branch 'feature/wt-somebody-else', but this worktree is on 'feature/wt-transition-test'. Nothing was changed.")) `
+        "The refusal must name the other branch. Output: $($r2Output)"
     Assert-True (-not (Test-Path -LiteralPath (Join-Path $sh.Root 'backlog/done/081-automate-stage-transitions.md'))) `
         'A refused Ship must not move the item'
     Assert-True (((Get-Content -Raw -LiteralPath $r2Gh.Log) -join "`n") -notmatch 'pr ready') `
@@ -792,20 +793,19 @@ try {
     $un3Progress = Get-FileByte -Path (Join-Path $un3.Root 'PLAN-PROGRESS.md')
     Block-FixtureHook -Name 'pre-commit' -HookDir $un3.HookDir
     $un3Gh = New-FakeGh
-    $script:un3Output = ''
-    Invoke-WithFakeGh -Gh $un3Gh -Action {
+    $un3Output = Invoke-WithFakeGh -Gh $un3Gh -Action {
         # Captured, because this is the only refused case whose pathspec is two paths: git never
         # tracked PLAN-PROGRESS.md, so the closure never names it.
-        $script:un3Output = ((& "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $un3.Root -Item '081' -Edge 'success' -Pr 421 *>&1) -join "`n")
+        ((& "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $un3.Root -Item '081' -Edge 'success' -Pr 421 *>&1) -join "`n")
     }
     Assert-True ($script:LastTransitionExit -ne 0) 'A refused closure with an untracked progress file must be refused'
     Assert-True (Test-SameByte -Expected $un3Progress -Actual (Get-FileByte -Path (Join-Path $un3.Root 'PLAN-PROGRESS.md'))) `
         'A refused closure must put back a progress file git never tracked'
-    Assert-True ($script:un3Output -match 'The records are back on disk') `
+    Assert-True ($un3Output -match 'The records are back on disk') `
         'A two-path closure must still report that the records are back'
     # The count was hardcoded as 'three'. On this branch the pathspec is two paths, so the human
     # was sent looking for staged work on a PLAN-PROGRESS.md the closure never named.
-    Assert-True ($script:un3Output -notmatch 'three') `
+    Assert-True ($un3Output -notmatch 'three') `
         'The refusal must not name a path count the closure did not use'
 
     # Case 4: a zero-byte progress file. 'Get-Content -Raw' answers $null for it, so existence has
@@ -881,11 +881,10 @@ try {
     $un6Lock = Join-Path $un6GitDir 'index.lock'
     $un6Gh = New-FakeGh
     Set-Content -LiteralPath $un6Lock -Value '' -Encoding ascii
-    $script:un6Output = ''
     try {
-        Invoke-WithFakeGh -Gh $un6Gh -Action {
+        $un6Output = Invoke-WithFakeGh -Gh $un6Gh -Action {
             # '*>&1' and not '*> $null', because this case also reads the refusal text.
-            $script:un6Output = ((& "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $un6.Root -Item '081' -Edge 'success' -Pr 421 *>&1) -join "`n")
+            ((& "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $un6.Root -Item '081' -Edge 'success' -Pr 421 *>&1) -join "`n")
         }
     } finally {
         Remove-Item -LiteralPath $un6Lock -Force -ErrorAction SilentlyContinue
@@ -900,9 +899,9 @@ try {
     # The sentence the human reads. The reset above failed too, and the undo looked at the index
     # rather than guessing, found nothing staged, and so reports success. Nothing else in this
     # suite reads the refusal text, and without this the whole message contract is untested.
-    Assert-True ($script:un6Output -match 'The closure could not be staged') `
+    Assert-True ($un6Output -match 'The closure could not be staged') `
         'The refusal must name what failed'
-    Assert-True ($script:un6Output -match 'The records are back on disk') `
+    Assert-True ($un6Output -match 'The records are back on disk') `
         'The refusal must tell the human the records are back'
 
     # Case 7: bytes a text round trip cannot carry. The progress file is UTF-16 with a byte order
@@ -1031,14 +1030,13 @@ try {
     # workflow.md gives the round the same rule as tracked work, with the pull request body
     # standing in for PLAN-PROGRESS.md, which a round does not have.
     $r7Gh = New-FakeGh -Body "Stage: 6-verify" -HeadRefName 'chore/wt-backlog-housekeeping'
-    $script:r7Output = ''
-    Invoke-WithFakeGh -Gh $r7Gh -Action {
-        $script:r7Output = ((& "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $rd.Root -Edge 'failure' `
+    $r7Output = Invoke-WithFakeGh -Gh $r7Gh -Action {
+        ((& "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $rd.Root -Edge 'failure' `
             -Pr 500 *>&1) -join "`n")
     }
     Assert-True ($script:LastTransitionExit -ne 0) 'A round failure edge with no evidence must be refused'
-    Assert-True ($script:r7Output.Contains('REFUSED: A failure edge needs -Evidence: the failing command and its output.')) `
-        "The refusal must ask for -Evidence. Output: $($script:r7Output)"
+    Assert-True ($r7Output.Contains('REFUSED: A failure edge needs -Evidence: the failing command and its output.')) `
+        "The refusal must ask for -Evidence. Output: $($r7Output)"
     Assert-True ((Get-Content -Raw -LiteralPath $r7Gh.BodyFile) -match '(?m)^Stage: 6-verify\r?$') `
         'A refused round failure must leave the body alone'
 
@@ -1149,14 +1147,13 @@ try {
     # comes before any write or gh call, so it runs on $rf before $rf's item moves below.
     $r8Head = (& git -C $rf.Root rev-parse HEAD).Trim()
     $r8Gh = New-FakeGh
-    $script:r8Output = ''
-    Invoke-WithFakeGh -Gh $r8Gh -Action {
-        $script:r8Output = ((& "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $rf.Root -Item '081' `
+    $r8Output = Invoke-WithFakeGh -Gh $r8Gh -Action {
+        ((& "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $rf.Root -Item '081' `
             -Edge 'success' -Pr 421 *>&1) -join "`n")
     }
     Assert-True ($script:LastTransitionExit -ne 0) 'A tracked item must refuse the 10-cleanup transition'
-    Assert-True ($script:r8Output.Contains('REFUSED: Cleanup writes no Stage field. The item stays at 9-ship in backlog/done/, and the merged pull request is the record.')) `
-        "The refusal must say Cleanup writes no Stage field. Output: $($script:r8Output)"
+    Assert-True ($r8Output.Contains('REFUSED: Cleanup writes no Stage field. The item stays at 9-ship in backlog/done/, and the merged pull request is the record.')) `
+        "The refusal must say Cleanup writes no Stage field. Output: $($r8Output)"
     Assert-Equal '9-ship' (Get-FixtureStage -Root $rf.Root) 'A shipped item must keep reading 9-ship'
     Assert-Equal $r8Head (& git -C $rf.Root rev-parse HEAD).Trim() `
         'A refused cleanup transition must make no commit'
@@ -1167,16 +1164,15 @@ try {
     Move-Item -LiteralPath $rf.ItemPath -Destination $rfDone
     $rfHead = (& git -C $rf.Root rev-parse HEAD).Trim()
     $rfGh = New-FakeGh
-    $script:rfOutput = ''
-    Invoke-WithFakeGh -Gh $rfGh -Action {
+    $rfOutput = Invoke-WithFakeGh -Gh $rfGh -Action {
         # '*>&1', because this case also reads the refusal text.
-        $script:rfOutput = ((& "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $rf.Root -Item '081' -Edge 'failure' -Pr 421 `
+        ((& "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $rf.Root -Item '081' -Edge 'failure' -Pr 421 `
             -Evidence 'CI: 1 check failed' -RecoveryTask 'Task 9: fix the check' *>&1) -join "`n")
     }
     Assert-True ($script:LastTransitionExit -ne 0) 'A Ship failure that cannot read the progress file must be refused'
     # The reason, so a refusal for some other cause cannot pass this case by accident.
-    Assert-True ($script:rfOutput -match 'PLAN-PROGRESS\.md') 'The refusal must be about the progress file'
-    Assert-True ($script:rfOutput -match 'Nothing was changed') 'The refusal must say that nothing was changed'
+    Assert-True ($rfOutput -match 'PLAN-PROGRESS\.md') 'The refusal must be about the progress file'
+    Assert-True ($rfOutput -match 'Nothing was changed') 'The refusal must say that nothing was changed'
     Assert-True ((Get-GhLog -Gh $rfGh) -notmatch '--undo') 'A refused Ship failure must leave the pull request ready'
     Assert-True (Test-Path -LiteralPath $rfDone) 'A refused Ship failure must leave the item in backlog/done/'
     Assert-True (-not (Test-Path -LiteralPath $rf.ItemPath)) 'A refused Ship failure must not move the item back'
@@ -1204,13 +1200,12 @@ try {
     $pfDone = Join-Path $pf.Root 'backlog/done/081-automate-stage-transitions.md'
 
     $pfGh2 = New-FakeGh
-    $script:pfOutput = ''
-    Invoke-WithFakeGh -Gh $pfGh2 -Action {
-        $script:pfOutput = ((& "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $pf.Root -Item '081' -Edge 'failure' -Pr 421 `
+    $pfOutput = Invoke-WithFakeGh -Gh $pfGh2 -Action {
+        ((& "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $pf.Root -Item '081' -Edge 'failure' -Pr 421 `
             -Evidence 'CI: 2 checks failed' -RecoveryTask 'Task 9: fix the check' *>&1) -join "`n")
     }
     Assert-True ($script:LastTransitionExit -ne 0) 'A Ship failure whose push is refused must be refused'
-    Assert-True ($script:pfOutput -match 'pre-flight push failed') 'The refusal must name the refused push'
+    Assert-True ($pfOutput -match 'pre-flight push failed') 'The refusal must name the refused push'
     Assert-True ((Get-GhLog -Gh $pfGh2) -notmatch '--undo') 'A Ship failure whose push is refused must leave the pull request ready'
     Assert-True (Test-Path -LiteralPath $pfDone) 'A Ship failure whose push is refused must leave the item in backlog/done/'
     Assert-Equal '9-ship' (Get-FixtureStage -Root $pf.Root) 'A Ship failure whose push is refused must leave the Stage at 9-ship'
@@ -1304,14 +1299,13 @@ try {
     # Already ready: there is nothing to resume, and Cleanup writes no Stage line for a round
     # either. The merged pull request is the record.
     $f2bGh = New-FakeGh -Body "Stage: 9-ship" -HeadRefName 'chore/wt-backlog-housekeeping' -IsDraft 'false'
-    $script:f2bOutput = ''
-    Invoke-WithFakeGh -Gh $f2bGh -Action {
-        $script:f2bOutput = ((& "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $rd.Root -Edge 'success' `
+    $f2bOutput = Invoke-WithFakeGh -Gh $f2bGh -Action {
+        ((& "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $rd.Root -Edge 'success' `
             -Pr 500 *>&1) -join "`n")
     }
     Assert-True ($script:LastTransitionExit -ne 0) 'A round leaving Ship must be refused'
-    Assert-True ($script:f2bOutput.Contains('REFUSED: Cleanup writes no Stage line. The round stays at 9-ship in its pull request body, and the merged pull request is the record.')) `
-        "The refusal must say Cleanup writes no Stage line. Output: $($script:f2bOutput)"
+    Assert-True ($f2bOutput.Contains('REFUSED: Cleanup writes no Stage line. The round stays at 9-ship in its pull request body, and the merged pull request is the record.')) `
+        "The refusal must say Cleanup writes no Stage line. Output: $($f2bOutput)"
     Assert-True ((Get-Content -Raw -LiteralPath $f2bGh.BodyFile) -match '(?m)^Stage: 9-ship\r?$') `
         'A refused round cleanup must leave the body at 9-ship'
     Assert-True (((Get-Content -Raw -LiteralPath $f2bGh.Log) -join "`n") -notmatch 'pr ready 500\s*$') `
@@ -1333,14 +1327,13 @@ try {
     # The refusal above left $f3 at 1-pickup with its marker pushed, so a second Pickup on it
     # reaches 'gh pr list' and the base check again.
     $f3bGh = New-FakeGh -ExistingPr '421' -IsDraft 'true' -BaseRefName 'feature/wt-somewhere-else'
-    $script:f3bOutput = ''
-    Invoke-WithFakeGh -Gh $f3bGh -Action {
-        $script:f3bOutput = ((& "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $f3.Root -Item '081' `
+    $f3bOutput = Invoke-WithFakeGh -Gh $f3bGh -Action {
+        ((& "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $f3.Root -Item '081' `
             -Edge 'success' *>&1) -join "`n")
     }
     Assert-True ($script:LastTransitionExit -ne 0) 'Pickup must refuse a pull request opened against another base'
-    Assert-True ($script:f3bOutput.Contains("REFUSED: Pull request 421 targets 'feature/wt-somewhere-else', but this Pickup was asked for 'main'. Nothing was stamped.")) `
-        "The refusal must name the other base. Output: $($script:f3bOutput)"
+    Assert-True ($f3bOutput.Contains("REFUSED: Pull request 421 targets 'feature/wt-somewhere-else', but this Pickup was asked for 'main'. Nothing was stamped.")) `
+        "The refusal must name the other base. Output: $($f3bOutput)"
     Assert-Equal '1-pickup' (Get-SingleBacklogStage -Lines (Get-Content -LiteralPath $f3.ItemPath)) `
         'A Pickup refused for the wrong base must leave the Stage at 1-pickup'
 

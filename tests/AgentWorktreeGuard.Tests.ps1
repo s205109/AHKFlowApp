@@ -296,6 +296,7 @@ function Invoke-HarnessShim {
         [string] $Jq = 'Inherited',
         [string] $ParsedCommand = '',
         [string] $ParsedCwd = '',
+        [switch] $ParseFailure,
         [switch] $Copilot
     )
 
@@ -310,8 +311,13 @@ jq() {
   input=$(cat)
   [[ "$input" == "$SHIM_TEST_INPUT" ]] || return 1
   case "$2" in
-    *fromjson*) printf '%s\n' "$SHIM_TEST_COMMAND" ;;
-    '.cwd // empty') printf '%s\n' "$SHIM_TEST_CWD" ;;
+    *fromjson*)
+      [[ "$SHIM_TEST_PARSE_FAILURE" != 'True' ]] || return 4
+      [[ -n "$SHIM_TEST_COMMAND" ]] || return 4
+      printf '%s\n' "$SHIM_TEST_COMMAND" ;;
+    '.cwd // empty')
+      [[ -n "$SHIM_TEST_CWD" ]] || return 4
+      printf '%s\n' "$SHIM_TEST_CWD" ;;
     'has("toolArgs")') [[ "$SHIM_TEST_COPILOT" == 'True' ]] ;;
     *) return 1 ;;
   esac
@@ -330,6 +336,7 @@ command() {
         $EnvironmentOverrides.BASH_ENV = ConvertTo-BashPath $startup
         $EnvironmentOverrides.SHIM_TEST_INPUT = $StdIn
         $EnvironmentOverrides.SHIM_TEST_COMMAND = $ParsedCommand
+        $EnvironmentOverrides.SHIM_TEST_PARSE_FAILURE = [string][bool]$ParseFailure
         $EnvironmentOverrides.SHIM_TEST_CWD = $ParsedCwd
         $EnvironmentOverrides.SHIM_TEST_COPILOT = [string][bool]$Copilot
     }
@@ -1194,8 +1201,8 @@ try {
     }
 
     # A quote is one of four ways a Reading becomes Ambiguous. The other three are block forms the
-    # suite already covers at (`tests/AgentWorktreeGuard.Tests.ps1:2364`, "    $heredocAmbiguousCases = @(")
-    # and (`tests/AgentWorktreeGuard.Tests.ps1:2453`, "    $hereStringAmbiguousCases = @("), and
+    # suite already covers at (`tests/AgentWorktreeGuard.Tests.ps1:2382`, "    $heredocAmbiguousCases = @(")
+    # and (`tests/AgentWorktreeGuard.Tests.ps1:2471`, "    $hereStringAmbiguousCases = @("), and
     # every one of them must reach the same refusal at every layer. Without this, the message could
     # promise "balanced quoting" to somebody whose heredoc terminator is indented.
     $unreadableCauses = @(
@@ -2027,9 +2034,20 @@ try {
 
         # The real entrypoint allows 'rg' silently, so a forwarded run against it would also exit 0
         # with nothing on stderr. Only the stub tells the two apart.
+        Invoke-TestCase 'Bash shim forwards as Auto when jq emits no command or fails parsing' {
+            foreach ($case in @(@{ ParsedCommand = '' }, @{ ParsedCommand = 'git status'; ParseFailure = $true })) {
+                $result = Invoke-HarnessShim -Harness $shimHarness -Jq Present @case `
+                    -StdIn (New-ClaudePayload 'git status' $fixture.Main)
+                Assert-Equal 0 $result.ExitCode 'ExitCode'
+                Assert-Equal '' $result.StdOut.Trim() 'Must produce no decision payload'
+                Assert-Match ($script:ShimStubMarker + ' adapter=Auto') $result.StdErr 'Failed parsing must forward as Auto'
+            }
+        }
+
         Invoke-TestCase 'Bash shim exits fast for a noncandidate command despite a matching cwd' {
             $result = Invoke-HarnessShim -Harness $shimHarness `
-                -StdIn (New-ClaudePayload 'rg -n "Goal" README.md' $fixture.Main) -ShimArguments @('Claude')
+                -StdIn (New-ClaudePayload 'rg -n "Goal" README.md' (Join-Path $fixture.Main 'git repo')) -ShimArguments @('Claude') `
+                -Jq Present -ParsedCommand 'rg -n "Goal" README.md' -ParsedCwd (Join-Path $fixture.Main 'git repo')
             Assert-Equal 0 $result.ExitCode 'ExitCode'
             Assert-Equal '' $result.StdErr.Trim() 'StdErr'
         }
@@ -4299,46 +4317,37 @@ try {
 
     Write-Host 'Bash shim prefilter for worktree writes' -ForegroundColor Cyan
 
-    # These three run against the REAL repository identity, like every other shim test above: the
-    # entrypoint derives the protected repository from its own checked-in location, so a fixture
-    # path would classify as OutsideProtectedRepository and prove nothing. Nothing is executed -
-    # the shim only classifies the command text.
-    $script:RealWriteCommand = 'printf probe > ' + $script:RealMainCheckout.Replace('\', '/') + '/.guard-probe.tmp'
+    $harness = New-ShimHarness -ShimFileName 'pre-bash-guard.sh'
+    try {
+        # Stub forwarding distinguishes Bash early exits from a silent policy-core Allow.
+        $script:RealWriteCommand = 'printf probe > ' + $script:RealMainCheckout.Replace('\', '/') + '/.guard-probe.tmp'
 
-    # Proved against the stub entrypoint, not the real one. The old version of this case passed a
-    # payload whose cwd was $suiteRoot and expected a denial, which only happens when the suite
-    # itself runs inside a managed worktree. From a plain checkout, and in CI, it failed.
-    Invoke-TestCase 'Shim: a worktree-session write is forwarded to the policy core' {
-        $harness = New-ShimHarness -ShimFileName 'pre-bash-guard.sh'
-        try {
+        # Proved against the stub entrypoint, not the real one. The old version of this case passed a
+        # payload whose cwd was $suiteRoot and expected a denial, which only happens when the suite
+        # itself runs inside a managed worktree. From a plain checkout, and in CI, it failed.
+        Invoke-TestCase 'Shim: a worktree-session write is forwarded to the policy core' {
             $worktreeCwd = Join-Path $script:RealMainCheckout '.claude\worktrees\probe'
             $result = Invoke-HarnessShim -Harness $harness `
-                -StdIn (New-ClaudePayload 'printf probe > ../../../README.md' $worktreeCwd)
+                -StdIn (New-ClaudePayload 'printf probe > ../../../README.md' $worktreeCwd) `
+                -Jq Present -ParsedCommand 'printf probe > ../../../README.md' -ParsedCwd $worktreeCwd
             Assert-Match $script:ShimStubMarker $result.StdErr 'Must forward to the entrypoint'
         }
-        finally { Remove-ShimHarness -Harness $harness }
-    }
 
-    # The next two cases are proved against the stub entrypoint too. A forwarded run against the
-    # real entrypoint also exits 0 with no decision payload, because the write layer allows a
-    # main session and allows a read.
-    Invoke-TestCase 'Shim: a main-session redirect still exits in Bash' {
-        $harness = New-ShimHarness -ShimFileName 'pre-bash-guard.sh'
-        try {
+        # The next two cases are proved against the stub entrypoint too. A forwarded run against the
+        # real entrypoint also exits 0 with no decision payload, because the write layer allows a
+        # main session and allows a read.
+        Invoke-TestCase 'Shim: a main-session redirect still exits in Bash' {
             $result = Invoke-HarnessShim -Harness $harness `
-                -StdIn (New-ClaudePayload $script:RealWriteCommand $script:RealMainCheckout)
+                -StdIn (New-ClaudePayload $script:RealWriteCommand (Join-Path $script:RealMainCheckout 'git repo')) `
+                -Jq Present -ParsedCommand $script:RealWriteCommand -ParsedCwd (Join-Path $script:RealMainCheckout 'git repo')
             Assert-Equal 0 $result.ExitCode 'Exit code'
             Assert-Equal '' $result.StdOut.Trim() 'Must produce no decision payload'
             Assert-True ($result.StdErr -notmatch $script:ShimStubMarker) 'Must not start PowerShell'
         }
-        finally { Remove-ShimHarness -Harness $harness }
-    }
 
-    # The cwd is a worktree path under the real main checkout, so the case does not depend on where
-    # the suite itself runs.
-    Invoke-TestCase 'Shim: a worktree-session read still exits in Bash' {
-        $harness = New-ShimHarness -ShimFileName 'pre-bash-guard.sh'
-        try {
+        # The cwd is a worktree path under the real main checkout, so the case does not depend on where
+        # the suite itself runs.
+        Invoke-TestCase 'Shim: a worktree-session read still exits in Bash' {
             $worktreeCwd = Join-Path $script:RealMainCheckout '.claude\worktrees\probe'
             $result = Invoke-HarnessShim -Harness $harness `
                 -StdIn (New-ClaudePayload 'cat README.md' $worktreeCwd) `
@@ -4347,8 +4356,8 @@ try {
             Assert-Equal '' $result.StdOut.Trim() 'Must produce no decision payload'
             Assert-True ($result.StdErr -notmatch $script:ShimStubMarker) 'Must not start PowerShell'
         }
-        finally { Remove-ShimHarness -Harness $harness }
-    }
+
+    } finally { Remove-ShimHarness -Harness $harness }
 
     Write-Host 'Bash shim prefilter for file-edit tool calls' -ForegroundColor Cyan
 
