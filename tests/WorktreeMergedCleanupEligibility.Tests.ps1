@@ -239,6 +239,12 @@ foreach ($mode in @(@{ Args = @('-IsHook'); Label = 'hook' })) {
         $target = Add-TestWorktree -RepoDir $repo -BranchName "feat-cfgtrue-$($mode.Label)"
         Invoke-TestGit $repo @('config', '--local', 'ahkflow.worktreeCleanup', 'true') | Out-Null
 
+        # env '0' + config true -> report-only in hook context, so nothing is removed and the run
+        # below still finds the worktree. Backlog 201 moved this check into this fixture.
+        $disabled = Invoke-CleanupChild -RepoDir $repo -ExtraArgs @('-IsHook') -EnvVars @{ 'AHKFLOW_WORKTREE_CLEANUP' = '0' }
+        Assert-True (-not ($disabled.Stderr -match 'cleanup: removing')) "env '0' must override config true in hook context. Stderr: $($disabled.Stderr)"
+        Assert-True (Test-Path -LiteralPath $target) "env '0' must leave the worktree folder even with config true."
+
         $res = Invoke-CleanupChild -RepoDir $repo -ExtraArgs $mode.Args
         Assert-Equal 0 $res.ExitCode "config true ($($mode.Label)) should exit 0. Stderr: $($res.Stderr)"
         Assert-True ($res.Stderr -match 'cleanup: removing merged worktree') "config true ($($mode.Label)) must request removal. Stderr: $($res.Stderr)"
@@ -256,18 +262,6 @@ try {
     Invoke-TestGit $repo @('config', '--local', 'ahkflow.worktreeCleanup', 'false') | Out-Null
     $res = Invoke-CleanupChild -RepoDir $repo -ExtraArgs @('-IsHook') -EnvVars @{ 'AHKFLOW_WORKTREE_CLEANUP' = '1' }
     Assert-True (Wait-ForWorktreeCleaned -RepoDir $repo -WorktreePath $target) "env '1' must override config false in hook context. Stderr: $($res.Stderr)"
-} finally {
-    Remove-TempTree $repo
-}
-
-# env '0' + config true -> report-only (nothing removed).
-$repo = New-TempGitRepo
-try {
-    $kept = Add-TestWorktree -RepoDir $repo -BranchName 'feat-env0-cfgtrue'
-    Invoke-TestGit $repo @('config', '--local', 'ahkflow.worktreeCleanup', 'true') | Out-Null
-    $res = Invoke-CleanupChild -RepoDir $repo -ExtraArgs @('-IsHook') -EnvVars @{ 'AHKFLOW_WORKTREE_CLEANUP' = '0' }
-    Assert-True (-not ($res.Stderr -match 'cleanup: removing')) "env '0' must override config true in hook context. Stderr: $($res.Stderr)"
-    Assert-True (Test-Path -LiteralPath $kept) "env '0' must leave the worktree folder even with config true."
 } finally {
     Remove-TempTree $repo
 }
