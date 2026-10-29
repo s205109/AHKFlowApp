@@ -34,3 +34,4 @@ This repository must hold no stale citation, found 2:
 
 **Recovery task:** R1: re-point the backlog/done/137 citations that R-B moved (committed as 660915b1). R2: derive the S-A committer date from the current time, so it never falls behind the seed commit (final review, Important 1).
 
+- Recovery R1 and R2: done at b2b6584d. R1 re-pointed the backlog/done/137 citations (660915b1); CitationFreshness passes. R2 derives the S-A date from the clock; the Sweep Suite passes, and a date one day back fails the first S-A case. Deferrals: none.
