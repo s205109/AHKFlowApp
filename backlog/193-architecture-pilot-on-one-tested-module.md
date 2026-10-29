@@ -51,3 +51,20 @@ Each criterion is refined in the spec named below. Tick a box only when its word
   188's branch. Pick this item up after 188's audit batches, or after 188 merges.
 - Spec: `docs/superpowers/specs/2026-10-18-speed-up-the-development-cycle-design-188.md`
 - Plan: none — the spec is the design; Plan comes at pickup.
+
+## Pilot record
+
+- **Module**: the Lane pool, `scripts/test-lanes.common.ps1`, with its test helpers
+  `tests/LanePool.Common.ps1` and `tests/DotnetLane.Common.ps1`.
+- **Audit data that chose it**: section 3.6 of
+  `docs/superpowers/specs/2026-10-18-speed-up-the-development-cycle-research-188/powershell-suites.md`,
+  "The Lane pool is tested in seven suites". The 188 spec names the Lane pool as its example in
+  section 4.7.
+- **Audit data today**: on 2026-10-29, at `f6db2386`, eight Suites use the module or its test
+  helpers: `CiPowerShellSuiteRunner`, `CoverageRunnerProgress`, `CoverageSliceSkip`,
+  `GateEvidence`, `LanePool`, `MeasureTestModes`, `TestFastDotnetProgress` and
+  `TestFastPowerShellMode`. `CoverageSliceSkip` and `GateEvidence` are new since the audit.
+- **Skill start**: on 2026-10-29 the user started `/mattpocock-skills:improve-codebase-architecture`
+  from `mattpocock-skills` 1.3.1, with the Lane pool as its direction. At its start, the session told
+  it to read `CONTEXT.md` as its glossary in place of `GLOSSARY.md`, and to use `mp-grilling` and
+  `mp-domain-modeling` in place of `grilling` and `domain-modeling`.
