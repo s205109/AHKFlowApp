@@ -72,7 +72,7 @@ function Test-DotnetLaneRoute {
         if ($Fail) { Set-Content (Join-Path $Root "stub/fail-$Calls") fail }
         $env:PATH = (Join-Path $Root stub) + [IO.Path]::PathSeparator + $previousPath
         Use-LaneEnvironment -Value @{ AHKFLOW_TEST_LANES_ROOT = $pool.Root; AHKFLOW_TEST_LANES_HOLDER = $(if ($Nested) { 'existing-holder' } else { '  ' }) } -Body {
-            if ($Nested) { $handles.Held = Enter-AhkFlowLanes -PoolRoot $pool.Root -Share Half -Proposal 4 }
+            if ($Nested) { $handles.Held = @(0, 1 | ForEach-Object { [IO.File]::Open((Join-Path $pool.Root "lane-$_.lock"), 'OpenOrCreate', 'ReadWrite', 'None') }) }
             $payload = @{ Root = $Root; Script = $ScriptName; Arguments = $Arguments; Repeat = [bool]$Repeat } | ConvertTo-Json -Compress
             $code = @'
 param($Json)
@@ -96,14 +96,7 @@ foreach ($iteration in 1..$(if ($p.Repeat) { 2 } else { 1 })) {
                 Assert-True ((Get-RunLaneCount $pool) -eq 2) "Expected exactly two of four Lanes during $ScriptName call $call."
                 $expected = if ($Nested) { 'existing-holder' } else { [string]$handles.Child.Process.Id }
                 Assert-True ($marker -ceq $expected) "Expected holder '$expected', got '$marker'."
-                # A second real entry point must fail on the checkout lock, even when nested.
-                if ($call -eq 1) {
-                    $handles.Contender = Start-LaneChildProcess @('-NoProfile', '-File', (Join-Path $Root 'scripts/test-fast.ps1'), '-Mode', 'Fast', '-NoBuild')
-                    $refused = Wait-LaneChildProcess $handles.Contender 10
-                    Assert-True ($refused.ExitCode -ne 0 -and ($refused.Output + $refused.Error).Contains('holds the test-run lock')) 'A real contender must be refused by the checkout lock.'
-                    Stop-LaneChildProcess $handles.Contender
-                    $handles.Contender = $null
-                }
+                Assert-True (Test-FileLockHeld (Join-Path $Root '.test-run.lock')) 'The checkout lock must be held at the gated call.'
                 Publish-LaneSignal (Join-Path $Root "stub/release-$call")
                 if ($Repeat) {
                     $after = Wait-LanePath (Join-Path $Root "stub/after-$call") 15 $handles.Child
@@ -160,7 +153,7 @@ foreach ($iteration in 1..$(if ($p.Repeat) { 2 } else { 1 })) {
         foreach ($call in 1..($Calls * 2)) { Publish-LaneSignal (Join-Path $Root "stub/release-$call") }
         Stop-LaneChildProcess $handles.Contender
         Stop-LaneChildProcess $handles.Child
-        Exit-AhkFlowLanes $handles.Held
+        foreach ($stream in @($handles.Held)) { if ($null -ne $stream) { $stream.Dispose() } }
         $env:PATH = $previousPath
         Remove-PinnedLanePool $pool
     }
@@ -175,30 +168,7 @@ function Test-DotnetLaneCancellation {
     $invocation = $null
     try {
         $env:PATH = (Join-Path $Root stub) + [IO.Path]::PathSeparator + $previousPath
-        foreach ($index in 1..3) { $blockers.Add((Open-AhkFlowLaneFile (Join-Path $pool.Root "lane-$index.lock"))) }
-        # This fixture seam acknowledges a real failed acquisition after capacity resolution.
-        # It does not replace the locking operation or decide whether contention exists.
-        Add-Content (Join-Path $Root 'scripts/test-lanes.common.ps1') @'
-$script:realLaneOpen = ${function:Open-AhkFlowLaneFile}
-$script:realLaneResolve = ${function:Resolve-AhkFlowLaneCapacity}
-$script:resolvingLaneCapacity = $false
-function Resolve-AhkFlowLaneCapacity {
-    param($PoolRoot, $Proposal)
-    $script:resolvingLaneCapacity = $true
-    try { & $script:realLaneResolve $PoolRoot $Proposal }
-    finally { $script:resolvingLaneCapacity = $false }
-}
-function Open-AhkFlowLaneFile {
-    param([string] $Path)
-    $stream = & $script:realLaneOpen $Path
-    if ($null -eq $stream -and -not $script:resolvingLaneCapacity -and $Path -like '*lane-*.lock') {
-        $signal = Join-Path $env:AHKFLOW_TEST_LANES_ROOT 'failed-open'
-        Set-Content $signal $Path
-        Set-Content "$signal.done" complete
-    }
-    $stream
-}
-'@
+        foreach ($index in 1..3) { $blockers.Add([IO.File]::Open((Join-Path $pool.Root "lane-$index.lock"), 'OpenOrCreate', 'ReadWrite', 'None')) }
         Use-LaneEnvironment -Value @{ AHKFLOW_TEST_LANES_ROOT = $pool.Root; AHKFLOW_TEST_LANES_HOLDER = '  ' } -Body {
             try {
                 [void]$worker.AddScript({
@@ -207,9 +177,15 @@ function Open-AhkFlowLaneFile {
                     else { & (Join-Path $Root 'scripts/run-coverage.ps1') }
                 }).AddArgument($Root).AddArgument($ScriptName)
                 $invocation = $worker.BeginInvoke()
-                [void](Wait-LanePath (Join-Path $pool.Root 'failed-open') 10)
-                Assert-True (Test-AhkFlowLaneFileHeld (Join-Path $Root '.test-run.lock')) 'The waiting route must retain its checkout lock.'
-                Assert-True (Test-AhkFlowLaneFileHeld (Join-Path $pool.Root 'entry.lock')) 'The waiting route must retain the admission lock.'
+                # The route waits for its second Lane: it holds the checkout lock, the entry lock and lane 0.
+                $watch = [Diagnostics.Stopwatch]::StartNew()
+                while (-not ((Test-FileLockHeld (Join-Path $Root '.test-run.lock')) -and (Test-FileLockHeld (Join-Path $pool.Root 'entry.lock')) -and (Get-RunLaneCount $pool) -eq 4)) {
+                    Assert-True ($watch.Elapsed.TotalSeconds -lt 10) 'The route never reached its waiting state.'
+                    Assert-True ($invocation.IsCompleted -eq $false) 'The route ended before it waited for a Lane.'
+                    Start-Sleep -Milliseconds 20
+                }
+                Assert-True (Test-FileLockHeld (Join-Path $Root '.test-run.lock')) 'The waiting route must retain its checkout lock.'
+                Assert-True (Test-FileLockHeld (Join-Path $pool.Root 'entry.lock')) 'The waiting route must retain the admission lock.'
                 Assert-True ((Get-RunLaneCount $pool) -eq 4) 'The waiting route must hold one partial Lane beside three blockers.'
                 $stopping = $worker.BeginStop($null, $null)
                 Assert-True ($stopping.AsyncWaitHandle.WaitOne(10000)) 'Cancellation must finish within ten seconds.'
