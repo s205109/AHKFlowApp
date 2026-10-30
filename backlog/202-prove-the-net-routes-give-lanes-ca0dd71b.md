@@ -6,7 +6,7 @@
 - **Type**: Tooling
 - **Interfaces**: none (test Suites only)
 - **Difficulty**: moderate
-- **Stage**: 5-simplify
+- **Stage**: 6-verify
 
 ## Summary
 
