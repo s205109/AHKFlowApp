@@ -6,7 +6,7 @@
 - **Type**: Tooling
 - **Interfaces**: none (process docs, stage-transition script, process checks)
 - **Difficulty**: complex
-- **Stage**: 2-design
+- **Stage**: 3-plan
 
 ## Summary
 
