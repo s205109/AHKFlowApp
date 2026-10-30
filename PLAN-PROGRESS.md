@@ -9,3 +9,4 @@ Plan: `docs/superpowers/plans/2026-10-29-architecture-pilot-on-one-tested-module
 - Task 5: 6933f89e, 602b9c6a — tests: TestFastDotnetProgress 12, CoverageRunnerProgress 13, MeasureTestModes 32, TestFastPowerShellMode 7, LanePool 39 pass; probe mutation fails 'Fast Lane route: owner' with the checkout-lock message — deferrals: none
 - Task 6: cb23e3bf — tests: nine Suites pass, LanePool 40; probe file fails the check with its path and line, in both name forms — deferrals: none
 - Task 7: ddb90edf, 518b6550 — tests: patch check found 0 problems; MeasureArchitecturePilot 22/22 (baseline now 125.0 s); contention check rejects every pass while a real run is held open; a set holder is refused — deferrals: none
+- Task 8: 791f5db6 — tests: after Verify 12/12, after attempt clean, judge 12/12 Caught; counts caller 26, total 75; timing clean, falls 6.51/6.49/6.99/6.90 (median 6.71); verdict Negative (Not faster) — deferrals: none
