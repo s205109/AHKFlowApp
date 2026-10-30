@@ -44,6 +44,8 @@ still walks all three stages again.
   Gate evidence for the final revision is still valid, and runs only what is not.
 - A review fix that needs code goes back to `4-execute`. Execute's exit runs the Gate once for it.
 - An item at stage 5, 6 or 7 when this change lands moves to `4-execute`. None sat there.
+- ADR 0016 says the boxes are ticked at Document. They are now ticked inside Execute, so the
+  window it describes runs from Execute to Ship.
 
 ## Related
 

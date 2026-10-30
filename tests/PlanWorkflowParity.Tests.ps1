@@ -74,7 +74,7 @@ $driftExit = New-PlansRoot -Override @{ 'exit:0-intake' = 'Something else entire
 Assert-True ((Invoke-Check -PlansRoot $driftExit).ExitCode -eq 1) 'a drifted exit string must fail'
 
 # --- Case 3: a drifted edge target fails ---
-$driftEdge = New-PlansRoot -Override @{ 'edge:0-intake:success' = '7-document' }
+$driftEdge = New-PlansRoot -Override @{ 'edge:0-intake:success' = '8-review' }
 $result = Invoke-Check -PlansRoot $driftEdge
 Assert-True ($result.ExitCode -eq 1) 'a drifted edge target must fail'
 Assert-True ($result.Output -match '0-intake') 'the message must name the stage'

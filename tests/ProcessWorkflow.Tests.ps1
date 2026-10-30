@@ -21,17 +21,17 @@ function Assert-True {
 }
 
 $workflow = Get-WorkflowStage -Path (Join-Path $repoRoot 'docs/development/workflow.md')
-Assert-True ($workflow.Count -eq 11) "source: expected 11 stages, got $($workflow.Count)"
+Assert-True ($workflow.Count -eq 8) "source: expected 8 stages, got $($workflow.Count)"
 Assert-True ($workflow.Contains('0-intake')) 'source: 0-intake missing'
 Assert-True ($workflow['0-intake'].Edges.Count -eq 5) 'source: 0-intake should have 5 edges'
 Assert-True ($workflow['0-intake'].Edges['success'] -ceq '1-pickup') 'source: 0-intake success should target 1-pickup'
 
 $tree = Get-HtmlStage -Path (Join-Path $repoRoot 'docs/development/workflow.html')
-Assert-True ($tree.Count -eq 11) "workflow.html: expected 11 stages, got $($tree.Count)"
+Assert-True ($tree.Count -eq 8) "workflow.html: expected 8 stages, got $($tree.Count)"
 Assert-True ($tree['0-intake'].Edges.Count -eq 5) 'workflow.html: 0-intake should have 5 edges'
 
 $sheet = Get-HtmlStage -Path (Join-Path $repoRoot 'docs/development/ahkflow-workflow-cheatsheet.html')
-Assert-True ($sheet.Count -eq 11) "cheatsheet: expected 11 stages, got $($sheet.Count)"
+Assert-True ($sheet.Count -eq 8) "cheatsheet: expected 8 stages, got $($sheet.Count)"
 Assert-True ($sheet['0-intake'].Edges.Count -eq 2) 'cheatsheet: 0-intake should carry success and failure only'
 
 # The cheatsheet writes the Difficulty split with two <wbr> tags inside it. A tag-to-space

@@ -299,9 +299,9 @@ try {
     Assert-True (Test-BacklogItemEntersExecute -WorkingStages @('4-execute') -BaseStages @('3-plan') -BasePath 'backlog/900-probe.md') `
         'An item the base holds at 3-plan enters Execute here'
 
-    # 25. The base already holds it at 6-verify. This is the case that keeps every plan written
+    # 25. The base already holds it at 4-execute. This is the case that keeps every plan written
     #     before the rule out of reach.
-    Assert-True (-not (Test-BacklogItemEntersExecute -WorkingStages @('7-document') -BaseStages @('6-verify') -BasePath 'backlog/900-probe.md')) `
+    Assert-True (-not (Test-BacklogItemEntersExecute -WorkingStages @('8-review') -BaseStages @('4-execute') -BasePath 'backlog/900-probe.md')) `
         'An item already past Plan in the base is not judged'
 
     # 26. Still at 3-plan on this branch. The record is not required yet.
@@ -337,13 +337,13 @@ try {
         Assert-True ((@($entering[0].Lines) -join "`n") -match '4-execute') 'The record carries the pushed lines'
     }
 
-    # 31. A branch edits an item the base already holds at 6-verify. Its plan predates the rule,
+    # 31. A branch edits an item the base already holds at 8-review. Its plan predates the rule,
     #     so the check must not read it.
     $repo = New-TempGitRepo
-    Write-Item -Root $repo -Stage '6-verify'
-    Save-Repo -Root $repo -Message 'verify 900'
+    Write-Item -Root $repo -Stage '8-review'
+    Save-Repo -Root $repo -Message 'review 900'
     $base = Get-HeadSha -Root $repo
-    Write-Item -Root $repo -Stage '6-verify' -Extra '- Typo repaired.'
+    Write-Item -Root $repo -Stage '8-review' -Extra '- Typo repaired.'
     Save-Repo -Root $repo -Message 'fix a typo in 900'
     Assert-Equal 0 @(Get-BranchExecutingItem -RepoRoot $repo -MergeBase $base -TargetCommit (Get-HeadSha -Root $repo)).Count `
         'An item already past Plan in the base returns nothing'

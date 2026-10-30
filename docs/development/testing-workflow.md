@@ -16,7 +16,7 @@ Five steps, in order. Nothing else counts as the gate.
 
 **When it runs.** A draft pull request opens at Pickup, before any of this work exists, so
 this is not a gate on *creating* a pull request. It gates the pull request going **ready**:
-it runs at [Verify](workflow.md#stage-6-verify) and must be green before
+it runs at the end of [Execute](workflow.md#stage-4-execute) and must be green before
 [Ship](workflow.md#stage-9-ship) flips the PR out of draft. The anchor above keeps the old
 `#canonical-pre-pr-gate` link working; the name changed, the target did not.
 

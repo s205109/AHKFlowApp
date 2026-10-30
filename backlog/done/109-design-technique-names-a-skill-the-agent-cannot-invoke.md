@@ -29,7 +29,7 @@ skipped without anybody noticing.
 - (`.agents/mp-grill-with-docs/SKILL.md:12`, "session, using the") is the whole
   body: "Run a `/mp-grilling` session, using the `/mp-domain-modeling` skill." It
   is a wrapper over two other skills and adds nothing else.
-- (`docs/development/workflow.md:373`, "mp-grill-with-docs") sets the Stage 2
+- (`docs/development/workflow.md:373`, "mp-grill-with-docs") sets the Stage 2 <!-- citation-check:ignore: backlog 191 moved this line; the citation records the tree at shipping. -->
   Technique. (`docs/development/workflow.md:1012`, "is the Design technique")
   repeats it as a mandatory rule.
 - (`.claude/CLAUDE.md:27`, "before you write code, not after") repeats it a third <!-- citation-check:ignore: backlog 192 reworded this line; the citation records the tree at shipping. -->
@@ -55,7 +55,7 @@ skill changes its invocation flag.
 ## Acceptance criteria
 
 - [x] Stage 2 Design names a technique an agent can call. Every place that
-      states the technique agrees: (`docs/development/workflow.md:373`, "mp-grill-with-docs"),
+      states the technique agrees: (`docs/development/workflow.md:373`, "mp-grill-with-docs"), <!-- citation-check:ignore: backlog 191 moved this line; the citation records the tree at shipping. -->
       (`docs/development/workflow.md:1012`, "is the Design technique"),
       (`docs/development/workflow.html:227`, "mp-grill-with-docs"),
       and (`.claude/CLAUDE.md:27`, "before you write code, not after"). All four now <!-- citation-check:ignore: backlog 192 reworded this line; the citation records the tree at shipping. -->

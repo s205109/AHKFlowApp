@@ -104,13 +104,13 @@
 <body>
 <main>
 
-  <h1>AHKFlow workflow &mdash; eleven stages</h1>
+  <h1>AHKFlow workflow &mdash; eight stages</h1>
   <p class="lede">
     Exit condition, then where success goes and where failure goes. Canonical text:
     workflow.md. Full tree with all five edges: workflow.html.
   </p>
 
-  <div class="table-scroll" tabindex="0" role="region" aria-label="The eleven workflow stages">
+  <div class="table-scroll" tabindex="0" role="region" aria-label="The eight workflow stages">
   <table>
     <thead>
       <tr>
@@ -153,35 +153,14 @@
       <tr data-stage="4-execute">
         <td class="n">4</td>
         <td class="stage">Execute</td>
-        <td class="exit" data-exit="All planned work committed, tracking current, stage push done">All planned work committed, tracking current, stage push done</td>
-        <td class="ok" data-next="success:5-simplify">5-simplify</td>
-        <td class="bad" data-next="failure:stay">stay</td>
-      </tr>
-      <tr data-stage="5-simplify">
-        <td class="n">5</td>
-        <td class="stage">Simplify</td>
-        <td class="exit" data-exit="Simplification applied or verdict 'nothing to simplify' stated">Simplification applied or verdict 'nothing to simplify' stated</td>
-        <td class="ok" data-next="success:6-verify">6-verify</td>
-        <td class="bad" data-next="failure:stay">stay</td>
-      </tr>
-      <tr data-stage="6-verify">
-        <td class="n">6</td>
-        <td class="stage">Verify</td>
-        <td class="exit" data-exit="Verification artifact green, gate green, verdict stated">Verification artifact green, gate green, verdict stated</td>
-        <td class="ok" data-next="success:7-document">7-document</td>
-        <td class="bad" data-next="failure:4-execute">4-execute</td>
-      </tr>
-      <tr data-stage="7-document">
-        <td class="n">7</td>
-        <td class="stage">Document</td>
-        <td class="exit" data-exit="Docs updated or verdict 'nothing to document' stated">Docs updated or verdict 'nothing to document' stated</td>
+        <td class="exit" data-exit="All planned work committed, tracking current, closing verdicts stated, Gate green on the final revision, stage push done">All planned work committed, tracking current, closing verdicts stated, Gate green on the final revision, stage push done</td>
         <td class="ok" data-next="success:8-review">8-review</td>
         <td class="bad" data-next="failure:stay">stay</td>
       </tr>
       <tr data-stage="8-review">
         <td class="n">8</td>
         <td class="stage">Review</td>
-        <td class="exit" data-exit="Review received, all threads resolved, gate re-green">Review received, all threads resolved, gate re-green</td>
+        <td class="exit" data-exit="Both reviews triaged, no required finding left open, all threads resolved, Gate evidence valid for the final revision">Both reviews triaged, no required finding left open, all threads resolved, Gate evidence valid for the final revision</td>
         <td class="ok" data-next="success:9-ship">9-ship</td>
         <td class="bad" data-next="failure:4-execute">4-execute</td>
       </tr>
@@ -190,7 +169,7 @@
         <td class="stage">Ship</td>
         <td class="exit" data-exit="Records closed, PR ready, CI green, merged">Records closed, PR ready, CI green, merged</td>
         <td class="ok" data-next="success:10-cleanup">10-cleanup</td>
-        <td class="bad" data-next="failure:6-verify">6-verify</td>
+        <td class="bad" data-next="failure:4-execute">4-execute</td>
       </tr>
       <tr data-stage="10-cleanup">
         <td class="n">10</td>

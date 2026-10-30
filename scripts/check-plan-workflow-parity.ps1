@@ -127,7 +127,7 @@ $workflowStages = Get-WorkflowStage -Path $WorkflowPath
 # Every stage must yield exactly one exit and these five edges, on both sides. Without this
 # the check fails open: a deleted row, a deleted Exit, or a duplicated edge all compare
 # equal to nothing and pass. Review round 7 proved all three.
-$expectedStageCount = 11
+$expectedStageCount = 8
 $requiredEdges = @('success', 'failure', 'blocked', 'not applicable', 'resume')
 $problems = New-Object System.Collections.Generic.List[string]
 

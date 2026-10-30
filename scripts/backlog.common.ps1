@@ -89,12 +89,11 @@ function Get-BacklogItem {
     }
 }
 
-# The eleven stage ids, in the order docs/development/workflow.md:31-43 defines them. The order
+# The eight stage ids, in the order the stage spine in docs/development/workflow.md defines them. The order
 # matters: the pointer check compares by index, never as a string, because '10-cleanup' sorts
 # below '4-execute' as a string and a finished item would slip through.
 $script:BacklogStageOrder = @(
-    '0-intake', '1-pickup', '2-design', '3-plan', '4-execute', '5-simplify',
-    '6-verify', '7-document', '8-review', '9-ship', '10-cleanup'
+    '0-intake', '1-pickup', '2-design', '3-plan', '4-execute', '8-review', '9-ship', '10-cleanup'
 )
 
 function Get-BacklogProblem {

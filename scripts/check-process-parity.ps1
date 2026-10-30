@@ -39,7 +39,7 @@ $sourceHashPath = Join-Path $DocsRoot 'ahk-workflow.pdf.source.sha256'
 $pdfHashPath = Join-Path $DocsRoot 'ahk-workflow.pdf.sha256'
 
 $problems = New-Object System.Collections.Generic.List[string]
-$expectedStageCount = 11
+$expectedStageCount = 8
 
 # Preflight. Reading a file before checking it is there produced an unhandled error and no
 # RESULT: line, so a caller could not tell a missing input from a crash.
