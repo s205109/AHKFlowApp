@@ -40,7 +40,8 @@ git diff --check "$(gh pr view --json baseRefName -q .baseRefName)...HEAD"
 **Gate evidence at Review.** Review does not run the Gate again by default. It checks that the
 Gate that ended Execute still holds for the final revision:
 
-1. Read the revision that Execute's transition note names, as in `Gate green at <sha>`.
+1. Read the revision that Execute's transition note names, as in `Gate green at <sha>`. For a
+   housekeeping round, read the `Gate green at <sha>` line in its pull request body instead.
 2. List the paths changed since then: `git diff --no-renames --name-only <revision>..HEAD`.
    Keep `--no-renames`. Without it, git prints only the new path of a renamed file, so moving
    `src/Foo.cs` to `docs/Foo.md` would hide the lost `.cs` file.

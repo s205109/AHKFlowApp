@@ -36,7 +36,7 @@ an exit string in every place in the same commit, and regenerate the PDF with
 | 2 | Design | Spec committed, terms and ADRs written, plain summary confirmed |
 | 3 | Plan | Plan committed, grilled, fabrication-checked |
 | 4 | Execute | All planned work committed, tracking current, closing verdicts stated, Gate green on the final revision, stage push done |
-| 8 | Review | Both reviews triaged, no required finding left open, all threads resolved, Gate evidence valid for the final revision |
+| 8 | Review | Every review this round triaged, no required finding left open, all threads resolved, Gate evidence valid for the final revision |
 | 9 | Ship | Records closed, PR ready, CI green, merged |
 | 10 | Cleanup | Worktree gone, branch deleted, memory updated |
 
@@ -60,7 +60,10 @@ entry. This turns the AGENTS.md Debugging rule into a gate.
   stay as history. A round replaces the verdicts in its body.
 - **Gate green on the final revision.** The Gate ran on the last commit that changes the
   work. A later commit that touches only `PLAN-PROGRESS.md` or the item file needs no new
-  Gate. Execute's transition note names that revision.
+  Gate. Execute's transition note names that revision. A round has no transition note at
+  Execute close, because its pull request opens at `8-review`. So a round writes
+  `Gate green at <sha>` into its pull request body, next to its closing verdicts, and replaces
+  that line after each later Gate.
 - **Gate evidence valid for the final revision.** Review checks this as
   [`testing-workflow.md`](testing-workflow.md#canonical-pre-pr-gate) describes.
 - **Records closed.** For tracked work: boxes ticked, the item moved to `backlog/done/`,
@@ -136,7 +139,8 @@ change one line, and write all of it back. Never hand `--body-file` a file that 
 the Stage line. That deletes the rest of the description.
 
 The round pull request is created at Execute close with a `Stage: 8-review` line in its
-body, and with the closing verdicts in its body. Exactly one such line exists from then on.
+body, and with the closing verdicts and the `Gate green at <sha>` line in its body. Exactly
+one `Stage:` line exists from then on.
 
 ```powershell
 $pr   = <round PR number>
@@ -532,11 +536,12 @@ citation keeps working, so no bulk rewrite is needed.
 - **Entry** — plan committed, or inline plan stated; or a failure edge from Review or Ship, with its recovery tasks recorded
 - **Who** — `--model sonnet --effort high`
 - **Technique** — `superpowers:executing-plans` inline, or subagent-driven when `complex` plus four or more independent tasks; state the choice. Then `/simplify`, the AGENTS.md Verification routing (`dck-verify`), the docs edit, and the Gate
-- **Action** — **The work:** work the tasks. For tracked plan work: two local commits per task boundary, the deliverable then the progress line, with `PLAN-PROGRESS.md` kept current. For a housekeeping round: one commit per change, no progress file, and the round closes when a few changes have gathered. One push when the stage completes. 'Tracking' means the plan plus the progress file for tracked work, and the commit log for a round. **The closing steps** run in this order, once the work is done:
+- **Action** — **The work:** work the tasks. For tracked plan work: two local commits per task boundary, the deliverable then the progress line, with `PLAN-PROGRESS.md` kept current. For a housekeeping round: one commit per change, no progress file, and the round closes when a few changes have gathered. One push when the stage completes. 'Tracking' means the plan plus the progress file for tracked work, and the commit log for a round. **The closing steps** run in this order, once the work is done, and the Gate follows them:
   1. Simplify: run `/simplify` on the branch diff, fold duplication, delete dead code, or state 'nothing to simplify'.
   2. Verify: produce the verification artifact `AGENTS.md` names, or name the exemption, and state the verdict. An AGENTS.md exemption replaces the **artifact** only. For exemption 1, targeted text checks plus diff review stand in for a test. A wait on the human for manual steps keeps the stage in progress; it is not an edge.
   3. Document: tick the item's acceptance boxes against what the branch actually does, and leave any box that is not true unticked with the reason written into the item. The tick happens here, and not at Ship, so that Review reads the claims next to the diff. When one criterion has an exception, check every other criterion against that same exception before you tick it. Then update docs, README, `CONTEXT.md` and skills, or state 'nothing to document'.
-  4. The Gate on the final revision: the five steps in [`testing-workflow.md`](testing-workflow.md#canonical-pre-pr-gate). It runs on a docs-only branch too, because CI skips its .NET steps there. Name the revision in the transition note, as `Gate green at <sha>`.
+  
+  Then the Gate on the final revision: the five steps in [`testing-workflow.md`](testing-workflow.md#canonical-pre-pr-gate). It runs on a docs-only branch too, because CI skips its .NET steps there. Name the revision in the transition note, as `Gate green at <sha>`. A round writes that line into its pull request body instead.
 - **Exit** — All planned work committed, tracking current, closing verdicts stated, Gate green on the final revision, stage push done
 - **Next** — `8-review`
 - **Context** — safe to clear at any task boundary or closing step
@@ -560,14 +565,14 @@ citation keeps working, so no bulk rewrite is needed.
 - **Action** — in this order:
   1. Write the handoff from the template below to `.superpowers/review-<NNN>-round-<N>.md`. Hand the human its absolute path. The human starts both reviews from it. A wait on a reviewer keeps the stage in progress; it is not an edge.
   2. Triage both results in one pass. Each finding keeps the reviewer's label, required or optional, next to its verdict. Triage may relabel a finding as required when it is in fact one of the six required kinds, and says so in the reply.
-  3. An editorial finding is fixed in Review and closes in triage, with a fresh citation for each point. Editorial means wording, a comment, a typo or a stale citation, with no change to behaviour, a requirement or an executable workflow rule. This holds for both labels.
-  4. An optional finding that is not editorial never takes the failure edge. It closes in triage as DEFER, with a backlog item, or with a reply that says why it is declined.
+  3. An editorial finding is fixed in Review and closes in triage, with a fresh citation for each point. Editorial means only wording, a comment, a typo or a stale citation, with no change to behaviour, a requirement or an executable workflow rule. A change to code, other than a comment, is never editorial. This holds for both labels.
+  4. An optional finding that is not editorial never takes the failure edge. It closes in triage as DEFER, with a backlog item, or with a reply that says why it is declined. When a required finding already sends the work back to Execute, an optional finding may be fixed in that same pass instead, because the closing steps and the Gate run once either way.
   5. A required finding that is not editorial, with the verdict CONFIRMED or PARTIAL, takes the failure edge, whatever the file type. In this repository Markdown runs the process: the transition script reads `workflow.md`.
   6. The next round's handoff goes only to the reviewer that raised the finding. When both raised it, only the Outside review reads it.
   7. Review stops at the first round with no required, non-editorial finding whose verdict is CONFIRMED or PARTIAL. Editorial findings and optional findings close in triage and go back to no reviewer, so they never start a round.
   8. Reply to and resolve every thread.
   9. Check the Gate evidence as [`testing-workflow.md`](testing-workflow.md#canonical-pre-pr-gate) describes, and run only what is no longer valid.
-- **Exit** — Both reviews triaged, no required finding left open, all threads resolved, Gate evidence valid for the final revision
+- **Exit** — Every review this round triaged, no required finding left open, all threads resolved, Gate evidence valid for the final revision
 - **Next** — `9-ship`
 - **Context** — keep until threads resolved
 - **Review** — reviewed; state it in the recap
@@ -578,7 +583,7 @@ citation keeps working, so no bulk rewrite is needed.
 | failure | a required finding, CONFIRMED or PARTIAL, changes behaviour, a requirement, or an executable workflow rule; record each as a named recovery task first — in `PLAN-PROGRESS.md`, or the round pull request body — because Execute resume reads those, never the review threads; Execute's closing steps and Gate then run once for the fixes | 4-execute |
 | blocked | a finding depends on something outside the repository | blocked/ |
 | not applicable | cannot occur: every pull request — a tracked item's or a round's — is reviewed | none |
-| resume | fetch unresolved threads, ask the human for any Outside review result not yet pasted, continue with `custom-review-findings` | stay |
+| resume | fetch unresolved threads; when the handoff's 'Reviewers this round' line names the Outside review, ask the human for its result if it is not yet pasted; continue with `custom-review-findings` | stay |
 
 #### The reviewer handoff
 
@@ -595,6 +600,13 @@ same file, so they review the same revision.
 - Reviewers this round: <the Claude reviewer and the Outside review | the one reviewer this round goes back to>.
 - This round checks: <the whole change | the findings sent back, by number, and their fixes>.
 
+## How to run this review
+
+- Work in `<absolute worktree path>`. It is checked out at the revision above. Confirm with
+  `git rev-parse HEAD`.
+- Read only. Do not edit, commit, push, or change the pull request's state.
+- Do not report again: <earlier findings already fixed, by reviewer and number, or none>.
+
 ## What to report
 
 A finding is required only when it is about one of these six things: correctness, the stated
@@ -606,7 +618,13 @@ wrong, and the fix you suggest.
 
 ## Where to report
 
-- The Claude reviewer posts each finding as a pull request review thread.
+- The Claude reviewer posts all findings as one pull request review, pinned to the revision
+  above: `gh api repos/s205109/AHKFlowApp/pulls/<number>/reviews --method POST --input review.json`.
+  `review.json` holds `commit_id` (the revision), `event` (`COMMENT`), `body` (a one-line summary
+  with the finding count), and `comments`: one object per finding, with `path`, `line`, `side`
+  (`RIGHT`) and `body`. A finding with no line in the diff goes into the review `body`.
+- With no findings, the Claude reviewer still posts the review, with an empty `comments` list,
+  and says so in `body`.
 - The Outside review writes its findings as text. The human pastes that text into the work session.
 ```
 

@@ -291,7 +291,7 @@ A review finding that is not about correctness, the stated requirements, securit
 _Avoid_: minor finding, suggestion
 
 **Editorial finding**:
-A review finding whose fix changes no behaviour, no requirement and no executable workflow rule, such as wording, a comment, a typo or a stale citation. It is fixed and closed in triage, and goes back to no reviewer.
+A review finding whose fix changes no behaviour, no requirement and no executable workflow rule. Only wording, a comment, a typo or a stale citation qualify. A change to code, other than a comment, is never editorial. It is fixed and closed in triage, and goes back to no reviewer.
 _Avoid_: nit, cosmetic finding
 
 **Suite**:

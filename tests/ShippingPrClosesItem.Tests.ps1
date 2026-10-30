@@ -9,7 +9,7 @@
 #   | Situation                          | Boxes          | Draft | Verdict              |
 #   |------------------------------------|----------------|-------|----------------------|
 #   | Partial delivery, PR 1 of 3        | some unticked  | ready | passes, boxes open   |
-#   | Document-to-Ship window            | all ticked     | draft | passes, still draft  |
+#   | Execute-to-Ship window             | all ticked     | draft | passes, still draft  |
 #   | Backlog 132                        | all ticked     | ready | fails, correct       |
 #
 # Run it by hand with:  pwsh ./tests/ShippingPrClosesItem.Tests.ps1
@@ -152,7 +152,7 @@ Assert-True ($p.Count -ge 1) "A ready pull request with all boxes ticked and the
 Assert-True (($p -join "`n") -match '140') "The report must name the item number, got:`n$($p -join "`n")"
 Remove-Item -LiteralPath $f.Root -Recurse -Force
 
-# --- Still a draft: the Document-to-Ship window is legitimate ---
+# --- Still a draft: the Execute-to-Ship window is legitimate ---
 
 $f = New-ShippingFixture
 $p = @(Get-FixtureProblem -Fixture $f -IsDraft $true)
