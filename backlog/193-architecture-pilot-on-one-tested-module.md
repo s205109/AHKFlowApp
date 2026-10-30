@@ -25,17 +25,20 @@ and on Stryker.NET with evidence.
 
 Each criterion is refined in the spec named below. Tick a box only when its words hold literally.
 
-- [ ] The item records which module the pilot took, and the audit data that chose it.
-- [ ] The pilot ran `/mattpocock-skills:improve-codebase-architecture` as installed in
+- [x] The item records which module the pilot took, and the audit data that chose it.
+- [x] The pilot ran `/mattpocock-skills:improve-codebase-architecture` as installed in
       `mattpocock-skills` 1.3.1, started by the user. No fork of the skill exists.
-- [ ] At the skill's start, the session told it to read `CONTEXT.md` as its glossary and to use
+- [x] At the skill's start, the session told it to read `CONTEXT.md` as its glossary and to use
       `mp-grilling` and `mp-domain-modeling`. The item records that it did.
-- [ ] A before-and-after record holds three measures for the module's tests: test time, test
+- [x] A before-and-after record holds three measures for the module's tests: test time, test
       count, and how many hand-made defects the tests still catch.
-- [ ] A written verdict states whether the pilot succeeded, from those three measures.
-- [ ] The pilot's code is merged only if the verdict is positive and the user said yes. Otherwise
+- [x] A written verdict states whether the pilot succeeded, from those three measures.
+- [x] The pilot's code is merged only if the verdict is positive and the user said yes. Otherwise
       the code is reverted, and only the verdict ships.
-- [ ] The verdict says whether Stryker.NET is worth trying next. Nothing is installed without the
+      The code is reverted in `70689716`. Two `CONTEXT.md` terms, Lane share and Nested run,
+      ship with the verdict. Spec section 6.3 keeps them "either way", because they name concepts
+      the code already has.
+- [x] The verdict says whether Stryker.NET is worth trying next. Nothing is installed without the
       user's yes at that point.
 
 ## Out of scope
