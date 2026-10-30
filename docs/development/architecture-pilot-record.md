@@ -649,7 +649,7 @@ replace: [Math]::Floor($Capacity / 2.0)
 
 Sentence: A run that starts while the ownership marker is set acts as an owner and takes Lanes.
 
-After outcome: **Caught**. With the marker set the role is 'owner' instead of 'nested', and the LanePool timeout is the nested Whole take in 'Owner lifecycle...' (START with no result, tests/LanePool.Tests.ps1:501) waiting for Lanes its owner holds.
+After outcome: **Caught**. With the marker set the role is 'owner' instead of 'nested', and the LanePool timeout is the nested Whole take in 'Owner lifecycle...' (START with no result, at the after commit) waiting for Lanes its owner holds.
 
 Failing cases that show the behaviour:
 
