@@ -46,7 +46,13 @@ function Exit-AhkFlowTestRunLock {
     param($Handle)
     if ($null -ne $Handle) {
         $expected = if ($env:AHKFLOW_TEST_LANES_HOLDER -eq 'existing-holder') { 2 } else { 0 }
-        if (((Get-AhkFlowHeldLaneCount $env:AHKFLOW_TEST_LANES_ROOT) - 1) -ne $expected) {
+        $held = 0
+        foreach ($file in Get-ChildItem $env:AHKFLOW_TEST_LANES_ROOT -Filter 'lane-*.lock') {
+            if ($file.Name -eq 'lane-99.lock') { continue }
+            try { $probe = [IO.File]::Open($file.FullName, 'OpenOrCreate', 'ReadWrite', 'None'); $probe.Dispose() }
+            catch [IO.IOException] { $held++ }
+        }
+        if ($held -ne $expected) {
             throw 'Lane ownership must release before checkout cleanup.'
         }
     }

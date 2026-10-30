@@ -16,6 +16,16 @@ function Remove-PinnedLanePool {
     Remove-Item -LiteralPath $Pool.Root -Recurse -Force -ErrorAction Stop
 }
 
+function Get-AhkFlowHeldLaneCount {
+    param([Parameter(Mandatory = $true)][string] $PoolRoot)
+    if (-not [System.IO.Directory]::Exists($PoolRoot)) { return 0 }
+    $count = 0
+    foreach ($file in @(Get-ChildItem -LiteralPath $PoolRoot -Filter 'lane-*.lock' -File -ErrorAction Stop)) {
+        if (Test-AhkFlowLaneFileHeld -Path $file.FullName) { $count++ }
+    }
+    return $count
+}
+
 function Get-RunLaneCount { param($Pool); (Get-AhkFlowHeldLaneCount -PoolRoot $Pool.Root) - 1 }
 
 # Sets each named process environment variable for the length of Action, then puts back the value
