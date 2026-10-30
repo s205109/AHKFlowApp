@@ -26,3 +26,4 @@ Outside review round 1 at eb3a8fc2, two required findings, both CONFIRMED: (1) t
 - Simplify: nothing to simplify, a nine-line docs change.
 - Verify: exemption 1 named; targeted text checks (citation freshness, gate wording) pass and the diff was reviewed.
 - Document: the change is the docs; all 16 boxes still hold.
+- Gate green at c14d17bf. Build 0 warnings, format clean, 73 of 73 Suites passed, coverage skipped, diff check clean.
