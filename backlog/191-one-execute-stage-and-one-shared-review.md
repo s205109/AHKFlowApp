@@ -6,7 +6,7 @@
 - **Type**: Tooling
 - **Interfaces**: none (process docs, stage-transition script, process checks)
 - **Difficulty**: complex
-- **Stage**: 0-intake
+- **Stage**: 1-pickup
 
 ## Summary
 
