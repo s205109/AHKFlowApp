@@ -287,7 +287,7 @@ Before patch:
 ```text
 file:    scripts/test-lanes.common.ps1
 find:            if (-not $completed) { foreach ($lane in $lanes) { $lane.Dispose() } }\r\n
-replace: 
+replace: (empty: the edit removes the find text)
 ```
 
 #### M6 (module)
@@ -418,7 +418,7 @@ Before patch:
 ```text
 file:    scripts/run-powershell-suites.ps1
 find:                    Exit-AhkFlowLanes -Handle $lanes\r\n
-replace: 
+replace: (empty: the edit removes the find text)
 ```
 
 #### C2 (test-fast)
@@ -459,7 +459,7 @@ Before patch:
 ```text
 file:    scripts/measure-test-modes.ps1
 find:        Exit-AhkFlowLaneRun -State $laneState\r\n
-replace: 
+replace: (empty: the edit removes the find text)
 ```
 
 ## The after record
@@ -706,7 +706,7 @@ After patch:
 ```text
 file:    scripts/test-lanes.common.ps1
 find:            if (-not $completed) { foreach ($lane in $lanes) { $lane.Dispose() } }\r\n
-replace: 
+replace: (empty: the edit removes the find text)
 ```
 
 #### M6 (module)
@@ -825,7 +825,7 @@ After patch:
 ```text
 file:    scripts/run-powershell-suites.ps1
 find:                    Exit-AhkFlowSuiteLane -Handle $lane\r\n
-replace: 
+replace: (empty: the edit removes the find text)
 ```
 
 #### C2 (test-fast)
@@ -862,7 +862,7 @@ After patch:
 ```text
 file:    scripts/measure-test-modes.ps1
 find:        Exit-AhkFlowLaneRun -State $laneState\r\n
-replace: 
+replace: (empty: the edit removes the find text)
 ```
 
 ## Timing
