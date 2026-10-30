@@ -6,7 +6,7 @@
 - **Type**: Tooling
 - **Interfaces**: none (test Suites only)
 - **Difficulty**: moderate
-- **Stage**: 0-intake
+- **Stage**: 1-pickup
 
 ## Summary
 
