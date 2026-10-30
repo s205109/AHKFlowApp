@@ -9,6 +9,22 @@ The record stands alone. It copies each defect's sentence and patches from
 `docs/development/architecture-pilot-inputs.json`, so it stays readable after a revert removes that
 file.
 
+## The result
+
+The verdict is **Negative**, so the pilot code is reverted. The reasons are in
+[Verdict](#verdict).
+
+| Measure | Result |
+|---|---|
+| Hand-made defects caught | 12 of 12, on both sides |
+| Caller cases | 35 before, 26 after: a fall of 25.7 percent |
+| Total cases | 79 before, 75 after: a fall of 5.1 percent |
+| Median time fall | 6.71 percent, against a target of 10 percent |
+| Verdict | Negative: the after tests are not faster by the target |
+| Follow-up | Backlog item 202 adds the two .NET failure rows again |
+
+The rest of this record holds the evidence for each line.
+
 ## What was measured
 
 - **Before commit**: `e98bfb465b66eaf5689c378de0cd280dac2c525a`. It holds the case start lines
@@ -20,8 +36,11 @@ file.
   at the before commit. The timing used the script at the after commit `8b921bee`, because the
   timing mode came in Task 7.
 - Each side ran from its own local clone under `.superpowers\193-pilot\`, never from the
-  worktree. Each Suite ran in its own `pwsh` process inside a Windows job object, three Suites at
-  a time. Each Suite ran as a Nested run with a private temporary Lane pool.
+  worktree. Each Suite ran in its own `pwsh` process inside a Windows job object, as a Nested run
+  with a private temporary Lane pool.
+- The two kinds of run used the Suites differently. The SuiteSets, the controls and the defect
+  trials ran three Suites at a time. The timing passes ran one Suite at a time, alone, so that no
+  Suite slowed another.
 
 ## The before record
 
@@ -948,5 +967,11 @@ This answer was fixed in spec section 6.2, before any data existed.
 
 ## Gaps
 
-The before tests caught all 12 defects, and so did the after tests. Neither side missed a defect,
-so the pilot shows no gap in the PowerShell tests of the Lane pool.
+The before tests caught all 12 defects, and so did the after tests. So neither side missed one of
+the 12 hand-made defects. This does not prove that the Lane pool's tests have no gaps. It shows
+only that these 12 defects found none.
+
+Both measured sides held the two .NET failure rows that Task 1 added. The revert removed them, so
+the gap they closed is open again on `main`: no case proves that `test-fast.ps1` and
+`run-coverage.ps1` give their Lanes back when a run fails. Backlog item 202 adds the two rows
+again.
