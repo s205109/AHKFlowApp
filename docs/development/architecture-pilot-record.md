@@ -13,7 +13,8 @@ file.
 
 - **Before commit**: `e98bfb465b66eaf5689c378de0cd280dac2c525a`. It holds the case start lines
   and the two .NET failure rows, and no refactor.
-- **After commit**: not yet taken.
+- **After commit**: `8b921bee0e87214d29d2ba14e986ac6d58120d50`. It holds the refactor, the check
+  and the timing mode.
 - **Measurement script**: `scripts/measure-architecture-pilot.ps1`, committed in `0b86d4ae`. Its
   own Suite is `tests/MeasureArchitecturePilot.Tests.ps1`.
 - Each side ran from its own local clone under `.superpowers\193-pilot\`, never from the
@@ -463,15 +464,466 @@ replace:
 
 ## The after record
 
-Not yet taken.
+### Test count
+
+The after commit removes the cases that P5 of the plan marks "remove", and adds the check. The
+Lane-related rule of the plan was applied to every case of the after tree. It finds exactly the 75
+names that P5 lists, so there is no difference to explain. Each name below appears in the PASS
+lines of the after opening control.
+
+The four caller Suites that lost cases lost exactly those cases. Their other cases did not change:
+
+- `CiPowerShellSuiteRunner.Tests.ps1`: 101 cases before, 100 after.
+- `TestFastDotnetProgress.Tests.ps1`: 14 before, 12 after.
+- `CoverageRunnerProgress.Tests.ps1`: 16 before, 13 after.
+- `MeasureTestModes.Tests.ps1`: 36 before, 32 after.
+
+The check, `No script or Suite outside the Lane pool files names an internal Lane function`, lives
+in `LanePool.Tests.ps1` but counts as a caller case (spec section 5.1).
+
+**CiPowerShellSuiteRunner.Tests.ps1** (caller Suite, 10 cases)
+
+- caller: Lane one runner admits exactly two of four Workers
+- caller: Lane exclusive Suites acquire One and release it before the next Suite
+- caller: Lane invalid opt-out fails before any Suite starts
+- caller: Lane nested and off preserve incoming marker and never open pool files
+- caller: Lane owner hardware query is once with adaptive sizing or explicit Workers
+- caller: Lane acquisition failures produce named failures in exclusive and parallel execution
+- caller: Lane admission wait stays out of Suite timing
+- caller: Lane stopped runner ends its run and restores its marker
+- caller: Lane run-start failure returns nonzero before any Suite starts
+- caller: In-process calls isolate job summaries and restore environment after failure
+
+**TestFastPowerShellMode.Tests.ps1** (caller Suite, 2 cases)
+
+- caller: PowerShell wrapper delegates per-Suite admission and preserves an existing holder
+- caller: PowerShell wrapper forwards all Lane settings and restores fixture environment
+
+**TestFastDotnetProgress.Tests.ps1** (caller Suite, 3 cases)
+
+- caller: Fast Lane route: owner
+- caller: Fast Lane route: failure
+- caller: Cancellation releases Lane and checkout ownership in a surviving host
+
+**CoverageRunnerProgress.Tests.ps1** (caller Suite, 3 cases)
+
+- caller: Coverage Lane route: direct nested=False
+- caller: Coverage Lane route: direct failure
+- caller: Cancellation releases Lane and checkout ownership in a surviving host
+
+**CoverageSliceSkip.Tests.ps1** (caller Suite, 1 cases)
+
+- caller: Coverage wrapper leaves admission and marker ownership to its delegate
+
+**MeasureTestModes.Tests.ps1** (caller Suite, 6 cases)
+
+- caller: Timing waits before work and holds its share across every call
+- caller: Soak waits before work and holds its share across every call
+- caller: Whole blocks a competing acquirer through the parent checkout handoff
+- caller: Same-host fail-build restores its marker and releases its Lanes and checkout
+- caller: Same-host none restores its marker and releases its Lanes and checkout
+- caller: Cancelled admission cleans up in a surviving runspace before any work starts
+
+**GateEvidence.Tests.ps1** (caller Suite, 0 cases)
+
+- none: its four Lane cases only isolate the pool (isolation cases)
+
+**LanePool.Tests.ps1** (not a caller Suite, 40 cases)
+
+- Role precedence and validation
+- Ownership restores the prior marker
+- Proposal and every share are stable
+- Entry contention blocks until an acknowledged real-open failure clears
+- Classifier accepts only the measured native code
+- Missing parent throws and genuine contention returns null
+- Empty and occupied pools keep stable capacity
+- Partial acquisition failure releases entry and lanes
+- Half shares compose at six and wait at odd capacities
+- Stopping a runspace releases its partial share in the same host
+- Hosted proposal avoids hardware discovery and local proposal queries once
+- malformed capacity releases entry before retry and resizes only when empty
+- missing capacity releases entry before retry and resizes only when empty
+- unreadable capacity releases entry before retry and resizes only when empty
+- Capacity 1 blocks One with proposal 1 until release
+- Capacity 6 blocks Whole with proposal 2 until release
+- Capacity 2 blocks One with proposal 6 until release
+- One proposing two joins an occupied capacity six without resizing
+- Killing a partial collector releases entry and its Lanes
+- An early assertion still reaps a gated child and removes its pool
+- Access failures throw without being classified as contention
+- Interval Suite publishes complete monotonic endpoints and waits for release
+- Always-successful open mutation fails the actual contention cases
+- Advisory records announce peers once and ignore incomplete or stale files
+- A failed sharing write retries on the next wait
+- Concurrent Workers share one diagnostic decision
+- Registration publication failure releases its record handle
+- Owner lifecycle restores normal failed and nested marker state
+- A killed advisory owner is no longer named
+- A late peer is announced during entry retry before its Lane is released
+- A late peer is announced during capacity retry before its Lane is released
+- A late peer is announced during share retry before its Lane is released
+- Stopped owner entry restores its marker and acquires again in the surviving runspace
+- Unreadable advisory records cannot abort a valid reservation
+- A Share One owner run registers and takes ownership but holds no Lane
+- A Suite Lane take in an owner run holds one Lane after the marker is set
+- A Suite Lane take in a Nested run holds nothing
+- A Suite Lane take in an opted-out run holds nothing
+- The module loads in Windows PowerShell 5.1
+- caller (the check): No script or Suite outside the Lane pool files names an internal Lane function
+
+**LaneFileLockPrimitive.Tests.ps1** (not a caller Suite, 10 cases)
+
+- Another process cannot open a held Lane or entry lock
+- Explicit release frees both files
+- Holder stdin EOF releases both files
+- A second handle in the same process is refused
+- Another runspace is refused
+- Killing a holder frees both files
+- Missing parent differs from contention
+- Generic injected IOException differs from contention
+- Access denied differs from contention
+- Windows PowerShell 5.1 repeats native cases
+
+Caller count: 26. Total count: 75.
+
+- **Caller count**: 35 before, 26 after. It falls by 9, which is 25.7 percent.
+- **Total count**: 79 before, 75 after. It falls by 4, which is 5.1 percent.
+
+### Defects and after outcomes
+
+The after attempt ran on 2026-10-30 at the after commit. Its opening control and its closing
+control were both clean, and the closing control printed the same PASS names. So the attempt
+status is `clean`, and every defect result counts.
+
+Before the run, an independent sub-agent checked both patches of each defect against its
+sentence (spec section 5.3). It found that every patch gives the wrong behaviour in its sentence,
+and that neither side's patch is easier to catch. It found no problem, so no patch was rewritten.
+Each defect below shows its after patch. The before section shows its before patch.
+
+A second independent sub-agent gave each after outcome by the rules of spec section 5.4. It did
+not write the patches. Its reason sentences are copied here unchanged.
+
+After side: 12 Caught, 0 Missed, 0 Invalid, 0 Inconclusive.
+
+#### M1 (module)
+
+Sentence: A run rewrites capacity.txt while another run holds a Lane.
+
+After outcome: **Caught**. Four LanePool cases fail because an occupied pool's capacity.txt changed (expected 2 got 6, expected 6 got 2).
+
+Failing cases that show the behaviour:
+
+- `LanePool.Tests.ps1`: Empty and occupied pools keep stable capacity — "Occupied pool must retain two. (expected '2', got '6')"
+- `LanePool.Tests.ps1`: Capacity 6 blocks Whole with proposal 2 until release — "Occupied capacity changed. (expected '6', got '2')"
+- `LanePool.Tests.ps1`: Capacity 2 blocks One with proposal 6 until release — "Occupied capacity changed. (expected '2', got '6')"
+- `LanePool.Tests.ps1`: One proposing two joins an occupied capacity six without resizing — "Occupied six must remain six. (expected '6', got '2')"
+
+After patch:
+
+```text
+file:    scripts/test-lanes.common.ps1
+find:        if (-not $held) {
+replace:     if ($true) {
+```
+
+#### M2 (module)
+
+Sentence: A Half share rounds down, so capacity 3 gives one Lane and capacity 1 gives none.
+
+After outcome: **Caught**. Half gives 0 instead of 1 at odd capacity 1, which is the rounding down in the sentence.
+
+Failing cases that show the behaviour:
+
+- `LanePool.Tests.ps1`: Proposal and every share are stable — "Half differed. (expected '1', got '0')"
+- `LanePool.Tests.ps1`: Half shares compose at six and wait at odd capacities — "Odd capacity 1 must expose one half. (expected '1', got '0')"
+
+After patch:
+
+```text
+file:    scripts/test-lanes.common.ps1
+find:    [Math]::Ceiling($Capacity / 2.0)
+replace: [Math]::Floor($Capacity / 2.0)
+```
+
+#### M3 (module)
+
+Sentence: A run that starts while the ownership marker is set acts as an owner and takes Lanes.
+
+After outcome: **Caught**. With the marker set the role is 'owner' instead of 'nested', and the LanePool timeout is the nested Whole take in 'Owner lifecycle...' (START with no result, tests/LanePool.Tests.ps1:501) waiting for Lanes its owner holds.
+
+Failing cases that show the behaviour:
+
+- `LanePool.Tests.ps1`: Role precedence and validation — "A holder must select nested. (expected 'nested', got 'owner')"
+- `LanePool.Tests.ps1`: Owner lifecycle restores normal failed and nested marker state — "timed out; START line with no result"
+- `TestFastPowerShellMode.Tests.ps1`: PowerShell wrapper delegates per-Suite admission and preserves an existing holder — "The wrapper must add no Half reservation."
+- `TestFastPowerShellMode.Tests.ps1`: PowerShell wrapper forwards all Lane settings and restores fixture environment — "Missing nested status. Gate evidence: on"
+
+After patch:
+
+```text
+file:    scripts/test-lanes.common.ps1
+find:    { return 'nested' }
+replace: { return 'owner' }
+```
+
+#### M4 (module)
+
+Sentence: AHKFLOW_TEST_LANES=off is ignored, so the run acts as an owner and takes Lanes.
+
+After outcome: **Caught**. With AHKFLOW_TEST_LANES=off the role is 'owner' instead of 'off', and an opted-out Suite take returns a Lane handle.
+
+Failing cases that show the behaviour:
+
+- `LanePool.Tests.ps1`: Role precedence and validation — "Opt-out must win. (expected 'off', got 'owner')"
+- `LanePool.Tests.ps1`: Owner lifecycle restores normal failed and nested marker state — "Opt-out must take precedence. (expected 'off', got 'owner')"
+- `LanePool.Tests.ps1`: A Suite Lane take in an opted-out run holds nothing — "The take must return a handle only in an owner run. (expected '0', got '1')"
+- `TestFastPowerShellMode.Tests.ps1`: PowerShell wrapper forwards all Lane settings and restores fixture environment — "Missing off status. Gate evidence: on"
+
+After patch:
+
+```text
+file:    scripts/test-lanes.common.ps1
+find:    -ieq 'off') { return 'off' }
+replace: -ieq 'off') { return 'owner' }
+```
+
+#### M5 (module)
+
+Sentence: A take that fails part-way keeps the Lanes it already opened.
+
+After outcome: **Caught**. After a take is stopped part-way, lane-0.lock stays open, so the partial Lane is kept; the injected-exception case 'Partial acquisition failure releases entry and lanes' still passes.
+
+Failing cases that show the behaviour:
+
+- `LanePool.Tests.ps1`: Stopping a runspace releases its partial share in the same host — "The process cannot access the file 'C:\Users\btase\AppData\Local\Temp\p193-44fc6bcd\6\tmp\ahkflow-lane-pool-ae2f4a59b8d04b4da53aa022939278a3\lane-0.lock' because it is being used by another process."
+- `LanePool.Tests.ps1`: Stopped owner entry restores its marker and acquires again in the surviving runspace — "The process cannot access the file 'C:\Users\btase\AppData\Local\Temp\p193-44fc6bcd\6\tmp\ahkflow-lane-pool-818d83141cc243e8889ff2e2f285cc6f\lane-0.lock' because it is being used by another process."
+- `CoverageRunnerProgress.Tests.ps1`: Cancellation releases Lane and checkout ownership in a surviving host — "The process cannot access the file 'C:\Users\btase\AppData\Local\Temp\p193-44fc6bcd\3\tmp\ahkflow-lane-pool-e0057f36d29b47c7afc5c84e9b401a03\lane-0.lock' because it is being used by another process."
+- `MeasureTestModes.Tests.ps1`: Cancelled admission cleans up in a surviving runspace before any work starts — "The process cannot access the file 'C:\Users\btase\AppData\Local\Temp\p193-44fc6bcd\2\tmp\ahkflow-lane-pool-5220e66d3b974c3bb78f1f9d857f97ea\lane-0.lock' because it is being used by another process."
+- `TestFastDotnetProgress.Tests.ps1`: Cancellation releases Lane and checkout ownership in a surviving host — "The process cannot access the file 'C:\Users\btase\AppData\Local\Temp\p193-44fc6bcd\5\tmp\ahkflow-lane-pool-d1c8199b30c94f0bad01bd9cac7f2219\lane-0.lock' because it is being used by another process."
+
+After patch:
+
+```text
+file:    scripts/test-lanes.common.ps1
+find:            if (-not $completed) { foreach ($lane in $lanes) { $lane.Dispose() } }\r\n
+replace: 
+```
+
+#### M6 (module)
+
+Sentence: A run end leaves its record and lock file in runs/.
+
+After outcome: **Caught**. The run end leaves files in runs/ (expected 0 got 2), and runner and measure completion fail to unregister or remove the advisory record.
+
+Failing cases that show the behaviour:
+
+- `LanePool.Tests.ps1`: Registration publication failure releases its record handle — "Failed publication must remove its files. (expected '0', got '1')"
+- `LanePool.Tests.ps1`: Owner lifecycle restores normal failed and nested marker state — "Normal exit must remove records. (expected '0', got '2')"
+- `LanePool.Tests.ps1`: Stopped owner entry restores its marker and acquires again in the surviving runspace — "Cancellation must remove its record and lock. (expected '0', got '2')"
+- `LanePool.Tests.ps1`: A Share One owner run registers and takes ownership but holds no Lane — "The run end must remove its record. (expected '0', got '2')"
+- `CiPowerShellSuiteRunner.Tests.ps1`: Lane one runner admits exactly two of four Workers — "Runner completion must unregister."
+- `CiPowerShellSuiteRunner.Tests.ps1`: Lane admission wait stays out of Suite timing — "Runner completion must unregister."
+- `CiPowerShellSuiteRunner.Tests.ps1`: Lane exclusive Suites acquire One and release it before the next Suite — "Runner completion must unregister."
+- `CiPowerShellSuiteRunner.Tests.ps1`: Lane stopped runner ends its run and restores its marker — "Cancellation must unregister the run."
+- `MeasureTestModes.Tests.ps1`: Same-host fail-build restores its marker and releases its Lanes and checkout — "Completion must remove its advisory record."
+- `MeasureTestModes.Tests.ps1`: Same-host none restores its marker and releases its Lanes and checkout — "Completion must remove its advisory record."
+- `MeasureTestModes.Tests.ps1`: Cancelled admission cleans up in a surviving runspace before any work starts — "Cancellation must remove its advisory record."
+
+After patch:
+
+```text
+file:    scripts/test-lanes.common.ps1
+find:    foreach ($path in @($Run.RecordPath, $Run.LockPath)) {
+replace: foreach ($path in @()) {
+```
+
+#### M7 (module)
+
+Sentence: A run end removes the ownership marker instead of restoring its earlier value.
+
+After outcome: **Caught**. The marker is empty after the run ends instead of its earlier value ('before' or '  ').
+
+Failing cases that show the behaviour:
+
+- `LanePool.Tests.ps1`: Ownership restores the prior marker — "Ownership must restore the marker. (expected 'before', got '')"
+- `LanePool.Tests.ps1`: Stopped owner entry restores its marker and acquires again in the surviving runspace — "Cancellation must restore the exact prior marker. (expected '  ', got '')"
+- `LanePool.Tests.ps1`: A Share One owner run registers and takes ownership but holds no Lane — "The run end must restore the exact marker. (expected '  ', got '')"
+- `CoverageRunnerProgress.Tests.ps1`: Coverage Lane route: direct nested=False — "The completed route must restore its marker. Child output: [1/6] restore        elapsed 0s  remaining unknown (6 units have no history)"
+- `CoverageRunnerProgress.Tests.ps1`: Cancellation releases Lane and checkout ownership in a surviving host — "Cancellation must restore the exact marker in the surviving host."
+- `MeasureTestModes.Tests.ps1`: Same-host fail-build restores its marker and releases its Lanes and checkout — "Restore the exact previous marker in the same host."
+- `MeasureTestModes.Tests.ps1`: Same-host none restores its marker and releases its Lanes and checkout — "Restore the exact previous marker in the same host."
+- `MeasureTestModes.Tests.ps1`: Cancelled admission cleans up in a surviving runspace before any work starts — "Cancelled entry must restore its marker."
+- `TestFastDotnetProgress.Tests.ps1`: Fast Lane route: owner — "The completed route must restore its marker. Child output:"
+- `TestFastDotnetProgress.Tests.ps1`: Cancellation releases Lane and checkout ownership in a surviving host — "Cancellation must restore the exact marker in the surviving host."
+
+After patch:
+
+```text
+file:    scripts/test-lanes.common.ps1
+find:        else { $env:AHKFLOW_TEST_LANES_HOLDER = [string]$Previous }
+replace:     else { Remove-Item Env:\AHKFLOW_TEST_LANES_HOLDER -ErrorAction SilentlyContinue }
+```
+
+#### M8 (module)
+
+Sentence: A take keeps entry.lock open after it returns, so every later take waits for ever.
+
+After outcome: **Caught**. Five cases report entry.lock still in use after the take returned, the runner never admits a second Worker, and LanePool hangs in the first case that makes a second take ('Empty and occupied pools...' has START with no result).
+
+Failing cases that show the behaviour:
+
+- `LanePool.Tests.ps1`: Empty and occupied pools keep stable capacity — "timed out; START line with no result"
+- `CiPowerShellSuiteRunner.Tests.ps1`: Lane one runner admits exactly two of four Workers — "Runner never reached 2 starts."
+- `CoverageRunnerProgress.Tests.ps1`: Cancellation releases Lane and checkout ownership in a surviving host — "The process cannot access the file 'C:\Users\btase\AppData\Local\Temp\p193-3181e1f5\3\tmp\ahkflow-lane-pool-dd912191970f4c43a081decbd56d1d9a\entry.lock' because it is being used by another process."
+- `MeasureTestModes.Tests.ps1`: Same-host fail-build restores its marker and releases its Lanes and checkout — "The process cannot access the file 'C:\Users\btase\AppData\Local\Temp\p193-3181e1f5\2\tmp\ahkflow-lane-pool-f7b96534e6e4406f9557b1c480ced266\entry.lock' because it is being used by another process."
+- `MeasureTestModes.Tests.ps1`: Same-host none restores its marker and releases its Lanes and checkout — "The process cannot access the file 'C:\Users\btase\AppData\Local\Temp\p193-3181e1f5\2\tmp\ahkflow-lane-pool-98f9fb6c836d4af29108839f4b101b33\entry.lock' because it is being used by another process."
+- `MeasureTestModes.Tests.ps1`: Cancelled admission cleans up in a surviving runspace before any work starts — "The process cannot access the file 'C:\Users\btase\AppData\Local\Temp\p193-3181e1f5\2\tmp\ahkflow-lane-pool-0e346e5d85234f089a9c462493aaf4de\entry.lock' because it is being used by another process."
+- `TestFastDotnetProgress.Tests.ps1`: Cancellation releases Lane and checkout ownership in a surviving host — "The process cannot access the file 'C:\Users\btase\AppData\Local\Temp\p193-3181e1f5\5\tmp\ahkflow-lane-pool-4517012a774248d3aa334e8fd692cc5d\entry.lock' because it is being used by another process."
+
+After patch:
+
+```text
+file:    scripts/test-lanes.common.ps1
+find:            if ($null -ne $entry) { $entry.Dispose() }
+replace:         if ($null -ne $entry) { $script:AhkFlowKeptEntry = $entry }
+```
+
+#### M9 (module)
+
+Sentence: A Suite's Lane take reads the role again instead of using the role the run start captured, so an owner run's Suites take no Lane.
+
+After outcome: **Caught**. A Suite take in an owner run returns no handle (expected 1 got 0), and the runner's Suites hold no Lanes.
+
+Failing cases that show the behaviour:
+
+- `LanePool.Tests.ps1`: A Suite Lane take in an owner run holds one Lane after the marker is set — "The take must return a handle only in an owner run. (expected '1', got '0')"
+- `CiPowerShellSuiteRunner.Tests.ps1`: Lane one runner admits exactly two of four Workers — "Lane locks must match admission."
+- `CiPowerShellSuiteRunner.Tests.ps1`: Lane exclusive Suites acquire One and release it before the next Suite — "An exclusive Suite needs exactly One Lane."
+- `CiPowerShellSuiteRunner.Tests.ps1`: Lane stopped runner ends its run and restores its marker — "Both Suites must hold Lanes before cancellation."
+
+After patch:
+
+```text
+file:    scripts/test-lanes.common.ps1
+find:        if ($null -eq $State -or $State.Role -ne 'owner') { return $null }
+replace:     if ($null -eq $State -or (Get-AhkFlowLaneRole) -ne 'owner') { return $null }
+```
+
+#### C1 (runner)
+
+Sentence: In a parallel run, a Worker never gives its Suite's Lane back.
+
+After outcome: **Caught**. In the parallel runner the later Workers never start because the Lanes were not given back, and lane-0.lock stays held.
+
+Failing cases that show the behaviour:
+
+- `CiPowerShellSuiteRunner.Tests.ps1`: Lane one runner admits exactly two of four Workers — "Timed out waiting for completed Lane signal 'C:\Users\btase\AppData\Local\Temp\p193-5bc7ce22\1\tmp\ahkflow-suiterepo-a9aa505398874380847defdb0dbca92b\tests\suite-1.start'."
+- `CiPowerShellSuiteRunner.Tests.ps1`: Lane stopped runner ends its run and restores its marker — "The process cannot access the file 'C:\Users\btase\AppData\Local\Temp\p193-5bc7ce22\1\tmp\ahkflow-lane-pool-09b1dcb10d83461484d3407e7070765b\lane-0.lock' because it is being used by another process."
+
+After patch:
+
+```text
+file:    scripts/run-powershell-suites.ps1
+find:                    Exit-AhkFlowSuiteLane -Handle $lane\r\n
+replace: 
+```
+
+#### C2 (test-fast)
+
+Sentence: test-fast.ps1 releases the checkout lock before it gives its Lanes back.
+
+After outcome: **Caught**. test-fast.ps1 fails with 'Lane ownership must release before checkout cleanup', which is the wrong order in the sentence.
+
+Failing cases that show the behaviour:
+
+- `TestFastDotnetProgress.Tests.ps1`: Fast Lane route: failure — "Lane ownership must release before checkout cleanup. Child output:"
+
+After patch:
+
+```text
+file:    scripts/test-fast.ps1
+find:        Exit-AhkFlowLaneRun -State $laneRun\r\n    Exit-AhkFlowTestRunLock -Handle $testRunLock
+replace:     Exit-AhkFlowTestRunLock -Handle $testRunLock\r\n    Exit-AhkFlowLaneRun -State $laneRun
+```
+
+#### C3 (measure)
+
+Sentence: measure-test-modes.ps1 never ends its Lane run, so its Lanes, its record and the marker stay until its process ends.
+
+After outcome: **Caught**. After measure-test-modes.ps1 returns, its runs/ record lock is still held in the same host, so the Lane run was never ended.
+
+Failing cases that show the behaviour:
+
+- `MeasureTestModes.Tests.ps1`: Same-host fail-build restores its marker and releases its Lanes and checkout — "The process cannot access the file 'C:\Users\btase\AppData\Local\Temp\p193-2e2f2351\2\tmp\ahkflow-lane-pool-bcbbcaeb89b544078c6a000009dee5fc\runs\37524-3ab3da3893cc44e78252d9d0e5b9fcf7.lock' because it is being used by another process."
+- `MeasureTestModes.Tests.ps1`: Same-host none restores its marker and releases its Lanes and checkout — "The process cannot access the file 'C:\Users\btase\AppData\Local\Temp\p193-2e2f2351\2\tmp\ahkflow-lane-pool-28731c18606a43cbaaa092743e226155\runs\37524-0d4e753e155540cbbe42890d67cb1ddd.lock' because it is being used by another process."
+
+After patch:
+
+```text
+file:    scripts/measure-test-modes.ps1
+find:        Exit-AhkFlowLaneRun -State $laneState\r\n
+replace: 
+```
 
 ## Timing
 
-Not yet taken.
+The timing ran on 2026-10-30 with `-Mode Timing`: one warm-up pass of each side, then A B B A B A
+A B. Each pass ran every Suite once, alone, in the order of the inputs file. The expected cases of
+each side were the PASS names of its clean opening control.
+
+Every pass, in the order it ran. Times are seconds. A is the before commit and B the after commit.
+
+| Suite | warm-A | warm-B | 1-A | 2-B | 3-B | 4-A | 5-B | 6-A | 7-A | 8-B |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| CiPowerShellSuiteRunner | 86.8 | 76.1 | 82.5 | 75.7 | 76.6 | 81.8 | 76.4 | 81.6 | 82.8 | 75.4 |
+| CoverageRunnerProgress | 39.7 | 27.6 | 37.7 | 27.5 | 27.7 | 37.5 | 28.7 | 39.0 | 37.6 | 27.0 |
+| CoverageSliceSkip | 17.6 | 16.2 | 16.2 | 16.3 | 16.6 | 16.4 | 15.9 | 16.1 | 16.7 | 16.4 |
+| GateEvidence | 22.9 | 22.0 | 22.0 | 22.3 | 22.0 | 22.3 | 22.6 | 22.2 | 22.3 | 21.8 |
+| MeasureTestModes | 54.3 | 45.5 | 49.8 | 44.8 | 44.3 | 50.1 | 44.8 | 51.5 | 50.5 | 44.6 |
+| TestFastDotnetProgress | 22.9 | 15.4 | 21.7 | 15.6 | 15.5 | 21.3 | 15.2 | 22.6 | 20.8 | 15.1 |
+| TestFastPowerShellMode | 23.7 | 23.4 | 23.2 | 23.6 | 22.7 | 23.2 | 22.7 | 23.1 | 22.8 | 23.5 |
+| LaneFileLockPrimitive | 3.7 | 3.8 | 4.0 | 3.8 | 3.9 | 3.8 | 4.0 | 3.8 | 3.8 | 4.2 |
+| LanePool | 20.1 | 28.7 | 20.8 | 30.2 | 29.3 | 20.0 | 30.0 | 20.0 | 20.3 | 30.4 |
+| **Pass** | **291.69** | **258.60** | **277.97** | **259.87** | **258.43** | **276.36** | **260.36** | **279.92** | **277.62** | **258.46** |
+
+Rejected passes: 0. The contention check passed at the start and the end of every pass.
+
+- Before (the four timed passes): fastest 4-A at 276.36 s, slowest 6-A at 279.92 s.
+- After (the four timed passes): fastest 3-B at 258.43 s, slowest 5-B at 260.36 s.
+
+The four pairs of neighbours, each with its fall: the before time minus the after time, as a percentage of the before time.
+
+- 1-A and 2-B: before 277.97 s, after 259.87 s, fall 6.51 percent.
+- 3-B and 4-A: before 276.36 s, after 258.43 s, fall 6.49 percent.
+- 5-B and 6-A: before 279.92 s, after 260.36 s, fall 6.99 percent.
+- 7-A and 8-B: before 277.62 s, after 258.46 s, fall 6.90 percent.
+
+Median fall: 6.71 percent. Every fall is under 10 percent, so section 5.5 of the spec gives **Not faster**.
 
 ## Verdict
 
-Not yet worked out.
+**Negative.**
+
+Every defect is valid on both sides, so the verdict can be worked out (spec section 5.6). The
+three targets:
+
+1. **No defect is lost**: holds. All 12 defects are Caught before and Caught after.
+2. **Fewer**: holds. The caller count falls by 25.7 percent, against a bar of 25 percent. Beside
+   it, the total count falls by 5.1 percent.
+3. **Faster**: does not hold. All four falls are under 10 percent. The median fall is 6.71
+   percent. Section 5.5 gives Not faster.
+
+The verdict takes the first outcome that applies. Not faster is a Negative condition, so the
+verdict is Negative. The after tests are faster, by about 18 seconds a pass, but not by the 10
+percent the spec set as the target.
+
+The saved time comes from the four caller Suites that lost cases. Compared over the timed passes,
+`CoverageRunnerProgress` runs about 10 seconds faster. `TestFastDotnetProgress`,
+`MeasureTestModes` and `CiPowerShellSuiteRunner` each run about 6 seconds faster. `LanePool` runs
+about 9 seconds slower, because of the new run interface cases and the check.
+
+Per spec section 6.3, the code is reverted. This record, the backlog item and the two
+`CONTEXT.md` terms stay.
 
 ## The Stryker.NET answer
 
@@ -487,4 +939,5 @@ This answer was fixed in spec section 6.2, before any data existed.
 
 ## Gaps
 
-The before tests caught all 12 defects. They missed none, so the before side shows no gap.
+The before tests caught all 12 defects, and so did the after tests. Neither side missed a defect,
+so the pilot shows no gap in the PowerShell tests of the Lane pool.
