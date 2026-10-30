@@ -90,7 +90,6 @@ function Assert-Equal($Expected, $Actual, [string] $Message) {
     }
 }
 function Invoke-Case([string] $Name, [scriptblock] $Body) {
-    if ($env:AHKFLOW_SUITE_CASE_START -eq '1') { Write-Host "  START  $Name" }
     try {
         & $Body
         Write-Host "  PASS  $Name" -ForegroundColor Green

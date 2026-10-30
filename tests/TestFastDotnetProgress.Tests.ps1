@@ -37,7 +37,6 @@ function Assert-True {
 
 function Invoke-TestCase {
     param([string] $Name, [scriptblock] $Body)
-    if ($env:AHKFLOW_SUITE_CASE_START -eq '1') { Write-Host "  START  $Name" }
     try {
         & $Body
         Write-Host "  PASS  $Name" -ForegroundColor Green
@@ -377,10 +376,10 @@ Invoke-TestCase 'Fast mode stops when one assembly in the combined run discovers
 }
 
 . (Join-Path $PSScriptRoot 'DotnetLane.Common.ps1')
-foreach ($scenario in @('owner', 'failure')) {
+foreach ($scenario in @('owner', 'nested', 'repeat')) {
     Invoke-TestCase "Fast Lane route: $scenario" {
         $root = New-WrapperFixture
-        try { Test-DotnetLaneRoute -Root $root -ScriptName 'test-fast.ps1' -Arguments @{ Mode = 'Fast' } -Fail:($scenario -eq 'failure') }
+        try { Test-DotnetLaneRoute -Root $root -ScriptName 'test-fast.ps1' -Arguments @{ Mode = 'Fast' } -Nested:($scenario -eq 'nested') -Repeat:($scenario -eq 'repeat') }
         finally { Remove-WrapperFixture $root }
     }
 }

@@ -16,50 +16,7 @@ function Remove-PinnedLanePool {
     Remove-Item -LiteralPath $Pool.Root -Recurse -Force -ErrorAction Stop
 }
 
-function Get-AhkFlowHeldLaneCount {
-    param([Parameter(Mandatory = $true)][string] $PoolRoot)
-    if (-not [System.IO.Directory]::Exists($PoolRoot)) { return 0 }
-    $count = 0
-    foreach ($file in @(Get-ChildItem -LiteralPath $PoolRoot -Filter 'lane-*.lock' -File -ErrorAction Stop)) {
-        if (Test-AhkFlowLaneFileHeld -Path $file.FullName) { $count++ }
-    }
-    return $count
-}
-
 function Get-RunLaneCount { param($Pool); (Get-AhkFlowHeldLaneCount -PoolRoot $Pool.Root) - 1 }
-
-# Reports whether another handle holds the file. It keeps its own copy of the module's
-# sharing-violation codes, so a probe never trusts the code under test. A missing file is not held.
-function Test-FileLockHeld {
-    param([Parameter(Mandatory = $true)][string] $Path)
-    if (-not [IO.File]::Exists($Path)) { return $false }
-    try {
-        $stream = [IO.File]::Open($Path, 'Open', 'ReadWrite', 'None')
-        $stream.Dispose()
-        return $false
-    } catch {
-        $failure = $_.Exception
-        while ($failure.GetType().Namespace -eq 'System.Management.Automation' -and $null -ne $failure.InnerException) {
-            $failure = $failure.InnerException
-        }
-        if ($failure -is [IO.FileNotFoundException]) { return $false }
-        $code = if ([IO.Path]::DirectorySeparatorChar -eq '\') { -2147024864 } else { 11 }
-        if ($failure.GetType().FullName -ceq 'System.IO.IOException' -and [int]$failure.HResult -eq $code) { return $true }
-        throw
-    }
-}
-
-# Starts a child that takes Half through the public run interface only. It publishes Acquired when
-# the run start returns, then holds the Lanes until Release.
-function Start-LaneRunContender {
-    param([Parameter(Mandatory = $true)][string] $PoolRoot, [Parameter(Mandatory = $true)][string] $Checkout, [Parameter(Mandatory = $true)][hashtable] $Signals)
-    $module = (Join-Path (Split-Path $PSScriptRoot -Parent) 'scripts/test-lanes.common.ps1').Replace("'", "''")
-    $common = $PSCommandPath.Replace("'", "''")
-    $root = $PoolRoot.Replace("'", "''"); $checkoutPath = $Checkout.Replace("'", "''")
-    $acquired = ([string]$Signals.Acquired).Replace("'", "''"); $release = ([string]$Signals.Release).Replace("'", "''")
-    $code = "`$ErrorActionPreference='Stop'; . '$module'; . '$common'; `$env:AHKFLOW_TEST_LANES_ROOT='$root'; `$env:AHKFLOW_TEST_LANES_HOLDER=''; `$env:AHKFLOW_TEST_LANES=''; `$state=`$null; try { `$state=Enter-AhkFlowLaneRun -Mode Contender -Checkout '$checkoutPath' -Share Half -PhysicalCoreCount 4; Publish-LaneSignal '$acquired' acquired; Wait-LanePath '$release' 30 | Out-Null } finally { Exit-AhkFlowLaneRun -State `$state }"
-    Start-LaneChildProcess -ArgumentList @('-NoProfile', '-EncodedCommand', (ConvertTo-LaneEncodedCommand $code))
-}
 
 # Sets each named process environment variable for the length of Action, then puts back the value
 # it had before. A $null or empty value removes the variable. Only the named keys are touched.

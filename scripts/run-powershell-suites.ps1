@@ -212,6 +212,15 @@ if ($null -ne $sizing.Error) {
 $workerCount = $sizing.Count
 $workerSource = $sizing.Source
 
+$laneProposal = 0
+if ($laneRole -eq 'owner') {
+    $laneProposal = if ($null -ne $sizing.PhysicalCoreCount) {
+        Get-AhkFlowLaneProposal -PhysicalCoreCount $sizing.PhysicalCoreCount
+    } else {
+        Get-AhkFlowLaneProposal
+    }
+}
+
 # The suites are written for the host that runs this script, so run them under the same one.
 $hostExe = [System.Diagnostics.Process]::GetCurrentProcess().Path
 
@@ -303,27 +312,30 @@ foreach ($file in $suites) { $byPath[$file.Name] = $file.FullName }
 # Exclusive suites first, one at a time. Nothing else may run while one of them does, so putting
 # them first leaves the pool's longest-first order intact afterwards.
 $laneRun = $null
+$previousHolder = $null
 try {
-    $runStart = @{ Mode = 'PowerShell'; Checkout = $repoRoot; Share = 'One' }
-    if ($null -ne $sizing.PhysicalCoreCount) { $runStart.PhysicalCoreCount = $sizing.PhysicalCoreCount }
-    $laneRun = Enter-AhkFlowLaneRun @runStart
-    if ($laneRun.Role -eq 'owner') {
+    if ($laneRole -eq 'owner') {
+        $previousHolder = Enter-AhkFlowLaneOwnership
+        $laneRun = Register-AhkFlowLaneRun -PoolRoot (Get-AhkFlowLanePoolRoot) -Mode PowerShell -Checkout $repoRoot
+        Write-AhkFlowLaneSharingLine -Run $laneRun
         Write-Host 'Lanes: shared pool; one per Suite'
-    } elseif ($laneRun.Role -eq 'nested') {
+    } elseif ($laneRole -eq 'nested') {
         Write-Host "Lanes: nested; holder $env:AHKFLOW_TEST_LANES_HOLDER"
     } else {
         Write-Host 'Lanes: off; AHKFLOW_TEST_LANES=off'
     }
 
     foreach ($item in ($schedule | Where-Object { $_.Execution -eq 'exclusive' })) {
-        $lane = $null
+        $lanes = $null
         try {
-            $lane = Enter-AhkFlowSuiteLane -State $laneRun
+            if ($laneRun) {
+                $lanes = Enter-AhkFlowLanes -PoolRoot $laneRun.PoolRoot -Share One -Proposal $laneProposal -Run $laneRun
+            }
             Show-SuiteResult (Invoke-SuiteChild -Path $byPath[$item.Name] -Name $item.Name -HostExe $hostExe)
         } catch {
             Show-SuiteResult ([pscustomobject]@{ Name = $item.Name; ExitCode = 1; Seconds = 0; Output = "Could not run the suite: $($_.Exception.Message)" })
         } finally {
-            Exit-AhkFlowSuiteLane -Handle $lane
+            Exit-AhkFlowLanes -Handle $lanes
         }
     }
 
@@ -349,6 +361,7 @@ try {
             . $using:commonModule
             . $using:laneModule
             $laneRun = $using:laneRun
+            $laneProposal = $using:laneProposal
             $ErrorActionPreference = 'Stop'
 
             # Fresh runspace: opt out again so a non-zero suite exit code is data, not a throw.
@@ -357,19 +370,24 @@ try {
             # Name, ExitCode, Seconds and Output are exactly what Show-SuiteResult reads, so the
             # child's own object is what this runspace emits.
             $item = $_
-            $lane = $null
+            $lanes = $null
             try {
-                $lane = Enter-AhkFlowSuiteLane -State $laneRun
+                if ($laneRun) {
+                    $lanes = Enter-AhkFlowLanes -PoolRoot $laneRun.PoolRoot -Share One -Proposal $laneProposal -Run $laneRun
+                }
                 Invoke-SuiteChild -Path $item.Path -Name $item.Name -HostExe $using:hostExe
             } catch {
                 [pscustomobject]@{ Name = $item.Name; ExitCode = 1; Seconds = 0; Output = "Could not run the suite: $($_.Exception.Message)" }
             } finally {
-                Exit-AhkFlowSuiteLane -Handle $lane
+                Exit-AhkFlowLanes -Handle $lanes
             }
         } | ForEach-Object { Show-SuiteResult $_ }
     }
 } finally {
-    Exit-AhkFlowLaneRun -State $laneRun
+    if ($laneRole -eq 'owner') {
+        try { Unregister-AhkFlowLaneRun -Run $laneRun }
+        finally { Exit-AhkFlowLaneOwnership -Previous $previousHolder }
+    }
 }
 
 # A Worker that emitted no result did not prove its selected Suite passed.

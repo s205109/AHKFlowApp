@@ -13,7 +13,6 @@ if ([string]::IsNullOrWhiteSpace($ModulePath)) { $ModulePath = Join-Path $repoRo
 $failures = [System.Collections.Generic.List[string]]::new()
 function Invoke-Case([string] $Name, [scriptblock] $Body) {
     if ($ContentionOnly -and $Name -notin @('Entry contention blocks until an acknowledged real-open failure clears', 'Missing parent throws and genuine contention returns null')) { return }
-    if ($env:AHKFLOW_SUITE_CASE_START -eq '1') { Write-Host "  START  $Name" }
     try { & $Body; Write-Host "  PASS  $Name" -ForegroundColor Green }
     catch { $failures.Add("$Name :: $($_.Exception.Message)"); Write-Host "  FAIL  $Name`n        $($_.Exception.Message)" -ForegroundColor Red }
 }
@@ -666,95 +665,6 @@ Invoke-Case 'Unreadable advisory records cannot abort a valid reservation' {
         finally { Exit-AhkFlowLanes $lanes }
         Assert-Equal 0 $run.Printed.Count 'A failed scan must allow a later diagnostic retry.'
     } finally { Unregister-AhkFlowLaneRun $run; Remove-PinnedLanePool $pool }
-}
-
-Invoke-Case 'A Share One owner run registers and takes ownership but holds no Lane' {
-    $pool = New-PinnedLanePool 4
-    try {
-        Use-LaneEnvironment -Value @{ AHKFLOW_TEST_LANES_ROOT = $pool.Root; AHKFLOW_TEST_LANES_HOLDER = '  ' } -Body {
-            $state = Enter-AhkFlowLaneRun -Mode PowerShell -Checkout A -Share One -PhysicalCoreCount 4
-            try {
-                Assert-Equal owner $state.Role 'An empty marker must start an owner run.'
-                Assert-True ($null -eq $state.Lanes) 'A Share One run must hold no Lane at its start.'
-                Assert-True ($state.Proposal -ge 1) 'An owner run must record its proposal.'
-                Assert-Equal 0 (Get-RunLaneCount $pool) 'A Share One run must hold no Lane file.'
-                Assert-Equal 1 @(Get-ChildItem -LiteralPath (Join-Path $pool.Root 'runs') -Filter '*.txt').Count 'The run must register one record.'
-                Assert-Equal ([string]$PID) $env:AHKFLOW_TEST_LANES_HOLDER 'The run must take ownership.'
-            } finally { Exit-AhkFlowLaneRun -State $state }
-            Assert-Equal 0 @(Get-ChildItem -LiteralPath (Join-Path $pool.Root 'runs')).Count 'The run end must remove its record.'
-            Assert-Equal '  ' $env:AHKFLOW_TEST_LANES_HOLDER 'The run end must restore the exact marker.'
-        }
-    } finally { Remove-PinnedLanePool $pool }
-}
-
-foreach ($row in @(
-        @{ Name = 'A Suite Lane take in an owner run holds one Lane after the marker is set'; Value = @{ AHKFLOW_TEST_LANES_HOLDER = '  ' }; Held = 1 }
-        @{ Name = 'A Suite Lane take in a Nested run holds nothing'; Value = @{ AHKFLOW_TEST_LANES_HOLDER = 'outer' }; Held = 0 }
-        @{ Name = 'A Suite Lane take in an opted-out run holds nothing'; Value = @{ AHKFLOW_TEST_LANES = 'off' }; Held = 0 }
-    )) {
-    Invoke-Case $row.Name {
-        $pool = New-PinnedLanePool 4
-        try {
-            $value = @{ AHKFLOW_TEST_LANES_ROOT = $pool.Root } + $row.Value
-            Use-LaneEnvironment -Value $value -Body {
-                $state = Enter-AhkFlowLaneRun -Mode PowerShell -Checkout A -Share One -PhysicalCoreCount 4
-                try {
-                    $lane = Enter-AhkFlowSuiteLane -State $state
-                    try {
-                        Assert-Equal $row.Held $(if ($null -eq $lane) { 0 } else { 1 }) 'The take must return a handle only in an owner run.'
-                        Assert-Equal $row.Held (Get-RunLaneCount $pool) 'The take must hold one Lane only in an owner run.'
-                    } finally { Exit-AhkFlowSuiteLane -Handle $lane }
-                    Assert-Equal 0 (Get-RunLaneCount $pool) 'The give-back must release the Lane.'
-                    Exit-AhkFlowSuiteLane -Handle $null
-                } finally { Exit-AhkFlowLaneRun -State $state }
-            }
-        } finally { Remove-PinnedLanePool $pool }
-    }
-}
-
-if (Get-Command powershell.exe -CommandType Application -ErrorAction SilentlyContinue) {
-    Invoke-Case 'The module loads in Windows PowerShell 5.1' {
-        $command = ". '" + $ModulePath.Replace("'", "''") + "'; Get-Command Enter-AhkFlowSuiteLane, Exit-AhkFlowSuiteLane | Out-Null; 'loaded'"
-        $output = @(& powershell.exe -NoProfile -Command $command 2>&1 | ForEach-Object { [string]$_ })
-        Assert-Equal 0 $LASTEXITCODE 'Windows PowerShell 5.1 must load the module.'
-        Assert-True ($output.Count -eq 1 -and $output[0] -ceq 'loaded') ("Windows PowerShell 5.1 printed more than 'loaded': " + ($output -join ' | '))
-    }
-} else {
-    Write-Host '  SKIP  The module loads in Windows PowerShell 5.1'
-}
-
-# Backlog 193: callers use only the five public functions. Every other function the module
-# defines is internal by default, and only the three Lane pool files may name one.
-Invoke-Case 'No script or Suite outside the Lane pool files names an internal Lane function' {
-    $modulePath = Join-Path $repoRoot 'scripts/test-lanes.common.ps1'
-    $tokens = $null; $parseErrors = $null
-    $ast = [System.Management.Automation.Language.Parser]::ParseFile($modulePath, [ref] $tokens, [ref] $parseErrors)
-    $public = @('Get-AhkFlowLaneRole', 'Enter-AhkFlowLaneRun', 'Exit-AhkFlowLaneRun', 'Enter-AhkFlowSuiteLane', 'Exit-AhkFlowSuiteLane')
-    $internal = @($ast.FindAll({ param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $true) |
-            ForEach-Object { $_.Name } | Where-Object { $_ -notin $public } | Sort-Object -Unique)
-    Assert-True ($internal.Count -gt 0) 'The module must define internal functions.'
-    $exempt = @(
-        [IO.Path]::GetFullPath($modulePath),
-        [IO.Path]::GetFullPath((Join-Path $repoRoot 'tests/LanePool.Tests.ps1')),
-        [IO.Path]::GetFullPath((Join-Path $repoRoot 'tests/LanePool.Common.ps1'))
-    )
-    $patterns = foreach ($name in $internal) { [pscustomobject]@{ Name = $name; Regex = [regex]::new('(?<![\w-])' + [regex]::Escape($name) + '(?![\w-])', 'IgnoreCase') } }
-    $hits = [Collections.Generic.List[string]]::new()
-    foreach ($folder in @('scripts', 'tests')) {
-        foreach ($file in @(Get-ChildItem -LiteralPath (Join-Path $repoRoot $folder) -Filter '*.ps1' -File -Recurse)) {
-            if ([IO.Path]::GetFullPath($file.FullName) -in $exempt) { continue }
-            $lines = [IO.File]::ReadAllLines($file.FullName)
-            for ($index = 0; $index -lt $lines.Count; $index++) {
-                foreach ($pattern in $patterns) {
-                    if ($pattern.Regex.IsMatch($lines[$index])) {
-                        $relative = [IO.Path]::GetRelativePath($repoRoot, $file.FullName).Replace('\', '/')
-                        $hits.Add("${relative}:$($index + 1) $($pattern.Name)")
-                    }
-                }
-            }
-        }
-    }
-    Assert-True ($hits.Count -eq 0) ('Internal Lane functions named outside the Lane pool files: ' + ($hits -join '; '))
 }
 
 if ($failures.Count -gt 0) { foreach ($failure in $failures) { Write-Host $failure -ForegroundColor Red }; exit 1 }

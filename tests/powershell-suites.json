@@ -19,7 +19,6 @@
     { "name": "CoverageSliceSkip.Tests.ps1", "jobs": ["suites"], "platform": ["windows"], "execution": "parallel", "baselineSeconds": 26.3 },
     { "name": "GateEvidence.Tests.ps1", "jobs": ["suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 33.8},
     { "name": "GateWording.Tests.ps1", "jobs": ["suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 15.5 },
-    { "name": "MeasureArchitecturePilot.Tests.ps1", "jobs": ["suites"], "platform": ["windows"], "execution": "parallel", "baselineSeconds": 125.0 },
     { "name": "MeasureTestModes.Tests.ps1", "jobs": ["suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 68.9, "reuse": {"eligible": false, "reason": "dot-sources a runspace parameter at line 1022, which the resolver cannot follow"} },
     { "name": "PersonalDefaultsSyncMarker.Tests.ps1", "jobs": ["suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 0.9 },
     { "name": "PlanSplitRecord.Tests.ps1", "jobs": ["suites"], "platform": ["windows", "linux"], "execution": "parallel", "baselineSeconds": 8.8 },

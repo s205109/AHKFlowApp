@@ -157,6 +157,16 @@ function Exit-AhkFlowLanes {
     foreach ($stream in @($Handle.Streams)) { if ($null -ne $stream) { $stream.Dispose() } }
 }
 
+function Get-AhkFlowHeldLaneCount {
+    param([Parameter(Mandatory = $true)][string] $PoolRoot)
+    if (-not [System.IO.Directory]::Exists($PoolRoot)) { return 0 }
+    $count = 0
+    foreach ($file in @(Get-ChildItem -LiteralPath $PoolRoot -Filter 'lane-*.lock' -File -ErrorAction Stop)) {
+        if (Test-AhkFlowLaneFileHeld -Path $file.FullName) { $count++ }
+    }
+    return $count
+}
+
 function Register-AhkFlowLaneRun {
     param(
         [Parameter(Mandatory = $true)][string] $PoolRoot,
@@ -245,23 +255,14 @@ function Wait-AhkFlowLaneRetry {
     Start-Sleep -Milliseconds 200
 }
 
-# The run interface. Callers use only these five functions: Get-AhkFlowLaneRole,
-# Enter-AhkFlowLaneRun, Exit-AhkFlowLaneRun, Enter-AhkFlowSuiteLane and Exit-AhkFlowSuiteLane.
-# Every other function in this file is internal. tests/LanePool.Tests.ps1 fails when a script or
-# Suite outside the Lane pool files names one.
-
-# Starts a run. The role is read once here and kept in the run state. With Share One, an owner run
-# registers and takes ownership but holds no Lane; each Suite then takes one with
-# Enter-AhkFlowSuiteLane. With Half or Whole, the run takes its Lanes now.
 function Enter-AhkFlowLaneRun {
     param(
         [Parameter(Mandatory = $true)][string] $Mode,
         [Parameter(Mandatory = $true)][string] $Checkout,
-        [Parameter(Mandatory = $true)][ValidateSet('One', 'Half', 'Whole')][string] $Share,
-        [int] $PhysicalCoreCount
+        [Parameter(Mandatory = $true)][ValidateSet('Half', 'Whole')][string] $Share
     )
     $role = Get-AhkFlowLaneRole
-    $state = [pscustomobject]@{ Role = $role; Share = $Share; Proposal = 0; PreviousHolder = $null; Run = $null; Lanes = $null }
+    $state = [pscustomobject]@{ Role = $role; PreviousHolder = $null; Run = $null; Lanes = $null }
     if ($role -ne 'owner') { return $state }
     $state.PreviousHolder = Enter-AhkFlowLaneOwnership
     $completed = $false
@@ -269,9 +270,7 @@ function Enter-AhkFlowLaneRun {
         $root = Get-AhkFlowLanePoolRoot
         $state.Run = Register-AhkFlowLaneRun -PoolRoot $root -Mode $Mode -Checkout $Checkout
         Write-AhkFlowLaneSharingLine -Run $state.Run
-        if ($PSBoundParameters.ContainsKey('PhysicalCoreCount')) { $state.Proposal = Get-AhkFlowLaneProposal -PhysicalCoreCount $PhysicalCoreCount }
-        else { $state.Proposal = Get-AhkFlowLaneProposal }
-        if ($Share -ne 'One') { $state.Lanes = Enter-AhkFlowLanes -PoolRoot $root -Share $Share -Proposal $state.Proposal -Run $state.Run }
+        $state.Lanes = Enter-AhkFlowLanes -PoolRoot $root -Share $Share -Proposal (Get-AhkFlowLaneProposal) -Run $state.Run
         $completed = $true
         return $state
     } finally {
@@ -287,18 +286,4 @@ function Exit-AhkFlowLaneRun {
         try { Unregister-AhkFlowLaneRun -Run $State.Run }
         finally { Exit-AhkFlowLaneOwnership -Previous $State.PreviousHolder }
     }
-}
-
-# Takes one Lane for one Suite. It acts on the role the run start captured and never reads the
-# role again: an owner run has set the ownership marker, so a fresh read would return nested.
-function Enter-AhkFlowSuiteLane {
-    param([object] $State)
-    if ($null -eq $State -or $State.Role -ne 'owner') { return $null }
-    Enter-AhkFlowLanes -PoolRoot $State.Run.PoolRoot -Share One -Proposal $State.Proposal -Run $State.Run
-}
-
-# Gives back the Lane of one Suite. A $null handle does nothing.
-function Exit-AhkFlowSuiteLane {
-    param([object] $Handle)
-    Exit-AhkFlowLanes -Handle $Handle
 }

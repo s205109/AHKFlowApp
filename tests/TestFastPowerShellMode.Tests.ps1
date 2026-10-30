@@ -45,7 +45,6 @@ function Assert-True {
 
 function Invoke-TestCase {
     param([string] $Name, [scriptblock] $Body)
-    if ($env:AHKFLOW_SUITE_CASE_START -eq '1') { Write-Host "  START  $Name" }
     try {
         & $Body
         Write-Host "  PASS  $Name" -ForegroundColor Green
@@ -296,7 +295,7 @@ Invoke-TestCase 'PowerShell wrapper delegates per-Suite admission and preserves 
             Add-LaneIntervalSuite $suites One $start $release (Join-Path $root finish)
             Set-FixtureManifest $root
             Use-LaneEnvironment -Value @{ AHKFLOW_TEST_LANES_ROOT = $pool.Root; AHKFLOW_TEST_LANES_HOLDER = $(if ($nested) { 'existing-holder' } else { '' }) } -Body {
-                if ($nested) { $handles.Held = @(0, 1 | ForEach-Object { [IO.File]::Open((Join-Path $pool.Root "lane-$_.lock"), 'OpenOrCreate', 'ReadWrite', 'None') }) }
+                if ($nested) { $handles.Held = Enter-AhkFlowLanes -PoolRoot $pool.Root -Share Half -Proposal 4 }
                 $handles.Child = Start-LaneChildProcess @('-NoProfile', '-File', $script:WrapperPath, '-Mode', 'PowerShell', '-SuiteRoot', $root)
                 [void](Wait-LanePath $start 15 $handles.Child)
                 Assert-True ((Get-RunLaneCount $pool) -eq $(if ($nested) { 2 } else { 1 })) 'The wrapper must add no Half reservation.'
@@ -310,7 +309,7 @@ Invoke-TestCase 'PowerShell wrapper delegates per-Suite admission and preserves 
         } finally {
             Publish-LaneSignal $release
             Stop-LaneChildProcess $handles.Child
-            foreach ($stream in @($handles.Held)) { if ($null -ne $stream) { $stream.Dispose() } }
+            Exit-AhkFlowLanes $handles.Held
             Remove-PinnedLanePool $pool
             Remove-SuiteFixture $root
         }

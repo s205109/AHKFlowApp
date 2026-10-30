@@ -46,7 +46,6 @@ function Assert-True {
 
 function Invoke-TestCase {
     param([string] $Name, [scriptblock] $Body)
-    if ($env:AHKFLOW_SUITE_CASE_START -eq '1') { Write-Host "  START  $Name" }
     try {
         & $Body
         Write-Host "  PASS  $Name" -ForegroundColor Green
@@ -78,6 +77,16 @@ function New-HarnessFixture {
         Copy-Item (Join-Path $repoRoot "scripts/$helper") (Join-Path $root "scripts/$helper")
     }
     Copy-Item (Join-Path $PSScriptRoot 'LanePool.Common.ps1') (Join-Path $root 'scripts/LanePool.Common.ps1')
+    # Observe real failed admission before allowing the next attempt.
+    Add-Content (Join-Path $root 'scripts/test-lanes.common.ps1') @'
+function Wait-AhkFlowLaneRetry {
+    param($Run)
+    . (Join-Path $PSScriptRoot 'LanePool.Common.ps1')
+    $stub = Join-Path (Split-Path $PSScriptRoot -Parent) 'stub'
+    Publish-LaneSignal (Join-Path $stub 'waiting')
+    Wait-LanePath (Join-Path $stub 'retry') 30 | Out-Null
+}
+'@
     Set-Content (Join-Path $root 'scripts/lane-observation.ps1') @'
 param([string]$Label)
 . (Join-Path $PSScriptRoot 'test-lanes.common.ps1')
@@ -858,23 +867,18 @@ foreach ($scenario in @(
                     Set-Content (Join-Path $root 'stub/gated') 'yes'
                     Set-Content (Join-Path $root 'stub/sleeps.txt') '0'
                     # Leave only lane 0 free so both shares collect it then wait.
-                    $blocker = @(1..3 | ForEach-Object { [IO.File]::Open((Join-Path $pool.Root "lane-$_.lock"), 'OpenOrCreate', 'ReadWrite', 'None') })
+                    $blocker = @(1..3 | ForEach-Object { Open-AhkFlowLaneFile (Join-Path $pool.Root "lane-$_.lock") })
                     $child = Start-LaneChildProcess (@('-NoProfile', '-File', (Join-Path $root 'scripts/measure-test-modes.ps1')) + $scenario.Arguments)
-                    # The run waits for admission: it holds the entry lock and the one free Lane.
-                    $watch = [Diagnostics.Stopwatch]::StartNew()
-                    while (-not ((Test-FileLockHeld (Join-Path $pool.Root 'entry.lock')) -and (Get-RunLaneCount $pool) -eq 4)) {
-                        Assert-True ($watch.Elapsed.TotalSeconds -lt 10) 'The harness never reached its waiting state.'
-                        Assert-True (-not $child.Process.HasExited) 'The harness exited before it waited for admission.'
-                        Start-Sleep -Milliseconds 20
-                    }
+                    [void](Wait-LanePath (Join-Path $root 'stub/waiting') 10 $child)
                     Assert-True (-not (Test-Path (Join-Path $root 'stub/signals.txt'))) 'No build or timed work may start before admission.'
                     Assert-True (-not (Test-Path (Join-Path $root 'TestResults/measure-test-modes'))) 'Measurement artifacts must start after admission.'
                     $blocker.Dispose(); $blocker = $null
+                    Publish-LaneSignal (Join-Path $root 'stub/retry')
                     foreach ($call in $scenario.Calls) {
                         $line = Wait-LanePath (Join-Path $root "stub/$call.ready") 10 $child
                         Assert-True ($line.Trim() -eq "$call held=$($scenario.Held) holder=$($child.Process.Id)") "Unexpected Lane observation: $line"
                         Assert-True ((Get-RunLaneCount $pool) -eq $scenario.Held) 'Reservation must remain live while the call is gated.'
-                        Assert-True (Test-FileLockHeld (Join-Path $root '.test-run.lock')) 'Build, delegated Fast, and soak must each hold the checkout lock.'
+                        Assert-True (Test-AhkFlowLaneFileHeld (Join-Path $root '.test-run.lock')) 'Build, delegated Fast, and soak must each hold the checkout lock.'
                         Publish-LaneSignal (Join-Path $root "stub/$call.release")
                     }
                     $result = Wait-LaneChildProcess $child 10
@@ -905,27 +909,28 @@ Invoke-TestCase 'Whole blocks a competing acquirer through the parent checkout h
                 Assert-True ((Get-RunLaneCount $pool) -eq 4) 'Build must hold Whole before the handoff.'
                 Publish-LaneSignal (Join-Path $root 'stub/build.release')
                 $holder = Wait-LanePath (Join-Path $root 'stub/handoff.ready') 10 $child
-                Assert-True (-not (Test-FileLockHeld (Join-Path $root '.test-run.lock'))) 'Parent must release checkout before the handoff gate.'
+                Assert-True (-not (Test-AhkFlowLaneFileHeld (Join-Path $root '.test-run.lock'))) 'Parent must release checkout before the handoff gate.'
 
                 $signals = @{
                     Acquired = Join-Path $pool.Root 'contender-acquired'
                     Release = Join-Path $pool.Root 'contender-release'
+                    FailedAttempt = Join-Path $pool.Root 'contender-blocked'
                 }
-                $contender = Start-LaneRunContender -PoolRoot $pool.Root -Checkout $root -Signals $signals
-                # The contender waits for admission while it holds the entry lock and has not acquired.
+                $contender = Start-LaneHolder $pool.Root $signals Contender One 4
                 $deadline = [Diagnostics.Stopwatch]::StartNew()
-                while (-not (Test-FileLockHeld (Join-Path $pool.Root 'entry.lock')) -and -not (Test-Path "$($signals.Acquired).done")) {
+                while (-not (Test-Path "$($signals.FailedAttempt).done") -and -not (Test-Path "$($signals.Acquired).done")) {
                     Assert-True (-not $contender.Process.HasExited) 'Contender exited before attempting admission.'
-                    Assert-True ($deadline.Elapsed.TotalSeconds -lt 10) 'Contender must wait for admission within its deadline.'
+                    Assert-True ($deadline.Elapsed.TotalSeconds -lt 10) 'Contender must acknowledge admission within its deadline.'
                     Start-Sleep -Milliseconds 20
                 }
                 Assert-True (-not (Test-Path "$($signals.Acquired).done")) 'Competing acquirer entered while the parent was handing checkout to Fast.'
+                [void](Wait-LanePath $signals.FailedAttempt 10 $contender)
                 Assert-True ($holder.Trim() -eq "$($child.Process.Id)") 'Handoff must retain the parent marker.'
                 Assert-True ((Get-RunLaneCount $pool) -eq 4) 'Whole must remain held while the contender waits at the handoff.'
 
                 Publish-LaneSignal (Join-Path $root 'stub/handoff.release')
                 [void](Wait-LanePath (Join-Path $root 'stub/fast-1.ready') 10 $child)
-                Assert-True (Test-FileLockHeld (Join-Path $root '.test-run.lock')) 'Fast must reacquire checkout while the contender waits.'
+                Assert-True (Test-AhkFlowLaneFileHeld (Join-Path $root '.test-run.lock')) 'Fast must reacquire checkout while the contender waits.'
                 Assert-True ((Get-RunLaneCount $pool) -eq 4) 'Fast must inherit the same Whole reservation.'
                 Assert-True (-not (Test-Path "$($signals.Acquired).done")) 'Contender must stay blocked until the timing session finishes.'
                 Publish-LaneSignal (Join-Path $root 'stub/fast-1.release')
@@ -943,7 +948,29 @@ Invoke-TestCase 'Whole blocks a competing acquirer through the parent checkout h
     } finally { Stop-LaneChildProcess $child; Stop-LaneChildProcess $contender; Remove-PinnedLanePool $pool; Remove-HarnessFixture $root }
 }
 
-foreach ($failure in @('fail-build', 'none')) {
+foreach ($soak in @($false, $true)) {
+    Invoke-TestCase "Nested harness preserves its marker without adding Lanes (soak=$soak)" {
+        $root = New-HarnessFixture; $pool = New-PinnedLanePool 4; $held = $null
+        try {
+            $held = Enter-AhkFlowLanes $pool.Root Half 4
+            Use-LaneEnvironment -Value @{ AHKFLOW_TEST_LANES_ROOT = $pool.Root; AHKFLOW_TEST_LANES_HOLDER = 'inherited-owner' } -Body {
+                $arguments = if ($soak) { @{ Soak = 'tests/FakeProject'; Runs = 2 } } else { @{ Runs = 2; WarmUpRuns = 1; SettleSeconds = 0 } }
+                $previousPath = $env:PATH
+                try {
+                    $env:PATH = (Join-Path $root 'stub') + [IO.Path]::PathSeparator + $previousPath
+                    & (Join-Path $root 'scripts/measure-test-modes.ps1') @arguments | Out-Null
+                    Assert-True ($env:AHKFLOW_TEST_LANES_HOLDER -eq 'inherited-owner') 'Nested exit must preserve the marker in its own host.'
+                } finally { $env:PATH = $previousPath }
+                $lines = @(Get-Content (Join-Path $root 'stub/lanes.txt'))
+                Assert-True ($lines.Count -eq $(if ($soak) { 3 } else { 4 })) 'Observe build and every delegated call.'
+                foreach ($line in $lines) { Assert-True ($line -match 'held=2 holder=inherited-owner$') "Nested reservation changed: $line" }
+                Assert-True ((Get-RunLaneCount $pool) -eq 2) 'Nested completion must preserve the parent reservation.'
+            }
+        } finally { Exit-AhkFlowLanes $held; Remove-PinnedLanePool $pool; Remove-HarnessFixture $root }
+    }
+}
+
+foreach ($failure in @('fail-build', 'fail-fast', 'fail-run.txt', 'none')) {
     Invoke-TestCase "Same-host $failure restores its marker and releases its Lanes and checkout" {
         $root = New-HarnessFixture; $pool = New-PinnedLanePool 4
         try {
@@ -963,7 +990,7 @@ foreach ($failure in @('fail-build', 'none')) {
                     Assert-True ($env:AHKFLOW_TEST_LANES_HOLDER -eq '  ') 'Restore the exact previous marker in the same host.'
                     Assert-True ((Get-RunLaneCount $pool) -eq 0) 'Release Lanes after invocation.'
                     Assert-True (@(Get-ChildItem (Join-Path $pool.Root 'runs') -File).Count -eq 0) 'Completion must remove its advisory record.'
-                    Assert-True (-not (Test-FileLockHeld (Join-Path $root '.test-run.lock'))) 'Release checkout after invocation.'
+                    Assert-True (-not (Test-AhkFlowLaneFileHeld (Join-Path $root '.test-run.lock'))) 'Release checkout after invocation.'
                     $fresh = Enter-AhkFlowLaneRun Fresh $root Whole
                     try { Assert-True ($fresh.Lanes.Streams.Count -eq 4) 'Same host must acquire again.' } finally { Exit-AhkFlowLaneRun $fresh }
                 } finally { $env:PATH = $previousPath }
@@ -977,16 +1004,10 @@ Invoke-TestCase 'Cancelled admission cleans up in a surviving runspace before an
     try {
         Use-LaneEnvironment -Value @{ AHKFLOW_TEST_LANES_ROOT = $pool.Root; AHKFLOW_TEST_LANES_HOLDER = '  ' } -Body {
             try {
-                $blocker = [IO.File]::Open((Join-Path $pool.Root 'lane-1.lock'), 'OpenOrCreate', 'ReadWrite', 'None')
+                $blocker = Open-AhkFlowLaneFile (Join-Path $pool.Root 'lane-1.lock')
                 $worker = [PowerShell]::Create().AddScript({ param($Root); & (Join-Path $Root 'scripts/measure-test-modes.ps1') -Runs 1 -NoBuild -WarmUpRuns 0 -SettleSeconds 0 }).AddArgument($root)
                 $async = $worker.BeginInvoke()
-                # The run waits for its last Lane: it holds the entry lock and three Lanes beside the blocker.
-                $watch = [Diagnostics.Stopwatch]::StartNew()
-                while (-not ((Test-FileLockHeld (Join-Path $pool.Root 'entry.lock')) -and (Get-RunLaneCount $pool) -eq 4)) {
-                    Assert-True ($watch.Elapsed.TotalSeconds -lt 10) 'The harness never reached its waiting state.'
-                    Assert-True (-not $async.IsCompleted) 'The harness ended before it waited for admission.'
-                    Start-Sleep -Milliseconds 20
-                }
+                [void](Wait-LanePath (Join-Path $root 'stub/waiting') 10)
                 Assert-True ((Get-RunLaneCount $pool) -eq 4) 'Cancellation must interrupt three acquired Lanes plus the blocker.'
                 Assert-True (-not (Test-Path (Join-Path $root 'stub/signals.txt'))) 'Admission must precede timed calls.'
                 $stop = $worker.BeginStop($null, $null)
@@ -996,8 +1017,8 @@ Invoke-TestCase 'Cancelled admission cleans up in a surviving runspace before an
                 Assert-True ($env:AHKFLOW_TEST_LANES_HOLDER -eq '  ') 'Cancelled entry must restore its marker.'
                 Assert-True ((Get-RunLaneCount $pool) -eq 1) 'Cancellation must release the partial share.'
                 Assert-True (@(Get-ChildItem (Join-Path $pool.Root 'runs') -File).Count -eq 0) 'Cancellation must remove its advisory record.'
-                Assert-True (-not (Test-FileLockHeld (Join-Path $pool.Root 'entry.lock'))) 'Cancellation must release admission lock.'
-                Assert-True (-not (Test-FileLockHeld (Join-Path $root '.test-run.lock'))) 'Cancellation must leave checkout available.'
+                Assert-True (-not (Test-AhkFlowLaneFileHeld (Join-Path $pool.Root 'entry.lock'))) 'Cancellation must release admission lock.'
+                Assert-True (-not (Test-AhkFlowLaneFileHeld (Join-Path $root '.test-run.lock'))) 'Cancellation must leave checkout available.'
                 $blocker.Dispose(); $blocker = $null
                 $worker.Commands.Clear()
                 [void]$worker.AddScript({ param($Module, $Root); . $Module; $state = Enter-AhkFlowLaneRun Fresh $Root Whole; try { $state.Lanes.Streams.Count } finally { Exit-AhkFlowLaneRun $state } }).AddArgument((Join-Path $repoRoot 'scripts/test-lanes.common.ps1')).AddArgument($root)

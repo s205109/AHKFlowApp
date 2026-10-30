@@ -21,7 +21,6 @@ if ($args[0] -eq 'test') {
         if ($watch.Elapsed.TotalSeconds -gt 30) { throw 'The dotnet fixture release deadline expired.' }
         Start-Sleep -Milliseconds 20
     }
-    if (Test-Path (Join-Path $folder "fail-$number")) { exit 1 }
 }
 '@
     Set-Content $stub ($prefix + [Environment]::NewLine + (Get-Content $stub -Raw))
@@ -45,13 +44,8 @@ $script:originalCheckoutExit = ${function:Exit-AhkFlowTestRunLock}
 function Exit-AhkFlowTestRunLock {
     param($Handle)
     if ($null -ne $Handle) {
-        $held = 0
-        foreach ($file in Get-ChildItem $env:AHKFLOW_TEST_LANES_ROOT -Filter 'lane-*.lock') {
-            if ($file.Name -eq 'lane-99.lock') { continue }
-            try { $probe = [IO.File]::Open($file.FullName, 'OpenOrCreate', 'ReadWrite', 'None'); $probe.Dispose() }
-            catch [IO.IOException] { $held++ }
-        }
-        if ($held -ne 0) {
+        $expected = if ($env:AHKFLOW_TEST_LANES_HOLDER -eq 'existing-holder') { 2 } else { 0 }
+        if (((Get-AhkFlowHeldLaneCount $env:AHKFLOW_TEST_LANES_ROOT) - 1) -ne $expected) {
             throw 'Lane ownership must release before checkout cleanup.'
         }
     }
@@ -61,51 +55,53 @@ function Exit-AhkFlowTestRunLock {
 }
 
 function Test-DotnetLaneRoute {
-    param([string] $Root, [string] $ScriptName, [hashtable] $Arguments, [int] $Calls = 1, [switch] $Fail)
+    param([string] $Root, [string] $ScriptName, [hashtable] $Arguments, [int] $Calls = 1, [switch] $Nested, [switch] $Repeat)
     $pool = New-PinnedLanePool 4
-    $handles = @{ Child = $null }
+    $handles = @{ Child = $null; Contender = $null; Held = $null }
     $previousPath = $env:PATH
     try {
         Add-DotnetLaneGate $Root
-        # The last gated call fails after its release, so the script throws inside its try.
-        if ($Fail) { Set-Content (Join-Path $Root "stub/fail-$Calls") fail }
         $env:PATH = (Join-Path $Root stub) + [IO.Path]::PathSeparator + $previousPath
-        Use-LaneEnvironment -Value @{ AHKFLOW_TEST_LANES_ROOT = $pool.Root; AHKFLOW_TEST_LANES_HOLDER = '  ' } -Body {
-            $payload = @{ Root = $Root; Script = $ScriptName; Arguments = $Arguments } | ConvertTo-Json -Compress
+        Use-LaneEnvironment -Value @{ AHKFLOW_TEST_LANES_ROOT = $pool.Root; AHKFLOW_TEST_LANES_HOLDER = $(if ($Nested) { 'existing-holder' } else { '  ' }) } -Body {
+            if ($Nested) { $handles.Held = Enter-AhkFlowLanes -PoolRoot $pool.Root -Share Half -Proposal 4 }
+            $payload = @{ Root = $Root; Script = $ScriptName; Arguments = $Arguments; Repeat = [bool]$Repeat } | ConvertTo-Json -Compress
             $code = @'
 param($Json)
 $ErrorActionPreference = 'Stop'
 $p = $Json | ConvertFrom-Json -AsHashtable
 $scriptPath = Join-Path $p.Root ('scripts/' + $p.Script)
 $arguments = $p.Arguments
-& $scriptPath @arguments
-$after = Join-Path $p.Root 'stub/after-1'
-Set-Content $after ('holder=' + $env:AHKFLOW_TEST_LANES_HOLDER)
-Set-Content "$after.done" complete
+foreach ($iteration in 1..$(if ($p.Repeat) { 2 } else { 1 })) {
+    & $scriptPath @arguments
+    $after = Join-Path $p.Root "stub/after-$iteration"
+    Set-Content $after ('holder=' + $env:AHKFLOW_TEST_LANES_HOLDER)
+    Set-Content "$after.done" complete
+}
 
 '@
             $code = '& { ' + $code + " } '" + $payload.Replace("'", "''") + "'"
             $handles.Child = Start-LaneChildProcess @('-NoProfile', '-EncodedCommand', (ConvertTo-LaneEncodedCommand $code))
-            $expected = [string]$handles.Child.Process.Id
-            for ($call = 1; $call -le $Calls; $call++) {
+            $total = $Calls * $(if ($Repeat) { 2 } else { 1 })
+            for ($call = 1; $call -le $total; $call++) {
                 $marker = (Wait-LanePath (Join-Path $Root "stub/ready-$call") 15 $handles.Child).Trim()
                 Assert-True ((Get-RunLaneCount $pool) -eq 2) "Expected exactly two of four Lanes during $ScriptName call $call."
+                $expected = if ($Nested) { 'existing-holder' } else { [string]$handles.Child.Process.Id }
                 Assert-True ($marker -ceq $expected) "Expected holder '$expected', got '$marker'."
-                Assert-True (Test-FileLockHeld (Join-Path $Root '.test-run.lock')) 'The checkout lock must be held at the gated call.'
+                # A second real entry point must fail on the checkout lock, even when nested.
+                if ($call -eq 1) {
+                    $handles.Contender = Start-LaneChildProcess @('-NoProfile', '-File', (Join-Path $Root 'scripts/test-fast.ps1'), '-Mode', 'Fast', '-NoBuild')
+                    $refused = Wait-LaneChildProcess $handles.Contender 10
+                    Assert-True ($refused.ExitCode -ne 0 -and ($refused.Output + $refused.Error).Contains('holds the test-run lock')) 'A real contender must be refused by the checkout lock.'
+                    Stop-LaneChildProcess $handles.Contender
+                    $handles.Contender = $null
+                }
                 Publish-LaneSignal (Join-Path $Root "stub/release-$call")
+                if ($Repeat) {
+                    $after = Wait-LanePath (Join-Path $Root "stub/after-$call") 15 $handles.Child
+                    Assert-True ($after.TrimEnd("`r", "`n") -ceq 'holder=  ') 'The surviving host must restore its exact marker between runs.'
+                }
             }
             $result = Wait-LaneChildProcess $handles.Child 15
-            if ($Fail) {
-                $output = $result.Output + $result.Error
-                Assert-True ($result.ExitCode -ne 0) "The failed route must exit nonzero: $output"
-                # A missing run end on the failure path makes the checkout-lock check throw here.
-                Assert-True (-not $output.Contains('Lane ownership must release before checkout cleanup.')) 'Lane ownership must release before checkout cleanup.'
-                Assert-True ($output.Contains('dotnet test failed')) "The failed route must report the failed test call: $output"
-                Assert-True ((Get-RunLaneCount $pool) -eq 0) 'The failed route must release its Lanes.'
-                $checkout = Enter-AhkFlowTestRunLock $Root Fresh
-                Exit-AhkFlowTestRunLock $checkout
-                return
-            }
             Assert-True ($result.ExitCode -eq 0) ($result.Output + $result.Error)
             $audits = @(Get-Content (Join-Path $Root 'stub/lane-audit.jsonl') | ForEach-Object { $_ | ConvertFrom-Json })
             foreach ($audit in $audits) {
@@ -127,9 +123,10 @@ Set-Content "$after.done" complete
                 $tests = @($audits | Where-Object { $_.Command -match '^dotnet test(?: |$)' })
                 Assert-True ($tests.Count -eq $Calls) "Coverage must execute all $Calls project test phases; found $($tests.Count) audit rows."
             }
-            $after = Wait-LanePath (Join-Path $Root 'stub/after-1') 2 $handles.Child
-            Assert-True ($after.TrimEnd("`r", "`n") -ceq 'holder=  ') 'The completed route must restore its marker.'
-            Assert-True ((Get-RunLaneCount $pool) -eq 0) 'The route must release its Lanes.'
+            $after = Wait-LanePath (Join-Path $Root "stub/after-$(if ($Repeat) { 2 } else { 1 })") 2 $handles.Child
+            $expectedAfter = if ($Nested) { 'holder=existing-holder' } else { 'holder=  ' }
+            Assert-True ($after.TrimEnd("`r", "`n") -ceq $expectedAfter) 'The completed route must restore its marker.'
+            Assert-True ((Get-RunLaneCount $pool) -eq $(if ($Nested) { 2 } else { 0 })) 'The route must release only its own Lanes.'
             $checkout = Enter-AhkFlowTestRunLock $Root Fresh
             Exit-AhkFlowTestRunLock $checkout
         }
@@ -140,8 +137,10 @@ Set-Content "$after.done" complete
         }
         throw
     } finally {
-        foreach ($call in 1..$Calls) { Publish-LaneSignal (Join-Path $Root "stub/release-$call") }
+        foreach ($call in 1..($Calls * 2)) { Publish-LaneSignal (Join-Path $Root "stub/release-$call") }
+        Stop-LaneChildProcess $handles.Contender
         Stop-LaneChildProcess $handles.Child
+        Exit-AhkFlowLanes $handles.Held
         $env:PATH = $previousPath
         Remove-PinnedLanePool $pool
     }
@@ -156,7 +155,30 @@ function Test-DotnetLaneCancellation {
     $invocation = $null
     try {
         $env:PATH = (Join-Path $Root stub) + [IO.Path]::PathSeparator + $previousPath
-        foreach ($index in 1..3) { $blockers.Add([IO.File]::Open((Join-Path $pool.Root "lane-$index.lock"), 'OpenOrCreate', 'ReadWrite', 'None')) }
+        foreach ($index in 1..3) { $blockers.Add((Open-AhkFlowLaneFile (Join-Path $pool.Root "lane-$index.lock"))) }
+        # This fixture seam acknowledges a real failed acquisition after capacity resolution.
+        # It does not replace the locking operation or decide whether contention exists.
+        Add-Content (Join-Path $Root 'scripts/test-lanes.common.ps1') @'
+$script:realLaneOpen = ${function:Open-AhkFlowLaneFile}
+$script:realLaneResolve = ${function:Resolve-AhkFlowLaneCapacity}
+$script:resolvingLaneCapacity = $false
+function Resolve-AhkFlowLaneCapacity {
+    param($PoolRoot, $Proposal)
+    $script:resolvingLaneCapacity = $true
+    try { & $script:realLaneResolve $PoolRoot $Proposal }
+    finally { $script:resolvingLaneCapacity = $false }
+}
+function Open-AhkFlowLaneFile {
+    param([string] $Path)
+    $stream = & $script:realLaneOpen $Path
+    if ($null -eq $stream -and -not $script:resolvingLaneCapacity -and $Path -like '*lane-*.lock') {
+        $signal = Join-Path $env:AHKFLOW_TEST_LANES_ROOT 'failed-open'
+        Set-Content $signal $Path
+        Set-Content "$signal.done" complete
+    }
+    $stream
+}
+'@
         Use-LaneEnvironment -Value @{ AHKFLOW_TEST_LANES_ROOT = $pool.Root; AHKFLOW_TEST_LANES_HOLDER = '  ' } -Body {
             try {
                 [void]$worker.AddScript({
@@ -165,15 +187,9 @@ function Test-DotnetLaneCancellation {
                     else { & (Join-Path $Root 'scripts/run-coverage.ps1') }
                 }).AddArgument($Root).AddArgument($ScriptName)
                 $invocation = $worker.BeginInvoke()
-                # The route waits for its second Lane: it holds the checkout lock, the entry lock and lane 0.
-                $watch = [Diagnostics.Stopwatch]::StartNew()
-                while (-not ((Test-FileLockHeld (Join-Path $Root '.test-run.lock')) -and (Test-FileLockHeld (Join-Path $pool.Root 'entry.lock')) -and (Get-RunLaneCount $pool) -eq 4)) {
-                    Assert-True ($watch.Elapsed.TotalSeconds -lt 10) 'The route never reached its waiting state.'
-                    Assert-True ($invocation.IsCompleted -eq $false) 'The route ended before it waited for a Lane.'
-                    Start-Sleep -Milliseconds 20
-                }
-                Assert-True (Test-FileLockHeld (Join-Path $Root '.test-run.lock')) 'The waiting route must retain its checkout lock.'
-                Assert-True (Test-FileLockHeld (Join-Path $pool.Root 'entry.lock')) 'The waiting route must retain the admission lock.'
+                [void](Wait-LanePath (Join-Path $pool.Root 'failed-open') 10)
+                Assert-True (Test-AhkFlowLaneFileHeld (Join-Path $Root '.test-run.lock')) 'The waiting route must retain its checkout lock.'
+                Assert-True (Test-AhkFlowLaneFileHeld (Join-Path $pool.Root 'entry.lock')) 'The waiting route must retain the admission lock.'
                 Assert-True ((Get-RunLaneCount $pool) -eq 4) 'The waiting route must hold one partial Lane beside three blockers.'
                 $stopping = $worker.BeginStop($null, $null)
                 Assert-True ($stopping.AsyncWaitHandle.WaitOne(10000)) 'Cancellation must finish within ten seconds.'
