@@ -25,39 +25,44 @@ stages and adding tests nobody needs.
 
 Each criterion is refined in the spec named below. Tick a box only when its words hold literally.
 
-- [ ] `docs/development/workflow.md` has no Stage 5, 6 or 7. The simplify pass, the verification
+- [x] `docs/development/workflow.md` has no Stage 5, 6 or 7. The simplify pass, the verification
       artifact, the docs update and the acceptance-box ticks happen inside Execute, before a Gate
       on the final revision that ends Execute.
-- [ ] The other stages keep their numbers: `0-intake`, `1-pickup`, `2-design`, `3-plan`,
+- [x] The other stages keep their numbers: `0-intake`, `1-pickup`, `2-design`, `3-plan`,
       `4-execute`, `8-review`, `9-ship` and `10-cleanup`.
 - [ ] The anchors `stage-5-simplify`, `stage-6-verify` and `stage-7-document` lead to the Execute
       section, so every existing link still works.
-- [ ] `scripts/take-stage-transition.ps1` takes the new legal targets from `workflow.md`, and its
+      Unticked: GitHub rendering is checked at Review entry, after the Execute push.
+- [x] `scripts/take-stage-transition.ps1` takes the new legal targets from `workflow.md`, and its
       Suite and every other process check that reads the stage graph pass.
-- [ ] No item sits at Stage 5, 6 or 7.
-- [ ] An ADR records the stage merge and the reasons for it.
-- [ ] Review starts with one reviewer handoff file. The Claude reviewer and the Outside review
+- [x] No item sits at Stage 5, 6 or 7.
+- [x] An ADR records the stage merge and the reasons for it.
+- [x] Review starts with one reviewer handoff file. The Claude reviewer and the Outside review
       read the same revision at the same time.
-- [ ] `workflow.md` no longer names Codex or `/codex:review` as part of Review.
-- [ ] One `custom-review-findings` pass triages both reviews once both are in.
-- [ ] An editorial fix closes in triage with a fresh citation. A change to behaviour, to a
+- [x] `workflow.md` no longer names Codex or `/codex:review` as part of Review.
+- [x] One `custom-review-findings` pass triages both reviews once both are in.
+- [x] An editorial fix closes in triage with a fresh citation. A change to behaviour, to a
       requirement, or to an executable workflow rule goes back to the reviewer that raised it.
       When both raised it, only the Outside review reads it.
-- [ ] Review stops at the first round with no CONFIRMED or PARTIAL finding.
-- [ ] Review's exit checks that the Gate evidence for the final revision is still valid, and runs
+- [x] Review stops at the first round with no CONFIRMED or PARTIAL finding.
+      Read with two decisions from the plan grilling. D1: an editorial finding does not count, so a
+      round whose only CONFIRMED or PARTIAL findings are editorial ends Review. R2: an optional finding
+      does not count either. So Review stops at the first round with no required, non-editorial
+      CONFIRMED or PARTIAL finding.
+- [x] Review's exit checks that the Gate evidence for the final revision is still valid, and runs
       only what is not.
-- [ ] The reviewer instructions limit required findings to correctness, the stated requirements,
+- [x] The reviewer instructions limit required findings to correctness, the stated requirements,
       security, data loss, concurrency and real performance regressions. Everything else is
       optional.
-- [ ] `AGENTS.md` states the new default verification artifact: the cheapest check that proves
+- [x] `AGENTS.md` states the new default verification artifact: the cheapest check that proves
       the change, where an existing test that covers it counts. A new test names the regression it
       prevents and why the existing tests miss it. A plan task starts with a failing test only
       when it changes behaviour. A routine change usually adds 0 to 3 tests, and a pull request
       that adds more says why in one sentence. The three exemptions stay.
-- [ ] The rule for tests in routine work says: reuse existing coverage; explain each new and each
+- [x] The rule for tests in routine work says: reuse existing coverage; explain each new and each
       removed test in the pull request; audit nearby tests only when duplication or slow setup is
       plain to see; a removal needs surviving coverage, or a behaviour that is gone.
-- [ ] After the user's yes at that point, `workflow.md`, `workflow.html`,
+- [x] After the user's yes at that point, `workflow.md`, `workflow.html`,
       `ahkflow-workflow-cheatsheet.html` and `ahk-workflow.pdf` in
       `C:\Users\btase\Desktop\AHKFLOW WORKFLOW PROCESS\` are rebuilt from the repository's
       `docs/development/workflow.md`. `ahkflow-design-system.html` is unchanged.
