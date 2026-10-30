@@ -145,20 +145,11 @@ try {
         # discovery that finds no Appendix A exits 0, and this step printed 'Plans agree with
         # the source' having compared nothing at all.
         $parityOutput = @(& $pwshPath -NoProfile -File (Join-Path $PSScriptRoot 'check-plan-workflow-parity.ps1') `
-            -PlansRoot (Join-Path $plansRoot 'plans') -RequirePlans)
-        $parityExit = $LASTEXITCODE
-        $parityOutput | Write-Host
-        if ($parityExit -ne 0) {
-            throw "A plan's Appendix A disagrees with workflow.md, or no plan carries one. $skipHint"
-        }
-        # Backlog 191: once every Appendix A plan is frozen, the check compares nothing. Claiming
-        # agreement then is the same vacuous pass the -RequirePlans comment above rules out.
-        if ($parityOutput -match '^RESULT: skipped') {
-            Write-Host '  - Plans not compared: every plan with an Appendix A is frozen.'
-        }
-        else {
-            Write-Success 'Plans agree with the source.'
-        }
+            -PlansRoot (Join-Path $plansRoot 'plans') -RequirePlans); $parityExit = $LASTEXITCODE; $parityOutput | Write-Host
+        if ($parityExit -ne 0) { throw "A plan's Appendix A disagrees with workflow.md, or no plan carries one. $skipHint" }
+        # Backlog 191: with every Appendix A plan frozen nothing was compared, so claiming agreement is the vacuous pass above.
+        if ($parityOutput -match '^RESULT: skipped') { Write-Host '  - Plans not compared: every plan with an Appendix A is frozen.' }
+        else { Write-Success 'Plans agree with the source.' }
     }
 
     # Stage 9 freezes a shipped plan against the citation check. Nothing else can check that it
