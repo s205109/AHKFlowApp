@@ -41,13 +41,16 @@ git diff --check "$(gh pr view --json baseRefName -q .baseRefName)...HEAD"
 Gate that ended Execute still holds for the final revision:
 
 1. Read the revision that Execute's transition note names, as in `Gate green at <sha>`.
-2. List the paths changed since then: `git diff --name-only <revision>..HEAD`.
+2. List the paths changed since then: `git diff --no-renames --name-only <revision>..HEAD`.
+   Keep `--no-renames`. Without it, git prints only the new path of a renamed file, so moving
+   `src/Foo.cs` to `docs/Foo.md` would hide the lost `.cs` file.
 3. Then take the first tier that fits:
    - Only `PLAN-PROGRESS.md` and the item file changed: nothing runs again.
-   - Every changed path is excluded by `.github/code-paths-filter.yml`: run
+   - A changed path is on the `coverage-tooling` list in `.github/code-paths-filter.yml`, or
+     no pattern in that file excludes it: run the whole Gate.
+   - Every other case, where each changed path is excluded: run
      `pwsh .\scripts\test-fast.ps1 -Mode PowerShell`, which reuses each unchanged Suite, and
      `git diff --check <base>...HEAD`.
-   - Anything else: run the whole Gate.
 
 **The coverage slice skips itself when it cannot measure anything.** Run the same command either
 way. `-Mode Coverage` compares your branch against its base and skips when **every** changed file

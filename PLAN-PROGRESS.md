@@ -17,7 +17,7 @@ Plan: `docs/superpowers/plans/2026-10-30-one-execute-stage-and-one-shared-review
 **Red evidence:**
 
 ```
-Outside review round 1 at eb3a8fc2, two required findings, both CONFIRMED: (1) testing-workflow.md:47 lightweight tier ignores the coverage-tooling list in .github/code-paths-filter.yml:80-93; (2) testing-workflow.md:44 git diff --name-only without --no-renames hides the source side of a rename
+Outside review round 1 at eb3a8fc2, two required findings, both CONFIRMED: (1) testing-workflow.md:47 lightweight tier ignores the coverage-tooling list in .github/code-paths-filter.yml; (2) testing-workflow.md:44 git diff --name-only without --no-renames hides the source side of a rename
 ```
 
 **Recovery task:** Task 6: Review-tier diff uses --no-renames, and a coverage-tooling path selects the whole Gate (Outside review findings 1 and 2)
