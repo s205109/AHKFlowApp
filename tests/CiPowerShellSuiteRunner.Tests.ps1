@@ -2331,17 +2331,11 @@ function Assert-FixtureChildrenSettled {
     }
     Add-Content -LiteralPath (Join-Path $PSScriptRoot '../markers/cleanup-observed') -Value $Operation
 }
-$fixtureUnregister = ${function:Unregister-AhkFlowLaneRun}
-function Unregister-AhkFlowLaneRun {
-    param($Run)
-    Assert-FixtureChildrenSettled -Operation unregister
-    & $fixtureUnregister -Run $Run
-}
-$fixtureExitOwnership = ${function:Exit-AhkFlowLaneOwnership}
-function Exit-AhkFlowLaneOwnership {
-    param($Previous)
-    Assert-FixtureChildrenSettled -Operation restore
-    & $fixtureExitOwnership -Previous $Previous
+$fixtureExitRun = ${function:Exit-AhkFlowLaneRun}
+function Exit-AhkFlowLaneRun {
+    param($State)
+    Assert-FixtureChildrenSettled -Operation end
+    & $fixtureExitRun -State $State
 }
 '@
         Use-LaneEnvironment -Value @{ AHKFLOW_TEST_LANES_ROOT = $pool.Root } -Body {
@@ -2362,7 +2356,7 @@ function Exit-AhkFlowLaneOwnership {
             $violation = Join-Path $fixture.Root 'markers/cleanup-violation'
             Assert-True (-not (Test-Path $violation)) "Ownership cleanup ran before children settled: $(if (Test-Path $violation) { Get-Content $violation -Raw })"
             $observed = @(Get-Content (Join-Path $fixture.Root 'markers/cleanup-observed'))
-            Assert-True (($observed -join ',') -eq 'unregister,restore') 'The fixture must observe both parent cleanup operations.'
+            Assert-True (($observed -join ',') -eq 'end') 'The fixture must observe the run end exactly once.'
             foreach ($process in $suiteProcesses) { Assert-True ($process.WaitForExit(1000)) 'Cancellation released ownership before its child exited.' }
             Assert-True ((Get-RunLaneCount $pool) -eq 0) 'Cancellation must release every Lane.'
             Assert-True (@(Get-ChildItem (Join-Path $pool.Root 'runs') -File).Count -eq 0) 'Cancellation must unregister the run.'
