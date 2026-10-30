@@ -6,7 +6,7 @@
 - **Type**: Tooling
 - **Interfaces**: none (process docs, stage-transition script, process checks)
 - **Difficulty**: complex
-- **Stage**: 4-execute
+- **Stage**: 8-review
 
 ## Summary
 
