@@ -27,3 +27,14 @@ Outside review round 1 at eb3a8fc2, two required findings, both CONFIRMED: (1) t
 - Verify: exemption 1 named; targeted text checks (citation freshness, gate wording) pass and the diff was reviewed.
 - Document: the change is the docs; all 16 boxes still hold.
 - Gate green at c14d17bf. Build 0 warnings, format clean, 73 of 73 Suites passed, coverage skipped, diff check clean.
+
+## Failure edge to 4-execute (2026-10-30)
+
+**Red evidence:**
+
+```
+Claude reviewer round 1 at b3e99f0d, review 5719209156. Finding 1 (required, CONFIRMED): a round never records its Gate revision; Invoke-RoundTransition takes no -Note. Finding 2 (relabeled required, PARTIAL): pre-push prints Plans agree with the source after the parity check skips every plan as frozen.
+```
+
+**Recovery task:** Task 7: a round writes Gate green at <sha> into its pull request body, and Review reads it there (finding 1). Task 8: pre-push prints the parity check's skip instead of claiming agreement (finding 2). Task 9: findings 3 to 8, editorial and optional, in the same pass.
+
