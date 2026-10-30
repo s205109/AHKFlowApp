@@ -15,49 +15,49 @@
       "id": "M1", "owner": "module",
       "sentence": "A run rewrites capacity.txt while another run holds a Lane.",
       "before": [ { "file": "scripts/test-lanes.common.ps1", "find": "    if (-not $held) {", "replace": "    if ($true) {" } ],
-      "after": []
+      "after": [ { "file": "scripts/test-lanes.common.ps1", "find": "    if (-not $held) {", "replace": "    if ($true) {" } ]
     },
     {
       "id": "M2", "owner": "module",
       "sentence": "A Half share rounds down, so capacity 3 gives one Lane and capacity 1 gives none.",
       "before": [ { "file": "scripts/test-lanes.common.ps1", "find": "[Math]::Ceiling($Capacity / 2.0)", "replace": "[Math]::Floor($Capacity / 2.0)" } ],
-      "after": []
+      "after": [ { "file": "scripts/test-lanes.common.ps1", "find": "[Math]::Ceiling($Capacity / 2.0)", "replace": "[Math]::Floor($Capacity / 2.0)" } ]
     },
     {
       "id": "M3", "owner": "module",
       "sentence": "A run that starts while the ownership marker is set acts as an owner and takes Lanes.",
       "before": [ { "file": "scripts/test-lanes.common.ps1", "find": "{ return 'nested' }", "replace": "{ return 'owner' }" } ],
-      "after": []
+      "after": [ { "file": "scripts/test-lanes.common.ps1", "find": "{ return 'nested' }", "replace": "{ return 'owner' }" } ]
     },
     {
       "id": "M4", "owner": "module",
       "sentence": "AHKFLOW_TEST_LANES=off is ignored, so the run acts as an owner and takes Lanes.",
       "before": [ { "file": "scripts/test-lanes.common.ps1", "find": "-ieq 'off') { return 'off' }", "replace": "-ieq 'off') { return 'owner' }" } ],
-      "after": []
+      "after": [ { "file": "scripts/test-lanes.common.ps1", "find": "-ieq 'off') { return 'off' }", "replace": "-ieq 'off') { return 'owner' }" } ]
     },
     {
       "id": "M5", "owner": "module",
       "sentence": "A take that fails part-way keeps the Lanes it already opened.",
       "before": [ { "file": "scripts/test-lanes.common.ps1", "find": "        if (-not $completed) { foreach ($lane in $lanes) { $lane.Dispose() } }\r\n", "replace": "" } ],
-      "after": []
+      "after": [ { "file": "scripts/test-lanes.common.ps1", "find": "        if (-not $completed) { foreach ($lane in $lanes) { $lane.Dispose() } }\r\n", "replace": "" } ]
     },
     {
       "id": "M6", "owner": "module",
       "sentence": "A run end leaves its record and lock file in runs/.",
       "before": [ { "file": "scripts/test-lanes.common.ps1", "find": "foreach ($path in @($Run.RecordPath, $Run.LockPath)) {", "replace": "foreach ($path in @()) {" } ],
-      "after": []
+      "after": [ { "file": "scripts/test-lanes.common.ps1", "find": "foreach ($path in @($Run.RecordPath, $Run.LockPath)) {", "replace": "foreach ($path in @()) {" } ]
     },
     {
       "id": "M7", "owner": "module",
       "sentence": "A run end removes the ownership marker instead of restoring its earlier value.",
       "before": [ { "file": "scripts/test-lanes.common.ps1", "find": "    else { $env:AHKFLOW_TEST_LANES_HOLDER = [string]$Previous }", "replace": "    else { Remove-Item Env:\\AHKFLOW_TEST_LANES_HOLDER -ErrorAction SilentlyContinue }" } ],
-      "after": []
+      "after": [ { "file": "scripts/test-lanes.common.ps1", "find": "    else { $env:AHKFLOW_TEST_LANES_HOLDER = [string]$Previous }", "replace": "    else { Remove-Item Env:\\AHKFLOW_TEST_LANES_HOLDER -ErrorAction SilentlyContinue }" } ]
     },
     {
       "id": "M8", "owner": "module",
       "sentence": "A take keeps entry.lock open after it returns, so every later take waits for ever.",
       "before": [ { "file": "scripts/test-lanes.common.ps1", "find": "        if ($null -ne $entry) { $entry.Dispose() }", "replace": "        if ($null -ne $entry) { $script:AhkFlowKeptEntry = $entry }" } ],
-      "after": []
+      "after": [ { "file": "scripts/test-lanes.common.ps1", "find": "        if ($null -ne $entry) { $entry.Dispose() }", "replace": "        if ($null -ne $entry) { $script:AhkFlowKeptEntry = $entry }" } ]
     },
     {
       "id": "M9", "owner": "module",
@@ -66,25 +66,25 @@
         { "file": "scripts/run-powershell-suites.ps1", "find": "            if ($laneRun) {\r\n                $lanes = Enter-AhkFlowLanes", "replace": "            if ((Get-AhkFlowLaneRole) -eq 'owner') {\r\n                $lanes = Enter-AhkFlowLanes" },
         { "file": "scripts/run-powershell-suites.ps1", "find": "                if ($laneRun) {\r\n                    $lanes = Enter-AhkFlowLanes", "replace": "                if ((Get-AhkFlowLaneRole) -eq 'owner') {\r\n                    $lanes = Enter-AhkFlowLanes" }
       ],
-      "after": []
+      "after": [ { "file": "scripts/test-lanes.common.ps1", "find": "    if ($null -eq $State -or $State.Role -ne 'owner') { return $null }", "replace": "    if ($null -eq $State -or (Get-AhkFlowLaneRole) -ne 'owner') { return $null }" } ]
     },
     {
       "id": "C1", "owner": "runner",
       "sentence": "In a parallel run, a Worker never gives its Suite's Lane back.",
       "before": [ { "file": "scripts/run-powershell-suites.ps1", "find": "                Exit-AhkFlowLanes -Handle $lanes\r\n", "replace": "" } ],
-      "after": []
+      "after": [ { "file": "scripts/run-powershell-suites.ps1", "find": "                Exit-AhkFlowSuiteLane -Handle $lane\r\n", "replace": "" } ]
     },
     {
       "id": "C2", "owner": "test-fast",
       "sentence": "test-fast.ps1 releases the checkout lock before it gives its Lanes back.",
       "before": [ { "file": "scripts/test-fast.ps1", "find": "    Exit-AhkFlowLaneRun -State $laneRun\r\n    Exit-AhkFlowTestRunLock -Handle $testRunLock", "replace": "    Exit-AhkFlowTestRunLock -Handle $testRunLock\r\n    Exit-AhkFlowLaneRun -State $laneRun" } ],
-      "after": []
+      "after": [ { "file": "scripts/test-fast.ps1", "find": "    Exit-AhkFlowLaneRun -State $laneRun\r\n    Exit-AhkFlowTestRunLock -Handle $testRunLock", "replace": "    Exit-AhkFlowTestRunLock -Handle $testRunLock\r\n    Exit-AhkFlowLaneRun -State $laneRun" } ]
     },
     {
       "id": "C3", "owner": "measure",
       "sentence": "measure-test-modes.ps1 never ends its Lane run, so its Lanes, its record and the marker stay until its process ends.",
       "before": [ { "file": "scripts/measure-test-modes.ps1", "find": "    Exit-AhkFlowLaneRun -State $laneState\r\n", "replace": "" } ],
-      "after": []
+      "after": [ { "file": "scripts/measure-test-modes.ps1", "find": "    Exit-AhkFlowLaneRun -State $laneState\r\n", "replace": "" } ]
     }
   ]
 }
