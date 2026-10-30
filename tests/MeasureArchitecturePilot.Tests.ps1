@@ -343,6 +343,103 @@ foreach ($row in $refusals) {
     }
 }
 
+# Timing cases. The fixture's module is a stub that names only public functions. Its run start
+# prints the sharing line while contention.flag exists, or once while contention-once.flag exists.
+function Add-TimingFixture {
+    param($Fixture, [string[]] $Passes)
+    $flag = Join-Path $Fixture.State 'contention.flag'
+    $once = Join-Path $Fixture.State 'contention-once.flag'
+    Set-Content -LiteralPath (Join-Path $Fixture.Repo 'scripts\test-lanes.common.ps1') -Value @"
+function Enter-AhkFlowLaneRun {
+    param([string] `$Mode, [string] `$Checkout, [string] `$Share)
+    if (Test-Path -LiteralPath '$once') { Remove-Item -LiteralPath '$once'; Write-Host 'Sharing the test Lane pool with: pid 1 Fake' }
+    elseif (Test-Path -LiteralPath '$flag') { Write-Host 'Sharing the test Lane pool with: pid 1 Fake' }
+    [pscustomobject]@{ Role = 'owner' }
+}
+function Exit-AhkFlowLaneRun { param(`$State) }
+"@
+    $cases = Join-Path $Fixture.Root 'cases.json'
+    $suiteName = (Get-Content -LiteralPath $Fixture.Inputs -Raw | ConvertFrom-Json).suites[0].name
+    @{ Clean = $true; Suites = @(@{ Name = $suiteName; Passes = $Passes }) } | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $cases
+    $cases
+}
+
+function Invoke-Timing {
+    param($Fixture, [string] $Cases, [string] $OutDir)
+    Invoke-Pilot $Fixture @('-Mode', 'Timing', '-Inputs', $Fixture.Inputs, '-OutDir', $OutDir,
+        '-BeforeCheckout', $Fixture.Clone, '-BeforeCommit', $Fixture.Sha, '-AfterCheckout', $Fixture.Clone, '-AfterCommit', $Fixture.Sha,
+        '-BeforeCases', $Cases, '-AfterCases', $Cases)
+}
+
+$script:TimingOrder = @('warm-A', 'warm-B', '1-A', '2-B', '3-B', '4-A', '5-B', '6-A', '7-A', '8-B')
+
+Invoke-TestCase 'Timing runs the passes in the order warm A, warm B, then A B B A B A A B' {
+    $fixture = New-PilotFixture -Suite 'Pass'
+    try {
+        $cases = Add-TimingFixture $fixture @('pass one', 'pass two')
+        $out = Join-Path $fixture.Root 'out'
+        $run = Invoke-Timing $fixture $cases $out
+        Assert-True ($run.ExitCode -eq 0) "A clean timing must exit 0. $($run.Output)"
+        $timing = Get-Content -LiteralPath (Join-Path $out 'timing.json') -Raw | ConvertFrom-Json
+        Assert-True ($timing.Status -eq 'clean') "Expected a clean timing, got '$($timing.Status)'."
+        Assert-True ((@($timing.Passes | ForEach-Object { $_.Position }) -join ',') -eq ($script:TimingOrder -join ',')) "Wrong pass order: $(@($timing.Passes | ForEach-Object { $_.Position }) -join ',')"
+        Assert-True (@($timing.Rejected).Count -eq 0) 'A clean timing rejects no pass.'
+        foreach ($pass in $timing.Passes) {
+            $sum = (@($pass.Suites | ForEach-Object { [double]$_.Seconds }) | Measure-Object -Sum).Sum
+            Assert-True ($pass.Seconds -gt 0 -and [Math]::Abs($pass.Seconds - $sum) -lt 0.02) "The pass time must be the sum of its Suite times: $($pass.Position)."
+        }
+    }
+    finally { Remove-PilotFixture $fixture }
+}
+
+Invoke-TestCase 'A pass with a missing case is rejected and runs again in the same position' {
+    $fixture = New-PilotFixture -Suite 'Flaky'
+    try {
+        $cases = Add-TimingFixture $fixture @('flaky one', 'flaky two')
+        Set-Content -LiteralPath (Join-Path $fixture.State 'flaky.flag') -Value set
+        $out = Join-Path $fixture.Root 'out'
+        $run = Invoke-Timing $fixture $cases $out
+        $timing = Get-Content -LiteralPath (Join-Path $out 'timing.json') -Raw | ConvertFrom-Json
+        Assert-True ($timing.Status -eq 'clean') "One rejection must leave the timing clean, got '$($timing.Status)'. $($run.Output)"
+        Assert-True (@($timing.Rejected).Count -eq 1 -and $timing.Rejected[0].Position -eq 'warm-A') 'The first pass must be rejected once.'
+        Assert-True (($timing.Rejected[0].Reasons -join ' ') -match 'expected cases') "The reason must name the expected cases: $($timing.Rejected[0].Reasons -join '; ')"
+        Assert-True ((@($timing.Passes | ForEach-Object { $_.Position }) -join ',') -eq ($script:TimingOrder -join ',')) 'The rejected pass must run again in the same position.'
+    }
+    finally { Remove-PilotFixture $fixture }
+}
+
+Invoke-TestCase 'A pass that meets another registered run is rejected' {
+    $fixture = New-PilotFixture -Suite 'Pass'
+    try {
+        $cases = Add-TimingFixture $fixture @('pass one', 'pass two')
+        Set-Content -LiteralPath (Join-Path $fixture.State 'contention-once.flag') -Value set
+        $out = Join-Path $fixture.Root 'out'
+        $run = Invoke-Timing $fixture $cases $out
+        $timing = Get-Content -LiteralPath (Join-Path $out 'timing.json') -Raw | ConvertFrom-Json
+        Assert-True ($timing.Status -eq 'clean') "One rejection must leave the timing clean, got '$($timing.Status)'. $($run.Output)"
+        Assert-True (@($timing.Rejected).Count -eq 1 -and $timing.Rejected[0].Position -eq 'warm-A') 'The pass that met another run must be rejected.'
+        Assert-True (($timing.Rejected[0].Reasons -join ' ') -match 'another registered test run') "The reason must name the other run: $($timing.Rejected[0].Reasons -join '; ')"
+        Assert-True (@($timing.Passes).Count -eq 10) 'The timing must still run all ten passes.'
+    }
+    finally { Remove-PilotFixture $fixture }
+}
+
+Invoke-TestCase 'A fourth rejected pass ends the timing as inconclusive' {
+    $fixture = New-PilotFixture -Suite 'Pass'
+    try {
+        $cases = Add-TimingFixture $fixture @('pass one', 'pass two')
+        Set-Content -LiteralPath (Join-Path $fixture.State 'contention.flag') -Value set
+        $out = Join-Path $fixture.Root 'out'
+        $run = Invoke-Timing $fixture $cases $out
+        $timing = Get-Content -LiteralPath (Join-Path $out 'timing.json') -Raw | ConvertFrom-Json
+        Assert-True ($run.ExitCode -ne 0) "An inconclusive timing must exit nonzero. $($run.Output)"
+        Assert-True ($timing.Status -eq 'inconclusive') "Expected 'inconclusive', got '$($timing.Status)'."
+        Assert-True (@($timing.Rejected).Count -eq 4) "The timing must stop at the fourth rejection, got $(@($timing.Rejected).Count)."
+        Assert-True (@($timing.Passes).Count -eq 0) 'No pass may count after the timing ends.'
+    }
+    finally { Remove-PilotFixture $fixture }
+}
+
 if ($script:Failures.Count -gt 0) {
     Write-Host ''
     Write-Host "FAILED: $($script:Failures.Count) test(s)" -ForegroundColor Red

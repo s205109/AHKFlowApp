@@ -13,6 +13,8 @@
       Verify    checks that each edit of each defect patch finds its text exactly once.
       SuiteSet  runs the Suites of the inputs file once, three at a time, longest budget first.
       Attempt   runs an opening control, one SuiteSet per defect, then a closing control.
+      Timing    runs a warm-up pass of A and of B, then A B B A B A A B. A pass runs each Suite
+                once, alone. A is the before clone and B the after clone.
 
     The script refuses to start while a Lane variable is set. It refuses any checkout that is not
     one of its own clones under .superpowers\193-pilot\ in the repository that holds this script.
@@ -26,13 +28,20 @@
 
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true)][ValidateSet('Verify', 'SuiteSet', 'Attempt')][string] $Mode,
+    [Parameter(Mandatory = $true)][ValidateSet('Verify', 'SuiteSet', 'Attempt', 'Timing')][string] $Mode,
     [string] $Inputs,
     [string] $OutDir,
     [string] $Checkout,
     [string] $Commit,
     [ValidateSet('Before', 'After')][string] $Side,
     [string[]] $DefectId,
+    # Timing only: the two clones, their commits, and each side's clean opening control file.
+    [string] $BeforeCheckout,
+    [string] $BeforeCommit,
+    [string] $AfterCheckout,
+    [string] $AfterCommit,
+    [string] $BeforeCases,
+    [string] $AfterCases,
     # Test-only: makes the job assignment fail, so a case can prove the run stops.
     [switch] $FailJobAssignment
 )
@@ -367,16 +376,19 @@ function Stop-PilotSuite {
     }
 }
 
-# The one trial runner. It runs the given Suites, three at a time, longest budget first, then
-# proves that every job is empty and removes the trial folder before it returns.
+# The one trial runner. It runs the given Suites, three at a time, longest budget first, or with
+# -Sequential one at a time in the given order. Then it proves that every job is empty and removes
+# the trial folder before it returns.
 function Invoke-PilotTrial {
-    param([string] $Label, [string] $Path, [object[]] $Suites, [hashtable] $Extra = @{})
+    param([string] $Label, [string] $Path, [object[]] $Suites, [hashtable] $Extra = @{}, [switch] $Sequential)
     $script:TrialNumber++
     $trialFolder = Join-Path ([IO.Path]::GetTempPath()) ('p193-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
     New-Item -ItemType Directory -Force $trialFolder | Out-Null
     $queue = [Collections.Generic.Queue[object]]::new()
     $number = 0
-    foreach ($suite in @($Suites | Sort-Object -Property @{ Expression = { [double]$_.budgetSeconds }; Descending = $true } -Stable)) {
+    $parallel = if ($Sequential) { 1 } else { $script:Parallel }
+    $order = if ($Sequential) { @($Suites) } else { @($Suites | Sort-Object -Property @{ Expression = { [double]$_.budgetSeconds }; Descending = $true } -Stable) }
+    foreach ($suite in $order) {
         $number++
         $queue.Enqueue([pscustomobject]@{ Number = $number; Suite = $suite })
     }
@@ -386,7 +398,7 @@ function Invoke-PilotTrial {
     $watch = [Diagnostics.Stopwatch]::StartNew()
     try {
         while ($queue.Count -gt 0 -or $running.Count -gt 0) {
-            while ($queue.Count -gt 0 -and $running.Count -lt $script:Parallel) {
+            while ($queue.Count -gt 0 -and $running.Count -lt $parallel) {
                 $next = $queue.Dequeue()
                 $started = Start-PilotSuite $trialFolder $next.Number $next.Suite $Path
                 $jobs.Add($started.Job)
@@ -465,6 +477,46 @@ function Select-PilotDefects {
 
 function Assert-Side { if (-not $Side) { throw "Refused: -Side is required for -Mode $Mode." } }
 
+# Reads a side's expected cases: the trial file of its clean opening control.
+function Read-PilotExpectedCases {
+    param([string] $Path, [string] $Name)
+    if ([string]::IsNullOrWhiteSpace($Path) -or -not (Test-Path -LiteralPath $Path -PathType Leaf)) { throw "Refused: $Name must name the trial file of a clean opening control." }
+    $trial = Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json
+    if ($trial.Clean -ne $true) { throw "Refused: $Name names a control run that is not clean." }
+    $trial
+}
+
+# The contention check. A child with no Lane variable starts a run on the real pool through this
+# worktree's module, then ends it. The run start prints the sharing line when another registered
+# run exists. Half exists in the module before and after the refactor.
+function Test-PilotContention {
+    $q = { param($s) "'" + $s.Replace("'", "''") + "'" }
+    $module = Join-Path $script:RepoRoot 'scripts\test-lanes.common.ps1'
+    $command = ". $(& $q $module); `$state = Enter-AhkFlowLaneRun -Mode PilotCheck -Checkout $(& $q $script:RepoRoot) -Share Half; Exit-AhkFlowLaneRun -State `$state"
+    $info = [Diagnostics.ProcessStartInfo]::new($script:Pwsh)
+    foreach ($argument in @('-NoProfile', '-Command', $command)) { $info.ArgumentList.Add($argument) }
+    $info.UseShellExecute = $false
+    $info.CreateNoWindow = $true
+    $info.RedirectStandardOutput = $true
+    $info.RedirectStandardError = $true
+    foreach ($name in $script:LaneVariables) { [void]$info.Environment.Remove($name) }
+    $process = [Diagnostics.Process]::Start($info)
+    try {
+        $stdout = $process.StandardOutput.ReadToEndAsync()
+        $stderr = $process.StandardError.ReadToEndAsync()
+        if (-not $process.WaitForExit(10000)) {
+            $process.Kill($true); [void]$process.WaitForExit(5000)
+            return [pscustomobject]@{ Passed = $false; Reason = 'the contention check ran past 10 seconds' }
+        }
+        $process.WaitForExit()
+        $output = $stdout.Result + $stderr.Result
+        if ($process.ExitCode -ne 0) { return [pscustomobject]@{ Passed = $false; Reason = "the contention check exited $($process.ExitCode): $($output.Trim())" } }
+        if ($output -match '(?m)^Sharing the test Lane pool with:') { return [pscustomobject]@{ Passed = $false; Reason = 'another registered test run shares the real Lane pool' } }
+        [pscustomobject]@{ Passed = $true; Reason = '' }
+    }
+    finally { $process.Dispose() }
+}
+
 $data = Read-PilotInputs
 $suites = @($data.suites)
 
@@ -537,5 +589,50 @@ switch ($Mode) {
         $attempt | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $attemptPath
         Write-Host "Attempt: $($attempt.Status)."
         if ($attempt.Status -ne 'clean') { exit 2 }
+    }
+    'Timing' {
+        Initialize-OutDir
+        $sides = @{
+            A = [pscustomobject]@{ Name = 'Before'; Path = (Assert-PilotCheckout $BeforeCheckout); Commit = $BeforeCommit; Expected = (Read-PilotExpectedCases $BeforeCases '-BeforeCases') }
+            B = [pscustomobject]@{ Name = 'After'; Path = (Assert-PilotCheckout $AfterCheckout); Commit = $AfterCommit; Expected = (Read-PilotExpectedCases $AfterCases '-AfterCases') }
+        }
+        $timing = [ordered]@{ Status = $null; Passes = @(); Rejected = @() }
+        $timingPath = Join-Path $script:OutDir 'timing.json'
+        $passes = [Collections.Generic.List[object]]::new()
+        $rejected = [Collections.Generic.List[object]]::new()
+        # A rejected pass runs again in the same position. Three replacements are allowed in all,
+        # warm-up passes included, so the fourth rejection ends the timing.
+        foreach ($position in @('warm-A', 'warm-B', '1-A', '2-B', '3-B', '4-A', '5-B', '6-A', '7-A', '8-B')) {
+            $key = $position.Substring($position.Length - 1)
+            $passSide = $sides[$key]
+            $valid = $false
+            while (-not $valid -and $rejected.Count -le 3) {
+                Reset-PilotCheckout $passSide.Path $passSide.Commit
+                $start = Test-PilotContention
+                Write-Host "Pass ${position}:"
+                $trial = Invoke-PilotTrial "pass-$position" $passSide.Path $suites @{ Position = $position; Side = $passSide.Name; Commit = $passSide.Commit } -Sequential
+                $end = Test-PilotContention
+                $reasons = [Collections.Generic.List[string]]::new()
+                if (-not $start.Passed) { $reasons.Add("at the start, $($start.Reason)") }
+                if (-not $end.Passed) { $reasons.Add("at the end, $($end.Reason)") }
+                foreach ($suite in $trial.Suites) { if (-not $suite.Clean) { $reasons.Add("$($suite.Name) is not clean: $($suite.Reasons -join '; ')") } }
+                if ((Get-PassKey $trial) -cne (Get-PassKey $passSide.Expected)) { $reasons.Add('the PASS names differ from the expected cases of its side') }
+                $seconds = (@($trial.Suites | ForEach-Object { if ($null -ne $_.Seconds) { [double]$_.Seconds } else { 0 } }) | Measure-Object -Sum).Sum
+                $record = [pscustomobject]@{
+                    Position = $position; Side = $passSide.Name; Seconds = [Math]::Round($seconds, 2)
+                    Suites = @($trial.Suites | ForEach-Object { [pscustomobject]@{ Name = $_.Name; Seconds = $_.Seconds } })
+                    Reasons = @($reasons)
+                }
+                if ($reasons.Count -eq 0) { $passes.Add($record); $valid = $true; Write-Host "Pass ${position}: $($record.Seconds) seconds." }
+                else { $rejected.Add($record); Write-Host "Pass ${position} rejected: $($reasons -join '; ')" }
+                $timing.Passes = @($passes); $timing.Rejected = @($rejected)
+                $timing | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $timingPath
+            }
+            if (-not $valid) { break }
+        }
+        $timing.Status = if ($rejected.Count -gt 3) { 'inconclusive' } else { 'clean' }
+        $timing | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $timingPath
+        Write-Host "Timing: $($timing.Status)."
+        if ($timing.Status -ne 'clean') { exit 2 }
     }
 }
