@@ -22,3 +22,7 @@ Outside review round 1 at eb3a8fc2, two required findings, both CONFIRMED: (1) t
 
 **Recovery task:** Task 6: Review-tier diff uses --no-renames, and a coverage-tooling path selects the whole Gate (Outside review findings 1 and 2)
 
+- Task 6 (Outside review findings 1 and 2): done at 76d38504. Tests: exemption 1, docs only, no script reads the rule; citation and gate-wording checks pass. Deferrals: none.
+- Simplify: nothing to simplify, a nine-line docs change.
+- Verify: exemption 1 named; targeted text checks (citation freshness, gate wording) pass and the diff was reviewed.
+- Document: the change is the docs; all 16 boxes still hold.
