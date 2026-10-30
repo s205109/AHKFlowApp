@@ -118,7 +118,8 @@ is authoritative. In short:
 | Emitted `.ahk` | An assertion on the generated text; manual AHK steps only for a construct never shipped before |
 | Bug fix with an observable symptom | The original repro re-run, showing the symptom gone |
 
-Prefer a durable test over a one-off drive — a test keeps proving the behavior after this session.
+Use the cheapest check that proves the change. An existing test that covers it counts. A new test
+names the regression it prevents.
 
 Report the artifact by path, not as a claim. SKIP is allowed only for one of the three exemptions in
 `AGENTS.md`, and the exemption must be named. For the refactor exemption, name the covering tests and

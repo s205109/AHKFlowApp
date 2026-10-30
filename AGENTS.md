@@ -153,9 +153,12 @@ the narrative. For the stage you are in, read its block in section 3 and the rul
 
 ## Verification After Implementation
 
-- Verify when implementation of a feature, fix, or plan task completes, **before reporting it done** — not only before commit, push, or PR — see [workflow.md#stage-6-verify](docs/development/workflow.md#stage-6-verify).
-- Default to a **durable test** as the verification artifact. Driving the app by hand proves it once; a test keeps proving it — see [workflow.md#stage-6-verify](docs/development/workflow.md#stage-6-verify).
-- Produce the artifact the table below names for the surface you changed — see [workflow.md#stage-6-verify](docs/development/workflow.md#stage-6-verify).
+- Verify when implementation of a feature, fix, or plan task completes, **before reporting it done** — not only before commit, push, or PR — see [Stage 4](docs/development/workflow.md#stage-4-execute).
+- Verify a change with **the cheapest check that proves it**. An existing test that covers the change counts — see [Stage 4](docs/development/workflow.md#stage-4-execute).
+- A new test names the regression it prevents, and says why the existing tests miss it — see [Stage 4](docs/development/workflow.md#stage-4-execute).
+- A plan task starts with a failing test only when the task changes behaviour — see [Stage 4](docs/development/workflow.md#stage-4-execute).
+- A routine change usually adds 0 to 3 tests. A pull request that adds more says why in one sentence. No script enforces this — see [Stage 4](docs/development/workflow.md#stage-4-execute).
+- When no existing test covers the change, produce the artifact the table below names for the surface you changed — see [Stage 4](docs/development/workflow.md#stage-4-execute).
 
 | Surface changed | Verification artifact | Command |
 |---|---|---|
@@ -177,9 +180,18 @@ Which slice to run, test templates, and the Gate: [`docs/development/testing-wor
 
 State the verdict either way. Naming an exemption is fine; saying nothing is not.
 
+### Tests in routine work
+
+- Reuse existing coverage where possible — see [Stage 4](docs/development/workflow.md#stage-4-execute).
+- Explain each new test and each removed test in the pull request — see [Stage 4](docs/development/workflow.md#stage-4-execute).
+- Audit nearby tests only when duplication or slow setup is plain to see — see [Stage 4](docs/development/workflow.md#stage-4-execute).
+- A removal needs surviving coverage, or a behaviour that is gone — see [Stage 4](docs/development/workflow.md#stage-4-execute).
+
+The full sort into KEEP, REWORK, MERGE and REMOVE belongs to a dedicated test audit.
+
 ### When manual steps are the answer
 
-- Ask the user only for the cases the table sends to them — see [workflow.md#stage-6-verify](docs/development/workflow.md#stage-6-verify). Then always provide:
+- Ask the user only for the cases the table sends to them — see [Stage 4](docs/development/workflow.md#stage-4-execute). Then always provide:
   - **Preconditions first** — what must be running, exact URL, login/profile, starting state
   - **Numbered steps, one action each** — never combine actions in one step
   - **Verbatim input in code blocks** — anything typed or pasted is given literally, never described
