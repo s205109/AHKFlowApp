@@ -21,16 +21,18 @@ run on the machine does not wait for Lanes that nobody holds.
 
 ## Acceptance criteria
 
-- [ ] `tests/TestFastDotnetProgress.Tests.ps1` has a case `Fast Lane route: failure`. It runs
+- [x] `tests/TestFastDotnetProgress.Tests.ps1` has a case `Fast Lane route: failure`. It runs
       `test-fast.ps1` with a `dotnet` stub that fails, and it checks that the checkout lock is
       free after the script returns.
-- [ ] `tests/CoverageRunnerProgress.Tests.ps1` has a case `Coverage Lane route: direct failure`.
+- [x] `tests/CoverageRunnerProgress.Tests.ps1` has a case `Coverage Lane route: direct failure`.
       It does the same for `run-coverage.ps1`.
-- [ ] Each failure case checks the checkout lock before it checks the error message. A throw in
+- [x] Each failure case checks the checkout lock before it checks the error message. A throw in
       the `finally` block replaces the child's error, so the order matters.
-- [ ] Both cases fail when the run end (`Exit-AhkFlowLaneRun`) moves from the `finally` block to
+      The case checks for `Lane ownership must release before checkout cleanup.` before it
+      checks for `dotnet test failed`. It then probes the free checkout lock last.
+- [x] Both cases fail when the run end (`Exit-AhkFlowLaneRun`) moves from the `finally` block to
       the end of the `try` block in its script. The pull request shows that failure.
-- [ ] All PowerShell Suites pass.
+- [x] All PowerShell Suites pass.
 
 ## Out of scope
 
