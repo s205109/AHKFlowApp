@@ -2334,7 +2334,7 @@ function Assert-FixtureChildrenSettled {
 $fixtureExitRun = ${function:Exit-AhkFlowLaneRun}
 function Exit-AhkFlowLaneRun {
     param($State)
-    Assert-FixtureChildrenSettled -Operation end
+    Assert-FixtureChildrenSettled -Operation exit
     & $fixtureExitRun -State $State
 }
 '@
@@ -2356,7 +2356,7 @@ function Exit-AhkFlowLaneRun {
             $violation = Join-Path $fixture.Root 'markers/cleanup-violation'
             Assert-True (-not (Test-Path $violation)) "Ownership cleanup ran before children settled: $(if (Test-Path $violation) { Get-Content $violation -Raw })"
             $observed = @(Get-Content (Join-Path $fixture.Root 'markers/cleanup-observed'))
-            Assert-True (($observed -join ',') -eq 'end') 'The fixture must observe the run end exactly once.'
+            Assert-True (($observed -join ',') -eq 'exit') 'The fixture must observe the run end exactly once.'
             foreach ($process in $suiteProcesses) { Assert-True ($process.WaitForExit(1000)) 'Cancellation released ownership before its child exited.' }
             Assert-True ((Get-RunLaneCount $pool) -eq 0) 'Cancellation must release every Lane.'
             Assert-True (@(Get-ChildItem (Join-Path $pool.Root 'runs') -File).Count -eq 0) 'Cancellation must unregister the run.'
