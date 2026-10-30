@@ -376,10 +376,10 @@ Invoke-TestCase 'Fast mode stops when one assembly in the combined run discovers
 }
 
 . (Join-Path $PSScriptRoot 'DotnetLane.Common.ps1')
-foreach ($scenario in @('owner', 'nested', 'repeat')) {
+foreach ($scenario in @('owner', 'nested', 'repeat', 'failure')) {
     Invoke-TestCase "Fast Lane route: $scenario" {
         $root = New-WrapperFixture
-        try { Test-DotnetLaneRoute -Root $root -ScriptName 'test-fast.ps1' -Arguments @{ Mode = 'Fast' } -Nested:($scenario -eq 'nested') -Repeat:($scenario -eq 'repeat') }
+        try { Test-DotnetLaneRoute -Root $root -ScriptName 'test-fast.ps1' -Arguments @{ Mode = 'Fast' } -Nested:($scenario -eq 'nested') -Repeat:($scenario -eq 'repeat') -Fail:($scenario -eq 'failure') }
         finally { Remove-WrapperFixture $root }
     }
 }

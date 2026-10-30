@@ -595,6 +595,12 @@ foreach ($route in @('direct', 'delegated')) {
     }
 }
 
+Invoke-TestCase 'Coverage Lane route: direct failure' {
+    $root = New-CoverageFixture
+    try { Test-DotnetLaneRoute -Root $root -ScriptName 'run-coverage.ps1' -Arguments @{} -Calls 2 -Fail }
+    finally { Remove-CoverageFixture $root }
+}
+
 
 Invoke-TestCase 'Cancellation releases Lane and checkout ownership in a surviving host' {
     $root = New-CoverageFixture
