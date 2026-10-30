@@ -11,3 +11,14 @@ Plan: `docs/superpowers/plans/2026-10-30-one-execute-stage-and-one-shared-review
 - Verify: the Suites each task ran are green. Fresh-session test, four read-only subagents: idle item 031 (1-pickup, five edges), active item 191 (4-execute, five edges), the round prompt (8-review, Review's four legal edges, the body carries the stage) and the recovery-resume prompt (4-execute, closing steps again from simplify, old lines above the failure heading). All four pass and cite workflow.md. The GitHub anchor check runs at Review entry.
 - Document: 15 of 16 boxes ticked. The retired-anchors box stays unticked until the GitHub check at Review entry. The stop-rule box carries the D1 and R2 readings. The docs are the work itself; no other live document names the retired stages.
 - Gate green at a7a81684. Build 0 warnings, format clean, 73 of 73 Suites passed, coverage skipped (no compiled path changed), diff check clean.
+
+## Failure edge to 4-execute (2026-10-30)
+
+**Red evidence:**
+
+```
+Outside review round 1 at eb3a8fc2, two required findings, both CONFIRMED: (1) testing-workflow.md:47 lightweight tier ignores the coverage-tooling list in .github/code-paths-filter.yml:80-93; (2) testing-workflow.md:44 git diff --name-only without --no-renames hides the source side of a rename
+```
+
+**Recovery task:** Task 6: Review-tier diff uses --no-renames, and a coverage-tooling path selects the whole Gate (Outside review findings 1 and 2)
+
