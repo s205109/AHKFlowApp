@@ -78,4 +78,4 @@ Each criterion is refined in the spec named below. Tick a box only when its word
 - Its merge starts the window for "Gate-required stage exits per item" in 188's follow-up item
   (spec 4.3). After it merges, the stages that need a green Gate are `4-execute` and `8-review`.
 - Spec: `docs/superpowers/specs/2026-10-18-speed-up-the-development-cycle-design-188.md`
-- Plan: none — the spec is the design; Plan comes at pickup.
+- Plan: `docs/superpowers/plans/2026-10-30-one-execute-stage-and-one-shared-review-plan-191.md`
