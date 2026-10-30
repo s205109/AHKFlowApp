@@ -13,6 +13,7 @@ if ([string]::IsNullOrWhiteSpace($ModulePath)) { $ModulePath = Join-Path $repoRo
 $failures = [System.Collections.Generic.List[string]]::new()
 function Invoke-Case([string] $Name, [scriptblock] $Body) {
     if ($ContentionOnly -and $Name -notin @('Entry contention blocks until an acknowledged real-open failure clears', 'Missing parent throws and genuine contention returns null')) { return }
+    if ($env:AHKFLOW_SUITE_CASE_START -eq '1') { Write-Host "  START  $Name" }
     try { & $Body; Write-Host "  PASS  $Name" -ForegroundColor Green }
     catch { $failures.Add("$Name :: $($_.Exception.Message)"); Write-Host "  FAIL  $Name`n        $($_.Exception.Message)" -ForegroundColor Red }
 }

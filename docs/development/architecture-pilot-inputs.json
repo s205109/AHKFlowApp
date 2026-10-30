@@ -1,0 +1,14 @@
+{
+  "suites": [
+    { "name": "CiPowerShellSuiteRunner.Tests.ps1", "budgetSeconds": 130.4 },
+    { "name": "CoverageRunnerProgress.Tests.ps1", "budgetSeconds": 56.9 },
+    { "name": "CoverageSliceSkip.Tests.ps1", "budgetSeconds": 26.3 },
+    { "name": "GateEvidence.Tests.ps1", "budgetSeconds": 33.8 },
+    { "name": "MeasureTestModes.Tests.ps1", "budgetSeconds": 68.9 },
+    { "name": "TestFastDotnetProgress.Tests.ps1", "budgetSeconds": 29.0 },
+    { "name": "TestFastPowerShellMode.Tests.ps1", "budgetSeconds": 27.3 },
+    { "name": "LaneFileLockPrimitive.Tests.ps1", "budgetSeconds": 7.0 },
+    { "name": "LanePool.Tests.ps1", "budgetSeconds": 27.7 }
+  ],
+  "defects": []
+}
