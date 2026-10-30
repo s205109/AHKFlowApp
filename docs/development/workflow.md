@@ -540,7 +540,7 @@ citation keeps working, so no bulk rewrite is needed.
   1. Simplify: run `/simplify` on the branch diff, fold duplication, delete dead code, or state 'nothing to simplify'.
   2. Verify: produce the verification artifact `AGENTS.md` names, or name the exemption, and state the verdict. An AGENTS.md exemption replaces the **artifact** only. For exemption 1, targeted text checks plus diff review stand in for a test. A wait on the human for manual steps keeps the stage in progress; it is not an edge.
   3. Document: tick the item's acceptance boxes against what the branch actually does, and leave any box that is not true unticked with the reason written into the item. The tick happens here, and not at Ship, so that Review reads the claims next to the diff. When one criterion has an exception, check every other criterion against that same exception before you tick it. Then update docs, README, `CONTEXT.md` and skills, or state 'nothing to document'.
-  
+
   Then the Gate on the final revision: the five steps in [`testing-workflow.md`](testing-workflow.md#canonical-pre-pr-gate). It runs on a docs-only branch too, because CI skips its .NET steps there. Name the revision in the transition note, as `Gate green at <sha>`. A round writes that line into its pull request body instead.
 - **Exit** — All planned work committed, tracking current, closing verdicts stated, Gate green on the final revision, stage push done
 - **Next** — `8-review`
