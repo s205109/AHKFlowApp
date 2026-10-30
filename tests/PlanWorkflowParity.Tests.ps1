@@ -185,12 +185,11 @@ Assert-True ($result.ExitCode -eq 0) "a frozen drifted plan must be skipped:`n$(
 Assert-True ($result.Output -match 'frozen') 'the skip must name the frozen plan'
 $output = & pwsh -NoProfile -File $script -PlansRoot $frozen -WorkflowPath $workflowPath -RequirePlans 2>&1
 Assert-True ($LASTEXITCODE -eq 0) "-RequirePlans must accept a folder whose only Appendix A plan is frozen:`n$($output -join "`n")"
-$drifted = New-PlansRoot -Override @{ 'edge:0-intake:success' = '8-review' }
-Move-Item -LiteralPath (Join-Path $drifted 'fixture-plan.md') -Destination (Join-Path $frozen 'unfrozen-plan.md')
+Set-Content -LiteralPath (Join-Path $frozen 'unfrozen-plan.md') -Value $raw -NoNewline
 $result = Invoke-Check -PlansRoot $frozen
 Assert-True ($result.ExitCode -eq 1) 'an unfrozen drifted plan beside a frozen one must still fail'
 
-Remove-Item $good, $driftExit, $driftEdge, $empty, $twin, $invented, $indented, $prefix, $noAppendix, $period, $frozen, $drifted -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item $good, $driftExit, $driftEdge, $empty, $twin, $invented, $indented, $prefix, $noAppendix, $period, $frozen -Recurse -Force -ErrorAction SilentlyContinue
 
 if ($failures.Count -gt 0) {
     foreach ($failure in $failures) { Write-Host ''; Write-Host $failure -ForegroundColor Red }
