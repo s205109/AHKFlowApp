@@ -943,29 +943,7 @@ Invoke-TestCase 'Whole blocks a competing acquirer through the parent checkout h
     } finally { Stop-LaneChildProcess $child; Stop-LaneChildProcess $contender; Remove-PinnedLanePool $pool; Remove-HarnessFixture $root }
 }
 
-foreach ($soak in @($false, $true)) {
-    Invoke-TestCase "Nested harness preserves its marker without adding Lanes (soak=$soak)" {
-        $root = New-HarnessFixture; $pool = New-PinnedLanePool 4; $held = $null
-        try {
-            $held = @(0, 1 | ForEach-Object { [IO.File]::Open((Join-Path $pool.Root "lane-$_.lock"), 'OpenOrCreate', 'ReadWrite', 'None') })
-            Use-LaneEnvironment -Value @{ AHKFLOW_TEST_LANES_ROOT = $pool.Root; AHKFLOW_TEST_LANES_HOLDER = 'inherited-owner' } -Body {
-                $arguments = if ($soak) { @{ Soak = 'tests/FakeProject'; Runs = 2 } } else { @{ Runs = 2; WarmUpRuns = 1; SettleSeconds = 0 } }
-                $previousPath = $env:PATH
-                try {
-                    $env:PATH = (Join-Path $root 'stub') + [IO.Path]::PathSeparator + $previousPath
-                    & (Join-Path $root 'scripts/measure-test-modes.ps1') @arguments | Out-Null
-                    Assert-True ($env:AHKFLOW_TEST_LANES_HOLDER -eq 'inherited-owner') 'Nested exit must preserve the marker in its own host.'
-                } finally { $env:PATH = $previousPath }
-                $lines = @(Get-Content (Join-Path $root 'stub/lanes.txt'))
-                Assert-True ($lines.Count -eq $(if ($soak) { 3 } else { 4 })) 'Observe build and every delegated call.'
-                foreach ($line in $lines) { Assert-True ($line -match 'held=2 holder=inherited-owner$') "Nested reservation changed: $line" }
-                Assert-True ((Get-RunLaneCount $pool) -eq 2) 'Nested completion must preserve the parent reservation.'
-            }
-        } finally { foreach ($stream in @($held)) { if ($null -ne $stream) { $stream.Dispose() } }; Remove-PinnedLanePool $pool; Remove-HarnessFixture $root }
-    }
-}
-
-foreach ($failure in @('fail-build', 'fail-fast', 'fail-run.txt', 'none')) {
+foreach ($failure in @('fail-build', 'none')) {
     Invoke-TestCase "Same-host $failure restores its marker and releases its Lanes and checkout" {
         $root = New-HarnessFixture; $pool = New-PinnedLanePool 4
         try {

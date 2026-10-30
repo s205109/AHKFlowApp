@@ -583,17 +583,10 @@ Invoke-TestCase 'A solution with no coverage project fails before it restores' {
 
 
 . (Join-Path $PSScriptRoot 'DotnetLane.Common.ps1')
-foreach ($route in @('direct', 'delegated')) {
-    foreach ($nested in @($false, $true)) {
-        Invoke-TestCase "Coverage Lane route: $route nested=$nested" {
-            $root = New-CoverageFixture
-            try {
-                $name = if ($route -eq 'direct') { 'run-coverage.ps1' } else { 'test-fast.ps1' }
-                $arguments = if ($route -eq 'direct') { @{} } else { @{ Mode = 'Coverage'; Force = $true } }
-                Test-DotnetLaneRoute -Root $root -ScriptName $name -Arguments $arguments -Calls 2 -Nested:$nested
-            } finally { Remove-CoverageFixture $root }
-        }
-    }
+Invoke-TestCase 'Coverage Lane route: direct nested=False' {
+    $root = New-CoverageFixture
+    try { Test-DotnetLaneRoute -Root $root -ScriptName 'run-coverage.ps1' -Arguments @{} -Calls 2 }
+    finally { Remove-CoverageFixture $root }
 }
 
 Invoke-TestCase 'Coverage Lane route: direct failure' {

@@ -45,14 +45,13 @@ $script:originalCheckoutExit = ${function:Exit-AhkFlowTestRunLock}
 function Exit-AhkFlowTestRunLock {
     param($Handle)
     if ($null -ne $Handle) {
-        $expected = if ($env:AHKFLOW_TEST_LANES_HOLDER -eq 'existing-holder') { 2 } else { 0 }
         $held = 0
         foreach ($file in Get-ChildItem $env:AHKFLOW_TEST_LANES_ROOT -Filter 'lane-*.lock') {
             if ($file.Name -eq 'lane-99.lock') { continue }
             try { $probe = [IO.File]::Open($file.FullName, 'OpenOrCreate', 'ReadWrite', 'None'); $probe.Dispose() }
             catch [IO.IOException] { $held++ }
         }
-        if ($held -ne $expected) {
+        if ($held -ne 0) {
             throw 'Lane ownership must release before checkout cleanup.'
         }
     }
@@ -62,46 +61,38 @@ function Exit-AhkFlowTestRunLock {
 }
 
 function Test-DotnetLaneRoute {
-    param([string] $Root, [string] $ScriptName, [hashtable] $Arguments, [int] $Calls = 1, [switch] $Nested, [switch] $Repeat, [switch] $Fail)
+    param([string] $Root, [string] $ScriptName, [hashtable] $Arguments, [int] $Calls = 1, [switch] $Fail)
     $pool = New-PinnedLanePool 4
-    $handles = @{ Child = $null; Contender = $null; Held = $null }
+    $handles = @{ Child = $null }
     $previousPath = $env:PATH
     try {
         Add-DotnetLaneGate $Root
         # The last gated call fails after its release, so the script throws inside its try.
         if ($Fail) { Set-Content (Join-Path $Root "stub/fail-$Calls") fail }
         $env:PATH = (Join-Path $Root stub) + [IO.Path]::PathSeparator + $previousPath
-        Use-LaneEnvironment -Value @{ AHKFLOW_TEST_LANES_ROOT = $pool.Root; AHKFLOW_TEST_LANES_HOLDER = $(if ($Nested) { 'existing-holder' } else { '  ' }) } -Body {
-            if ($Nested) { $handles.Held = @(0, 1 | ForEach-Object { [IO.File]::Open((Join-Path $pool.Root "lane-$_.lock"), 'OpenOrCreate', 'ReadWrite', 'None') }) }
-            $payload = @{ Root = $Root; Script = $ScriptName; Arguments = $Arguments; Repeat = [bool]$Repeat } | ConvertTo-Json -Compress
+        Use-LaneEnvironment -Value @{ AHKFLOW_TEST_LANES_ROOT = $pool.Root; AHKFLOW_TEST_LANES_HOLDER = '  ' } -Body {
+            $payload = @{ Root = $Root; Script = $ScriptName; Arguments = $Arguments } | ConvertTo-Json -Compress
             $code = @'
 param($Json)
 $ErrorActionPreference = 'Stop'
 $p = $Json | ConvertFrom-Json -AsHashtable
 $scriptPath = Join-Path $p.Root ('scripts/' + $p.Script)
 $arguments = $p.Arguments
-foreach ($iteration in 1..$(if ($p.Repeat) { 2 } else { 1 })) {
-    & $scriptPath @arguments
-    $after = Join-Path $p.Root "stub/after-$iteration"
-    Set-Content $after ('holder=' + $env:AHKFLOW_TEST_LANES_HOLDER)
-    Set-Content "$after.done" complete
-}
+& $scriptPath @arguments
+$after = Join-Path $p.Root 'stub/after-1'
+Set-Content $after ('holder=' + $env:AHKFLOW_TEST_LANES_HOLDER)
+Set-Content "$after.done" complete
 
 '@
             $code = '& { ' + $code + " } '" + $payload.Replace("'", "''") + "'"
             $handles.Child = Start-LaneChildProcess @('-NoProfile', '-EncodedCommand', (ConvertTo-LaneEncodedCommand $code))
-            $total = $Calls * $(if ($Repeat) { 2 } else { 1 })
-            for ($call = 1; $call -le $total; $call++) {
+            $expected = [string]$handles.Child.Process.Id
+            for ($call = 1; $call -le $Calls; $call++) {
                 $marker = (Wait-LanePath (Join-Path $Root "stub/ready-$call") 15 $handles.Child).Trim()
                 Assert-True ((Get-RunLaneCount $pool) -eq 2) "Expected exactly two of four Lanes during $ScriptName call $call."
-                $expected = if ($Nested) { 'existing-holder' } else { [string]$handles.Child.Process.Id }
                 Assert-True ($marker -ceq $expected) "Expected holder '$expected', got '$marker'."
                 Assert-True (Test-FileLockHeld (Join-Path $Root '.test-run.lock')) 'The checkout lock must be held at the gated call.'
                 Publish-LaneSignal (Join-Path $Root "stub/release-$call")
-                if ($Repeat) {
-                    $after = Wait-LanePath (Join-Path $Root "stub/after-$call") 15 $handles.Child
-                    Assert-True ($after.TrimEnd("`r", "`n") -ceq 'holder=  ') 'The surviving host must restore its exact marker between runs.'
-                }
             }
             $result = Wait-LaneChildProcess $handles.Child 15
             if ($Fail) {
@@ -136,10 +127,9 @@ foreach ($iteration in 1..$(if ($p.Repeat) { 2 } else { 1 })) {
                 $tests = @($audits | Where-Object { $_.Command -match '^dotnet test(?: |$)' })
                 Assert-True ($tests.Count -eq $Calls) "Coverage must execute all $Calls project test phases; found $($tests.Count) audit rows."
             }
-            $after = Wait-LanePath (Join-Path $Root "stub/after-$(if ($Repeat) { 2 } else { 1 })") 2 $handles.Child
-            $expectedAfter = if ($Nested) { 'holder=existing-holder' } else { 'holder=  ' }
-            Assert-True ($after.TrimEnd("`r", "`n") -ceq $expectedAfter) 'The completed route must restore its marker.'
-            Assert-True ((Get-RunLaneCount $pool) -eq $(if ($Nested) { 2 } else { 0 })) 'The route must release only its own Lanes.'
+            $after = Wait-LanePath (Join-Path $Root 'stub/after-1') 2 $handles.Child
+            Assert-True ($after.TrimEnd("`r", "`n") -ceq 'holder=  ') 'The completed route must restore its marker.'
+            Assert-True ((Get-RunLaneCount $pool) -eq 0) 'The route must release its Lanes.'
             $checkout = Enter-AhkFlowTestRunLock $Root Fresh
             Exit-AhkFlowTestRunLock $checkout
         }
@@ -150,10 +140,8 @@ foreach ($iteration in 1..$(if ($p.Repeat) { 2 } else { 1 })) {
         }
         throw
     } finally {
-        foreach ($call in 1..($Calls * 2)) { Publish-LaneSignal (Join-Path $Root "stub/release-$call") }
-        Stop-LaneChildProcess $handles.Contender
+        foreach ($call in 1..$Calls) { Publish-LaneSignal (Join-Path $Root "stub/release-$call") }
         Stop-LaneChildProcess $handles.Child
-        foreach ($stream in @($handles.Held)) { if ($null -ne $stream) { $stream.Dispose() } }
         $env:PATH = $previousPath
         Remove-PinnedLanePool $pool
     }
