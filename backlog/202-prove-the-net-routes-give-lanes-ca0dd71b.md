@@ -50,4 +50,4 @@ run on the machine does not wait for Lanes that nobody holds.
   not because the cases were wrong. In 193, a mutation that moved the run end failed both cases
   with the checkout-lock message, and the owner case still passed.
 - Spec: none — a small test-only change; this item is the spec.
-- Plan: none — the commit named above is the reference implementation.
+- Plan: `docs/superpowers/plans/2026-10-30-prove-the-net-routes-give-lanes-plan-202.md`
