@@ -554,10 +554,19 @@ citation keeps working, so no bulk rewrite is needed.
 
 ### Stage 8 — Review
 
-- **Entry** — work presentable, pushed at the last stage boundary, pull request still draft
-- **Who** — `--model opus --effort high`; Codex locally posts to the same pull request threads
-- **Technique** — two halves. **Producing** the review: a reviewer session, or Codex, reads the branch and posts threads. `custom-review-findings` cannot do this half — it only consumes findings. **Handling** the review: `custom-review-findings` (PR mode)
-- **Action** — ask a reviewer for the review, then handle what comes back. Reply and resolve every thread. A wait on the reviewer keeps the stage in progress; it is not an edge. Fix inside Review only what needs no code change: a reply, a wording fix in the pull request, a resolved misunderstanding. Any finding that needs a code change takes the failure edge to Execute; do not fix it here
+- **Entry** — Execute's exit met, pushed at that boundary, pull request still draft
+- **Who** — the Claude reviewer: `--model opus --effort high`; the Outside review: the human, in a separate terminal
+- **Technique** — two halves. **Producing** the review: one reviewer handoff file, which both reviewers read for the same revision at the same time. The Claude reviewer posts pull request threads. The human pastes the Outside review's result into the session. `custom-review-findings` cannot do this half. **Handling** the review: one `custom-review-findings` pass in PR mode, with the Outside review pasted in the same request, once both results are in
+- **Action** — in this order:
+  1. Write the handoff from the template below to `.superpowers/review-<NNN>-round-<N>.md`. Hand the human its absolute path. The human starts both reviews from it. A wait on a reviewer keeps the stage in progress; it is not an edge.
+  2. Triage both results in one pass. Each finding keeps the reviewer's label, required or optional, next to its verdict. Triage may relabel a finding as required when it is in fact one of the six required kinds, and says so in the reply.
+  3. An editorial finding is fixed in Review and closes in triage, with a fresh citation for each point. Editorial means wording, a comment, a typo or a stale citation, with no change to behaviour, a requirement or an executable workflow rule. This holds for both labels.
+  4. An optional finding that is not editorial never takes the failure edge. It closes in triage as DEFER, with a backlog item, or with a reply that says why it is declined.
+  5. A required finding that is not editorial, with the verdict CONFIRMED or PARTIAL, takes the failure edge, whatever the file type. In this repository Markdown runs the process: the transition script reads `workflow.md`.
+  6. The next round's handoff goes only to the reviewer that raised the finding. When both raised it, only the Outside review reads it.
+  7. Review stops at the first round with no required, non-editorial finding whose verdict is CONFIRMED or PARTIAL. Editorial findings and optional findings close in triage and go back to no reviewer, so they never start a round.
+  8. Reply to and resolve every thread.
+  9. Check the Gate evidence as [`testing-workflow.md`](testing-workflow.md#canonical-pre-pr-gate) describes, and run only what is no longer valid.
 - **Exit** — Both reviews triaged, no required finding left open, all threads resolved, Gate evidence valid for the final revision
 - **Next** — `9-ship`
 - **Context** — keep until threads resolved
@@ -569,7 +578,37 @@ citation keeps working, so no bulk rewrite is needed.
 | failure | a required finding, CONFIRMED or PARTIAL, changes behaviour, a requirement, or an executable workflow rule; record each as a named recovery task first — in `PLAN-PROGRESS.md`, or the round pull request body — because Execute resume reads those, never the review threads; Execute's closing steps and Gate then run once for the fixes | 4-execute |
 | blocked | a finding depends on something outside the repository | blocked/ |
 | not applicable | cannot occur: every pull request — a tracked item's or a round's — is reviewed | none |
-| resume | fetch unresolved threads, continue with `custom-review-findings` | stay |
+| resume | fetch unresolved threads, ask the human for any Outside review result not yet pasted, continue with `custom-review-findings` | stay |
+
+#### The reviewer handoff
+
+The work session writes one handoff file per round, from this template. Both reviewers read the
+same file, so they review the same revision.
+
+```markdown
+# Review handoff: <pull request title> (#<number>), round <N>
+
+- Revision: <full commit SHA>. Review this revision only.
+- Base: <base branch>. Read the change with `git diff <base>...<SHA>`.
+- Item: `backlog/<NNN>-<slug>.md`. Its acceptance criteria are the stated requirements.
+- Spec and plan: <paths, or none>.
+- Reviewers this round: <the Claude reviewer and the Outside review | the one reviewer this round goes back to>.
+- This round checks: <the whole change | the findings sent back, by number, and their fixes>.
+
+## What to report
+
+A finding is required only when it is about one of these six things: correctness, the stated
+requirements, security, data loss, concurrency, or a real performance regression. Mark every
+other finding optional. An optional finding never blocks the merge.
+
+For each finding, give a number, a `file:line`, which of the six it is or "optional", what is
+wrong, and the fix you suggest.
+
+## Where to report
+
+- The Claude reviewer posts each finding as a pull request review thread.
+- The Outside review writes its findings as text. The human pastes that text into the work session.
+```
 
 <a id="stage-9-ship"></a>
 

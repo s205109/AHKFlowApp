@@ -282,6 +282,18 @@ work, such as OpenCode with an OpenAI model. It reads the same revision as the C
 the human pastes its result back into the session.
 _Avoid_: Codex review, second review, external review
 
+**Reviewer handoff**:
+The one file that tells the reviewers of a round what to review: the revision, the change, the requirements, and what to report. The work session writes it in `.superpowers/` at Review entry and for each later round.
+_Avoid_: review brief, review prompt
+
+**Optional finding**:
+A review finding that is not about correctness, the stated requirements, security, data loss, concurrency, or a real performance regression. It never blocks the merge and never starts a review round.
+_Avoid_: minor finding, suggestion
+
+**Editorial finding**:
+A review finding whose fix changes no behaviour, no requirement and no executable workflow rule, such as wording, a comment, a typo or a stale citation. It is fixed and closed in triage, and goes back to no reviewer.
+_Avoid_: nit, cosmetic finding
+
 **Suite**:
 One `tests/*.Tests.ps1` file. The runner starts each Suite as its own process and runs several at
 once, so one Suite's failure cannot stop another. `tests/powershell-suites.json` lists every Suite.
