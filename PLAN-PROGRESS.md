@@ -38,3 +38,4 @@ Claude reviewer round 1 at b3e99f0d, review 5719209156. Finding 1 (required, CON
 
 **Recovery task:** Task 7: a round writes Gate green at <sha> into its pull request body, and Review reads it there (finding 1). Task 8: pre-push prints the parity check's skip instead of claiming agreement (finding 2). Task 9: findings 3 to 8, editorial and optional, in the same pass.
 
+- Task 8 (finding 2): done at ed03d17e. Tests: the real pre-push run on this branch. Before: 'Plans agree with the source.' after the frozen skip. After: 'Plans not compared: every plan with an Appendix A is frozen.' No durable test: the step needs the private plans repository, which the PrePushQuickChecks fixture and CI do not have. Deferrals: none.
