@@ -6,7 +6,7 @@
 - **Type**: Tooling
 - **Interfaces**: none (one module and its tests, chosen from audit data)
 - **Difficulty**: complex
-- **Stage**: 5-simplify
+- **Stage**: 6-verify
 
 ## Summary
 
