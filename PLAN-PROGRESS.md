@@ -7,3 +7,4 @@ Plan: `docs/superpowers/plans/2026-10-29-architecture-pilot-on-one-tested-module
 - Task 3: 649c3c3e — tests: LanePool 39, CiPowerShellSuiteRunner, MeasureTestModes, TestFastDotnetProgress, CoverageRunnerProgress, TestFastPowerShellMode pass; ?? mutation fails only the load case — deferrals: none
 - Task 4: 498e8fdd, c973849c — tests: CiPowerShellSuiteRunner 100, GateEvidence 37, TestFastPowerShellMode 7 pass; M9 after-edit mutation fails 'Lane one runner admits exactly two of four Workers' — deferrals: none
 - Task 5: 6933f89e, 602b9c6a — tests: TestFastDotnetProgress 12, CoverageRunnerProgress 13, MeasureTestModes 32, TestFastPowerShellMode 7, LanePool 39 pass; probe mutation fails 'Fast Lane route: owner' with the checkout-lock message — deferrals: none
+- Task 6: cb23e3bf — tests: nine Suites pass, LanePool 40; probe file fails the check with its path and line, in both name forms — deferrals: none
