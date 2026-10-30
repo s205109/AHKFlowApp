@@ -16,7 +16,9 @@ file.
 - **After commit**: `8b921bee0e87214d29d2ba14e986ac6d58120d50`. It holds the refactor, the check
   and the timing mode.
 - **Measurement script**: `scripts/measure-architecture-pilot.ps1`, committed in `0b86d4ae`. Its
-  own Suite is `tests/MeasureArchitecturePilot.Tests.ps1`.
+  own Suite is `tests/MeasureArchitecturePilot.Tests.ps1`. The defect attempts used the script
+  at the before commit. The timing used the script at the after commit `8b921bee`, because the
+  timing mode came in Task 7.
 - Each side ran from its own local clone under `.superpowers\193-pilot\`, never from the
   worktree. Each Suite ran in its own `pwsh` process inside a Windows job object, three Suites at
   a time. Each Suite ran as a Nested run with a private temporary Lane pool.
@@ -467,7 +469,7 @@ replace: (empty: the edit removes the find text)
 ### Test count
 
 The after commit removes the cases that P5 of the plan marks "remove", and adds the check. The
-Lane-related rule of the plan was applied to every case of the after tree. It finds exactly the 75
+Lane-related rule of the plan, applied to every case of the after tree, finds exactly the 75
 names that P5 lists, so there is no difference to explain. Each name below appears in the PASS
 lines of the after opening control.
 
@@ -597,11 +599,13 @@ status is `clean`, and every defect result counts.
 
 Before the run, an independent sub-agent checked both patches of each defect against its
 sentence (spec section 5.3). It found that every patch gives the wrong behaviour in its sentence,
-and that neither side's patch is easier to catch. It found no problem, so no patch was rewritten.
+and that neither side's patch is easier to catch. It found no problem, so nobody rewrote a patch.
 Each defect below shows its after patch. The before section shows its before patch.
 
 A second independent sub-agent gave each after outcome by the rules of spec section 5.4. It did
-not write the patches. Its reason sentences are copied here unchanged.
+not write the patches. This record copies its reason sentences unchanged, with one exception. In
+the M3 reason, the words "at the after commit" replace a test line number. That line no longer
+exists after the revert.
 
 After side: 12 Caught, 0 Missed, 0 Invalid, 0 Inconclusive.
 
@@ -914,16 +918,21 @@ three targets:
    percent. Section 5.5 gives Not faster.
 
 The verdict takes the first outcome that applies. Not faster is a Negative condition, so the
-verdict is Negative. The after tests are faster, by about 18 seconds a pass, but not by the 10
+verdict is Negative. The after tests are faster, by about 19 seconds a pass, but not by the 10
 percent the spec set as the target.
 
 The saved time comes from the four caller Suites that lost cases. Compared over the timed passes,
 `CoverageRunnerProgress` runs about 10 seconds faster. `TestFastDotnetProgress`,
 `MeasureTestModes` and `CiPowerShellSuiteRunner` each run about 6 seconds faster. `LanePool` runs
-about 9 seconds slower, because of the new run interface cases and the check.
+about 10 seconds slower, because of the new run interface cases and the check.
 
-Per spec section 6.3, the code is reverted. This record, the backlog item and the two
-`CONTEXT.md` terms stay.
+Per spec section 6.3, commit `70689716` reverts all pilot code. This record, the backlog item and
+the two `CONTEXT.md` terms stay.
+
+The revert also removes the case start lines and the two .NET failure rows that Task 1 added. So
+the gap those rows closed is open again: no case proves that `test-fast.ps1` and
+`run-coverage.ps1` give their Lanes back when a run fails. Backlog item 202 adds the two rows
+again, without the refactor.
 
 ## The Stryker.NET answer
 

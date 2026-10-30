@@ -69,3 +69,8 @@ Each criterion is refined in the spec named below. Tick a box only when its word
   from `mattpocock-skills` 1.3.1, with the Lane pool as its direction. At its start, the session told
   it to read `CONTEXT.md` as its glossary in place of `GLOSSARY.md`, and to use `mp-grilling` and
   `mp-domain-modeling` in place of `grilling` and `domain-modeling`.
+- **Verdict**: Negative, because the result is Not faster. The median fall in time is 6.71
+  percent, against a target of 10 percent. All 12 defects are Caught on both sides, and the
+  caller count falls by 25.7 percent. The measures are in
+  `docs/development/architecture-pilot-record.md`. The pilot code is reverted, and backlog item
+  202 adds the two .NET failure rows again.
