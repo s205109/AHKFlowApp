@@ -21,6 +21,7 @@ if ($args[0] -eq 'test') {
         if ($watch.Elapsed.TotalSeconds -gt 30) { throw 'The dotnet fixture release deadline expired.' }
         Start-Sleep -Milliseconds 20
     }
+    if (Test-Path (Join-Path $folder "fail-$number")) { exit 1 }
 }
 '@
     Set-Content $stub ($prefix + [Environment]::NewLine + (Get-Content $stub -Raw))
@@ -55,12 +56,14 @@ function Exit-AhkFlowTestRunLock {
 }
 
 function Test-DotnetLaneRoute {
-    param([string] $Root, [string] $ScriptName, [hashtable] $Arguments, [int] $Calls = 1, [switch] $Nested, [switch] $Repeat)
+    param([string] $Root, [string] $ScriptName, [hashtable] $Arguments, [int] $Calls = 1, [switch] $Nested, [switch] $Repeat, [switch] $Fail)
     $pool = New-PinnedLanePool 4
     $handles = @{ Child = $null; Contender = $null; Held = $null }
     $previousPath = $env:PATH
     try {
         Add-DotnetLaneGate $Root
+        # The last gated call fails after its release, so the script throws inside its try.
+        if ($Fail) { Set-Content (Join-Path $Root "stub/fail-$Calls") fail }
         $env:PATH = (Join-Path $Root stub) + [IO.Path]::PathSeparator + $previousPath
         Use-LaneEnvironment -Value @{ AHKFLOW_TEST_LANES_ROOT = $pool.Root; AHKFLOW_TEST_LANES_HOLDER = $(if ($Nested) { 'existing-holder' } else { '  ' }) } -Body {
             if ($Nested) { $handles.Held = Enter-AhkFlowLanes -PoolRoot $pool.Root -Share Half -Proposal 4 }
@@ -102,6 +105,17 @@ foreach ($iteration in 1..$(if ($p.Repeat) { 2 } else { 1 })) {
                 }
             }
             $result = Wait-LaneChildProcess $handles.Child 15
+            if ($Fail) {
+                $output = $result.Output + $result.Error
+                Assert-True ($result.ExitCode -ne 0) "The failed route must exit nonzero: $output"
+                # A missing run end on the failure path makes the checkout-lock check throw here.
+                Assert-True (-not $output.Contains('Lane ownership must release before checkout cleanup.')) 'Lane ownership must release before checkout cleanup.'
+                Assert-True ($output.Contains('dotnet test failed')) "The failed route must report the failed test call: $output"
+                Assert-True ((Get-RunLaneCount $pool) -eq 0) 'The failed route must release its Lanes.'
+                $checkout = Enter-AhkFlowTestRunLock $Root Fresh
+                Exit-AhkFlowTestRunLock $checkout
+                return
+            }
             Assert-True ($result.ExitCode -eq 0) ($result.Output + $result.Error)
             $audits = @(Get-Content (Join-Path $Root 'stub/lane-audit.jsonl') | ForEach-Object { $_ | ConvertFrom-Json })
             foreach ($audit in $audits) {
