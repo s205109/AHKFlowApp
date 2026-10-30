@@ -723,5 +723,39 @@ if (Get-Command powershell.exe -CommandType Application -ErrorAction SilentlyCon
     Write-Host '  SKIP  The module loads in Windows PowerShell 5.1'
 }
 
+# Backlog 193: callers use only the five public functions. Every other function the module
+# defines is internal by default, and only the three Lane pool files may name one.
+Invoke-Case 'No script or Suite outside the Lane pool files names an internal Lane function' {
+    $modulePath = Join-Path $repoRoot 'scripts/test-lanes.common.ps1'
+    $tokens = $null; $parseErrors = $null
+    $ast = [System.Management.Automation.Language.Parser]::ParseFile($modulePath, [ref] $tokens, [ref] $parseErrors)
+    $public = @('Get-AhkFlowLaneRole', 'Enter-AhkFlowLaneRun', 'Exit-AhkFlowLaneRun', 'Enter-AhkFlowSuiteLane', 'Exit-AhkFlowSuiteLane')
+    $internal = @($ast.FindAll({ param($node) $node -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $true) |
+            ForEach-Object { $_.Name } | Where-Object { $_ -notin $public } | Sort-Object -Unique)
+    Assert-True ($internal.Count -gt 0) 'The module must define internal functions.'
+    $exempt = @(
+        [IO.Path]::GetFullPath($modulePath),
+        [IO.Path]::GetFullPath((Join-Path $repoRoot 'tests/LanePool.Tests.ps1')),
+        [IO.Path]::GetFullPath((Join-Path $repoRoot 'tests/LanePool.Common.ps1'))
+    )
+    $patterns = foreach ($name in $internal) { [pscustomobject]@{ Name = $name; Regex = [regex]::new('(?<![\w-])' + [regex]::Escape($name) + '(?![\w-])', 'IgnoreCase') } }
+    $hits = [Collections.Generic.List[string]]::new()
+    foreach ($folder in @('scripts', 'tests')) {
+        foreach ($file in @(Get-ChildItem -LiteralPath (Join-Path $repoRoot $folder) -Filter '*.ps1' -File -Recurse)) {
+            if ([IO.Path]::GetFullPath($file.FullName) -in $exempt) { continue }
+            $lines = [IO.File]::ReadAllLines($file.FullName)
+            for ($index = 0; $index -lt $lines.Count; $index++) {
+                foreach ($pattern in $patterns) {
+                    if ($pattern.Regex.IsMatch($lines[$index])) {
+                        $relative = [IO.Path]::GetRelativePath($repoRoot, $file.FullName).Replace('\', '/')
+                        $hits.Add("${relative}:$($index + 1) $($pattern.Name)")
+                    }
+                }
+            }
+        }
+    }
+    Assert-True ($hits.Count -eq 0) ('Internal Lane functions named outside the Lane pool files: ' + ($hits -join '; '))
+}
+
 if ($failures.Count -gt 0) { foreach ($failure in $failures) { Write-Host $failure -ForegroundColor Red }; exit 1 }
 Write-Host 'PASSED|LanePool'
