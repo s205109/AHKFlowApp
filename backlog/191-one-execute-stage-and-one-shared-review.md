@@ -30,9 +30,8 @@ Each criterion is refined in the spec named below. Tick a box only when its word
       on the final revision that ends Execute.
 - [x] The other stages keep their numbers: `0-intake`, `1-pickup`, `2-design`, `3-plan`,
       `4-execute`, `8-review`, `9-ship` and `10-cleanup`.
-- [ ] The anchors `stage-5-simplify`, `stage-6-verify` and `stage-7-document` lead to the Execute
+- [x] The anchors `stage-5-simplify`, `stage-6-verify` and `stage-7-document` lead to the Execute
       section, so every existing link still works.
-      Unticked: GitHub rendering is checked at Review entry, after the Execute push.
 - [x] `scripts/take-stage-transition.ps1` takes the new legal targets from `workflow.md`, and its
       Suite and every other process check that reads the stage graph pass.
 - [x] No item sits at Stage 5, 6 or 7.
