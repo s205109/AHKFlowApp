@@ -165,11 +165,27 @@ $result = Invoke-Check -Root $decoy
 Assert-True ($result.ExitCode -eq 1) 'a fenced heading must not become the section, hiding every real rule'
 Assert-True ($result.Output -match 'SCANNED\.md:11') "the message must name the real rule's line:`n$($result.Output)"
 
+# --- Case 11: a retired stage anchor is a legal link target ---
+# ADR 0022 folded three stages into Execute and kept their anchors on its section. The legal
+# set was built from the stage keys only, so every existing link to a retired anchor failed.
+# A test id keeps this case meaningful once the real retired anchors exist.
+$retired = New-Fixture -Body @"
+## Git Workflow
+
+- A rule that links a retired stage — see [workflow.md#stage-99-retired](docs/development/workflow.md#stage-99-retired).
+"@
+$retiredWorkflow = Join-Path $retired 'workflow.md'
+$text = [System.IO.File]::ReadAllText($retiredWorkflow)
+$text = $text.Replace('<a id="stage-4-execute"></a>', "<a id=`"stage-4-execute`"></a>`n<a id=`"stage-99-retired`" data-merged-into=`"4-execute`"></a>")
+[System.IO.File]::WriteAllText($retiredWorkflow, $text)
+$result = Invoke-Check -Root $retired
+Assert-True ($result.ExitCode -eq 0) "a link to a retired stage anchor must pass:`n$($result.Output)"
+
 # --- Case 6: the real repository passes ---
 $live = & pwsh -NoProfile -File $script 2>&1
 Assert-True ($LASTEXITCODE -eq 0) "the real repository must pass:`n$($live -join "`n")"
 
-Remove-Item $ok, $bad, $hidden, $reference, $dead, $fenced, $nested, $tilde, $decoy -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item $ok, $bad, $hidden, $reference, $dead, $fenced, $nested, $tilde, $decoy, $retired -Recurse -Force -ErrorAction SilentlyContinue
 
 if ($failures.Count -gt 0) {
     foreach ($failure in $failures) { Write-Host ''; Write-Host $failure -ForegroundColor Red }
@@ -177,4 +193,4 @@ if ($failures.Count -gt 0) {
     throw "Process anchor tests failed with $($failures.Count) problem(s). See the detail above."
 }
 
-Write-Host 'Process anchor tests passed. 10 cases.'
+Write-Host 'Process anchor tests passed. 11 cases.'

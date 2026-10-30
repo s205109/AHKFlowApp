@@ -46,6 +46,8 @@ else {
 
 $anchors = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::Ordinal)
 foreach ($id in (Get-WorkflowStage -Path $WorkflowPath).Keys) { [void]$anchors.Add("stage-$id") }
+# A retired anchor still lands on a stage section, so a link to it is not dead.
+foreach ($id in (Get-WorkflowRetiredAnchor -Path $WorkflowPath).Keys) { [void]$anchors.Add("stage-$id") }
 
 $problems = New-Object System.Collections.Generic.List[string]
 
