@@ -16,7 +16,7 @@ Five steps, in order. Nothing else counts as the gate.
 
 **When it runs.** A draft pull request opens at Pickup, before any of this work exists, so
 this is not a gate on *creating* a pull request. It gates the pull request going **ready**:
-it runs at [Verify](workflow.md#stage-6-verify) and must be green before
+it runs at the end of [Execute](workflow.md#stage-4-execute) and must be green before
 [Ship](workflow.md#stage-9-ship) flips the PR out of draft. The anchor above keeps the old
 `#canonical-pre-pr-gate` link working; the name changed, the target did not.
 
@@ -36,6 +36,22 @@ Pass the `<base>...HEAD` range to `git diff --check`. The bare form inspects onl
 gh pr view --json baseRefName -q .baseRefName
 git diff --check "$(gh pr view --json baseRefName -q .baseRefName)...HEAD"
 ```
+
+**Gate evidence at Review.** Review does not run the Gate again by default. It checks that the
+Gate that ended Execute still holds for the final revision:
+
+1. Read the revision that Execute's transition note names, as in `Gate green at <sha>`. For a
+   housekeeping round, read the `Gate green at <sha>` line in its pull request body instead.
+2. List the paths changed since then: `git diff --no-renames --name-only <revision>..HEAD`.
+   Keep `--no-renames`. Without it, git prints only the new path of a renamed file, so moving
+   `src/Foo.cs` to `docs/Foo.md` would hide the lost `.cs` file.
+3. Then take the first tier that fits:
+   - Only `PLAN-PROGRESS.md` and the item file changed: nothing runs again.
+   - A changed path is on the `coverage-tooling` list in `.github/code-paths-filter.yml`, or
+     no pattern in that file excludes it: run the whole Gate.
+   - Every other case, where each changed path is excluded: run
+     `pwsh .\scripts\test-fast.ps1 -Mode PowerShell`, which reuses each unchanged Suite, and
+     `git diff --check <base>...HEAD`.
 
 **The coverage slice skips itself when it cannot measure anything.** Run the same command either
 way. `-Mode Coverage` compares your branch against its base and skips when **every** changed file

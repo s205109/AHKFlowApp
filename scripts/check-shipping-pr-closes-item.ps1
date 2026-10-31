@@ -20,11 +20,11 @@
       | Situation                     | Boxes         | Draft | Verdict             |
       |-------------------------------|---------------|-------|---------------------|
       | Partial delivery, PR 1 of 3   | some unticked | ready | passes, boxes open  |
-      | Document-to-Ship window       | all ticked    | draft | passes, still draft |
+      | Execute-to-Ship window        | all ticked    | draft | passes, still draft |
       | Backlog 132                   | all ticked    | ready | fails, correct      |
 
-    Box state alone would refuse the Document-to-Ship window. workflow.md ticks the boxes at
-    Document and moves the file at Ship, so between those two stages an item legitimately has
+    Box state alone would refuse the Execute-to-Ship window. workflow.md ticks the boxes in
+    Execute and moves the file at Ship, so between those two stages an item legitimately has
     every box ticked and still sits in backlog/. A check that refused that state would be
     switched off inside a week.
 
@@ -34,7 +34,7 @@
 
     STATED ASSUMPTION. This rule is correct only because this repository opens pull requests as
     drafts and flips them to ready at Ship. workflow.md stage 1 makes that the route. A pull
-    request opened ready from the start would be refused at Document time. That is an assumption
+    request opened ready from the start would be refused in Execute. That is an assumption
     about the process, not a fact about GitHub, and it is the first thing to check when a refusal
     here looks wrong.
 
@@ -100,7 +100,7 @@ function Get-ShippingPrProblem {
         [Parameter(Mandatory)][bool] $PullRequestIsDraft
     )
 
-    # Condition 1. A draft pull request is work in progress, and the Document-to-Ship window
+    # Condition 1. A draft pull request is work in progress, and the Execute-to-Ship window
     # legitimately has every box ticked with the item still open.
     if ($PullRequestIsDraft) { return @() }
 

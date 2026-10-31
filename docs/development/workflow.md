@@ -1,7 +1,7 @@
 # The AHKFlowApp development process
 
-This file describes how work moves through this repository. Work walks eleven stages. Each
-stage has five edges. One durable record says where a piece of work stands.
+This file describes how work moves through this repository. Work walks eight stages, numbered 0 to
+10. Numbers 5, 6 and 7 are retired, see ADR 0022. Each stage has five edges. One durable record says where a piece of work stands.
 
 **This file is canonical.** When `AGENTS.md`, `.claude/CLAUDE.md`, a skill, or any other
 document disagrees with this file about the process, this file wins. Fix the other
@@ -35,11 +35,8 @@ an exit string in every place in the same commit, and regenerate the PDF with
 | 1 | Pickup | Location chosen by Difficulty, session inside it, base confirmed and stated, PR route in place |
 | 2 | Design | Spec committed, terms and ADRs written, plain summary confirmed |
 | 3 | Plan | Plan committed, grilled, fabrication-checked |
-| 4 | Execute | All planned work committed, tracking current, stage push done |
-| 5 | Simplify | Simplification applied or verdict 'nothing to simplify' stated |
-| 6 | Verify | Verification artifact green, gate green, verdict stated |
-| 7 | Document | Docs updated or verdict 'nothing to document' stated |
-| 8 | Review | Review received, all threads resolved, gate re-green |
+| 4 | Execute | All planned work committed, tracking current, closing verdicts stated, Gate green on the final revision, stage push done |
+| 8 | Review | Every review this round triaged, no required finding left open, all threads resolved, Gate evidence valid for the final revision |
 | 9 | Ship | Records closed, PR ready, CI green, merged |
 | 10 | Cleanup | Worktree gone, branch deleted, memory updated |
 
@@ -55,6 +52,20 @@ entry. This turns the AGENTS.md Debugging rule into a gate.
   housekeeping round's route is the round pull request, opened at round close.
 - **Tracking current.** For tracked work: plan tasks ticked plus the progress file. For a
   housekeeping round: the commit log.
+- **Closing verdicts stated.** The simplify, verify and document verdicts are stated, and the
+  acceptance boxes are ticked. Tracked work records each verdict as a progress line. A round
+  records them in its pull request body. A closing verdict belongs to one pass through
+  Execute. After a failure edge, the closing steps run again. Tracked work writes new lines
+  below the `## Failure edge to` heading that the transition script adds, and the older lines
+  stay as history. A round replaces the verdicts in its body.
+- **Gate green on the final revision.** The Gate ran on the last commit that changes the
+  work. A later commit that touches only `PLAN-PROGRESS.md` or the item file needs no new
+  Gate. Execute's transition note names that revision. A round has no transition note at
+  Execute close, because its pull request opens at `8-review`. So a round writes
+  `Gate green at <sha>` into its pull request body, next to its closing verdicts, and replaces
+  that line after each later Gate.
+- **Gate evidence valid for the final revision.** Review checks this as
+  [`testing-workflow.md`](testing-workflow.md#canonical-pre-pr-gate) describes.
 - **Records closed.** For tracked work: boxes ticked, the item moved to `backlog/done/`,
   the progress file deleted, the plan and spec frozen. For a housekeeping round: nothing extra.
 - **Terms and ADRs written.** Design pins glossary terms in `CONTEXT.md` and writes the
@@ -76,7 +87,7 @@ through this table.
 | Mechanic | Tracked item | Housekeeping round |
 |---|---|---|
 | Intake | Once per item. The success edge fires when the item is filed | Once per round, at its first change. The not-applicable edge fires: no item is filed. Later changes in the same round take no Intake edge |
-| Durable stage record | The `Stage` field in the backlog item | Before the round pull request exists: the round worktree and its commit log. From the round pull request onward: a `Stage: N-name` line in its body. Simplify, Verify, Document, and Review are verdict-only and leave no commit, so the body is the only record that survives a cleared context |
+| Durable stage record | The `Stage` field in the backlog item | Before the round pull request exists: the round worktree and its commit log. From the round pull request onward: a `Stage: N-name` line in its body. Execute's closing verdicts and Review leave no commit, so the body is the only record that survives a cleared context |
 | First push | At Pickup. It opens the draft pull request | At Execute close. It opens the round pull request |
 | Resume | Read the `Stage` field, re-run that stage's entry check | Read the round pull request body's `Stage:` line, re-run that stage's entry check. Before the pull request exists, read the round worktree's commit log |
 | Blocked | The item moves to `backlog/blocked/` with the unblock note | Two kinds. A single change that blocks is filed as its own item, leaves the round, and moves to `backlog/blocked/`; the round continues. A round-level blocker belongs to no single change: file an item naming the round pull request and the blocker, move that item to `backlog/blocked/`, and stop the round |
@@ -85,9 +96,11 @@ through this table.
 ### The housekeeping round is the stage-machine unit for trivial work
 
 One round walks Intake once (not applicable, because a round has no item), then Pickup,
-then Execute, then the verdict stages, then Review, Ship, and Cleanup. Changes accumulate
-inside Execute with one commit each. The round closes when a few have gathered. Then it
-pushes for the first time and opens the round pull request.
+then Execute, which ends with its closing steps and the Gate, then Review, Ship, and
+Cleanup. Changes accumulate inside Execute with one commit each. The round closes when a
+few have gathered. The round runs the closing steps and the Gate once for all its changes,
+after the close marker and before the first push. Then it pushes for the first time and
+opens the round pull request.
 
 **Record the decision to close before pushing.** Between the push and a successful
 `gh pr create` the round has no durable marker, and its commit log looks exactly like a
@@ -95,8 +108,9 @@ round still accumulating changes — so a session that dies in that window resum
 committing more work instead of finishing the close. Make the decision visible first with an
 empty marker commit — `git commit --allow-empty -m "chore: close round, opening PR"`. The
 flag is required: an ordinary `git commit` refuses an unchanged tree. Round resume therefore
-checks the upstream branch and the pull request state before it reads the commit log, and
-retries `gh pr create` when the marker is present and no pull request exists.
+checks the upstream branch and the pull request state before it reads the commit log. When
+the marker is present and no pull request exists, round resume runs the closing steps and
+the Gate again, then pushes and retries `gh pr create`.
 
 A single trivial change is Execute-internal. It takes no stage edges of its own.
 
@@ -124,12 +138,13 @@ instead of creating another.
 change one line, and write all of it back. Never hand `--body-file` a file that holds only
 the Stage line. That deletes the rest of the description.
 
-The round pull request is created at Execute close with a `Stage: 5-simplify` line in its
-body. Exactly one such line exists from then on.
+The round pull request is created at Execute close with a `Stage: 8-review` line in its
+body, and with the closing verdicts and the `Gate green at <sha>` line in its body. Exactly
+one `Stage:` line exists from then on.
 
 ```powershell
 $pr   = <round PR number>
-$next = '<N-name>'                      # e.g. 6-verify
+$next = '<N-name>'                      # e.g. 9-ship
 $rx   = '(?m)^Stage: [^\r\n]+'          # CRLF-safe: does not eat the carriage return
 
 # -join is not cosmetic. PowerShell captures multiline native output as System.Object[],
@@ -155,7 +170,7 @@ happen. The round is still at its previous stage.
 
 ---
 
-## 3. The eleven stages
+## 3. The eight stages
 
 Every stage node carries eight fields: Entry, Who, Technique, Action, Exit, Next, Context,
 Review. Then five edges: success, failure, blocked, not applicable, resume.
@@ -164,7 +179,7 @@ Review. Then five edges: success, failure, blocked, not applicable, resume.
 
 | Token | Meaning |
 |---|---|
-| a stage id, such as `6-verify` | go to that stage |
+| a stage id, such as `8-review` | go to that stage |
 | `2-design/3-plan/4-execute` | the Difficulty split: `complex` to Design, `moderate` to Plan, `trivial` to Execute |
 | `stay` | re-enter or remain in this stage |
 | `terminal` | no next stage |
@@ -360,7 +375,7 @@ compare — its record is the pull request body.
 request exists from Pickup so it can point at the work through Design and Plan. It is a
 **draft**, which is not a request to merge. The five-step Gate in
 [`testing-workflow.md`](testing-workflow.md#canonical-pre-pr-gate) is therefore a
-**pre-ready** gate: it runs at [Verify](#stage-6-verify), and it must be green before
+**pre-ready** gate: it runs at the end of [Execute](#stage-4-execute), and it must be green before
 [Ship](#stage-9-ship) flips the pull request to ready. Read every rule that says "before you
 create a PR" as "before you mark it ready". <!-- gate-wording:ignore -->
 
@@ -512,98 +527,52 @@ citation keeps working, so no bulk rewrite is needed.
   you trust a green local run.
 
 <a id="stage-4-execute"></a>
+<a id="stage-5-simplify" data-merged-into="4-execute"></a>
+<a id="stage-6-verify" data-merged-into="4-execute"></a>
+<a id="stage-7-document" data-merged-into="4-execute"></a>
 
 ### Stage 4 — Execute
 
-- **Entry** — plan committed, or inline plan stated
+- **Entry** — plan committed, or inline plan stated; or a failure edge from Review or Ship, with its recovery tasks recorded
 - **Who** — `--model sonnet --effort high`
-- **Technique** — `superpowers:executing-plans` inline, or subagent-driven when `complex` plus four or more independent tasks; state the choice
-- **Action** — work the tasks. For tracked plan work: two local commits per task boundary, the deliverable then the progress line, with `PLAN-PROGRESS.md` kept current. For a housekeeping round: one commit per change, no progress file, and the round closes when a few changes have gathered. One push when the stage completes. 'Tracking' means the plan plus the progress file for tracked work, and the commit log for a round
-- **Exit** — All planned work committed, tracking current, stage push done
-- **Next** — `5-simplify`
-- **Context** — safe to clear at any task boundary
-- **Review** — not yet reviewed
+- **Technique** — `superpowers:executing-plans` inline, or subagent-driven when `complex` plus four or more independent tasks; state the choice. Then `/simplify`, the AGENTS.md Verification routing (`dck-verify`), the docs edit, and the Gate
+- **Action** — **The work:** work the tasks. For tracked plan work: two local commits per task boundary, the deliverable then the progress line, with `PLAN-PROGRESS.md` kept current. For a housekeeping round: one commit per change, no progress file, and the round closes when a few changes have gathered. One push when the stage completes. 'Tracking' means the plan plus the progress file for tracked work, and the commit log for a round. **The closing steps** run in this order, once the work is done, and the Gate follows them:
+  1. Simplify: run `/simplify` on the branch diff, fold duplication, delete dead code, or state 'nothing to simplify'.
+  2. Verify: produce the verification artifact `AGENTS.md` names, or name the exemption, and state the verdict. An AGENTS.md exemption replaces the **artifact** only. For exemption 1, targeted text checks plus diff review stand in for a test. A wait on the human for manual steps keeps the stage in progress; it is not an edge.
+  3. Document: tick the item's acceptance boxes against what the branch actually does, and leave any box that is not true unticked with the reason written into the item. The tick happens here, and not at Ship, so that Review reads the claims next to the diff. When one criterion has an exception, check every other criterion against that same exception before you tick it. Then update docs, README, `CONTEXT.md` and skills, or state 'nothing to document'.
 
-| Edge | Condition | Target |
-|---|---|---|
-| success | exit condition met | 5-simplify |
-| failure | a task's check is red; root cause unclear → `superpowers:systematic-debugging` before the next edit | stay |
-| blocked | external blocker mid-run; commit the checkpoint with the unblock note | blocked/ |
-| not applicable | cannot occur: every item executes something | none |
-| resume | tracked work: read `PLAN-PROGRESS.md`, continue at the first task without a progress line, never redo a committed task; a round: read the commit log, continue committing | stay |
-
-<a id="stage-5-simplify"></a>
-
-### Stage 5 — Simplify
-
-- **Entry** — tasks done
-- **Who** — Sonnet, default effort
-- **Technique** — `/simplify` (`code-simplifier`)
-- **Action** — fold duplication, delete dead code; the gate must stay green
-- **Exit** — Simplification applied or verdict 'nothing to simplify' stated
-- **Next** — `6-verify`
-- **Context** — safe to clear
-- **Review** — not yet reviewed
-
-| Edge | Condition | Target |
-|---|---|---|
-| success | exit condition met | 6-verify |
-| failure | simplification broke the gate; revert or fix | stay |
-| blocked | external blocker | blocked/ |
-| not applicable | entered and found empty — docs-only or trivial; say 'nothing to simplify' | 6-verify |
-| resume | re-run `/simplify` on the diff; it is repeatable | stay |
-
-<a id="stage-6-verify"></a>
-
-### Stage 6 — Verify
-
-- **Entry** — code settled
-- **Who** — Sonnet, default effort
-- **Technique** — the AGENTS.md Verification routing table (`dck-verify`)
-- **Action** — produce the verification artifact the table names, then run the five-step Gate in [`testing-workflow.md`](testing-workflow.md#canonical-pre-pr-gate). A wait on the human for manual steps keeps the stage in progress; it is not an edge. An AGENTS.md exemption replaces the **artifact** only — for exemption 1, targeted text checks plus diff review stand in for a test. The gate still runs. It runs on a docs-only branch too, because CI skips its .NET steps there, so the local gate is the only .NET check that branch gets. Name the exemption, state the verdict, and take the success edge
-- **Exit** — Verification artifact green, gate green, verdict stated
-- **Next** — `7-document`
-- **Context** — safe to clear after green
-- **Review** — not yet reviewed
-
-| Edge | Condition | Target |
-|---|---|---|
-| success | exit condition met | 7-document |
-| failure | red; before the transition, record the failing command, its output, and a named recovery task — in `PLAN-PROGRESS.md` for tracked work, in the round pull request body for a round, which has no progress file — so Execute resume has something to find | 4-execute |
-| blocked | verification depends on something outside the repository | blocked/ |
-| not applicable | cannot occur: AGENTS.md requires a verdict either way, and an exemption replaces only the artifact while the gate still runs, so an exempt change takes the success edge with the exemption named | none |
-| resume | re-run the verification commands; they are reproducible | stay |
-
-<a id="stage-7-document"></a>
-
-### Stage 7 — Document
-
-- **Entry** — behaviour, vocabulary, or a rule moved — or the check that none did
-- **Who** — Sonnet, default effort
-- **Technique** — docs edit plus `CONTEXT.md` and skill updates
-- **Action** — tick the item's acceptance boxes against what the branch actually does, and leave any box that is not true unticked with the reason written into the item; then update docs, README, and skills, or state the verdict. The tick happens here, and not at Ship, so that Review reads the claims next to the diff. When one criterion has an exception, check every other criterion against that same exception before you tick it
-- **Exit** — Docs updated or verdict 'nothing to document' stated
+  Then the Gate on the final revision: the five steps in [`testing-workflow.md`](testing-workflow.md#canonical-pre-pr-gate). It runs on a docs-only branch too, because CI skips its .NET steps there. Name the revision in the transition note, as `Gate green at <sha>`. A round writes that line into its pull request body instead.
+- **Exit** — All planned work committed, tracking current, closing verdicts stated, Gate green on the final revision, stage push done
 - **Next** — `8-review`
-- **Context** — safe to clear
+- **Context** — safe to clear at any task boundary or closing step
 - **Review** — not yet reviewed
 
 | Edge | Condition | Target |
 |---|---|---|
 | success | exit condition met | 8-review |
-| failure | docs found contradicting the change; fix | stay |
-| blocked | external doc dependency | blocked/ |
-| not applicable | entered, nothing moved — 'nothing to document'; the verdict is mandatory, silence is not. The acceptance boxes are still ticked here, because that half of the Action never depends on the documentation verdict | 8-review |
-| resume | diff docs against the change, continue | stay |
+| failure | a task's check, the verification artifact, or the Gate is red; root cause unclear → `superpowers:systematic-debugging` before the next edit | stay |
+| blocked | external blocker mid-run; commit the checkpoint with the unblock note | blocked/ |
+| not applicable | cannot occur: every item executes something | none |
+| resume | tracked work: read `PLAN-PROGRESS.md`, continue at the first task without a progress line, never redo a committed task; then run each closing step that has no line below the last `## Failure edge to` heading, because closing lines above it belong to an earlier pass; a round: read the commit log, continue committing, and once the close marker is there, or after a failure edge, run the closing steps and the Gate again before the push | stay |
 
 <a id="stage-8-review"></a>
 
 ### Stage 8 — Review
 
-- **Entry** — work presentable, pushed at the last stage boundary, pull request still draft
-- **Who** — `--model opus --effort high`; Codex locally posts to the same pull request threads
-- **Technique** — two halves. **Producing** the review: a reviewer session, or Codex, reads the branch and posts threads. `custom-review-findings` cannot do this half — it only consumes findings. **Handling** the review: `custom-review-findings` (PR mode)
-- **Action** — ask a reviewer for the review, then handle what comes back. Reply and resolve every thread. A wait on the reviewer keeps the stage in progress; it is not an edge. Fix inside Review only what needs no code change: a reply, a wording fix in the pull request, a resolved misunderstanding. Any finding that needs a code change takes the failure edge to Execute; do not fix it here
-- **Exit** — Review received, all threads resolved, gate re-green
+- **Entry** — Execute's exit met, pushed at that boundary, pull request still draft
+- **Who** — the Claude reviewer: `--model opus --effort high`; the Outside review: the human, in a separate terminal
+- **Technique** — two halves. **Producing** the review: one reviewer handoff file, which both reviewers read for the same revision at the same time. The Claude reviewer posts pull request threads. The human pastes the Outside review's result into the session. `custom-review-findings` cannot do this half. **Handling** the review: one `custom-review-findings` pass in PR mode, with the Outside review pasted in the same request, once both results are in
+- **Action** — in this order:
+  1. Write the handoff from the template below to `.superpowers/review-<NNN>-round-<N>.md`. Hand the human its absolute path. The human starts both reviews from it. A wait on a reviewer keeps the stage in progress; it is not an edge.
+  2. Triage both results in one pass. Each finding keeps the reviewer's label, required or optional, next to its verdict. Triage may relabel a finding as required when it is in fact one of the six required kinds, and says so in the reply.
+  3. An editorial finding is fixed in Review and closes in triage, with a fresh citation for each point. Editorial means only wording, a comment, a typo or a stale citation, with no change to behaviour, a requirement or an executable workflow rule. A change to code, other than a comment, is never editorial. This holds for both labels.
+  4. An optional finding that is not editorial never takes the failure edge. It closes in triage as DEFER, with a backlog item, or with a reply that says why it is declined. When a required finding already sends the work back to Execute, an optional finding may be fixed in that same pass instead, because the closing steps and the Gate run once either way.
+  5. A required finding that is not editorial, with the verdict CONFIRMED or PARTIAL, takes the failure edge, whatever the file type. In this repository Markdown runs the process: the transition script reads `workflow.md`.
+  6. The next round's handoff goes only to the reviewer that raised the finding. When both raised it, only the Outside review reads it. An optional finding fixed in that same Execute pass goes back too, to the reviewer that raised it.
+  7. Review stops at the first round with no required, non-editorial finding whose verdict is CONFIRMED or PARTIAL. Editorial findings, and optional findings that close in triage, go back to no reviewer, so they never start a round.
+  8. Reply to and resolve every thread.
+  9. Check the Gate evidence as [`testing-workflow.md`](testing-workflow.md#canonical-pre-pr-gate) describes, and run only what is no longer valid.
+- **Exit** — Every review this round triaged, no required finding left open, all threads resolved, Gate evidence valid for the final revision
 - **Next** — `9-ship`
 - **Context** — keep until threads resolved
 - **Review** — reviewed; state it in the recap
@@ -611,10 +580,53 @@ citation keeps working, so no bulk rewrite is needed.
 | Edge | Condition | Target |
 |---|---|---|
 | success | exit condition met | 9-ship |
-| failure | findings need code changes; record them as named recovery tasks first — in `PLAN-PROGRESS.md`, or the round pull request body — because Execute resume reads those, never the review threads; then Simplify, Verify, Document again as needed | 4-execute |
+| failure | a required finding, CONFIRMED or PARTIAL, changes behaviour, a requirement, or an executable workflow rule; record each as a named recovery task first — in `PLAN-PROGRESS.md`, or the round pull request body — because Execute resume reads those, never the review threads; Execute's closing steps and Gate then run once for the fixes | 4-execute |
 | blocked | a finding depends on something outside the repository | blocked/ |
 | not applicable | cannot occur: every pull request — a tracked item's or a round's — is reviewed | none |
-| resume | fetch unresolved threads, continue with `custom-review-findings` | stay |
+| resume | fetch unresolved threads; when the handoff's 'Reviewers this round' line names the Outside review, ask the human for its result if it is not yet pasted; continue with `custom-review-findings` | stay |
+
+#### The reviewer handoff
+
+The work session writes one handoff file per round, from this template. Both reviewers read the
+same file, so they review the same revision.
+
+```markdown
+# Review handoff: <pull request title> (#<number>), round <N>
+
+- Revision: <full commit SHA>. Review this revision only.
+- Base: <base branch>. Read the change with `git diff <base>...<SHA>`.
+- Item: `backlog/<NNN>-<slug>.md`. Its acceptance criteria are the stated requirements.
+- Spec and plan: <paths, or none>.
+- Reviewers this round: <the Claude reviewer and the Outside review | the one reviewer this round goes back to>.
+- This round checks: <the whole change | the findings sent back, by number, and their fixes>.
+
+## How to run this review
+
+- Work in `<absolute worktree path>`. It is checked out at the revision above. Confirm with
+  `git rev-parse HEAD`.
+- Read only. Do not edit, commit, push, or change the pull request's state.
+- Do not report again: <earlier findings already fixed, by reviewer and number, or none>.
+
+## What to report
+
+A finding is required only when it is about one of these six things: correctness, the stated
+requirements, security, data loss, concurrency, or a real performance regression. Mark every
+other finding optional. An optional finding never blocks the merge.
+
+For each finding, give a number, a `file:line`, which of the six it is or "optional", what is
+wrong, and the fix you suggest.
+
+## Where to report
+
+- The Claude reviewer posts all findings as one pull request review, pinned to the revision
+  above: `gh api repos/s205109/AHKFlowApp/pulls/<number>/reviews --method POST --input review.json`.
+  `review.json` holds `commit_id` (the revision), `event` (`COMMENT`), `body` (a one-line summary
+  with the finding count), and `comments`: one object per finding, with `path`, `line`, `side`
+  (`RIGHT`) and `body`. A finding with no line in the diff goes into the review `body`.
+- With no findings, the Claude reviewer still posts the review, with an empty `comments` list,
+  and says so in `body`.
+- The Outside review writes its findings as text. The human pastes that text into the work session.
+```
 
 <a id="stage-9-ship"></a>
 
@@ -623,12 +635,12 @@ citation keeps working, so no bulk rewrite is needed.
 - **Entry** — review closed
 - **Who** — Sonnet, default effort
 - **Technique** — `gh pr ready`, then merge
-- **Action** — close the records, **push**, then flip the pull request to ready, wait for CI, merge. Tracked work: `git mv` the item to `backlog/done/`, delete `PLAN-PROGRESS.md`, set `Stage: 9-ship` — one commit, pushed before the ready flip. The boxes were ticked at Document; Ship only confirms they are, and fixes any that Review changed. A round: nothing extra to close, so nothing to push. Freeze the item's plan and spec in the same closure: a standalone `citation-check:ignore-file` directive at the top of each, with a second comment line saying why. A shipped plan records the tree as it was, and the citation check would otherwise re-audit it against a tree that has moved. That commit belongs to the plans repository, so it is a second commit, and an entered session makes it with the step-outside cycle: `ExitWorktree` with `keep`, `git -C docs/superpowers commit` staging the files by name, then `EnterWorktree` with the same `path`. Reopening an item reverses this: delete those two lines before any other work, because a reopened plan makes live claims again
+- **Action** — close the records, **push**, then flip the pull request to ready, wait for CI, merge. Tracked work: `git mv` the item to `backlog/done/`, delete `PLAN-PROGRESS.md`, set `Stage: 9-ship` — one commit, pushed before the ready flip. The boxes were ticked in Execute; Ship only confirms they are, and fixes any that Review changed. A round: nothing extra to close, so nothing to push. Freeze the item's plan and spec in the same closure: a standalone `citation-check:ignore-file` directive at the top of each, with a second comment line saying why. A shipped plan records the tree as it was, and the citation check would otherwise re-audit it against a tree that has moved. That commit belongs to the plans repository, so it is a second commit, and an entered session makes it with the step-outside cycle: `ExitWorktree` with `keep`, `git -C docs/superpowers commit` staging the files by name, then `EnterWorktree` with the same `path`. Reopening an item reverses this: delete those two lines before any other work, because a reopened plan makes live claims again
 
 **A check now enforces this.** Flipping the pull request to ready with the records still open
 fails CI. The rule reads two things together: the pull request is not a draft, and every
 acceptance box in the item is ticked. A draft pull request is never refused, so the
-Document-to-Ship window is untouched. `scripts/check-shipping-pr-closes-item.ps1` carries the
+Execute-to-Ship window is untouched. `scripts/check-shipping-pr-closes-item.ps1` carries the
 rule and ADR 0016 carries the reasoning.
 
 - **Exit** — Records closed, PR ready, CI green, merged
@@ -684,7 +696,7 @@ Otherwise it sits in `backlog/` forever describing a blocker that cleared.
 | Edge | Condition | Target |
 |---|---|---|
 | success | closure commit pushed when there is one, then CI green and merged | 10-cleanup |
-| failure | CI red after ready; convert the PR back to draft first. Tracked item: `git mv` the item back out of `backlog/done/`, restore `PLAN-PROGRESS.md`, set `Stage: 6-verify` — one commit — then push. A round: rewrite the PR body's `Stage:` line to `6-verify`; no records to restore, no transition commit, so no push. Start recovery only after that | 6-verify |
+| failure | CI red after ready; convert the PR back to draft first. Tracked item: `git mv` the item back out of `backlog/done/`, restore `PLAN-PROGRESS.md`, set `Stage: 4-execute` — one commit — then push. A round: rewrite the PR body's `Stage:` line to `4-execute`; no records to restore, no transition commit, so no push. Start recovery only after that | 4-execute |
 | blocked | merge depends on something outside the repository, such as a required-check outage; the PR stays ready. Tracked item: restore `PLAN-PROGRESS.md`, `git mv` the item from `backlog/done/` to `backlog/blocked/` with the unblock note, keep `Stage: 9-ship`, commit, push. A round has no item: file one naming the round PR and the blocker, move that item to `backlog/blocked/`, **commit and push it** — an unpushed blocker exists only on one machine — and leave the round PR body at `Stage: 9-ship` | blocked/ |
 | not applicable | cannot occur: everything ships through a pull request | none |
 | resume | `gh pr view` for the live state, continue from ready-flip or merge | stay |
@@ -809,7 +821,7 @@ One line in the backlog item, above the acceptance boxes:
 Stage: 4-execute
 ```
 
-Values run from `0-intake` to `10-cleanup`. This section governs tracked items. A
+Values run from `0-intake` to `10-cleanup`; 5, 6 and 7 are retired. This section governs tracked items. A
 housekeeping round has no item, so it writes the same value into its round pull request
 body instead, in the same transition that would write an item's field. See section 2 for
 the read-modify-write command sequence.
@@ -1161,13 +1173,13 @@ no item, so the verdict is stated in chat. The three later changes take no Intak
 No Stage stamp and no push, because a round has no item. The route is the round pull
 request, opened at Execute close. It jumps directly to Execute per the shared rule.
 → 4 Execute success: each change gets an inline plan of at most 10 lines in chat and one
-immediate commit, with no progress file. After a few changes gather, the round closes,
-pushes for the first time, and opens the round pull request with `Stage: 5-simplify` in its
-body. Every transition from here rewrites that line.
-→ 5 Simplify not applicable ("nothing to simplify")
-→ 6 Verify **success**: exemption 1 named for the docs-only content; the targeted text
-checks and the diff review are the artifact
-→ 7 Document not applicable ("nothing to document" — the changes *are* docs)
+immediate commit, with no progress file. After a few changes gather, the round commits its
+close marker. Then it runs the closing steps once for all its changes: 'nothing to
+simplify'; exemption 1 named for the docs-only content, with the targeted text checks and
+the diff review as the artifact; 'nothing to document', because the changes *are* docs.
+Then the Gate runs on the final revision. The round pushes for the first time and opens the
+round pull request with `Stage: 8-review`, the closing verdicts and `Gate green at <sha>` in
+its body. Every transition from here rewrites the `Stage:` line.
 → 8 Review success: the round pull request is reviewed
 → 9 Ship success: records closed, which is nothing extra for a round; pull request ready,
 CI green, merged
@@ -1188,13 +1200,10 @@ the whole round gets its own item naming the round pull request, moved to
 → 1 Pickup success: worktree, base stated, draft pull request; verdict "moderate: no spec";
 jumps directly to Plan; field `3-plan`
 → 3 Plan success: field `4-execute`
-→ 4 Execute success: field `5-simplify`
-→ 5 Simplify success: duplication folded; field `6-verify`
-→ 6 Verify **failure**: integration test red; field back to `4-execute`
-→ 4 Execute success: fix committed; field `5-simplify`
-→ 5 Simplify not applicable ("nothing to simplify"); field `6-verify`
-→ 6 Verify success: field `7-document`
-→ 7 Document success: README updated; field `8-review`
+→ 4 Execute **failure** (`stay`): the tasks are done and the simplify step folded some
+duplication. The verify step finds the integration test red. The field stays `4-execute`.
+→ 4 Execute success: fix committed; the closing steps run again: 'nothing to simplify', the
+integration test green, README updated; Gate green on the final revision; field `8-review`
 → 8 Review success: field `9-ship`
 → 9 Ship success: merged; item in `done/`, field frozen at `9-ship`
 → 10 Cleanup success: terminal.
@@ -1206,17 +1215,14 @@ jumps directly to Plan; field `3-plan`
 → 2 Design success: spec committed, terms and ADRs written, summary confirmed; field
 `3-plan`
 → 3 Plan success: field `4-execute`
-→ 4 Execute success: field `5-simplify`
-→ 5 Simplify success: field `6-verify`
-→ 6 Verify success: field `7-document`
-→ 7 Document success: docs updated; field `8-review`
-→ 8 Review **failure**: three findings need code; field `4-execute`
-→ 4 Execute success: fixes committed; field `5-simplify`
-→ 5 Simplify not applicable ("nothing to simplify" — the fixes were minimal); field
-`6-verify`
-→ 6 Verify success: field `7-document`
-→ 7 Document not applicable ("nothing to document"); field `8-review`
-→ 8 Review success: threads resolved; field `9-ship`
+→ 4 Execute success: tasks done, closing steps run, docs updated, Gate green; field
+`8-review`
+→ 8 Review **failure**: three required findings change behaviour; each is recorded as a
+recovery task; field `4-execute`
+→ 4 Execute success: fixes committed; the closing steps and the Gate run once for all
+three fixes ('nothing to simplify', 'nothing to document'); field `8-review`
+→ 8 Review success: the next round goes only to the reviewer that raised the findings;
+threads resolved; field `9-ship`
 → 9 Ship success: merged; field frozen at `9-ship`
 → 10 Cleanup success: terminal.
 
@@ -1228,12 +1234,10 @@ The `.pr_agent.toml` case.
 → 1 Pickup success: worktree, base stated, draft pull request; verdict "moderate: no
 spec"; field `3-plan`
 → 3 Plan success: field `4-execute`
-→ 4 Execute success: two config files changed; field `5-simplify`
-→ 5 Simplify not applicable ("nothing to simplify"); field `6-verify`
-→ 6 Verify success: the artifact today is the **full** gate. Targeted TOML and YAML checks
+→ 4 Execute success: two config files changed; 'nothing to simplify'. The verification
+artifact today is still the **full** Gate, inside Execute. Targeted TOML and YAML checks
 exist only as manual steps, and CI runs the whole .NET build for this pull request. The fix
-is the wave-4 backlog item; field `7-document`
-→ 7 Document not applicable ("nothing to document"); field `8-review`
+is the wave-4 backlog item. 'Nothing to document'; field `8-review`
 → 8 Review success: field `9-ship`
 → 9 Ship success: merged; field frozen at `9-ship`
 → 10 Cleanup success: terminal.
@@ -1269,11 +1273,38 @@ A housekeeping round has no item, so its record is pasted into the prompt rather
 from a path.
 
 > A housekeeping round in this repository was interrupted. Its pull request body contains
-> the line `Stage: 6-verify`, its branch has four commits, and its worktree still exists.
+> the line `Stage: 8-review`, its branch has four commits, and its worktree still exists.
 > Using only files you find in this repository, name: (1) the round's current stage,
 > (2) every legal next action from that stage, (3) which record you must read to resume a
 > round, and why the commit log alone is not enough. Cite the repository file that told
 > you. Do not use any conversation context.
+
+### The recovery-resume prompt
+
+This subject tests resume after a failure edge. Its record is pasted into the prompt.
+
+> A tracked backlog item in this repository was interrupted. Its backlog item reads
+> `Stage: 4-execute`. Its `PLAN-PROGRESS.md` reads:
+>
+> ```
+> - Task 1: done at 1111111. Tests: pass. Deferrals: none.
+> - Task 2: done at 2222222. Tests: pass. Deferrals: none.
+> - Task 3: done at 3333333. Tests: pass. Deferrals: none.
+> - Simplify: nothing to simplify.
+> - Verify: the Suites the tasks ran, green.
+> - Document: docs updated, boxes ticked.
+> - Gate green at abc1234.
+>
+> ## Failure edge to 4-execute (2026-10-30)
+>
+> Recovery task: Task 4: fix review finding 2
+>
+> - Task 4: done at 4444444. Tests: pass. Deferrals: none.
+> ```
+>
+> Using only files you find in this repository, name: (1) the item's current stage, (2) the
+> next action, and (3) the repository file that told you. Do not use any conversation
+> context.
 
 ### How to judge
 
@@ -1283,9 +1314,13 @@ An item subject passes when all three hold:
 - The named actions match that stage's five edges in section 3.
 - The cited file is `docs/development/workflow.md`.
 
-The round subject passes when it names `6-verify` from the pull request body, lists
-Verify's four legal edges, and says the verdict-only stages leave no commit — so the pull
-request body, not the commit log, carries the round's stage.
+The round subject passes when it names `8-review` from the pull request body, lists
+Review's four legal edges, and says Execute's closing verdicts and Review leave no commit —
+so the pull request body, not the commit log, carries the round's stage.
+
+The recovery-resume subject passes when it names `4-execute`, and says the closing steps run
+again from simplify. It must also give the reason: the old closing lines sit above the
+failure heading, so they belong to an earlier pass.
 
 ### How to classify a failure
 

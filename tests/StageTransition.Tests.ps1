@@ -460,16 +460,27 @@ try {
     Assert-Equal $before ((& git -C $fx.Root rev-parse HEAD).Trim()) `
         'The main-checkout refusal must leave the worktree commit log untouched'
 
+    # --- A retired stage is refused with the way forward ---
+    # ADR 0022 folded 5, 6 and 7 into Execute. A branch that still reads one of them got
+    # "has no stage", which names no stage to move to.
+    $retiredFx = New-TransitionFixture -Stage '6-verify' -Difficulty 'complex' -AsWorktree
+    $retiredOutput = (& "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $retiredFx.Root -Item '081' -Edge 'success' *>&1) -join "`n"
+    Assert-True ($LASTEXITCODE -ne 0) 'A transition from a retired stage must be refused'
+    Assert-True ($retiredOutput.Contains("Stage '6-verify' was retired and folded into '4-execute'")) `
+        "The refusal must name the stage that replaced it. Output: $retiredOutput"
+    Assert-Equal '6-verify' (Get-SingleBacklogStage -Lines (Get-Content -LiteralPath $retiredFx.ItemPath)) `
+        'A refused retired-stage transition must leave the field untouched'
+
     # --- An item worktree with -Pr and no -Item is refused, not treated as a round (finding 3) ---
     # The refusal reads only the branch name, so $fx's item branch is enough.
-    $r3Gh = New-FakeGh -Body "Stage: 5-simplify"
+    $r3Gh = New-FakeGh -Body "Stage: 4-execute"
     $r3Output = Invoke-WithFakeGh -Gh $r3Gh -Action {
         ((& "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $fx.Root -Edge 'success' -Pr 500 *>&1) -join "`n")
     }
     Assert-True ($script:LastTransitionExit -ne 0) 'A missing -Item on an item branch must be refused'
     Assert-True ($r3Output.Contains("REFUSED: This worktree is on 'feature/wt-transition-test', which is not the housekeeping round branch 'chore/wt-backlog-housekeeping'. A tracked transition needs -Item.")) `
         "The refusal must ask for -Item. Output: $($r3Output)"
-    Assert-True ((Get-Content -Raw -LiteralPath $r3Gh.BodyFile) -match '(?m)^Stage: 5-simplify\r?$') `
+    Assert-True ((Get-Content -Raw -LiteralPath $r3Gh.BodyFile) -match '(?m)^Stage: 4-execute\r?$') `
         'A refused run must not rewrite any pull request body'
     Assert-Equal $before ((& git -C $fx.Root rev-parse HEAD).Trim()) `
         'The missing -Item refusal must leave the commit log untouched'
@@ -959,7 +970,7 @@ try {
         'A refused closure must keep a UTF-16 progress file and its byte order mark'
 
     # --- A failure edge refuses without its evidence ---
-    $fl = New-TransitionFixture -Stage '6-verify' -Difficulty 'complex' -AsWorktree -WithProgress
+    $fl = New-TransitionFixture -Stage '8-review' -Difficulty 'complex' -AsWorktree -WithProgress
     # Review finding 1: the pre-flight push ran before the failure prerequisites were checked, so
     # a refused transition still pushed whatever the branch was carrying.
     $flBranch = (& git -C $fl.Root rev-parse --abbrev-ref HEAD).Trim()
@@ -972,7 +983,7 @@ try {
     Assert-True ($LASTEXITCODE -ne 0) 'A failure edge without evidence must be refused'
     Assert-Equal $flRemoteBefore (& git -C $fl.Bare rev-parse $flBranch).Trim() `
         'A refused failure edge must not push the branch'
-    Assert-Equal '6-verify' (Get-SingleBacklogStage -Lines (Get-Content -LiteralPath $fl.ItemPath)) `
+    Assert-Equal '8-review' (Get-SingleBacklogStage -Lines (Get-Content -LiteralPath $fl.ItemPath)) `
         'A refused failure edge must leave the Stage alone'
 
     # --- With evidence, the record and the Stage land in ONE commit ---
@@ -981,7 +992,7 @@ try {
         -RecoveryTask 'Task 8: fix the emitter escaping' *> $null
     Assert-Equal 0 $LASTEXITCODE 'A failure edge with evidence must succeed'
     Assert-Equal '4-execute' (Get-SingleBacklogStage -Lines (Get-Content -LiteralPath $fl.ItemPath)) `
-        'Verify failure must target 4-execute'
+        'Review failure must target 4-execute'
 
     $progressText = Get-Content -Raw -LiteralPath (Join-Path $fl.Root 'PLAN-PROGRESS.md')
     Assert-True ($progressText -match 'fix the emitter escaping') 'The recovery task must be recorded'
@@ -994,14 +1005,14 @@ try {
     Assert-True (($touched -join ' ') -match 'backlog/') 'The Stage change must be in the same commit'
 
     # --- No PLAN-PROGRESS.md means the work never reached Execute ---
-    $fl2 = New-TransitionFixture -Stage '6-verify' -Difficulty 'complex' -AsWorktree
+    $fl2 = New-TransitionFixture -Stage '8-review' -Difficulty 'complex' -AsWorktree
     & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $fl2.Root -Item '081' -Edge 'failure' `
         -Evidence 'x' -RecoveryTask 'y' *> $null
     Assert-True ($LASTEXITCODE -ne 0) 'A failure edge with no PLAN-PROGRESS.md must be refused'
 
     # --- A round rewrites one line of its body and keeps the rest ---
-    $rd = New-TransitionFixture -Stage '5-simplify' -AsWorktree -Branch 'chore/wt-backlog-housekeeping' -NoItem
-    $roundBody = "## What`n`nThree chores.`n`nStage: 5-simplify`n`nSessions:`n`n- abc (agent, 5-simplify)"
+    $rd = New-TransitionFixture -Stage '4-execute' -AsWorktree -Branch 'chore/wt-backlog-housekeeping' -NoItem
+    $roundBody = "## What`n`nThree chores.`n`nStage: 4-execute`n`nSessions:`n`n- abc (agent, 4-execute)"
     $rdGh = New-FakeGh -Body $roundBody -HeadRefName 'chore/wt-backlog-housekeeping'
 
     Invoke-WithFakeGh -Gh $rdGh -Action {
@@ -1010,13 +1021,13 @@ try {
     Assert-Equal 0 $script:LastTransitionExit 'A round transition must succeed'
 
     $written = Get-Content -Raw -LiteralPath $rdGh.BodyFile
-    Assert-True ($written -match '(?m)^Stage: 6-verify\r?$') 'The round body must read the new stage'
+    Assert-True ($written -match '(?m)^Stage: 8-review\r?$') 'The round body must read the new stage'
     Assert-True ($written -match 'Three chores')           'The round body must keep its description'
     Assert-True ($written -match 'Sessions:')              'The round body must keep its Sessions list'
     Assert-Equal 1 ([regex]::Matches($written, '(?m)^Stage: ')).Count 'Exactly one Stage line must survive'
 
     # --- Two Stage lines is a refusal, not a guess ---
-    $rdGh2 = New-FakeGh -Body "Stage: 5-simplify`nStage: 6-verify" -HeadRefName 'chore/wt-backlog-housekeeping'
+    $rdGh2 = New-FakeGh -Body "Stage: 4-execute`nStage: 8-review" -HeadRefName 'chore/wt-backlog-housekeeping'
     Invoke-WithFakeGh -Gh $rdGh2 -Action {
         & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $rd.Root -Edge 'success' -Pr 500 *> $null
     }
@@ -1054,7 +1065,7 @@ try {
     # --- A round failure edge records its evidence in the body (review finding 7) ---
     # workflow.md gives the round the same rule as tracked work, with the pull request body
     # standing in for PLAN-PROGRESS.md, which a round does not have.
-    $r7Gh = New-FakeGh -Body "Stage: 6-verify" -HeadRefName 'chore/wt-backlog-housekeeping'
+    $r7Gh = New-FakeGh -Body "Stage: 8-review" -HeadRefName 'chore/wt-backlog-housekeeping'
     $r7Output = Invoke-WithFakeGh -Gh $r7Gh -Action {
         ((& "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $rd.Root -Edge 'failure' `
             -Pr 500 *>&1) -join "`n")
@@ -1062,10 +1073,10 @@ try {
     Assert-True ($script:LastTransitionExit -ne 0) 'A round failure edge with no evidence must be refused'
     Assert-True ($r7Output.Contains('REFUSED: A failure edge needs -Evidence: the failing command and its output.')) `
         "The refusal must ask for -Evidence. Output: $($r7Output)"
-    Assert-True ((Get-Content -Raw -LiteralPath $r7Gh.BodyFile) -match '(?m)^Stage: 6-verify\r?$') `
+    Assert-True ((Get-Content -Raw -LiteralPath $r7Gh.BodyFile) -match '(?m)^Stage: 8-review\r?$') `
         'A refused round failure must leave the body alone'
 
-    $r7bGh = New-FakeGh -Body "Stage: 6-verify" -HeadRefName 'chore/wt-backlog-housekeeping'
+    $r7bGh = New-FakeGh -Body "Stage: 8-review" -HeadRefName 'chore/wt-backlog-housekeeping'
     Invoke-WithFakeGh -Gh $r7bGh -Action {
         & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $rd.Root -Edge 'failure' -Pr 500 `
             -Evidence 'pwsh ./scripts/test-fast.ps1 -Mode Fast : 2 failed' `
@@ -1132,7 +1143,7 @@ try {
             -RecoveryTask 'Task 9: fix the failing parity check' *> $null
     }
     Assert-Equal 0 $script:LastTransitionExit 'A Ship failure edge must succeed'
-    Assert-Equal '6-verify' (Get-FixtureStage -Root $f5.Root) 'A Ship failure must set 6-verify'
+    Assert-Equal '4-execute' (Get-FixtureStage -Root $f5.Root) 'A Ship failure must set 4-execute'
     Assert-True (Test-Path -LiteralPath (Join-Path $f5.Root 'backlog/081-automate-stage-transitions.md')) `
         'A Ship failure must move the item back out of backlog/done/'
     Assert-True (-not (Test-Path -LiteralPath (Join-Path $f5.Root 'backlog/done/081-automate-stage-transitions.md'))) `
@@ -1270,7 +1281,7 @@ try {
                 -Evidence 'CI: 3 checks failed' -RecoveryTask 'Task 7: repair the parity check' *> $null
         }
         Assert-Equal 0 $script:LastTransitionExit "A never-tracked Ship failure must succeed, $label"
-        Assert-Equal '6-verify' (Get-FixtureStage -Root $nt.Root) "A never-tracked Ship failure must set 6-verify, $label"
+        Assert-Equal '4-execute' (Get-FixtureStage -Root $nt.Root) "A never-tracked Ship failure must set 4-execute, $label"
         Assert-True (Test-Path -LiteralPath $nt.ItemPath) "A never-tracked Ship failure must move the item back, $label"
         Assert-True (-not (Test-Path -LiteralPath (Join-Path $nt.Root 'backlog/done/081-automate-stage-transitions.md'))) `
             "A never-tracked Ship failure must leave nothing in backlog/done/, $label"
@@ -1302,8 +1313,8 @@ try {
     Assert-Equal 0 $script:LastTransitionExit 'A round Ship failure must succeed'
     Assert-True ((Get-GhLog -Gh $f4Gh) -match 'ready 500 .*--undo') `
         'A round Ship failure must convert the pull request back to draft'
-    Assert-True ((Get-Content -Raw -LiteralPath $f4Gh.BodyFile) -match '(?m)^Stage: 6-verify\r?$') `
-        'A round Ship failure must record 6-verify in the body'
+    Assert-True ((Get-Content -Raw -LiteralPath $f4Gh.BodyFile) -match '(?m)^Stage: 4-execute\r?$') `
+        'A round Ship failure must record 4-execute in the body'
 
     # --- A round at 9-ship resumes the ready flip rather than advancing (finding 2) ---
     # The body is written to 9-ship before 'gh pr ready' runs, so a failed flip leaves the body

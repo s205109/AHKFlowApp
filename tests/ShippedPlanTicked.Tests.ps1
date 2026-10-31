@@ -162,8 +162,8 @@ try {
         'An item stamped 9-ship while still in backlog/ is shipped by this branch'
 
     # 6. Not at 9-ship, whatever the base says.
-    Assert-True (-not (Test-BacklogItemIsNewlyShipped -WorkingStages @('6-verify') -WorkingPath 'backlog/073-probe.md' `
-        -BaseStages @() -BasePath '')) 'An item at 6-verify is not shipped'
+    Assert-True (-not (Test-BacklogItemIsNewlyShipped -WorkingStages @('8-review') -WorkingPath 'backlog/073-probe.md' `
+        -BaseStages @() -BasePath '')) 'An item at 8-review is not shipped'
 
     # 7 and 8. No Stage line, or two of them. Both belong to the backlog numbering check, and this
     #    one must not report them a second time.
@@ -378,10 +378,10 @@ try {
 
     # 29. An older commit can be judged on its own terms. The pushed commit is not always HEAD.
     Write-Plan -Root $repo -Body "- [ ] Step 1`n- [ ] Step 2"
-    Write-Item -Root $repo -Number '073' -Folder 'backlog/done' -Stage '6-verify' `
+    Write-Item -Root $repo -Number '073' -Folder 'backlog/done' -Stage '8-review' `
         -PlanBullet '- Plan: `docs/superpowers/plans/probe-plan-073.md`'
     & git -C $repo add -A *> $null
-    & git -C $repo commit -m 'walk 073 back to 6-verify' *> $null
+    & git -C $repo commit -m 'walk 073 back to 8-review' *> $null
     $later = Get-BaseSha -Root $repo
     Assert-Equal 0 @(Get-BranchShippedItem -RepoRoot $repo -MergeBase $base -TargetCommit $later).Count `
         'The later commit no longer ships the item'

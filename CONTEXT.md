@@ -182,12 +182,16 @@ The one document that decides a process question: [`docs/development/workflow.md
 _Avoid_: canon, master, truth, authority, spec
 
 **Stage**:
-One of the eleven named steps that work passes through, from Intake to Cleanup. A Backlog item records the one it stands on now.
+One of the eight named steps that work passes through, from Intake to Cleanup. Their numbers run from 0 to 10, because 5, 6 and 7 were retired (ADR 0022). A Backlog item records the one it stands on now.
 _Avoid_: phase, step, status, state
 
 **Edge**:
 One of the five ways work leaves a Stage: success, failure, blocked, not applicable, or resume. Every Edge names exactly one target.
 _Avoid_: transition, path, branch, arrow
+
+**Closing steps**:
+The three steps that end Execute after the planned work: simplify, verify and document. Each states a verdict, and the Gate runs after them.
+_Avoid_: verdict stages, Simplify stage, Verify stage, Document stage
 
 **Transition**:
 The act of taking an Edge and recording the result. A Transition writes the target Stage into the Backlog item, commits that edit, and pushes it. A Housekeeping round has no item, so its Transition rewrites the `Stage:` line in the round pull request body instead. The Edge is the route. The Transition is the act of travelling it, and it is what a reader of `main` sees.
@@ -277,6 +281,18 @@ A review the human starts in a separate terminal, with a model family other than
 work, such as OpenCode with an OpenAI model. It reads the same revision as the Claude reviewer, and
 the human pastes its result back into the session.
 _Avoid_: Codex review, second review, external review
+
+**Reviewer handoff**:
+The one file that tells the reviewers of a round what to review: the revision, the change, the requirements, and what to report. The work session writes it in `.superpowers/` at Review entry and for each later round.
+_Avoid_: review brief, review prompt
+
+**Optional finding**:
+A review finding that is not about correctness, the stated requirements, security, data loss, concurrency, or a real performance regression. It never blocks the merge and never starts a review round.
+_Avoid_: minor finding, suggestion
+
+**Editorial finding**:
+A review finding whose fix changes no behaviour, no requirement and no executable workflow rule. Only wording, a comment, a typo or a stale citation qualify. A change to code, other than a comment, is never editorial. It is fixed and closed in triage, and goes back to no reviewer.
+_Avoid_: nit, cosmetic finding
 
 **Suite**:
 One `tests/*.Tests.ps1` file. The runner starts each Suite as its own process and runs several at

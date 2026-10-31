@@ -153,9 +153,12 @@ the narrative. For the stage you are in, read its block in section 3 and the rul
 
 ## Verification After Implementation
 
-- Verify when implementation of a feature, fix, or plan task completes, **before reporting it done** — not only before commit, push, or PR — see [workflow.md#stage-6-verify](docs/development/workflow.md#stage-6-verify).
-- Default to a **durable test** as the verification artifact. Driving the app by hand proves it once; a test keeps proving it — see [workflow.md#stage-6-verify](docs/development/workflow.md#stage-6-verify).
-- Produce the artifact the table below names for the surface you changed — see [workflow.md#stage-6-verify](docs/development/workflow.md#stage-6-verify).
+- Verify when implementation of a feature, fix, or plan task completes, **before reporting it done** — not only before commit, push, or PR — see [Stage 4](docs/development/workflow.md#stage-4-execute).
+- Verify a change with **the cheapest check that proves it**. An existing test that covers the change counts — see [Stage 4](docs/development/workflow.md#stage-4-execute).
+- A new test names the regression it prevents, and says why the existing tests miss it — see [Stage 4](docs/development/workflow.md#stage-4-execute).
+- A plan task starts with a failing test only when the task changes behaviour — see [Stage 4](docs/development/workflow.md#stage-4-execute).
+- A routine change usually adds 0 to 3 tests. A pull request that adds more says why in one sentence. No script enforces this — see [Stage 4](docs/development/workflow.md#stage-4-execute).
+- When no existing test covers the change, produce the artifact the table below names for the surface you changed — see [Stage 4](docs/development/workflow.md#stage-4-execute).
 
 | Surface changed | Verification artifact | Command |
 |---|---|---|
@@ -177,9 +180,18 @@ Which slice to run, test templates, and the Gate: [`docs/development/testing-wor
 
 State the verdict either way. Naming an exemption is fine; saying nothing is not.
 
+### Tests in routine work
+
+- Reuse existing coverage where possible — see [Stage 4](docs/development/workflow.md#stage-4-execute).
+- Explain each new test and each removed test in the pull request — see [Stage 4](docs/development/workflow.md#stage-4-execute).
+- Audit nearby tests only when duplication or slow setup is plain to see — see [Stage 4](docs/development/workflow.md#stage-4-execute).
+- A removal needs surviving coverage, or a behaviour that is gone — see [Stage 4](docs/development/workflow.md#stage-4-execute).
+
+The full sort into KEEP, REWORK, MERGE and REMOVE belongs to a dedicated test audit.
+
 ### When manual steps are the answer
 
-- Ask the user only for the cases the table sends to them — see [workflow.md#stage-6-verify](docs/development/workflow.md#stage-6-verify). Then always provide:
+- Ask the user only for the cases the table sends to them — see [Stage 4](docs/development/workflow.md#stage-4-execute). Then always provide:
   - **Preconditions first** — what must be running, exact URL, login/profile, starting state
   - **Numbered steps, one action each** — never combine actions in one step
   - **Verbatim input in code blocks** — anything typed or pasted is given literally, never described
@@ -261,13 +273,13 @@ the API URL + `/health`. SWA hostname:
 - Create every worktree with `scripts/new-worktree.ps1`, state its base, and pass `-BaseRef` for work on an unmerged branch. Then work from inside it — see [Stage 1](docs/development/workflow.md#stage-1-pickup).
 - Write conventional commits: `feat:`, `fix:`, `refactor:`, `test:`, `docs:`, `chore:`. Make one logical change per commit, with a body that says why — see [Stage 4](docs/development/workflow.md#stage-4-execute).
 - File a backlog item in two steps: create its worktree with `scripts/new-worktree.ps1 -Title`, and inside that worktree run `scripts/new-backlog-item.ps1`. Never pick a number by hand. `tests/BacklogNumbering.Tests.ps1` fails when two items share one — see [Stage 0](docs/development/workflow.md#stage-0-intake).
-- Tick acceptance boxes at Document. A box that is not true stays unticked, with the reason in the item — see [Stage 7](docs/development/workflow.md#stage-7-document).
+- Tick acceptance boxes in Execute, before its Gate. A box that is not true stays unticked, with the reason in the item — see [Stage 4](docs/development/workflow.md#stage-4-execute).
 - Close the item in the pull request that ships its work, never in a separate one: `git mv` it into `backlog/done/`. `scripts/check-shipping-pr-closes-item.ps1` fails a ready pull request whose item has every box ticked but is still open. `tests/BacklogStaleOpen.Tests.ps1` fails an item still open well after its work merged — see [Stage 9](docs/development/workflow.md#stage-9-ship).
 - Move an item that waits on something outside this repository into `backlog/blocked/`, with a note near the top on what would unblock it — see [Stage 1](docs/development/workflow.md#stage-1-pickup).
 - Move an item that is possible today, but that nobody judges worth doing, into `backlog/icebox/`. It keeps its number and its unticked boxes, stays at `Stage: 0-intake`, and says near the top what would make it worth doing — see [Stage 1](docs/development/workflow.md#stage-1-pickup).
 - Add a `backlog/` folder to `$script:BacklogItemSubfolder` in `scripts/backlog.common.ps1`, and to `$WorktreeBacklogSubfolderPattern` in `scripts/worktree-git.common.ps1`. `tests/BacklogFolderParity.Tests.ps1` fails when the two disagree — see [Stage 1](docs/development/workflow.md#stage-1-pickup).
 - Never commit on `main`, merge into it locally, or force-push it. `.githooks/pre-commit` and `.githooks/pre-merge-commit` refuse the first two, and `AHKFLOW_ALLOW_MAIN=1` allows a deliberate one — see [Stage 1](docs/development/workflow.md#stage-1-pickup).
-- Run the Gate before you mark a pull request ready: [testing-workflow.md](docs/development/testing-workflow.md#canonical-pre-pr-gate) — see [Stage 6](docs/development/workflow.md#stage-6-verify).
+- Run the Gate at the end of Execute, before you mark a pull request ready: [testing-workflow.md](docs/development/testing-workflow.md#canonical-pre-pr-gate) — see [Stage 4](docs/development/workflow.md#stage-4-execute).
 - Keep a pull request to one concern. Split a large change into stacked pull requests — see [Stage 8](docs/development/workflow.md#stage-8-review).
 - Treat the main checkout as the human's. A worktree session may read main, but never write to it. Which git commands need a worktree: [`cross-agent-git-guardrails.md`](docs/agents/cross-agent-git-guardrails.md) — see [Stage 1](docs/development/workflow.md#stage-1-pickup).
 

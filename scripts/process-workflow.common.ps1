@@ -214,6 +214,21 @@ function Get-WorkflowStage {
     return $stages
 }
 
+# ADR 0022 retired three stages and kept their anchors on the Execute section, so old links still
+# land somewhere. A retired anchor carries one more attribute than a stage anchor, and that is
+# why the stage pattern above never reads it as an empty stage.
+function Get-WorkflowRetiredAnchor {
+    param([Parameter(Mandatory)][string] $Path)
+
+    $workflow = Remove-FencedLine -Text (Get-NormalizedText -Path $Path)
+    $retired = New-OrdinalDictionary
+    foreach ($m in [regex]::Matches($workflow, '<a id="stage-([0-9a-z-]+)" data-merged-into="([0-9a-z-]+)"></a>')) {
+        $retired[$m.Groups[1].Value] = $m.Groups[2].Value
+    }
+
+    return $retired
+}
+
 function Get-HtmlStage {
     param([Parameter(Mandatory)][string] $Path)
 

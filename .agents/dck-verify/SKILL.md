@@ -106,8 +106,11 @@ Inspect the diff for accidental files, debug leftovers, secrets, stale reference
 The other seven phases prove the code compiles and the existing suite still passes. None of them
 exercise the change. This phase does.
 
-Route on what surface changed — the table in `AGENTS.md` under **Verification After Implementation**
-is authoritative. In short:
+Use the cheapest check that proves the change. An existing test that covers it counts. A new test
+names the regression it prevents, and says why the existing tests miss it.
+
+When no existing test covers the change, route on what surface changed. The table in `AGENTS.md`
+under **Verification After Implementation** is authoritative. In short:
 
 | Changed | Evidence |
 |---|---|
@@ -117,8 +120,6 @@ is authoritative. In short:
 | CLI | A `CLI.Tests` integration flow, green under `-Mode Integration` |
 | Emitted `.ahk` | An assertion on the generated text; manual AHK steps only for a construct never shipped before |
 | Bug fix with an observable symptom | The original repro re-run, showing the symptom gone |
-
-Prefer a durable test over a one-off drive — a test keeps proving the behavior after this session.
 
 Report the artifact by path, not as a claim. SKIP is allowed only for one of the three exemptions in
 `AGENTS.md`, and the exemption must be named. For the refactor exemption, name the covering tests and

@@ -530,7 +530,7 @@ function Invoke-ShipTransition {
     }
     if ($boxes.Ticked -ne $boxes.Total) {
         throw ("Item $Item has $($boxes.Total - $boxes.Ticked) unticked acceptance box(es). " +
-               'Tick them at Document, or write into the item why a box stays unticked.')
+               'Tick them in Execute, before its Gate, or write into the item why a box stays unticked.')
     }
 
     Assert-ShippedRecordsFrozen -Worktree $Worktree -Record $record

@@ -61,6 +61,7 @@ $ErrorActionPreference = 'Stop'
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 . (Join-Path $PSScriptRoot 'process-workflow.common.ps1')
+. (Join-Path $PSScriptRoot 'citation-freshness.common.ps1')
 
 if (-not $WorkflowPath) { $WorkflowPath = Join-Path $repoRoot 'docs/development/workflow.md' }
 if (-not $PlanPath -and -not $PlansRoot) {
@@ -107,12 +108,26 @@ else {
     $planPaths = @($PlanPath)
 }
 
+# A frozen plan records the tree as it was, so comparing it with today's source reports drift that
+# is history, not a mistake. Backlog 191: the frozen 071 plan copies the eleven-stage graph, and it
+# failed every push once ADR 0022 folded three stages into Execute.
+$livePaths = @()
+foreach ($path in $planPaths) {
+    if (Test-CitationIgnoreFile -Lines @(Get-Content -LiteralPath $path)) { "SKIP frozen: $path" }
+    else { $livePaths += $path }
+}
+if (-not $livePaths) {
+    "RESULT: skipped - every plan with an '## Appendix A' is frozen, so it records the tree as it was"
+    exit 0
+}
+$planPaths = $livePaths
+
 $workflowStages = Get-WorkflowStage -Path $WorkflowPath
 
 # Every stage must yield exactly one exit and these five edges, on both sides. Without this
 # the check fails open: a deleted row, a deleted Exit, or a duplicated edge all compare
 # equal to nothing and pass. Review round 7 proved all three.
-$expectedStageCount = 11
+$expectedStageCount = 8
 $requiredEdges = @('success', 'failure', 'blocked', 'not applicable', 'resume')
 $problems = New-Object System.Collections.Generic.List[string]
 

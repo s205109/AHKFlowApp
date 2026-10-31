@@ -40,6 +40,12 @@ function Get-StageEdgeTarget {
     $id = Get-BareStageId -Stage $Stage
     $stages = Get-WorkflowStage -Path $WorkflowPath
     if (-not $stages.Contains($id)) {
+        # A branch that still reads a retired stage needs the way forward, not a dead end.
+        $retired = Get-WorkflowRetiredAnchor -Path $WorkflowPath
+        if ($retired.Contains($id)) {
+            $target = $retired[$id]
+            throw "Stage '$id' was retired and folded into '$target' (ADR 0022). Set the Stage to '$target' and continue there."
+        }
         throw "workflow.md has no stage '$id'."
     }
 

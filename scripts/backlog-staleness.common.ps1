@@ -204,7 +204,7 @@ Backlog $($item.Key) reads 'Stage: 9-ship' and is still open.
         if ($distance -lt 0) { continue }
 
         # Arm 3 asks whether the FINISHED state merged, not whether the Stage line did. The two
-        # are not the same question. A branch that ticks its last box at Document leaves the
+        # are not the same question. A branch that ticks its last box in Execute leaves the
         # Stage line alone, so the stamp above is an old merged commit while the ticks sit on a
         # branch that has reached nothing. Reading the working tree alone called that branch late
         # and refused it, which blocks the exact thing AGENTS.md asks for. Backlog 151, in review.

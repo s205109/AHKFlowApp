@@ -74,7 +74,7 @@ $driftExit = New-PlansRoot -Override @{ 'exit:0-intake' = 'Something else entire
 Assert-True ((Invoke-Check -PlansRoot $driftExit).ExitCode -eq 1) 'a drifted exit string must fail'
 
 # --- Case 3: a drifted edge target fails ---
-$driftEdge = New-PlansRoot -Override @{ 'edge:0-intake:success' = '7-document' }
+$driftEdge = New-PlansRoot -Override @{ 'edge:0-intake:success' = '8-review' }
 $result = Invoke-Check -PlansRoot $driftEdge
 Assert-True ($result.ExitCode -eq 1) 'a drifted edge target must fail'
 Assert-True ($result.Output -match '0-intake') 'the message must name the stage'
@@ -173,7 +173,23 @@ foreach ($name in @('success1', 'cancelled-1')) {
 $period = New-PlansRoot -Override @{ 'exit:0-intake' = ($workflow['0-intake'].Exit + '.') }
 Assert-True ((Invoke-Check -PlansRoot $period).ExitCode -eq 0) 'a trailing period alone must still pass'
 
-Remove-Item $good, $driftExit, $driftEdge, $empty, $twin, $invented, $indented, $prefix, $noAppendix, $period -Recurse -Force -ErrorAction SilentlyContinue
+# --- Case 14: a frozen plan is skipped, an unfrozen one beside it is still read ---
+# A frozen plan records the tree as it was. The 071 plan copies the eleven-stage graph, so
+# after ADR 0022 it drifted from the source and failed every push.
+$frozen = New-PlansRoot -Override @{ 'edge:0-intake:success' = '8-review' }
+$frozenFile = Join-Path $frozen 'fixture-plan.md'
+$raw = Get-Content -LiteralPath $frozenFile -Raw
+Set-Content -LiteralPath $frozenFile -Value ("<!-- citation-check:ignore-file -->`n" + $raw) -NoNewline
+$result = Invoke-Check -PlansRoot $frozen
+Assert-True ($result.ExitCode -eq 0) "a frozen drifted plan must be skipped:`n$($result.Output)"
+Assert-True ($result.Output -match 'frozen') 'the skip must name the frozen plan'
+$output = & pwsh -NoProfile -File $script -PlansRoot $frozen -WorkflowPath $workflowPath -RequirePlans 2>&1
+Assert-True ($LASTEXITCODE -eq 0) "-RequirePlans must accept a folder whose only Appendix A plan is frozen:`n$($output -join "`n")"
+Set-Content -LiteralPath (Join-Path $frozen 'unfrozen-plan.md') -Value $raw -NoNewline
+$result = Invoke-Check -PlansRoot $frozen
+Assert-True ($result.ExitCode -eq 1) 'an unfrozen drifted plan beside a frozen one must still fail'
+
+Remove-Item $good, $driftExit, $driftEdge, $empty, $twin, $invented, $indented, $prefix, $noAppendix, $period, $frozen -Recurse -Force -ErrorAction SilentlyContinue
 
 if ($failures.Count -gt 0) {
     foreach ($failure in $failures) { Write-Host ''; Write-Host $failure -ForegroundColor Red }
@@ -181,4 +197,4 @@ if ($failures.Count -gt 0) {
     throw "Plan source parity tests failed with $($failures.Count) problem(s). See the detail above."
 }
 
-Write-Host 'Plan source parity tests passed. 14 cases.'
+Write-Host 'Plan source parity tests passed. 15 cases.'
