@@ -44,3 +44,14 @@ Claude reviewer round 1 at b3e99f0d, review 5719209156. Finding 1 (required, CON
 - Simplify: nothing to simplify; the pre-push change was already cut to its old line count in 3eb94809.
 - Verify: the real pre-push run shows 'Plans not compared' after the frozen skip; 14 Suites green; parity, anchor, gate-wording and citation checks pass.
 - Document: all 16 boxes still hold; the docs are the change.
+
+## Failure edge to 4-execute (2026-10-31)
+
+**Red evidence:**
+
+```
+Claude reviewer round 2 at cc26b67e, review 5721806058. Finding 1 (required, CONFIRMED): Review step 4 lets an optional fix ride an Execute pass, but steps 6 and 7 send it back to no reviewer, so a changed workflow rule goes unreviewed.
+```
+
+**Recovery task:** Task 10: steps 6 and 7 send an optional finding fixed in the Execute pass back to the reviewer that raised it (finding 1). In the same pass: recopy the Desktop workflow.md (finding 2) and add the Gate green line to the round example (finding 4, editorial).
+
