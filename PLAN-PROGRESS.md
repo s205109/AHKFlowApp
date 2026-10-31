@@ -55,3 +55,7 @@ Claude reviewer round 2 at cc26b67e, review 5721806058. Finding 1 (required, CON
 
 **Recovery task:** Task 10: steps 6 and 7 send an optional finding fixed in the Execute pass back to the reviewer that raised it (finding 1). In the same pass: recopy the Desktop workflow.md (finding 2) and add the Gate green line to the round example (finding 4, editorial).
 
+- Task 10 (round 2 findings 1, 2 and 4): done at fd0d5304. Review step 6 sends an optional finding fixed in the same Execute pass back to the reviewer that raised it, and step 7 sends only optional findings closed in triage to no reviewer (workflow.md, workflow.html). The round example names 'Gate green at <sha>' in the pull request body. Desktop copy refreshed after this commit, all four hashes match. Optional finding 3 declined. Tests: exemption 1, docs only; parity, anchor, gate-wording and citation checks pass. Deferrals: none.
+- Simplify: nothing to simplify.
+- Verify: exemption 1; the four process checks pass; git diff --check clean.
+- Document: all 16 boxes still hold; the docs are the change.
