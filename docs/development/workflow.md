@@ -568,8 +568,8 @@ citation keeps working, so no bulk rewrite is needed.
   3. An editorial finding is fixed in Review and closes in triage, with a fresh citation for each point. Editorial means only wording, a comment, a typo or a stale citation, with no change to behaviour, a requirement or an executable workflow rule. A change to code, other than a comment, is never editorial. This holds for both labels.
   4. An optional finding that is not editorial never takes the failure edge. It closes in triage as DEFER, with a backlog item, or with a reply that says why it is declined. When a required finding already sends the work back to Execute, an optional finding may be fixed in that same pass instead, because the closing steps and the Gate run once either way.
   5. A required finding that is not editorial, with the verdict CONFIRMED or PARTIAL, takes the failure edge, whatever the file type. In this repository Markdown runs the process: the transition script reads `workflow.md`.
-  6. The next round's handoff goes only to the reviewer that raised the finding. When both raised it, only the Outside review reads it.
-  7. Review stops at the first round with no required, non-editorial finding whose verdict is CONFIRMED or PARTIAL. Editorial findings and optional findings close in triage and go back to no reviewer, so they never start a round.
+  6. The next round's handoff goes only to the reviewer that raised the finding. When both raised it, only the Outside review reads it. An optional finding fixed in that same Execute pass goes back too, to the reviewer that raised it.
+  7. Review stops at the first round with no required, non-editorial finding whose verdict is CONFIRMED or PARTIAL. Editorial findings, and optional findings that close in triage, go back to no reviewer, so they never start a round.
   8. Reply to and resolve every thread.
   9. Check the Gate evidence as [`testing-workflow.md`](testing-workflow.md#canonical-pre-pr-gate) describes, and run only what is no longer valid.
 - **Exit** — Every review this round triaged, no required finding left open, all threads resolved, Gate evidence valid for the final revision
@@ -1178,8 +1178,8 @@ close marker. Then it runs the closing steps once for all its changes: 'nothing 
 simplify'; exemption 1 named for the docs-only content, with the targeted text checks and
 the diff review as the artifact; 'nothing to document', because the changes *are* docs.
 Then the Gate runs on the final revision. The round pushes for the first time and opens the
-round pull request with `Stage: 8-review` and the closing verdicts in its body. Every
-transition from here rewrites that line.
+round pull request with `Stage: 8-review`, the closing verdicts and `Gate green at <sha>` in
+its body. Every transition from here rewrites the `Stage:` line.
 → 8 Review success: the round pull request is reviewed
 → 9 Ship success: records closed, which is nothing extra for a round; pull request ready,
 CI green, merged
