@@ -61,4 +61,4 @@ Each criterion is refined in the spec named below. Tick a box only when its word
   about backlog 187's files was dropped, because 187 has merged.
 - Parent spec: `docs/superpowers/specs/2026-10-18-speed-up-the-development-cycle-design-188.md`
 - Spec: `docs/superpowers/specs/2026-11-01-net-test-audit-design-194.md`
-- Plan: none — Plan comes after Design.
+- Plan: `docs/superpowers/plans/2026-11-01-net-test-audit-plan-194.md`
