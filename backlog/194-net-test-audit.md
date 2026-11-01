@@ -6,7 +6,7 @@
 - **Type**: Tooling
 - **Interfaces**: none (the eight .NET test projects)
 - **Difficulty**: complex
-- **Stage**: 0-intake
+- **Stage**: 1-pickup
 
 ## Summary
 
