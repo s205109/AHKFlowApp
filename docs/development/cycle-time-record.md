@@ -1258,3 +1258,40 @@ The rows save 86.1 s of test time in total. The slice wall time fell by 26.9 s, 
 
 - The slowest Collection fell from 64.5 s (B) to 59.1 s (B), a drop of 5.4 s. The rule needs 0.5 s, so the rebalance is kept.
 - Slice wall median: 70.6 s before, 65.1 s after.
+
+### Gate after
+
+The command was `pwsh .\scripts\measure-test-modes.ps1 -Mode Gate -BaseRef HEAD -Change Code`, on
+2026-11-05, on a quiet machine and a clean tree. No run printed "Sharing the test Lane pool with:".
+
+- Revision: `7e71d9f0f703b8440c6afceec95d91cbd55b0ff8`.
+- Session folder: `TestResults\measure-test-modes\Gate\session-20261105-124934`.
+- Preparation run: 272.91 s (build 23.23, format 39.20, powershell 210.31, coverage 0.13,
+  diff-check 0.02).
+- Warm-up, discarded: 406.76 s (build 5.67, format 38.24, powershell 193.75, coverage 169.07,
+  diff-check 0.03).
+
+| Run | Gate | Build | Format | PowerShell | Coverage | Diff check |
+|---|---|---|---|---|---|---|
+| 1 | 402.19 s | 6.05 s | 40.83 s | 193.08 s | 162.21 s | 0.02 s |
+| 2 | 416.17 s | 5.88 s | 39.26 s | 211.49 s | 159.51 s | 0.02 s |
+| 3 | 399.62 s | 5.44 s | 40.21 s | 198.96 s | 155.00 s | 0.02 s |
+| Median | 402.19 s | 5.88 s | 40.21 s | 198.96 s | 159.51 s | 0.02 s |
+
+The spread of the three Gate runs is 4.1 % of the median. The .NET test time, the median of the
+coverage step, is 159.51 s.
+
+### Result
+
+| Measure | Before | After | Change |
+|---|---|---|---|
+| Gate median | 415.51 s | 402.19 s | -13.32 s |
+| .NET test time (coverage step median) | 180.19 s | 159.51 s | -20.68 s |
+| E2E session median | 102.97 s | 70.32 s | -32.65 s |
+
+- The triage estimated an E2E saving of 30 to 46 s. The E2E session median fell by 32.65 s.
+- The kept rows save 86.1 s of test time in total, summed over their tests. The four
+  Collections run side by side, so the wall time falls by less than that sum.
+- The Gate fell by less than the .NET test time. The PowerShell step was 10.38 s slower in its
+  median than in the Gate before, and this audit did not change it.
+- No target is judged (D11).
