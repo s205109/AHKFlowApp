@@ -47,25 +47,8 @@ public sealed class KeyboardAccessFlowTests(StackFixtureB fixture) : IAsyncLifet
         await AssertRingsAsync(page, row, textColour: "rgba(255, 255, 255, 0.698)");
     }
 
-    // Backlog 168. Each name says what pressing the button will do, so it changes with the state.
-    [Fact]
-    public async Task AppBarButtons_NameWhatPressingThemDoes()
-    {
-        await using IBrowserContext ctx = await fixture.Browser.NewContextAsync(DesktopViewport);
-        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/hotstrings");
-        ILocator drawerToggle = page.Locator("header button.drawer-toggle");
-        ILocator darkModeToggle = page.Locator("header button.dark-mode-toggle");
-
-        await Assertions.Expect(drawerToggle).ToHaveAccessibleNameAsync("Close navigation menu");
-        await drawerToggle.ClickAsync();
-        await Assertions.Expect(drawerToggle).ToHaveAccessibleNameAsync("Open navigation menu");
-
-        await Assertions.Expect(darkModeToggle).ToHaveAccessibleNameAsync("Switch to dark mode");
-        await darkModeToggle.ClickAsync();
-        await Assertions.Expect(darkModeToggle).ToHaveAccessibleNameAsync("Switch to light mode");
-    }
-
-    // Backlog 168. Without a skip link, page content starts at the fourteenth Tab press.
+    // Backlog 168. Without a skip link, page content starts at the fourteenth Tab press. The app
+    // bar names are checked after the Tab checks, because their clicks move focus.
     [Fact]
     public async Task SkipLink_FirstTabStop_MovesFocusIntoThePage()
     {
@@ -89,6 +72,19 @@ public sealed class KeyboardAccessFlowTests(StackFixtureB fixture) : IAsyncLifet
 
         await page.Keyboard.PressAsync("Tab");
         await Assertions.Expect(add).ToBeFocusedAsync();
+
+        // Backlog 168. Each app bar name says what pressing the button will do, so it changes
+        // with the state.
+        ILocator drawerToggle = page.Locator("header button.drawer-toggle");
+        ILocator darkModeToggle = page.Locator("header button.dark-mode-toggle");
+
+        await Assertions.Expect(drawerToggle).ToHaveAccessibleNameAsync("Close navigation menu");
+        await drawerToggle.ClickAsync();
+        await Assertions.Expect(drawerToggle).ToHaveAccessibleNameAsync("Open navigation menu");
+
+        await Assertions.Expect(darkModeToggle).ToHaveAccessibleNameAsync("Switch to dark mode");
+        await darkModeToggle.ClickAsync();
+        await Assertions.Expect(darkModeToggle).ToHaveAccessibleNameAsync("Switch to light mode");
     }
 
     // Backlog 186. bUnit proves the aria-label is on the field. Only a browser proves it becomes
