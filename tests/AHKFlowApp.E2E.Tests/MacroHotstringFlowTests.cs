@@ -45,6 +45,10 @@ public sealed class MacroHotstringFlowTests(StackFixtureD fixture) : IAsyncLifet
         await page.ClickAsync("button.add-hotstring-fab");
         await page.WaitForSelectorAsync(".hotstring-edit-dialog");
 
+        // A new hotstring starts with Trigger inside words off, as in AutoHotkey.
+        await Assertions.Expect(page.Locator(".hotstring-edit-dialog input[data-test=\"inside-words-checkbox\"]"))
+            .Not.ToBeCheckedAsync();
+
         await page.ClickAsync(".hotstring-edit-dialog .mud-toggle-item:has-text('Macro')");
         await page.WaitForSelectorAsync("[data-test=\"macro-toolbar\"]");
 

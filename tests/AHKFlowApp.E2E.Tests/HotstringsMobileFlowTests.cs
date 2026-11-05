@@ -77,33 +77,6 @@ public sealed class HotstringsMobileFlowTests(StackFixtureC fixture) : IAsyncLif
     }
 
     [Fact]
-    public async Task AddFab_OnPhoneViewport_OpensHotstringDialog()
-    {
-        await using IBrowserContext ctx = await fixture.Browser.NewContextAsync(PhoneViewport);
-
-        // Both lists must have arrived before the click below. The page hands the dialog the lists
-        // it holds at the moment the dialog opens, so a click that lands first produces a dialog
-        // that can never warn. The helper registers these waits before it navigates, which is the
-        // only place early enough.
-        IPage page = await FirstPageLoad.OpenAsync(
-            ctx,
-            $"{fixture.Spa.BaseUrl}/hotstrings",
-            "/api/v1/profiles",
-            "/api/v1/categories");
-
-        await page.WaitForSelectorAsync("button.add-hotstring-fab");
-
-        await page.ClickAsync("button.add-hotstring-fab");
-        await page.WaitForSelectorAsync(".hotstring-edit-dialog");
-        await page.WaitForSelectorAsync(".hotstring-edit-dialog input[data-test=\"trigger-input\"]");
-        await page.WaitForSelectorAsync(".hotstring-edit-dialog textarea[data-test=\"replacement-input\"]");
-
-        // A new hotstring starts with Trigger inside words off, as in AutoHotkey.
-        await Assertions.Expect(page.Locator(".hotstring-edit-dialog input[data-test=\"inside-words-checkbox\"]"))
-            .Not.ToBeCheckedAsync();
-    }
-
-    [Fact]
     public async Task DesktopCreate_ThenPhoneViewport_ShowsTheNewRowInTheMobileBranch()
     {
         // No viewport option means the default 1280x720, which is wider than the 959.95px
