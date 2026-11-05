@@ -34,15 +34,10 @@ public sealed class ProductAndPageNamesFlowTests(StackFixtureB fixture)
     [Fact]
     public async Task StaticFiles_SpellTheProductOneWay()
     {
-        await using IBrowserContext ctx = await fixture.Browser.NewContextAsync();
-        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/");
-
-        string index = await page.EvaluateAsync<string>(
-            "url => fetch(url).then(response => response.text())",
-            $"{fixture.Spa.BaseUrl}/index.html");
-        string manifestJson = await page.EvaluateAsync<string>(
-            "url => fetch(url).then(response => response.text())",
-            $"{fixture.Spa.BaseUrl}/manifest.webmanifest");
+        // Plain files the SPA host serves, so no browser and no app boot is needed to read them.
+        using HttpClient http = new() { BaseAddress = new Uri(fixture.Spa.BaseUrl) };
+        string index = await http.GetStringAsync("/index.html");
+        string manifestJson = await http.GetStringAsync("/manifest.webmanifest");
 
         string indexTitle = Regex.Match(index, "<title>([^<]*)</title>").Groups[1].Value;
         using var manifest = JsonDocument.Parse(manifestJson);
