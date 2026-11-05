@@ -77,7 +77,7 @@
                     <MudSelectItem T="HotstringDelivery" Value="HotstringDelivery.ClipboardPaste">@DeliveryDisplay.OptionLabel(HotstringDelivery.ClipboardPaste)</MudSelectItem>
                 </MudSelect>
                 <MudText Typo="Typo.caption" Color="Color.Secondary">
-                    Auto types short replacements and pastes 200+ characters via the clipboard. Pasted text is not case-conforming (typed replacements adapt to how you capitalized the trigger; pasted ones don't).
+                    Auto types a replacement shorter than 200 characters. It pastes a replacement of 200 characters or more through the clipboard. When Case sensitive is off, a typed replacement follows how you capitalized the trigger. A pasted replacement is always pasted as written.
                 </MudText>
             }
             @if (Item.Kind != HotstringKind.DateTime)
