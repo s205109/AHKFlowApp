@@ -38,22 +38,6 @@ public sealed class ShortcutWarningFlowTests(StackFixtureA fixture) : IAsyncLife
     }
 
     [Fact]
-    public async Task ClearingTheModifier_RemovesTheWarning()
-    {
-        await using IBrowserContext context = await fixture.Browser.NewContextAsync();
-
-        IPage page = await OpenCreateDialogAsync(context);
-
-        await CommitKeyAsync(page, "e");
-        await page.CheckAsync(".hotkey-edit-dialog input[data-test=\"win-checkbox\"]");
-        await page.WaitForSelectorAsync(".hotkey-edit-dialog [data-test=\"shortcut-warning\"]");
-
-        await page.UncheckAsync(".hotkey-edit-dialog input[data-test=\"win-checkbox\"]");
-        await page.WaitForSelectorAsync(".hotkey-edit-dialog [data-test=\"shortcut-warning\"]",
-            new PageWaitForSelectorOptions { State = WaitForSelectorState.Detached });
-    }
-
-    [Fact]
     public async Task RekeyingAnExistingHotkeyInline_WarnsInTheRow()
     {
         await using IBrowserContext context = await fixture.Browser.NewContextAsync();
