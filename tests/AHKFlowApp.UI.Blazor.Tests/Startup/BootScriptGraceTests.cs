@@ -19,16 +19,18 @@ public sealed partial class BootScriptGraceTests
             "src", "Frontend", "AHKFlowApp.UI.Blazor", "wwwroot", "js", "bootBlazor.js"));
     }
 
-    [GeneratedRegex(@"var bootFailureGraceMs = [^;]*window\.__ahkflowBootFailureGraceMs[^;]*:\s*10000;")]
-    private static partial Regex GraceWithTenSecondFallback();
+    [GeneratedRegex(@"\bdefaultBootFailureGraceMs\s*=\s*(\d+)")]
+    private static partial Regex DefaultGrace();
 
     [Fact]
     public void GraceFallback_IsTenSeconds()
     {
         string script = File.ReadAllText(GetBootScriptPath());
 
-        GraceWithTenSecondFallback().IsMatch(script).Should().BeTrue(
-            "bootBlazor.js must read window.__ahkflowBootFailureGraceMs and fall back to 10000 ms " +
-            "when that value is not set. Production relies on the 10 s fallback.");
+        Match fallback = DefaultGrace().Match(script);
+        fallback.Success.Should().BeTrue("bootBlazor.js names its production wait defaultBootFailureGraceMs");
+        fallback.Groups[1].Value.Should().Be("10000", "production waits 10 s after a failed download");
+        script.Should().Contain("window.__ahkflowBootFailureGraceMs",
+            "the E2E Stack shortens the wait through this value, and the fallback applies when it is not set");
     }
 }

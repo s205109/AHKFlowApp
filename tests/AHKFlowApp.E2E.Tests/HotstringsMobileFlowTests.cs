@@ -10,11 +10,6 @@ namespace AHKFlowApp.E2E.Tests;
 [Collection(E2ECollectionB.Name)]
 public sealed class HotstringsMobileFlowTests(StackFixtureB fixture) : IAsyncLifetime
 {
-    private static readonly BrowserNewContextOptions PhoneViewport = new()
-    {
-        ViewportSize = new ViewportSize { Width = 375, Height = 812 },
-    };
-
     private static readonly BrowserNewContextOptions TabletViewport = new()
     {
         ViewportSize = new ViewportSize { Width = 768, Height = 1024 },

@@ -229,9 +229,8 @@ public sealed class ShortcutWarningFlowTests(StackFixtureA fixture) : IAsyncLife
     // A hotkey on a key the Profile header uses is warned about, and the row still saves. The test
     // also covers a race. The page hands the create dialog the Profile list it holds at the moment
     // the dialog opens. The list arrives from its own request, so a fast click can reach the dialog
-    // first. The
-    // template notice reads that list, and the dialog never receives a later one, so an early
-    // click used to produce a dialog that could never warn. This is the flake CI hit.
+    // first. The template notice reads that list, and the dialog never receives a later one, so an
+    // early click used to produce a dialog that could never warn. This is the flake CI hit.
     [Fact]
     public async Task WhileTheProfileListIsStillLoading_TheCreateDialogStillWarns()
     {
@@ -294,19 +293,12 @@ public sealed class ShortcutWarningFlowTests(StackFixtureA fixture) : IAsyncLife
 
     // The table holds a row per use, over a hundred of them, and pages at 25. Every row this file
     // acts on is addressed through the search box, never by paging to it.
-    private async Task<IPage> OpenKnownShortcutsAsync(IBrowserContext context, string? search = null)
+    private async Task<IPage> OpenKnownShortcutsAsync(IBrowserContext context, string search)
     {
         IPage page = await FirstPageLoad.OpenAsync(context, $"{fixture.Spa.BaseUrl}/known-shortcuts");
-        await OnKnownShortcutsAsync(page, search);
-        return page;
-    }
-
-    private static async Task OnKnownShortcutsAsync(IPage page, string? search)
-    {
         await page.WaitForSelectorAsync("button.reload-known-shortcuts");
-
-        if (search is not null)
-            await page.FillAsync("input[data-test=\"known-shortcut-search\"]", search);
+        await page.FillAsync("input[data-test=\"known-shortcut-search\"]", search);
+        return page;
     }
 
     // Writes one template into the seeded Profile's header and waits for the save to land. Two
