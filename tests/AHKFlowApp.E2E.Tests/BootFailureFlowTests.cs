@@ -169,6 +169,71 @@ public sealed class BootFailureFlowTests(StackFixtureB fixture) : IAsyncLifetime
         documents.Count.Should().Be(1);
     }
 
+    // The grace period is the wait between a failed boot download and the failure report. Every
+    // other test here sets the short E2E value, so this is the only test that sees the production
+    // value. A spy on setTimeout records the delay the boot script asks for, so no test waits 10 s.
+    // An override that is not a positive number must fall back to the production value.
+    [Theory]
+    [InlineData(null, 10000)]
+    [InlineData("1234", 1234)]
+    [InlineData("-5", 10000)]
+    [InlineData("'1500'", 10000)]
+    public async Task BootFailureGrace_UsesTheOverrideOnlyWhenItIsAPositiveNumber(string? overrideScript, int expectedMs)
+    {
+        await using IBrowserContext ctx = await fixture.Browser.NewContextAsync();
+
+        List<int> graceDelays = [];
+        await ctx.ExposeFunctionAsync("__recordGraceDelay", (int ms) =>
+        {
+            lock (graceDelays)
+            {
+                graceDelays.Add(ms);
+            }
+        });
+
+        if (overrideScript is not null)
+        {
+            await ctx.AddInitScriptAsync($"window.__ahkflowBootFailureGraceMs = {overrideScript};");
+        }
+
+        // Records only the timer the boot script starts for a failed download.
+        await ctx.AddInitScriptAsync(@"(function () {
+    var realSetTimeout = window.setTimeout;
+    window.setTimeout = function (callback, ms) {
+        if ((new Error().stack || '').indexOf('onUncaughtDuringBoot') !== -1) {
+            window.__recordGraceDelay(ms);
+        }
+        return realSetTimeout.apply(this, arguments);
+    };
+})();");
+
+        // The fault without BootFault's short grace, so the boot script picks its own value.
+        await ctx.RouteAsync(BootFault.AppAssemblyPattern, route => route.FulfillAsync(new RouteFulfillOptions
+        {
+            Status = 404,
+            ContentType = "text/plain",
+            Body = string.Empty,
+        }));
+
+        IPage page = await ctx.NewPageAsync();
+        await page.GotoAsync(fixture.Spa.BaseUrl, new PageGotoOptions { WaitUntil = WaitUntilState.Commit });
+
+        await WaitUntilAsync(
+            () =>
+            {
+                lock (graceDelays)
+                {
+                    return graceDelays.Count > 0;
+                }
+            },
+            "the boot script to start its grace timer");
+
+        lock (graceDelays)
+        {
+            graceDelays[0].Should().Be(expectedMs);
+        }
+    }
+
     // Playwright's own waits are tied to a page, and the page navigates underneath these tests,
     // so poll the context-level counter instead.
     private static async Task WaitUntilAsync(Func<bool> condition, string description)
