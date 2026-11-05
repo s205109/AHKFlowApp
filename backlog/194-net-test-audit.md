@@ -25,23 +25,37 @@ without catching fewer defects, so that a code change reaches a green Gate soone
 
 Each criterion is refined in the spec named below. Tick a box only when its words hold literally.
 
-- [ ] The audit covers the E2E candidates from the 2026-10-17 triage and the 15 slowest E2E tests
+- [x] The audit covers the E2E candidates from the 2026-10-17 triage and the 15 slowest E2E tests
       of a fresh run on this branch. It does not cover every E2E test.
-- [ ] One auditor takes one Candidate group.
-- [ ] The audit uses 188's saved workflow in `.claude/workflows/`, in a .NET mode, at the same size
+- [x] One auditor takes one Candidate group.
+- [x] The audit uses 188's saved workflow in `.claude/workflows/`, in a .NET mode, at the same size
       limit: one run of at most five Candidate groups, about 10 agents.
-- [ ] One refuter tries to disprove each REMOVE and MERGE claim the auditors return, with the
+- [x] One refuter tries to disprove each REMOVE and MERGE claim the auditors return, with the
       `test-value-evidence` method. A claim is upheld only when the audited test and another test
       both fail on the same defect, or when the behaviour is gone.
-- [ ] The user approves each change on its own row before it is applied.
-- [ ] The record holds each applied change's time before and after, and no kept change saves less
+- [x] The user approves each change on its own row before it is applied.
+- [x] The record holds each applied change's time before and after, and no kept change saves less
       than 0.5 s.
-- [ ] A record states the .NET test time of a Gate after a `.cs` change, before and after the
+- [x] A record states the .NET test time of a Gate after a `.cs` change, before and after the
       audit, measured with `scripts/measure-test-modes.ps1 -Mode Gate -Change Code`.
-- [ ] Every proposal the audit does not apply is listed in `docs/development/test-audit-deferred.md`
+- [x] Every proposal the audit does not apply is listed in `docs/development/test-audit-deferred.md`
       with its reason.
-- [ ] `docs/development/test-audit-workflow.md` says how to run the workflow on a .NET test
+- [x] `docs/development/test-audit-workflow.md` says how to run the workflow on a .NET test
       project.
+
+## Evidence for the ticks
+
+- Coverage: the ranking in `docs/development/cycle-time-record.md` under `### Ranking` names the
+  triage candidates and the 15 slowest tests of the before session.
+- Workflow: this session had no workflow runtime. A gitignored driver ran
+  `.claude/workflows/test-audit.js` with stub functions. It wrote the script's own prompts and
+  applied its own claim filter. Five auditors and five refuters ran, so 10 agents, over five
+  Candidate groups. `### Run 1` in the cycle-time record says so.
+- Approval: the user approved rows 1 to 23 and, with a merge proof each, rows 26 to 29, on
+  2026-11-05. Every change had its own row in the approval table.
+- Times: `### Changes` holds each kept row's before and after. The smallest saving is 0.72 s.
+- Gate: `### Gate before` and `### Gate after` hold the .NET test time, 180.19 s and 159.51 s.
+- Deferred: rows 24, 25 and 30 to 37 are in `docs/development/test-audit-deferred.md`.
 
 ## Out of scope
 
