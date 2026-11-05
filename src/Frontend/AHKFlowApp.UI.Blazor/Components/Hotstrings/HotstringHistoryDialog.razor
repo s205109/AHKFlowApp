@@ -1,4 +1,5 @@
 @using AHKFlowApp.UI.Blazor.DTOs
+@using AHKFlowApp.UI.Blazor.Helpers
 @using AHKFlowApp.UI.Blazor.Services
 @using AHKFlowApp.UI.Blazor.Validation
 @using MudBlazor
@@ -60,7 +61,7 @@
                             <MudText Class="mb-2">@description</MudText>
                         }
                         <MudText Typo="Typo.caption">
-                            @ProfileText(_preview.Snapshot) · @_preview.Snapshot.CategoryIds.Length category(s)
+                            @ProfileText(_preview.Snapshot) · @(CountWording.Of(_preview.Snapshot.CategoryIds.Length, "category", "categories"))
                         </MudText>
                         <MudButton Class="revert-version mt-3" Color="Color.Primary" Variant="Variant.Filled"
                                    StartIcon="@Icons.Material.Filled.Restore" Disabled="@_busy" OnClick="RevertAsync">
@@ -143,7 +144,7 @@
     }.DateTimeSummary;
 
     private static string ProfileText(HotstringSnapshot snapshot) =>
-        snapshot.AppliesToAllProfiles ? "All profiles" : $"{snapshot.ProfileIds.Length} profile(s)";
+        snapshot.AppliesToAllProfiles ? "All profiles" : CountWording.Of(snapshot.ProfileIds.Length, "profile", "profiles");
 
     private void Close() => Dialog.Cancel();
 

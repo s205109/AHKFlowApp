@@ -52,7 +52,7 @@
                             — @HotkeyActionDisplay.SummaryOf(_preview.Snapshot)
                         </MudText>
                         <MudText Typo="Typo.caption">
-                            @ProfileText(_preview.Snapshot) · @_preview.Snapshot.CategoryIds.Length category(s)
+                            @ProfileText(_preview.Snapshot) · @(CountWording.Of(_preview.Snapshot.CategoryIds.Length, "category", "categories"))
                         </MudText>
                         <MudButton Class="revert-version mt-3" Color="Color.Primary" Variant="Variant.Filled"
                                    StartIcon="@Icons.Material.Filled.Restore" Disabled="@_busy" OnClick="RevertAsync">
@@ -127,7 +127,7 @@
     }
 
     private static string ProfileText(HotkeySnapshot snapshot) =>
-        snapshot.AppliesToAllProfiles ? "All profiles" : $"{snapshot.ProfileIds.Length} profile(s)";
+        snapshot.AppliesToAllProfiles ? "All profiles" : CountWording.Of(snapshot.ProfileIds.Length, "profile", "profiles");
 
     private void Close() => Dialog.Cancel();
 

@@ -111,7 +111,12 @@ public sealed class HotkeyHistoryDialogTests : BunitContext, IAsyncLifetime
     [Fact]
     public async Task Dialog_TypedSnapshot_ShowsKindLabelAndSummary()
     {
-        StubOneVersion(RunSnapshot());
+        StubOneVersion(RunSnapshot() with
+        {
+            AppliesToAllProfiles = false,
+            ProfileIds = [Guid.NewGuid()],
+            CategoryIds = [Guid.NewGuid(), Guid.NewGuid()],
+        });
 
         IRenderedComponent<MudDialogProvider> provider = await OpenDialogAsync();
         provider.WaitForAssertion(() => provider.Markup.Should().Contain("v1"));
@@ -120,6 +125,10 @@ public sealed class HotkeyHistoryDialogTests : BunitContext, IAsyncLifetime
 
         provider.WaitForAssertion(() => provider.Markup.Should().Contain("Run"));
         provider.Markup.Should().Contain("notepad.exe");
+        // Backlog 169: the summary read "1 profile(s) · 2 category(s)".
+        provider.Markup.Should().Contain("1 profile");
+        provider.Markup.Should().Contain("2 categories");
+        provider.Markup.Should().NotContain("(s)");
     }
 
     [Fact]

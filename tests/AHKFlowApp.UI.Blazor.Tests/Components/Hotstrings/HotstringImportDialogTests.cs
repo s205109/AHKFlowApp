@@ -16,12 +16,14 @@ namespace AHKFlowApp.UI.Blazor.Tests.Components.Hotstrings;
 public sealed class HotstringImportDialogTests : BunitContext, IAsyncLifetime
 {
     private readonly IHotstringsApiClient _api = Substitute.For<IHotstringsApiClient>();
+    private readonly ISnackbar _snackbar = Substitute.For<ISnackbar>();
 
     public HotstringImportDialogTests()
     {
         Services.AddSingleton(_api);
-        Services.AddSingleton(Substitute.For<ISnackbar>());
         Services.AddMudServices();
+        // Registered after AddMudServices so this substitute wins over MudBlazor's own snackbar.
+        Services.AddSingleton(_snackbar);
         JSInterop.Mode = JSRuntimeMode.Loose;
     }
 
@@ -78,6 +80,10 @@ public sealed class HotstringImportDialogTests : BunitContext, IAsyncLifetime
         await provider.InvokeAsync(() => provider.Find("button.confirm-import").Click());
 
         await _api.Received(1).ImportAsync(Arg.Any<ImportHotstringsRequestDto>(), Arg.Any<CancellationToken>());
+        // Backlog 169: the result read "Imported 1 hotstring(s); skipped 0 duplicate(s), 0 invalid."
+        _snackbar.Received(1).Add(
+            "Imported 1 hotstring. Skipped 0 duplicates and 0 invalid.", Severity.Success,
+            Arg.Any<Action<SnackbarOptions>>(), Arg.Any<string>());
     }
 
     [Fact]
