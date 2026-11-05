@@ -55,7 +55,10 @@ const verdictProperties = {
   upheld: { type: 'boolean' },
   evidence: { type: 'string' },
 }
-if (DOTNET) verdictProperties.auditedTestFailed = { type: 'boolean' }
+if (DOTNET) {
+  verdictProperties.auditedTestFailed = { type: 'boolean' }
+  verdictProperties.behaviourGone = { type: 'boolean' }
+}
 
 const REFUTE_SCHEMA = {
   type: 'object',
@@ -151,7 +154,7 @@ Method: load the dotnet-test:test-value-evidence skill with the Skill tool and a
 1. Find the defect the audited test guards against. Put that defect back with the smallest edit to the app code, or switch the feature off.
 2. Run the audited test. The audited test must fail first. If it passes, your edit is not the defect it guards against: undo it and try another edit. Set auditedTestFailed to true only when the audited test failed on your edit.
 3. Run the tests the auditor names as still catching the defect, one at a time.
-4. upheld = true when at least one of them fails on the same edit, or when the behaviour is really gone. upheld = false when only the audited test catches it. upheld may be true with auditedTestFailed false only when the behaviour is gone, and the evidence must say so.
+4. upheld = true when at least one of them fails on the same edit, or when the behaviour is really gone. upheld = false when only the audited test catches it. upheld may be true with auditedTestFailed false only when the behaviour is gone. Then set behaviourGone to true, and the evidence must say so. Otherwise set behaviourGone to false.
 5. Restore the file at once: git -C ${W} checkout -- <path>. Then build Release again: dotnet build ${W}\\${g.project} --configuration Release. Never commit, stash, reset or push.
 
 A failure counts only when its message names the changed behaviour. An E2E timeout on an unrelated step is a flaky result: run that test once more, and say so in the evidence.
@@ -185,12 +188,19 @@ for (const a of audits) {
     log(`${name}: refuter returned nothing; its claims stay unrefuted`)
     continue
   }
-  refutes.push(r)
-  if (!r.worktreeClean) log(`${name}: the refuter left the worktree changed. Check git status before anything else.`)
   if (DOTNET) {
-    for (const v of r.verdicts.filter((v) => v.upheld && !v.auditedTestFailed)) {
-      log(`${name}: ${v.name} is upheld, but its audited test never failed. Accept it only when the evidence says the behaviour is gone.`)
+    // A claim is upheld only when the audited test failed, or when the behaviour is gone.
+    for (const v of r.verdicts.filter((v) => v.upheld && !v.auditedTestFailed && !v.behaviourGone)) {
+      v.upheld = false
+      v.unverified = true
+      log(`${name}: ${v.name} was upheld, but its audited test never failed and the behaviour is not gone. It is unverified, not upheld.`)
     }
+  }
+  refutes.push(r)
+  // The next refuter would test against this refuter's leftover edit, so the run stops here.
+  if (!r.worktreeClean) {
+    log(`${name}: the refuter left the worktree changed. The run stops; the groups after it were not refuted. Check git status before anything else.`)
+    return { kind: KIND, audits, refutes, interrupted: name }
   }
 }
 

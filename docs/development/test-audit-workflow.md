@@ -112,6 +112,14 @@ claim stands only when two tests fail on the same defect:
 4. It restores the file with `git checkout --`, and builds Release again.
 5. It reports whether the worktree is clean.
 
+The workflow checks two of these answers itself:
+
+- A claim upheld while its audited test never failed counts as upheld only when the refuter
+  says the behaviour is gone. Otherwise the workflow marks it unverified, not upheld.
+- A refuter that leaves the worktree changed stops the run. The next refuter would test against
+  the leftover change. The result keeps the finished refutes and names the group in
+  `interrupted`. Restore the worktree, then run the remaining groups again.
+
 A failure counts only when its message names the changed behaviour. A refuter runs a timed-out
 E2E test once more, and says so.
 
