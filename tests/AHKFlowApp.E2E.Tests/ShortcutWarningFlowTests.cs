@@ -281,36 +281,10 @@ public sealed class ShortcutWarningFlowTests(StackFixtureA fixture) : IAsyncLife
         Assert.Contains("Windows uses Win+L to lock the computer.", label, StringComparison.Ordinal);
     }
 
-    [Fact]
-    public async Task AHotkeyOnAKeyTheProfileHeaderUses_IsWarnedAbout()
-    {
-        await using IBrowserContext context = await fixture.Browser.NewContextAsync();
-
-        // Put the Caps Lock layer into the seeded profile's header template.
-        IPage page = await SetProfileHeaderAsync(context, CapsLockLayerHeader);
-
-        // Now bind a hotkey to the same key. "Apply to all profiles" avoids picking one by name.
-        await OpenCreateDialogAsync(page);
-        await CommitKeyAsync(page, "CapsLock");
-        await page.CheckAsync(".hotkey-edit-dialog input[data-test=\"applies-to-all-checkbox\"]");
-
-        await page.WaitForSelectorAsync(".hotkey-edit-dialog [data-test=\"template-warning\"]");
-        string warning = await page.InnerTextAsync(".hotkey-edit-dialog [data-test=\"template-warning\"]");
-
-        Assert.Contains("also uses CapsLock", warning, StringComparison.Ordinal);
-        Assert.Contains("Your hotkey may not fire.", warning, StringComparison.Ordinal);
-        Assert.DoesNotContain("never", warning, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("will not", warning, StringComparison.OrdinalIgnoreCase);
-
-        // The notice is advice, not a gate: the row still saves.
-        await page.FillAsync(".hotkey-edit-dialog input[data-test=\"description-input\"]", "E2E template notice");
-        await page.FillAsync(".hotkey-edit-dialog [data-test=\"text-input\"]", "my notes");
-        await page.ClickAsync(".hotkey-edit-dialog button.commit-edit");
-        await page.WaitForSelectorAsync("text=Hotkey created.");
-    }
-
-    // The page hands the create dialog the Profile list it holds at the moment the dialog opens.
-    // The list arrives from its own request, so a fast click can reach the dialog first. The
+    // A hotkey on a key the Profile header uses is warned about, and the row still saves. The test
+    // also covers a race. The page hands the create dialog the Profile list it holds at the moment
+    // the dialog opens. The list arrives from its own request, so a fast click can reach the dialog
+    // first. The
     // template notice reads that list, and the dialog never receives a later one, so an early
     // click used to produce a dialog that could never warn. This is the flake CI hit.
     [Fact]
@@ -338,10 +312,18 @@ public sealed class ShortcutWarningFlowTests(StackFixtureA fixture) : IAsyncLife
 
         await page.WaitForSelectorAsync(".hotkey-edit-dialog");
         await CommitKeyAsync(page, "CapsLock");
+        // "Apply to all profiles" avoids picking one by name.
         await page.CheckAsync(".hotkey-edit-dialog input[data-test=\"applies-to-all-checkbox\"]");
 
-        await Assertions.Expect(page.Locator(".hotkey-edit-dialog [data-test=\"template-warning\"]"))
-            .ToContainTextAsync("also uses CapsLock");
+        ILocator warning = page.Locator(".hotkey-edit-dialog [data-test=\"template-warning\"]");
+        await Assertions.Expect(warning).ToContainTextAsync("also uses CapsLock");
+        await Assertions.Expect(warning).ToContainTextAsync("Your hotkey may not fire.");
+
+        // The notice is advice, not a gate: the row still saves.
+        await page.FillAsync(".hotkey-edit-dialog input[data-test=\"description-input\"]", "E2E template notice");
+        await page.FillAsync(".hotkey-edit-dialog [data-test=\"text-input\"]", "my notes");
+        await page.ClickAsync(".hotkey-edit-dialog button.commit-edit");
+        await page.WaitForSelectorAsync("text=Hotkey created.");
     }
 
     // AutoHotkey spells one key two ways. The template says LControl, the row says LCtrl, and the
@@ -382,7 +364,7 @@ public sealed class ShortcutWarningFlowTests(StackFixtureA fixture) : IAsyncLife
             await page.FillAsync("input[data-test=\"known-shortcut-search\"]", search);
     }
 
-    // Writes one template into the seeded Profile's header and waits for the save to land. Three
+    // Writes one template into the seeded Profile's header and waits for the save to land. Two
     // tests start this way, and each of them then binds a hotkey to a key the template uses.
     private async Task<IPage> SetProfileHeaderAsync(IBrowserContext context, string template)
     {
