@@ -65,21 +65,6 @@ public sealed class KeyboardAccessFlowTests(StackFixtureB fixture) : IAsyncLifet
         await Assertions.Expect(darkModeToggle).ToHaveAccessibleNameAsync("Switch to light mode");
     }
 
-    // Backlog 168. A row's icon buttons name the hotstring they act on.
-    [Fact]
-    public async Task RowButtons_NameTheirHotstring()
-    {
-        await SeedHotstringAsync(fixture, "btw");
-        await using IBrowserContext ctx = await fixture.Browser.NewContextAsync(DesktopViewport);
-        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/hotstrings");
-        ILocator row = page.Locator(".desktop-branch tbody tr", new() { HasTextString = "btw" });
-        await row.WaitForAsync();
-
-        await Assertions.Expect(row.Locator("button.edit")).ToHaveAccessibleNameAsync("Edit btw");
-        await Assertions.Expect(row.Locator("button.show-history")).ToHaveAccessibleNameAsync("Show history for btw");
-        await Assertions.Expect(row.Locator("button.delete")).ToHaveAccessibleNameAsync("Delete btw");
-    }
-
     // Backlog 168. Without a skip link, page content starts at the fourteenth Tab press.
     [Fact]
     public async Task SkipLink_FirstTabStop_MovesFocusIntoThePage()
@@ -116,6 +101,12 @@ public sealed class KeyboardAccessFlowTests(StackFixtureB fixture) : IAsyncLifet
         IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/hotstrings");
         ILocator row = page.Locator(".desktop-branch tbody tr", new() { HasTextString = "btw" });
         await row.WaitForAsync();
+
+        // Backlog 168. A row's icon buttons name the hotstring they act on.
+        await Assertions.Expect(row.Locator("button.edit")).ToHaveAccessibleNameAsync("Edit btw");
+        await Assertions.Expect(row.Locator("button.show-history")).ToHaveAccessibleNameAsync("Show history for btw");
+        await Assertions.Expect(row.Locator("button.delete")).ToHaveAccessibleNameAsync("Delete btw");
+
         await row.Locator("button.edit").ClickAsync();
 
         // Once "btw" moves into an input value, the row's text filter stops matching it.
