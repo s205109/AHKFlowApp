@@ -7,3 +7,4 @@ Plan: `docs/superpowers/plans/2026-11-01-net-test-audit-plan-194.md`
 - Task 3 (ranking and Candidate groups): done at 1575d0b5. Tests: before session 5/5 counted runs, 108/108 each, test count equals TRX count; B is d98dea6f. Deferrals: none.
 - Task 4 (run 1 and approval): done at 01c526d4. Tests: 25/25 audited tests failed on the planted bug, 12 upheld, 13 refuted, tree clean after every refuter. Deferrals: rows 24, 25, 30-37 rejected, in test-audit-deferred.md.
 - Task 5 (apply the rows): done at b6061ac5. Tests: every changed class ran green in Release; every MERGE row's target failed on its planted bug (rows 2, 5, 8, 9, 10, 20-23, 26-29); row 15's pin went RED, GREEN, RED on the 1000 ms fallback. Deferrals: none. Rows 8+17 share commit 0d6a45e7.
+- Task 6 (after session and per-row times): done at d7fee61c. Tests: after session 5/5 counted runs, 90/90 each, median 76.07 s; every row saved >= 0.5 s (smallest row 19, 0.72 s). Deferrals: none, no row reverted.
