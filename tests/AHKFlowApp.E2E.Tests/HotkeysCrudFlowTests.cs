@@ -242,8 +242,9 @@ public sealed class HotkeysCrudFlowTests(StackFixtureB fixture) : IAsyncLifetime
         // handler calls ClearSaveError("Body") (razor:375-379) — the same key the Save response
         // writes (razor:414). Playwright's Expect polls, so the assertions above would go green on
         // a message that vanished a moment later. Re-checking after the window closes is what
-        // makes this test prove the user can actually read the message.
-        await page.WaitForTimeoutAsync(1500);
+        // makes this test prove the user can actually read the message. The timer started at the
+        // fill, before Save, so 500 ms after the message appears is already past its 300 ms.
+        await page.WaitForTimeoutAsync(500);
         await Assertions.Expect(page.Locator(".hotkey-edit-dialog .raw-body-wrap .mud-input-helper-text"))
             .ToContainTextAsync("Raw body braces are unbalanced.");
         await Assertions.Expect(page.Locator(".hotkey-edit-dialog textarea[data-test=\"raw-body-input\"]"))
