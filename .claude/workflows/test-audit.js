@@ -1,21 +1,32 @@
 export const meta = {
   name: 'test-audit',
-  description: 'Audit PowerShell Suites case by case, then try to refute every REMOVE and MERGE (backlog 188)',
-  whenToUse: 'Pass args { suites: ["X.Tests.ps1", ...] }, at most five Suites per run.',
+  description: 'Audit PowerShell Suites or .NET test Candidate groups case by case, then try to refute every REMOVE and MERGE (backlogs 188 and 194)',
+  whenToUse: 'Pass args { worktree, suites: ["X.Tests.ps1", ...] } for PowerShell, or args { worktree, kind: "dotnet", groups: [...], timings } for .NET. At most five Suites or groups per run.',
   phases: [
-    { title: 'Audit', detail: 'one read-only auditor per Suite, in parallel' },
-    { title: 'Refute', detail: 'one medium-effort refuter per Suite with REMOVE claims or MERGE claims of 1 s or more, one at a time' },
+    { title: 'Audit', detail: 'one read-only auditor per Suite or Candidate group, in parallel' },
+    { title: 'Refute', detail: 'one medium-effort refuter per Suite or group with claims to refute, one at a time' },
   ],
 }
 
-const W = 'C:\\Dev\\segocom-github\\AHKFlowApp\\.claude\\worktrees\\wt-speed-up-the-development-cycle'
-const REPORT = W + '\\docs\\superpowers\\specs\\2026-10-18-speed-up-the-development-cycle-research-188\\powershell-suites.md'
+const W = args && args.worktree
+if (!W) throw new Error('Pass args.worktree: the absolute path of the worktree to audit.')
+const KIND = (args && args.kind) || 'powershell'
+if (KIND !== 'powershell' && KIND !== 'dotnet') throw new Error(`args.kind must be 'powershell' or 'dotnet', not '${KIND}'.`)
+const DOTNET = KIND === 'dotnet'
+const RESEARCH = W + '\\docs\\superpowers\\specs\\2026-10-18-speed-up-the-development-cycle-research-188\\'
+const REPORT = (args && args.report) || RESEARCH + (DOTNET ? 'dotnet-tests.md' : 'powershell-suites.md')
+const TIMINGS = args && args.timings
 const RUN = (suite) => `pwsh -NoProfile -WorkingDirectory ${W} -Command "& ./scripts/run-powershell-suites.ps1 -Suite ${suite}; exit $LASTEXITCODE"`
-// Lean settings, chosen at stop S5 to spend fewer tokens than batch 1 (1.72 M).
+const RUN_TEST = (project) => `dotnet test ${W}\\${project} --configuration Release --filter "<filter>"`
+// Lean settings, chosen at stop S5 of backlog 188 to spend fewer tokens than its batch 1 (1.72 M).
 const MIN_SAVED = 0.5
-const MIN_MERGE_SAVED = 1
-const suites = (args && args.suites) || []
-if (suites.length === 0 || suites.length > 5) throw new Error('Pass args.suites with one to five Suite file names.')
+// .NET mode refutes every MERGE the auditor returns (backlog 194, spec D6).
+const MIN_MERGE_SAVED = DOTNET ? MIN_SAVED : 1
+
+const units = DOTNET ? (args.groups || []) : (args.suites || [])
+if (DOTNET && (units.length === 0 || units.length > 5)) throw new Error('Pass args.groups with one to five Candidate groups.')
+if (!DOTNET && (units.length === 0 || units.length > 5)) throw new Error('Pass args.suites with one to five Suite file names.')
+const unitName = (u) => (DOTNET ? u.name : u)
 
 const AUDIT_SCHEMA = {
   type: 'object',
@@ -38,6 +49,14 @@ const AUDIT_SCHEMA = {
   required: ['suite', 'cases'],
 }
 
+const verdictProperties = {
+  name: { type: 'string' },
+  claim: { type: 'string' },
+  upheld: { type: 'boolean' },
+  evidence: { type: 'string' },
+}
+if (DOTNET) verdictProperties.auditedTestFailed = { type: 'boolean' }
+
 const REFUTE_SCHEMA = {
   type: 'object',
   properties: {
@@ -46,13 +65,8 @@ const REFUTE_SCHEMA = {
       type: 'array',
       items: {
         type: 'object',
-        properties: {
-          name: { type: 'string' },
-          claim: { type: 'string' },
-          upheld: { type: 'boolean' },
-          evidence: { type: 'string' },
-        },
-        required: ['name', 'claim', 'upheld', 'evidence'],
+        properties: verdictProperties,
+        required: Object.keys(verdictProperties),
       },
     },
     worktreeClean: { type: 'boolean' },
@@ -94,27 +108,90 @@ Method: load the dotnet-test:test-value-evidence skill with the Skill tool and a
 
 Before you return, run git -C ${W} status --porcelain and set worktreeClean to true only when it prints nothing. Leave tests\\WorktreeRemoveHook.Tests.ps1 alone.`
 
+const timingsLine = TIMINGS
+  ? `Timings file: ${TIMINGS}. It lists every test with its median duration over five counted runs of today's tree. Read secondsSaved from it, never from the report.`
+  : 'No timings file was passed. Estimate secondsSaved from the measured costs in the report, and say so in the evidence.'
+
+const dotnetAuditPrompt = (g) => `You audit one Candidate group of .NET tests for backlog 194. You are read-only: do not edit, create or delete any file, and do not run any test.
+
+Repository worktree: ${W} (always use absolute paths under it).
+Test project: ${W}\\${g.project}
+Test classes in this group: ${g.classes.join(', ')}
+Read each class, the fixtures it uses, and the app code it exercises. Read this project's part of the research report ${REPORT}. Its line numbers describe an older tree, so check every claim against today's code.
+${timingsLine}
+
+Candidates from the triage (re-check each one; they are leads, not verdicts):
+${g.candidates.map((c) => '- ' + c).join('\n')}
+
+Give each test one verdict:
+- KEEP: it catches a defect no other test catches, at a fair cost.
+- REWORK: worth keeping, but it should test the behaviour differently.
+- MERGE: another test already checks the same thing; name that test. A MERGE moves the absorbed test's assertions into the other test.
+- REMOVE: no defect is lost, because another test still catches it, or the feature is gone.
+- SPEED UP: keep every assertion, but make the test cheaper; say how (for example a shared page, a shorter wait, a moved Collection).
+A change that drops an assertion, or a step that an assertion depends on, is never a SPEED UP. It is a REMOVE or a MERGE.
+Each REMOVE and MERGE names the test that still catches the defect, with file:line. Each SPEED UP says how, with file:line.
+Name every test as Class.Method. Return only the changes that save at least ${MIN_SAVED} s. Leave out every KEEP and every smaller change. Keep each evidence to three sentences.`
+
+const dotnetRefutePrompt = (g, claims) => `You are the refuter for one Candidate group of .NET tests in backlog 194. An auditor claims some tests can be removed or merged. Your job is to DISPROVE each claim if you can.
+
+Repository worktree: ${W}. Your shell starts in the main checkout, so always name files by absolute path under the worktree, and never edit anything outside it.
+Test project: ${W}\\${g.project}
+No API or UI of this worktree may run while you work: a running app locks the Release build.
+
+Claims to test (JSON):
+${JSON.stringify(claims, null, 2)}
+
+The test command. Use this one form for every run, with the project of the test you run:
+   ${RUN_TEST(g.project)}
+The filter is FullyQualifiedName~<Class>.<Method>. Never add --no-build: the build must carry your change into the app. With no shared connection string, a SQL-backed test starts its own SQL Server container. Do not set one.
+Run nothing in parallel. Run one command at a time.
+
+Method: load the dotnet-test:test-value-evidence skill with the Skill tool and apply its method. For each claim, in order:
+1. Find the defect the audited test guards against. Put that defect back with the smallest edit to the app code, or switch the feature off.
+2. Run the audited test. The audited test must fail first. If it passes, your edit is not the defect it guards against: undo it and try another edit. Set auditedTestFailed to true only when the audited test failed on your edit.
+3. Run the tests the auditor names as still catching the defect, one at a time.
+4. upheld = true when at least one of them fails on the same edit, or when the behaviour is really gone. upheld = false when only the audited test catches it. upheld may be true with auditedTestFailed false only when the behaviour is gone, and the evidence must say so.
+5. Restore the file at once: git -C ${W} checkout -- <path>. Then build Release again: dotnet build ${W}\\${g.project} --configuration Release. Never commit, stash, reset or push.
+
+A failure counts only when its message names the changed behaviour. An E2E timeout on an unrelated step is a flaky result: run that test once more, and say so in the evidence.
+Evidence names the edit (file:line), the failing tests and their messages, or says that nothing else failed.
+
+Before you return, run git -C ${W} status --porcelain and set worktreeClean to true only when it prints nothing.`
+
 phase('Audit')
-// Barrier on purpose: refuters edit scripts in the shared worktree, so every auditor must finish reading first.
-const audits = (await parallel(suites.map((suite) => () =>
-  agent(auditPrompt(suite), { label: `audit:${suite}`, phase: 'Audit', schema: AUDIT_SCHEMA })
+// Barrier on purpose: refuters edit files in the shared worktree, so every auditor must finish reading first.
+const audits = (await parallel(units.map((u) => () =>
+  agent(DOTNET ? dotnetAuditPrompt(u) : auditPrompt(u), { label: `audit:${unitName(u)}`, phase: 'Audit', schema: AUDIT_SCHEMA })
+    .then((a) => (a ? { unit: u, ...a } : null))
 ))).filter(Boolean)
-log(`${audits.length} of ${suites.length} audits returned`)
+log(`${audits.length} of ${units.length} audits returned`)
 
 phase('Refute')
 const refutes = []
 for (const a of audits) {
+  const name = unitName(a.unit)
   const claims = a.cases.filter((c) => c.verdict === 'REMOVE' || (c.verdict === 'MERGE' && c.secondsSaved >= MIN_MERGE_SAVED))
   const skipped = a.cases.filter((c) => c.verdict === 'MERGE' && c.secondsSaved < MIN_MERGE_SAVED).length
-  if (skipped > 0) log(`${a.suite}: ${skipped} MERGE claims under ${MIN_MERGE_SAVED} s not refuted`)
+  if (skipped > 0) log(`${name}: ${skipped} MERGE claims under ${MIN_MERGE_SAVED} s not refuted`)
   if (claims.length === 0) {
-    log(`${a.suite}: no REMOVE or MERGE claims to refute, no refuter`)
+    log(`${name}: no REMOVE or MERGE claims to refute, no refuter`)
     continue
   }
-  // One refuter at a time: they share one worktree and its Lane pool.
-  const r = await agent(refutePrompt(a.suite, claims), { label: `refute:${a.suite}`, phase: 'Refute', schema: REFUTE_SCHEMA, effort: 'medium' })
-  if (r) refutes.push(r)
-  else log(`${a.suite}: refuter returned nothing; its claims stay unrefuted`)
+  // One refuter at a time: they share one worktree, its Release build and its Lane pool.
+  const prompt = DOTNET ? dotnetRefutePrompt(a.unit, claims) : refutePrompt(a.unit, claims)
+  const r = await agent(prompt, { label: `refute:${name}`, phase: 'Refute', schema: REFUTE_SCHEMA, effort: 'medium' })
+  if (!r) {
+    log(`${name}: refuter returned nothing; its claims stay unrefuted`)
+    continue
+  }
+  refutes.push(r)
+  if (!r.worktreeClean) log(`${name}: the refuter left the worktree changed. Check git status before anything else.`)
+  if (DOTNET) {
+    for (const v of r.verdicts.filter((v) => v.upheld && !v.auditedTestFailed)) {
+      log(`${name}: ${v.name} is upheld, but its audited test never failed. Accept it only when the evidence says the behaviour is gone.`)
+    }
+  }
 }
 
-return { audits, refutes }
+return { kind: KIND, audits, refutes }
