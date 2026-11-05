@@ -1243,3 +1243,18 @@ Each time is the median over the five counted runs, summed over the row's tests.
 | 29 | `255fbb3f` | `HotstringsCrudFlowTests.BulkDelete_OnDesktopViewport_SelectsRowsWithTheirCheckboxes` | 5.87 s | 3.13 s | 2.74 s | kept |
 
 The rows save 86.1 s of test time in total. The slice wall time fell by 26.9 s, because the four Collections run side by side.
+
+### Rebalance
+
+- Commit `ae1c1f76`. The classes were placed longest first, each into the Collection with the smallest sum so far, from the after-session class medians. 17 classes moved.
+- Session: `E2E\session-20261105-120447`. Runs 70.32 / 70.07 / 69.52 / 70.37 / 71.99 s, median 70.32 s, spread 3.5 %. Every counted run passed 90 of 90 tests.
+
+| Collection | Busy before | Busy after |
+|---|---|---|
+| E2E-A | 48.4 s | 57.4 s |
+| E2E-B | 64.5 s | 59.1 s |
+| E2E-C | 63.8 s | 57.4 s |
+| E2E-D | 54.8 s | 58.9 s |
+
+- The slowest Collection fell from 64.5 s (B) to 59.1 s (B), a drop of 5.4 s. The rule needs 0.5 s, so the rebalance is kept.
+- Slice wall median: 70.6 s before, 65.1 s after.
