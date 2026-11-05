@@ -1088,3 +1088,59 @@ The command was `pwsh .\scripts\measure-test-modes.ps1 -Mode Gate -BaseRef HEAD 
 
 The spread of the three Gate runs is 0.5 % of the median. The .NET test time, the median of the
 coverage step, is 180.19 s.
+
+### Ranking
+
+The before session ran `pwsh .\scripts\measure-test-modes.ps1 -Mode E2E` with its defaults, on
+2026-11-05. It ran six warm-up runs until the build was ten minutes old, then five counted runs.
+Every counted run passed all 108 tests.
+
+- Session folder: `TestResults\measure-test-modes\E2E\session-20261105-073432`.
+- Revision B: `d98dea6ffb17ccf15590b5c523df97d2d0ad8d93`.
+- Counted runs: 104.18 / 106.49 / 102.97 / 102.57 / 102.74 s, median 102.97 s.
+- Slice wall median, from the first test start to the last test end: 97.5 s.
+
+Collection busy time is the sum of the test durations of one Collection in one run. Each figure is
+the median of the five runs.
+
+| Collection | Busy median | Span median |
+|---|---|---|
+| E2E-A | 76.6 s | 77.5 s |
+| E2E-B | 90.4 s | 91.4 s |
+| E2E-C | 75.2 s | 76.2 s |
+| E2E-D | 71.0 s | 72.0 s |
+| E2E-Exclusive | 2.6 s | 2.6 s |
+
+The exclusive collection took 2.6 s, not the 15.5 s that the triage measured.
+
+The 15 slowest tests:
+
+| # | Test | Median |
+|---:|---|---:|
+| 1 | `ShortcutWarningFlowTests.IgnoringTheWindowsUse_SilencesTheWarning_AndRestoringBringsItBack` | 12.46 s |
+| 2 | `VersionHistoryFlowTests.HotstringHistoryRecycleRestoreAndPurge_DrivesBrowserFlow` | 11.92 s |
+| 3 | `BootFailureFlowTests.SlowBoot_WithUnrelatedUncaughtError_StillRendersApp` | 10.31 s |
+| 4 | `RawHotstringFlowTests.CreateRawViaDialog_WarningAlertMonospaceParsedSummaryMobileBadgeAndByteMatch` | 8.61 s |
+| 5 | `RawHotstringFlowTests.CreateRawContinuationSection_SavesAndDownloadsSectionByteIdentical` | 8.27 s |
+| 6 | `VersionHistoryFlowTests.HotkeyHistoryAndRecycleRestore_PreservesModifiersAndAction` | 7.92 s |
+| 7 | `ShortcutWarningFlowTests.AnOwnerRecord_WarnsOnItsOwnCombination` | 7.78 s |
+| 8 | `ShortcutWarningFlowTests.AHotkeyOnAKeyTheProfileHeaderUses_IsWarnedAbout` | 6.33 s |
+| 9 | `ShortcutWarningFlowTests.WhileTheProfileListIsStillLoading_TheCreateDialogStillWarns` | 6.19 s |
+| 10 | `ShortcutWarningFlowTests.AHotkeyOnAKeyTheHeaderSpellsDifferently_IsWarnedAbout` | 5.65 s |
+| 11 | `HotkeysCrudFlowTests.RawBodySaveError_ShowsInlineOnTheBodyField` | 5.55 s |
+| 12 | `WindowSnapFlowTests.CreateSnapLeftHotkey_PreviewKeepsBlockBodyLines_ThenGridShowsWindowAction` | 5.35 s |
+| 13 | `ShortcutWarningFlowTests.RemappingCapsLockToCtrl_WarnsAboutTheDestination` | 5.07 s |
+| 14 | `WindowSnapFlowTests.SendKeysWinPlusArrow_ShowsAdvisoryUntilWinCleared_AndStillSaves` | 5.07 s |
+| 15 | `HotkeysCrudFlowTests.RawBodyInjectingAnotherHotkey_BlocksPreviewGeneration` | 5.07 s |
+
+Every class of the 15 slowest tests is already in one of the five Candidate groups of the spec
+(D12), so no class moves between groups. The tablet overflow tests bring `HotkeysMobileFlowTests`
+and `KnownShortcutsMobileFlowTests` into the hotstring editing group.
+
+These classes are not audited. None holds a triage candidate or one of the 15 slowest tests:
+
+- `ChangelogFlowTests`: 1.84 s.
+- `DashboardFirstViewFlowTests`: 1.57 s.
+- `DownloadsSaveFailureFlowTests`: 4.12 s.
+- `PublishFreshnessTests`: 0.01 s.
+- `FirstPageLoadAdoptionTests`: 0.05 s.
