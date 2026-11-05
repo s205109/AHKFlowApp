@@ -115,7 +115,7 @@ public sealed class ShortcutWarningFlowTests(StackFixtureA fixture) : IAsyncLife
         ".desktop-branch button{0}[data-shortcut-id=\"windows.file-explorer\"][data-used-by=\"Windows\"]";
 
     [Fact]
-    public async Task IgnoringTheWindowsUse_SilencesTheWarning_AndRestoringBringsItBack()
+    public async Task IgnoringTheWindowsUse_SilencesTheWarning()
     {
         await using IBrowserContext context = await fixture.Browser.NewContextAsync();
 
@@ -146,15 +146,8 @@ public sealed class ShortcutWarningFlowTests(StackFixtureA fixture) : IAsyncLife
 
         Assert.Null(await page.QuerySelectorAsync(".hotkey-edit-dialog [data-test=\"shortcut-warning\"]"));
 
-        // Bring it back.
-        await OpenKnownShortcutsAsync(page, "Win+E");
-        await page.ClickAsync(string.Format(WindowsFileExplorerUse, ".restore-use"));
-        await page.WaitForSelectorAsync(string.Format(WindowsFileExplorerUse, ".ignore-use"));
-
-        await OpenCreateDialogAsync(page);
-        await CommitKeyAsync(page, "e");
-        await page.CheckAsync(".hotkey-edit-dialog input[data-test=\"win-checkbox\"]");
-        await page.WaitForSelectorAsync(".hotkey-edit-dialog [data-test=\"shortcut-warning\"]");
+        // Restoring the use is proven elsewhere: KnownShortcutsControllerTests and
+        // KnownShortcutsMobileFlowTests.PhoneViewport_SilencesAUse_AndBringsItBack.
     }
 
     // The wrapper that holds the Windows use of Win+E. :has() picks the tooltip root by the button
@@ -379,12 +372,6 @@ public sealed class ShortcutWarningFlowTests(StackFixtureA fixture) : IAsyncLife
         IPage page = await FirstPageLoad.OpenAsync(context, $"{fixture.Spa.BaseUrl}/known-shortcuts");
         await OnKnownShortcutsAsync(page, search);
         return page;
-    }
-
-    private async Task OpenKnownShortcutsAsync(IPage page, string? search = null)
-    {
-        await page.GotoAsync($"{fixture.Spa.BaseUrl}/known-shortcuts");
-        await OnKnownShortcutsAsync(page, search);
     }
 
     private static async Task OnKnownShortcutsAsync(IPage page, string? search)
