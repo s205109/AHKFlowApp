@@ -21,14 +21,14 @@ happened and what to do next.
 
 ## Acceptance criteria
 
-- [ ] A validation message an owner can reach names the field by its visible label, not by its
+- [x] A validation message an owner can reach names the field by its visible label, not by its
       property name. `ContextValue` and `ProfileIds` do not appear in any message the UI shows.
-- [ ] A validation message does not lead with a bare property-name prefix such as `ProfileIds:`.
-- [ ] A delete message for exactly one item reads as singular, in the title, the body and the
+- [x] A validation message does not lead with a bare property-name prefix such as `ProfileIds:`.
+- [x] A delete message for exactly one item reads as singular, in the title, the body and the
       snackbar.
-- [ ] The `{deleted} deleted; {missing} were already gone` message reads correctly when either
+- [x] The `{deleted} deleted; {missing} were already gone` message reads correctly when either
       count is 1.
-- [ ] The Delivery help text is two sentences or fewer per idea, and either `CONTEXT.md` defines
+- [x] The Delivery help text is two sentences or fewer per idea, and either `CONTEXT.md` defines
       "case-conforming" or the text stops using it.
 
 ## Out of scope
