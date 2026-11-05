@@ -241,7 +241,26 @@ public sealed class CreateHotstringCommandValidatorTests
     {
         ValidationResult result = _sut.Validate(Cmd(delivery: (HotstringDelivery)99));
 
-        result.Errors.Should().Contain(e => e.PropertyName == "Input.Delivery");
+        // Backlog 169: FluentValidation's default text named the property ("'Delivery' has a
+        // range of values..."), and the UI shows the message without its key.
+        result.Errors.Should().Contain(e =>
+            e.PropertyName == "Input.Delivery" && e.ErrorMessage == "Choose an option in Delivery.");
+    }
+
+    [Fact]
+    public void DateTimeKind_UndefinedOffsetUnit_FailsWithTheUnitLabel()
+    {
+        ValidationResult result = _sut.Validate(Cmd(
+            kind: HotstringKind.DateTime,
+            replacement: "",
+            dateTimeFormat: "yyyy-MM-dd",
+            dateOffsetAmount: 1,
+            dateOffsetUnit: (DateOffsetUnit)99));
+
+        // Backlog 169: the default text read "'Date Offset Unit' has a range of values...".
+        result.Errors.Should().Contain(e =>
+            e.PropertyName == "Input.DateOffsetUnit"
+            && e.ErrorMessage == "Choose an option in Unit under Adjust date.");
     }
 
     [Fact]
@@ -666,7 +685,9 @@ public sealed class CreateHotstringCommandValidatorTests
             dateTimeFormat: null));
 
         result.IsValid.Should().BeFalse();
-        result.Errors.Should().Contain(e => e.PropertyName == "Input.DateTimeFormat");
+        // Backlog 169: in the UI only the Custom format field can leave the format empty.
+        result.Errors.Should().Contain(e =>
+            e.PropertyName == "Input.DateTimeFormat" && e.ErrorMessage == "Custom format is required.");
     }
 
     [Fact]
@@ -812,7 +833,24 @@ public sealed class CreateHotstringCommandValidatorTests
             dateTimeFormat: new string('y', 51)));
 
         result.IsValid.Should().BeFalse();
-        result.Errors.Should().Contain(e => e.PropertyName == "Input.DateTimeFormat");
+        result.Errors.Should().Contain(e =>
+            e.PropertyName == "Input.DateTimeFormat"
+            && e.ErrorMessage == "Custom format must be 50 characters or fewer.");
+    }
+
+    // Backlog 169: every Format preset passes, so only text typed into Custom format can fail
+    // the token check. The message names that field, not the Format select.
+    [Fact]
+    public void DateTimeFormat_UnsupportedToken_NamesCustomFormat()
+    {
+        ValidationResult result = _sut.Validate(Cmd(
+            kind: HotstringKind.DateTime,
+            replacement: "",
+            dateTimeFormat: "yyyy KMM"));
+
+        result.Errors.Should().Contain(e =>
+            e.PropertyName == "Input.DateTimeFormat"
+            && e.ErrorMessage == "Custom format contains unsupported characters or tokens.");
     }
 
     [Fact]

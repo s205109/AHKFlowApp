@@ -42,11 +42,11 @@ internal static partial class HotstringRules
     /// </summary>
     public static IRuleBuilderOptions<T, string?> ValidDateTimeFormat<T>(this IRuleBuilderInitial<T, string?> rb) =>
         rb.Cascade(CascadeMode.Stop)
-          .NotEmpty().WithMessage("Format is required.")
+          .NotEmpty().WithMessage("Custom format is required.")
           .MaximumLength(DateTimeFormatMaxLength)
-              .WithMessage($"Format must be {DateTimeFormatMaxLength} characters or fewer.")
+              .WithMessage($"Custom format must be {DateTimeFormatMaxLength} characters or fewer.")
           .Must(f => f is not null && DateTimeFormatWhitelistRegex().IsMatch(f))
-              .WithMessage("Format contains unsupported characters or tokens.");
+              .WithMessage("Custom format contains unsupported characters or tokens.");
 
     /// <summary>
     /// Adds profile-association validation rules to a validator.
@@ -156,7 +156,8 @@ internal static partial class HotstringRules
 
         validator.RuleFor(dateOffsetUnit)
             .IsInEnum()
-            .When(x => IsDateTime(x) && BothOffsetsSet(x));
+            .When(x => IsDateTime(x) && BothOffsetsSet(x))
+            .WithMessage("Choose an option in Unit under Adjust date.");
     }
 
     /// <summary>
@@ -235,7 +236,8 @@ internal static partial class HotstringRules
         bool IsText(T x) => kindFn(x) == HotstringKind.Text;
 
         validator.RuleFor(delivery)
-            .IsInEnum();
+            .IsInEnum()
+            .WithMessage("Choose an option in Delivery.");
 
         validator.RuleFor(delivery)
             .Must(d => d == HotstringDelivery.Auto)

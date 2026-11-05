@@ -34,7 +34,7 @@ public sealed class CreateCustomKnownShortcutCommandValidator
             .NotEmpty().WithMessage("Say what the keys do.")
             .MaximumLength(200)
             .Must(StartsLowercase)
-            .WithMessage("Start with a lowercase verb, like \"open the settings window\".")
+            .WithMessage("What it does must start with a lowercase verb, like \"open the settings window\".")
             .Must(MakesNoAbsoluteClaim)
             .WithMessage("Say what the keys do, not what will or will not happen.");
 

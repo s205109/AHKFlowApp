@@ -36,7 +36,8 @@ internal static class WindowContextRules
             .WithMessage("Match by and Value under Window context must both be set, or both be empty.");
 
         validator.RuleFor(contextMatchType)
-            .IsInEnum();
+            .IsInEnum()
+            .WithMessage("Choose an option in Match by under Window context.");
 
         validator.RuleFor(contextValue)
             .Must(v => v is null || !string.IsNullOrWhiteSpace(v))

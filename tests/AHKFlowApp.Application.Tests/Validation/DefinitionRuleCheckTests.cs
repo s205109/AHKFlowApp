@@ -109,7 +109,7 @@ public sealed class DefinitionRuleCheckTests
 
         DefinitionRuleCheck.Check(dt)
             .Select(f => f.ErrorMessage)
-            .Should().Contain("Format is required.");
+            .Should().Contain("Custom format is required.");
     }
 
     // A legacy Kind=Script body holding AHK's own literal-brace idiom. The brace counter in

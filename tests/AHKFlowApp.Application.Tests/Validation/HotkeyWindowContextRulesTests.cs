@@ -162,7 +162,10 @@ public sealed class HotkeyWindowContextRulesTests
         ValidationResult result = ValidateCreate((WindowMatchType)99, "notepad.exe");
 
         result.IsValid.Should().BeFalse();
-        result.Errors.Should().Contain(e => e.PropertyName.EndsWith("ContextMatchType"));
+        // Backlog 169: the default text read "'Context Match Type' has a range of values...".
+        result.Errors.Should().Contain(e =>
+            e.PropertyName.EndsWith("ContextMatchType")
+            && e.ErrorMessage == "Choose an option in Match by under Window context.");
     }
 
     [Fact]
