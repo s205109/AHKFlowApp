@@ -6,8 +6,11 @@ public static class ApiErrorMessageFactory
 {
     public static string Build(ApiResultStatus status, ApiProblemDetails? problem) => status switch
     {
+        // Each rule message names its own field by the label the owner sees, so the key, a
+        // property name, would only repeat it. Each message ends in a period, so a single space
+        // joins them.
         ApiResultStatus.Validation when problem?.Errors is { Count: > 0 } errors =>
-            string.Join("; ", errors.SelectMany(kv => kv.Value.Select(v => $"{FieldLabel(kv.Key)}: {v}"))),
+            string.Join(" ", errors.SelectMany(kv => kv.Value)),
         ApiResultStatus.Validation => problem?.Detail ?? "The request was invalid.",
         // Entity-neutral fallbacks. Every page uses this helper, so naming one entity here put
         // "Hotstring not found." in front of someone deleting a known shortcut.
@@ -18,18 +21,4 @@ public static class ApiErrorMessageFactory
         ApiResultStatus.NetworkError => "Unable to reach the API. Check your connection and try again.",
         _ => problem?.Detail ?? "An unexpected error occurred.",
     };
-
-    /// <summary>
-    /// The part of a validation key a reader can use. FluentValidation names a nested property by
-    /// its whole path, so a command wrapping a DTO produces "Input.Does" — the shape of the
-    /// request object, which means nothing to the person reading the message. Only the last
-    /// segment names the field they filled in.
-    /// </summary>
-    private static string FieldLabel(string key)
-    {
-        int lastDot = key.LastIndexOf('.');
-
-        // A trailing dot leaves nothing to show, so keep the key as it came.
-        return lastDot >= 0 && lastDot < key.Length - 1 ? key[(lastDot + 1)..] : key;
-    }
 }

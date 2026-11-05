@@ -217,7 +217,7 @@ public sealed class HotkeyHistoryDialogTests : BunitContext, IAsyncLifetime
         await provider.InvokeAsync(() => provider.Find("button.revert-version").Click());
 
         provider.WaitForAssertion(() => _snackbar.Received(1).Add(
-            "Key: Key must be a known key name.",
+            "Key must be a known key name.",
             Severity.Error,
             Arg.Any<Action<SnackbarOptions>>(),
             Arg.Any<string>()));
