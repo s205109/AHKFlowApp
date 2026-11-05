@@ -1200,3 +1200,46 @@ SPEED UP changes. Section C holds the refuted merges and the REWORK.
 | 27 | `HotkeysCrudFlowTests.RawBodyPreviewError_ShowsInlineOnTheBodyField` | MERGE into `RawBodyInjectingAnotherHotkey_BlocksPreviewGeneration`, with proof | 3.6 s |
 | 28 | `HotkeysCrudFlowTests.SelectAll_OnDesktopViewport_SelectsEveryRowOnThePage` | MERGE into `BulkDelete_OnDesktopViewport_SelectsRowsWithTheirCheckboxes`, with proof | 2.4 s |
 | 29 | `HotstringsCrudFlowTests.SelectAll_OnDesktopViewport_SelectsEveryRowOnThePage` | MERGE into `BulkDelete_OnDesktopViewport_SelectsRowsWithTheirCheckboxes`, with proof | 2.3 s |
+
+### After session
+
+- Session: `E2E\session-20261105-114155`, at commit `677ee83a`.
+- Runs: 76.20 / 73.15 / 76.50 / 76.07 / 74.72 s. Median 76.07 s, before 102.97 s. Spread 4.4 %.
+- Every counted run passed 90 of 90 tests. The before session ran 108.
+- Slice wall median 70.6 s, before 97.5 s.
+- Busy time per Collection: A 48.4, B 64.5, C 63.8, D 54.8, HostLifecycle 3.7, Exclusive 1.5 s.
+
+### Changes
+
+Each time is the median over the five counted runs, summed over the row's tests. A row's tests include the tests it removed. Row 16 reads the span of `E2E-Exclusive`, because its saving is wall time only. Rows 8 and 17 change the same test, so they are measured as one row. Every row saved at least 0.5 s, so every row is kept and none went to the deferred list.
+
+| Row | Commit | Tests | Before | After | Saved | Verdict |
+|---|---|---|---|---|---|---|
+| 1 | `ce7bcc5d` | `ShortcutWarningFlowTests.IgnoringTheWindowsUse_SilencesTheWarning` | 12.46 s | 6.38 s | 6.08 s | kept |
+| 2 | `e92ffb6a` | `ShortcutWarningFlowTests.WhileTheProfileListIsStillLoading_TheCreateDialogStillWarns` | 12.44 s | 6.28 s | 6.16 s | kept |
+| 3 | `fcecd810` | `ShortcutWarningFlowTests.ClearingTheModifier_RemovesTheWarning` | 4.07 s | 0.00 s | 4.07 s | kept |
+| 4 | `3b436198` | `ShortcutWarningFlowTests.RemappingCapsLockToCtrl_WarnsAboutTheDestination` | 5.07 s | 0.00 s | 5.07 s | kept |
+| 5 | `f5e9f9ab` | `ShortcutWarningFlowTests.WinE_ShowsTheWarningAndStillSaves` | 8.37 s | 4.22 s | 4.15 s | kept |
+| 6 | `ef98a709` | `LocalAuthModeFlowTests` | 3.23 s | 0.00 s | 3.23 s | kept |
+| 7 | `b37d9eb6` | `FirstPageLoadDiagnosticsTests.HealthyBoot_Open_ReturnsAPageShowingTheApp` | 2.61 s | 0.00 s | 2.61 s | kept |
+| 8 + 17 | `0d6a45e7` | `RawHotstringFlowTests.CreateRawViaDialog_WarningAlertMonospaceParsedSummaryMobileBadgeAndByteMatch` | 16.80 s | 13.34 s | 3.46 s | kept |
+| 9 | `59c1a974` | `MacroHotstringFlowTests.CreateMacroViaDialog_CaretInsertion_PreviewAndSave` | 6.66 s | 3.85 s | 2.81 s | kept |
+| 10 | `be1aecf0` | `HotstringImportPasteFlowTests.PasteAtTheServerLimit_...` | 7.05 s | 4.44 s | 2.61 s | kept |
+| 11 | `7f53c012` | `ProfileScriptDownloadFlowTests.LongName_SingleDownloadAndZip_UseOneStem` | 4.37 s | 0.00 s | 4.37 s | kept |
+| 12 | `7191c850` | `ClipboardDeliveryFlowTests` | 4.87 s | 0.00 s | 4.87 s | kept |
+| 13 | `aa3ad975` | `ShortcutWarningFlowTests.AnOwnerRecord_WarnsOnItsOwnCombination` | 7.78 s | 3.82 s | 3.96 s | kept |
+| 14 | `c32e7a7a` | `HotkeysCrudFlowTests.RawBodySaveError_ShowsInlineOnTheBodyField` | 5.54 s | 4.39 s | 1.15 s | kept |
+| 15 | `8ebc0724` | `BootFailureFlowTests`, `FirstPageLoadDiagnosticsTests` | 23.38 s | 17.23 s | 6.15 s | kept |
+| 16 | `1ab3234f` | span of `E2E-Exclusive` | 2.35 s | 1.54 s | 0.81 s | kept |
+| 18 | `a57f5e12` | `VersionHistoryFlowTests.HotstringHistoryRecycleRestoreAndPurge_DrivesBrowserFlow` | 11.91 s | 9.75 s | 2.16 s | kept |
+| 19 | `108237ee` | `VersionHistoryFlowTests.HotkeyHistoryAndRecycleRestore_PreservesModifiersAndAction` | 7.92 s | 7.19 s | 0.72 s | kept |
+| 20 | `0fbf99bc` | `KeyboardAccessFlowTests.InlineEditFields_NameWhatTheyHold` | 5.62 s | 3.15 s | 2.48 s | kept |
+| 21 | `a47534ca` | `KeyboardAccessFlowTests.SkipLink_FirstTabStop_MovesFocusIntoThePage` | 5.35 s | 2.87 s | 2.47 s | kept |
+| 22 | `b68c946a` | `ProductAndPageNamesFlowTests.HomeAndHealthPages_UseOneName` | 4.18 s | 2.29 s | 1.89 s | kept |
+| 23 | `b6061ac5` | `ProductAndPageNamesFlowTests.StaticFiles_SpellTheProductOneWay` | 2.35 s | 0.14 s | 2.21 s | kept |
+| 26 | `8cce31b3` | `HotkeysCrudFlowTests.CreateHotkeyLimitedToOneProgram_PreviewWrapsSnippetInHotIf` | 8.71 s | 4.99 s | 3.72 s | kept |
+| 27 | `3889ba4c` | `HotkeysCrudFlowTests.RawBodyInjectingAnotherHotkey_BlocksPreviewGeneration` | 9.77 s | 5.81 s | 3.96 s | kept |
+| 28 | `21c6f62e` | `HotkeysCrudFlowTests.BulkDelete_OnDesktopViewport_SelectsRowsWithTheirCheckboxes` | 5.64 s | 3.48 s | 2.16 s | kept |
+| 29 | `255fbb3f` | `HotstringsCrudFlowTests.BulkDelete_OnDesktopViewport_SelectsRowsWithTheirCheckboxes` | 5.87 s | 3.13 s | 2.74 s | kept |
+
+The rows save 86.1 s of test time in total. The slice wall time fell by 26.9 s, because the four Collections run side by side.
