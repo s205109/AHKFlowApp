@@ -9,3 +9,4 @@ Plan: `docs/superpowers/plans/2026-11-01-net-test-audit-plan-194.md`
 - Task 5 (apply the rows): done at b6061ac5. Tests: every changed class ran green in Release; every MERGE row's target failed on its planted bug (rows 2, 5, 8, 9, 10, 20-23, 26-29); row 15's pin went RED, GREEN, RED on the 1000 ms fallback. Deferrals: none. Rows 8+17 share commit 0d6a45e7.
 - Task 6 (after session and per-row times): done at d7fee61c. Tests: after session 5/5 counted runs, 90/90 each, median 76.07 s; every row saved >= 0.5 s (smallest row 19, 0.72 s). Deferrals: none, no row reverted.
 - Task 7 (rebalance): done at d6695654. Tests: full E2E run 90/90 with no fixture-data errors; rebalance session 5/5 runs, 90/90, median 70.32 s; slowest busy 64.5 -> 59.1 s, kept. Deferrals: none.
+- Task 8 (Gate after and result): done at 26568cf7. Tests: Gate 3 counted runs green, median 402.19 s, coverage step 159.51 s. Deferrals: none.
