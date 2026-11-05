@@ -85,12 +85,16 @@ public sealed class VersionHistoryFlowTests(StackFixtureC fixture) : IAsyncLifet
     {
         Guid hotkeyId = await SeedHotkeyAsync();
 
+        // The first edit goes through the API: it only produces a version. The second edit stays
+        // in the browser, because it is the only proof that a KeyPicker commits on blur.
+        using HttpClient client = fixture.Api.CreateClient();
+        await UpdateHotkeyThroughApiAsync(client, hotkeyId, "F10", "wt first");
+
         await using IBrowserContext ctx = await fixture.Browser.NewContextAsync();
 
         IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/hotkeys");
-        await page.WaitForSelectorAsync("tbody tr:has-text(\"Open Terminal\")");
+        await page.WaitForSelectorAsync("tbody tr:has-text(\"wt first\")");
 
-        await UpdateHotkeyAsync(page, "Open Terminal", "F10", "wt first");
         await UpdateHotkeyAsync(page, "Open Terminal", "F11", "wt second");
 
         await OpenHistoryAsync(page, "Open Terminal");
@@ -144,6 +148,22 @@ public sealed class VersionHistoryFlowTests(StackFixtureC fixture) : IAsyncLifet
             new UpdateHotstringDto(
                 trigger, replacement, ProfileIds: null, AppliesToAllProfiles: true,
                 IsEndingCharacterRequired: true, IsTriggerInsideWord: false, Description: null));
+        response.EnsureSuccessStatusCode();
+    }
+
+    // Reads the hotkey first, so every field but the key and the run target keeps its value.
+    private static async Task UpdateHotkeyThroughApiAsync(HttpClient client, Guid id, string key, string target)
+    {
+        HotkeyDto current = (await client.GetFromJsonAsync<HotkeyDto>($"/api/v1/hotkeys/{id}"))!;
+        HttpResponseMessage response = await client.PutAsJsonAsync(
+            $"/api/v1/hotkeys/{id}",
+            new UpdateHotkeyDto(
+                current.Description, key, current.ActionKind,
+                current.Ctrl, current.Alt, current.Shift, current.Win,
+                current.Text, current.SendKeysContent, target, current.RunTargetKind,
+                current.WindowOp, current.RemapDest, current.Body,
+                current.ProfileIds, current.AppliesToAllProfiles, current.CategoryIds,
+                current.ContextMatchType, current.ContextValue));
         response.EnsureSuccessStatusCode();
     }
 
