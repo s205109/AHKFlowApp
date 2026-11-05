@@ -69,4 +69,4 @@ happened and what to do next.
   outcomes in that order, so outcome 1 goes first.
 - Spec: none — each fix is small, but agree the vocabulary against `CONTEXT.md` before editing
   strings.
-- Plan: none — moderate work, goes straight to Plan at pickup.
+- Plan: `docs/superpowers/plans/2026-11-05-messages-name-visible-labels-plan-169.md`
