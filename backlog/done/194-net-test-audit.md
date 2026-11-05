@@ -6,7 +6,7 @@
 - **Type**: Tooling
 - **Interfaces**: none (`tests/AHKFlowApp.E2E.Tests`)
 - **Difficulty**: complex
-- **Stage**: 8-review
+- **Stage**: 9-ship
 
 ## Summary
 
