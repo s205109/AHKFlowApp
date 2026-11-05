@@ -214,7 +214,7 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
         Services.AddSingleton(dialogService);
 
         IRenderedComponent<Hotstrings> cut = RenderPage();
-        cut.WaitForState(() => cut.Markup.Contains(">a<") || cut.Markup.Contains("a"));
+        cut.WaitForAssertion(() => cut.Find("button.edit"));
 
         await cut.InvokeAsync(() => cut.Instance.OnSelectedItemsChanged(
             [HotstringEditModel.FromDto(a), HotstringEditModel.FromDto(b)]));
@@ -255,7 +255,7 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
         Services.AddSingleton(snackbar);
 
         IRenderedComponent<Hotstrings> cut = RenderPage();
-        cut.WaitForState(() => cut.Markup.Contains(">a<") || cut.Markup.Contains("a"));
+        cut.WaitForAssertion(() => cut.Find("button.edit"));
 
         await cut.InvokeAsync(() => cut.Instance.OnSelectedItemsChanged([HotstringEditModel.FromDto(a)]));
 

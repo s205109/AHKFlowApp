@@ -153,8 +153,7 @@ public sealed class HotstringHistoryDialogTests : BunitContext, IAsyncLifetime
 
         provider.WaitForAssertion(() => provider.Markup.Should().Contain("yyyy-MM-dd (+1 day)"));
         // Backlog 169: the summary read "1 profile(s) · 2 category(s)".
-        provider.Markup.Should().Contain("1 profile");
-        provider.Markup.Should().Contain("2 categories");
+        provider.Markup.Should().Contain("1 profile · 2 categories");
         provider.Markup.Should().NotContain("(s)");
     }
 

@@ -42,6 +42,9 @@ it without having to guess.
   > Hotstring restored, but it applies to no profile: ContextValue must not contain double-quote
   > characters. Open it, fix those values, and choose its profiles again.
 
+  Backlog 169 later changed the rule text. The same restore now says "Value under Window
+  context must not contain double quotes."
+
   The item came back with `appliesToAllProfiles: false` and no profiles, exactly as ADR-0021
   specifies. The technique matches the existing E2E test, and it is the realistic case: the rule
   landed after snapshots started being written.
