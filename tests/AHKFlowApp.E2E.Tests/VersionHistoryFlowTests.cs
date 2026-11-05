@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Json;
 using System.Text.Json;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Domain.Entities;
@@ -15,8 +16,8 @@ using HotkeyAction = AHKFlowApp.Application.Services.LegacyHotkeyDefinitionConve
 
 namespace AHKFlowApp.E2E.Tests;
 
-[Collection(E2ECollectionC.Name)]
-public sealed class VersionHistoryFlowTests(StackFixtureC fixture) : IAsyncLifetime
+[Collection(E2ECollectionD.Name)]
+public sealed class VersionHistoryFlowTests(StackFixtureD fixture) : IAsyncLifetime
 {
     public Task InitializeAsync() =>
         fixture.ResetDataAsync();
@@ -27,16 +28,17 @@ public sealed class VersionHistoryFlowTests(StackFixtureC fixture) : IAsyncLifet
     [Fact]
     public async Task HotstringHistoryRecycleRestoreAndPurge_DrivesBrowserFlow()
     {
+        // The create and the two edits go through the API: they only produce the versions. The
+        // browser create and edit flows are covered by HotstringsCrudFlowTests.
+        using HttpClient client = fixture.Api.CreateClient();
+        Guid hotstringId = await CreateHotstringThroughApiAsync(client, "vh-hs", "original text");
+        await UpdateHotstringReplacementThroughApiAsync(client, hotstringId, "vh-hs", "first edit");
+        await UpdateHotstringReplacementThroughApiAsync(client, hotstringId, "vh-hs", "second edit");
+
         await using IBrowserContext ctx = await fixture.Browser.NewContextAsync();
 
         IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/hotstrings");
-        await page.WaitForSelectorAsync("button.add-hotstring");
-
-        await CreateHotstringAsync(page, "vh-hs", "original text");
-        Guid hotstringId = await FindHotstringIdAsync("vh-hs");
-
-        await UpdateHotstringReplacementAsync(page, "vh-hs", "first edit");
-        await UpdateHotstringReplacementAsync(page, "vh-hs", "second edit");
+        await page.WaitForSelectorAsync("tbody tr:has-text(\"second edit\")");
 
         await OpenHistoryAsync(page, "vh-hs");
         await page.WaitForSelectorAsync("button.history-version:has-text(\"v2\")");
@@ -74,7 +76,6 @@ public sealed class VersionHistoryFlowTests(StackFixtureC fixture) : IAsyncLifet
         await page.WaitForSelectorAsync("text=Hotstring deleted forever.");
         await page.WaitForSelectorAsync("text=No deleted items.");
 
-        using HttpClient client = fixture.Api.CreateClient();
         HttpResponseMessage historyResponse = await client.GetAsync($"/api/v1/hotstrings/{hotstringId}/history");
         Assert.Equal(HttpStatusCode.NotFound, historyResponse.StatusCode);
     }
@@ -84,12 +85,16 @@ public sealed class VersionHistoryFlowTests(StackFixtureC fixture) : IAsyncLifet
     {
         Guid hotkeyId = await SeedHotkeyAsync();
 
+        // The first edit goes through the API: it only produces a version. The second edit stays
+        // in the browser, because it is the only proof that a KeyPicker commits on blur.
+        using HttpClient client = fixture.Api.CreateClient();
+        await UpdateHotkeyThroughApiAsync(client, hotkeyId, "F10", "wt first");
+
         await using IBrowserContext ctx = await fixture.Browser.NewContextAsync();
 
         IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/hotkeys");
-        await page.WaitForSelectorAsync("tbody tr:has-text(\"Open Terminal\")");
+        await page.WaitForSelectorAsync("tbody tr:has-text(\"wt first\")");
 
-        await UpdateHotkeyAsync(page, "Open Terminal", "F10", "wt first");
         await UpdateHotkeyAsync(page, "Open Terminal", "F11", "wt second");
 
         await OpenHistoryAsync(page, "Open Terminal");
@@ -126,27 +131,40 @@ public sealed class VersionHistoryFlowTests(StackFixtureC fixture) : IAsyncLifet
         Assert.Equal("wt.exe", restored.RunTarget);
     }
 
-    private static async Task CreateHotstringAsync(IPage page, string trigger, string replacement)
+    private static async Task<Guid> CreateHotstringThroughApiAsync(HttpClient client, string trigger, string replacement)
     {
-        await page.ClickAsync("button.add-hotstring");
-        await page.WaitForSelectorAsync("tr.draft-row");
-        await page.FillAsync("tr.draft-row input[data-test=\"trigger-input\"]", trigger);
-        await page.FillAsync("tr.draft-row textarea[data-test=\"replacement-input\"]", replacement);
-        await page.ClickAsync("tr.draft-row button.commit-edit");
-        await page.WaitForSelectorAsync("text=Hotstring created.");
-        await page.WaitForSelectorAsync($"tbody tr:has-text(\"{trigger}\")");
+        HttpResponseMessage response = await client.PostAsJsonAsync(
+            "/api/v1/hotstrings", new CreateHotstringDto(trigger, replacement));
+        response.EnsureSuccessStatusCode();
+        HotstringDto created = (await response.Content.ReadFromJsonAsync<HotstringDto>())!;
+        return created.Id;
     }
 
-    private static async Task UpdateHotstringReplacementAsync(IPage page, string trigger, string replacement)
+    private static async Task UpdateHotstringReplacementThroughApiAsync(
+        HttpClient client, Guid id, string trigger, string replacement)
     {
-        await page.Locator("tbody tr", new() { HasTextString = trigger })
-            .Locator("button.edit")
-            .ClickAsync();
-        await page.WaitForSelectorAsync("tr.edit-row");
-        await page.FillAsync("tr.edit-row textarea[data-test=\"replacement-input\"]", replacement);
-        await page.ClickAsync("tr.edit-row button.commit-edit");
-        await page.WaitForSelectorAsync("text=Hotstring updated.");
-        await page.WaitForSelectorAsync($"tbody tr:has-text(\"{replacement}\")");
+        HttpResponseMessage response = await client.PutAsJsonAsync(
+            $"/api/v1/hotstrings/{id}",
+            new UpdateHotstringDto(
+                trigger, replacement, ProfileIds: null, AppliesToAllProfiles: true,
+                IsEndingCharacterRequired: true, IsTriggerInsideWord: false, Description: null));
+        response.EnsureSuccessStatusCode();
+    }
+
+    // Reads the hotkey first, so every field but the key and the run target keeps its value.
+    private static async Task UpdateHotkeyThroughApiAsync(HttpClient client, Guid id, string key, string target)
+    {
+        HotkeyDto current = (await client.GetFromJsonAsync<HotkeyDto>($"/api/v1/hotkeys/{id}"))!;
+        HttpResponseMessage response = await client.PutAsJsonAsync(
+            $"/api/v1/hotkeys/{id}",
+            new UpdateHotkeyDto(
+                current.Description, key, current.ActionKind,
+                current.Ctrl, current.Alt, current.Shift, current.Win,
+                current.Text, current.SendKeysContent, target, current.RunTargetKind,
+                current.WindowOp, current.RemapDest, current.Body,
+                current.ProfileIds, current.AppliesToAllProfiles, current.CategoryIds,
+                current.ContextMatchType, current.ContextValue));
+        response.EnsureSuccessStatusCode();
     }
 
     private static async Task UpdateHotkeyAsync(IPage page, string description, string key, string target)
@@ -267,17 +285,6 @@ public sealed class VersionHistoryFlowTests(StackFixtureC fixture) : IAsyncLifet
         return await db.Hotstrings
             .Include(h => h.Profiles)
             .SingleAsync(h => h.Id == id);
-    }
-
-    private async Task<Guid> FindHotstringIdAsync(string trigger)
-    {
-        await using AsyncServiceScope scope = fixture.Api.Services.CreateAsyncScope();
-        AppDbContext db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-
-        return await db.Hotstrings
-            .Where(h => h.OwnerOid == TestAuthHandler.TestOwnerOid && h.Trigger == trigger)
-            .Select(h => h.Id)
-            .SingleAsync();
     }
 
     private async Task<Guid> SeedHotkeyAsync()

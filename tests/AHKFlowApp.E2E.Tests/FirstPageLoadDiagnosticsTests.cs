@@ -9,8 +9,8 @@ namespace AHKFlowApp.E2E.Tests;
 
 // Guards the failure message of FirstPageLoad.OpenAsync. A green E2E suite never runs this
 // message, so without these tests it would rot unnoticed and be wrong on the day it matters.
-[Collection(E2ECollectionD.Name)]
-public sealed class FirstPageLoadDiagnosticsTests(StackFixtureD fixture) : IAsyncLifetime
+[Collection(E2ECollectionC.Name)]
+public sealed class FirstPageLoadDiagnosticsTests(StackFixtureC fixture) : IAsyncLifetime
 {
     public Task InitializeAsync() =>
         fixture.ResetDataAsync();
@@ -125,19 +125,6 @@ public sealed class FirstPageLoadDiagnosticsTests(StackFixtureD fixture) : IAsyn
 
         int.Parse(reported.Groups[1].Value)
             .Should().BeLessThan(FirstPageLoad.TimeoutMs / 2);
-    }
-
-    // The healthy path has to keep working, and the returned page has to be usable by the caller.
-    [Fact]
-    public async Task HealthyBoot_Open_ReturnsAPageShowingTheApp()
-    {
-        await using IBrowserContext ctx = await fixture.Browser.NewContextAsync();
-
-        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/hotkeys");
-
-        await Assertions.Expect(page.Locator("[data-test=\"app-shell\"]")).ToBeVisibleAsync();
-        await Assertions.Expect(page.Locator("button.add-hotkey")).ToBeVisibleAsync();
-        (await page.Locator("[data-test=\"boot-error\"]").CountAsync()).Should().Be(0);
     }
 
     // The blind spot backlog 154 found. The app can start and still be unable to run, and the old

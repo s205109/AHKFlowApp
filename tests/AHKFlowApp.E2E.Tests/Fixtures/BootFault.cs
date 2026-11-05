@@ -18,25 +18,43 @@ public static class BootFault
     public static readonly Regex AppAssemblyPattern =
         new(@"/_framework/AHKFlowApp\.UI\.Blazor\.[^/]+\.wasm$", RegexOptions.None, TimeSpan.FromSeconds(1));
 
+    /// <summary>
+    /// The boot grace period these tests use, in milliseconds. Production waits 10 s after a failed
+    /// download before it reports the boot as failed (bootBlazor.js). Every test that injects a
+    /// fault would wait that long, so each fault also sets this short wait.
+    /// </summary>
+    public const int ShortGraceMs = 1000;
+
     /// <summary>Makes the app assembly return an empty 404, which is what reproduced the frozen boot.</summary>
-    public static Task Fail404OnAppAssemblyAsync(IBrowserContext context) =>
-        context.RouteAsync(AppAssemblyPattern, route => route.FulfillAsync(new RouteFulfillOptions
+    public static async Task Fail404OnAppAssemblyAsync(IBrowserContext context)
+    {
+        await UseShortGraceAsync(context);
+        await context.RouteAsync(AppAssemblyPattern, route => route.FulfillAsync(new RouteFulfillOptions
         {
             Status = 404,
             ContentType = "text/plain",
             Body = string.Empty,
         }));
+    }
 
     /// <summary>
-    /// Serves the app assembly normally, but late. Used to prove that a boot slower than any grace
+    /// Serves the app assembly normally, but late. Used to prove that a boot slower than the grace
     /// period still counts as a success.
     /// </summary>
-    public static Task DelayAppAssemblyAsync(IBrowserContext context, TimeSpan delay) =>
-        context.RouteAsync(AppAssemblyPattern, async route =>
+    public static async Task DelayAppAssemblyAsync(IBrowserContext context, TimeSpan delay)
+    {
+        await UseShortGraceAsync(context);
+        await context.RouteAsync(AppAssemblyPattern, async route =>
         {
             await Task.Delay(delay);
             await route.ContinueAsync();
         });
+    }
+
+    // An init script runs before every page script, on every navigation, so the value is in place
+    // before bootBlazor.js reads it, and it survives the reload the boot script performs.
+    private static Task UseShortGraceAsync(IBrowserContext context) =>
+        context.AddInitScriptAsync($"window.__ahkflowBootFailureGraceMs = {ShortGraceMs};");
 }
 
 /// <summary>

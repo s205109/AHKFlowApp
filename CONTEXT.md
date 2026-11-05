@@ -310,6 +310,12 @@ One .NET test project plus the trait filter the runner applies to it. `AHKFlowAp
 different one. A Suite is the PowerShell equivalent, and neither word ever means the other.
 _Avoid_: suite, project, run, pass
 
+**Candidate group**:
+The tests inside one .NET test project that one auditor reviews in one run of the `test-audit`
+workflow. It holds the audit candidates of one area of that project, such as one test class or a
+few related classes.
+_Avoid_: group, set, Collection
+
 **Mode**:
 One named list of Slices that `scripts/test-fast.ps1` runs: Fast, Integration, E2E, Coverage, or
 PowerShell.

@@ -1,4 +1,7 @@
 using AHKFlowApp.E2E.Tests.Fixtures;
+using AHKFlowApp.Infrastructure.Persistence;
+using AHKFlowApp.TestUtilities.Builders;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Playwright;
 using Xunit;
 
@@ -39,25 +42,22 @@ public sealed class RawHotstringFlowTests(StackFixtureC fixture) : IAsyncLifetim
         await using IBrowserContext ctx = await fixture.Browser.NewContextAsync(PhoneViewport);
 
         // A profile is required so the generated profile script has something to byte-match
-        // against at the end of the test.
-        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/profiles");
-        await page.WaitForSelectorAsync("button.add-profile");
-        await page.ClickAsync("button.add-profile");
-        await page.WaitForSelectorAsync("input[data-test=\"profile-name-input\"]");
-        await page.FillAsync("input[data-test=\"profile-name-input\"]", "RawFlow");
-        await page.ClickAsync("button.commit-edit");
-        await page.WaitForSelectorAsync("text=RawFlow");
+        // against at the end of the test. It is seeded, not created in the browser: the profile
+        // create flow is covered by
+        // ProfileCreateDefaultHeaderFlowTests.CreateProfile_WithoutTouchingTheHeader_GeneratesAScriptWithTheDirectives.
+        await using (AsyncServiceScope scope = fixture.Api.Services.CreateAsyncScope())
+        {
+            AppDbContext db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.Profiles.Add(new ProfileBuilder()
+                .WithOwner(TestAuthHandler.TestOwnerOid)
+                .WithName("RawFlow")
+                .Build());
+            await db.SaveChangesAsync();
+        }
 
-        Task<IResponse> profilesLoaded = page.WaitForResponseAsync(response =>
-            response.Url.Contains("/api/v1/profiles", StringComparison.OrdinalIgnoreCase) &&
-            response.Status == 200);
-        Task<IResponse> categoriesLoaded = page.WaitForResponseAsync(response =>
-            response.Url.Contains("/api/v1/categories", StringComparison.OrdinalIgnoreCase) &&
-            response.Status == 200);
-
-        await page.GotoAsync($"{fixture.Spa.BaseUrl}/hotstrings");
+        IPage page = await FirstPageLoad.OpenAsync(
+            ctx, $"{fixture.Spa.BaseUrl}/hotstrings", "/api/v1/profiles", "/api/v1/categories");
         await page.WaitForSelectorAsync("button.add-hotstring-fab");
-        await Task.WhenAll(profilesLoaded, categoriesLoaded);
 
         await page.ClickAsync("button.add-hotstring-fab");
         await page.WaitForSelectorAsync(".hotstring-edit-dialog");
@@ -106,7 +106,23 @@ public sealed class RawHotstringFlowTests(StackFixtureC fixture) : IAsyncLifetim
         await Assertions.Expect(
             page.Locator("tr.mobile-row:has-text(\"ftw\") [data-test=\"raw-kind-chip\"]")).ToBeVisibleAsync();
 
-        // Byte-match the downloaded profile script — the verbatim Raw line must appear exactly.
+        // A second Raw hotstring, this time a continuation section. Its summary names the body kind
+        // and the line count.
+        await page.ClickAsync("button.add-hotstring-fab");
+        await page.WaitForSelectorAsync(".hotstring-edit-dialog");
+        await page.ClickAsync(".hotstring-edit-dialog .mud-toggle-item:has-text('Raw')");
+        await page.WaitForSelectorAsync("[data-test=\"script-warning\"]");
+
+        await page.Locator("textarea[data-test=\"replacement-input\"]").FillAsync(ContinuationDefinition);
+
+        await Assertions.Expect(page.Locator("[data-test=\"raw-summary\"]")).ToContainTextAsync("col");
+        await Assertions.Expect(page.Locator("[data-test=\"raw-summary\"]")).ToContainTextAsync("multi-line text (3 lines)");
+
+        await page.ClickAsync("button.commit-edit");
+        await page.WaitForSelectorAsync("tr.mobile-row:has-text(\"col\")");
+
+        // Byte-match the downloaded profile script — the verbatim Raw line and the continuation
+        // section must both appear exactly.
         await page.GotoAsync($"{fixture.Spa.BaseUrl}/downloads");
         await page.WaitForSelectorAsync("button.download-profile");
 
@@ -119,59 +135,6 @@ public sealed class RawHotstringFlowTests(StackFixtureC fixture) : IAsyncLifetim
         string content = System.Text.Encoding.UTF8.GetString(bytes);
 
         Assert.Contains(Definition, content, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task CreateRawContinuationSection_SavesAndDownloadsSectionByteIdentical()
-    {
-        await using IBrowserContext ctx = await fixture.Browser.NewContextAsync(PhoneViewport);
-
-        // A profile is required so the generated profile script has something to byte-match against.
-        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/profiles");
-        await page.WaitForSelectorAsync("button.add-profile");
-        await page.ClickAsync("button.add-profile");
-        await page.WaitForSelectorAsync("input[data-test=\"profile-name-input\"]");
-        await page.FillAsync("input[data-test=\"profile-name-input\"]", "ColorsFlow");
-        await page.ClickAsync("button.commit-edit");
-        await page.WaitForSelectorAsync("text=ColorsFlow");
-
-        Task<IResponse> profilesLoaded = page.WaitForResponseAsync(response =>
-            response.Url.Contains("/api/v1/profiles", StringComparison.OrdinalIgnoreCase) &&
-            response.Status == 200);
-        Task<IResponse> categoriesLoaded = page.WaitForResponseAsync(response =>
-            response.Url.Contains("/api/v1/categories", StringComparison.OrdinalIgnoreCase) &&
-            response.Status == 200);
-
-        await page.GotoAsync($"{fixture.Spa.BaseUrl}/hotstrings");
-        await page.WaitForSelectorAsync("button.add-hotstring-fab");
-        await Task.WhenAll(profilesLoaded, categoriesLoaded);
-
-        await page.ClickAsync("button.add-hotstring-fab");
-        await page.WaitForSelectorAsync(".hotstring-edit-dialog");
-
-        await page.ClickAsync(".hotstring-edit-dialog .mud-toggle-item:has-text('Raw')");
-        await page.WaitForSelectorAsync("[data-test=\"script-warning\"]");
-
-        await page.Locator("textarea[data-test=\"replacement-input\"]").FillAsync(ContinuationDefinition);
-
-        // Derived trigger + body-kind summary appear below the textarea (multi-line text, 3 lines).
-        await Assertions.Expect(page.Locator("[data-test=\"raw-summary\"]")).ToContainTextAsync("col");
-        await Assertions.Expect(page.Locator("[data-test=\"raw-summary\"]")).ToContainTextAsync("multi-line text (3 lines)");
-
-        await page.ClickAsync("button.commit-edit");
-        await page.WaitForSelectorAsync("text=Hotstring created.");
-
-        // Byte-match the downloaded profile script — the continuation section must appear exactly.
-        await page.GotoAsync($"{fixture.Spa.BaseUrl}/downloads");
-        await page.WaitForSelectorAsync("button.download-profile");
-
-        IDownload download = await page.RunAndWaitForDownloadAsync(() =>
-            page.ClickAsync("button.download-profile"));
-
-        string path = await download.PathAsync()
-            ?? throw new InvalidOperationException("Download produced no file path.");
-        string content = System.Text.Encoding.UTF8.GetString(await File.ReadAllBytesAsync(path));
-
         Assert.Contains(ContinuationDefinition, content, StringComparison.Ordinal);
     }
 

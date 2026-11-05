@@ -8,9 +8,9 @@ namespace AHKFlowApp.E2E.Tests;
 
 // Guards the boot path in wwwroot/js/bootBlazor.js. Blazor is started manually so a boot
 // failure ends in a visible message instead of a loading circle frozen at 99%.
-[Collection(E2ECollectionD.Name)]
+[Collection(E2ECollectionB.Name)]
 [OpensPagesWithoutDiagnosis("These tests break the boot on purpose and assert the failure screen, so a diagnosed open would throw before they could look.")]
-public sealed class BootFailureFlowTests(StackFixtureD fixture) : IAsyncLifetime
+public sealed class BootFailureFlowTests(StackFixtureB fixture) : IAsyncLifetime
 {
     private const string ReloadGuardKey = "ahkflowapp-boot-retry-reload";
 
@@ -120,9 +120,9 @@ public sealed class BootFailureFlowTests(StackFixtureD fixture) : IAsyncLifetime
     {
         await using IBrowserContext ctx = await fixture.Browser.NewContextAsync();
 
-        // Well past any grace period, so a timer-based failure signal would fire before the app
-        // finishes booting.
-        await BootFault.DelayAppAssemblyAsync(ctx, TimeSpan.FromSeconds(8));
+        // Twice the grace period the fault sets, so a timer-based failure signal would fire before
+        // the app finishes booting.
+        await BootFault.DelayAppAssemblyAsync(ctx, TimeSpan.FromMilliseconds(2 * BootFault.ShortGraceMs));
 
         // An uncaught error from something other than the boot: a browser extension, an analytics
         // script, or any other page script.
@@ -167,6 +167,71 @@ public sealed class BootFailureFlowTests(StackFixtureD fixture) : IAsyncLifetime
 
         // No guard can be stored, so the auto-reload is skipped and the message comes straight away.
         documents.Count.Should().Be(1);
+    }
+
+    // The grace period is the wait between a failed boot download and the failure report. Every
+    // other test here sets the short E2E value, so this is the only test that sees the production
+    // value. A spy on setTimeout records the delay the boot script asks for, so no test waits 10 s.
+    // An override that is not a positive number must fall back to the production value.
+    [Theory]
+    [InlineData(null, 10000)]
+    [InlineData("1234", 1234)]
+    [InlineData("-5", 10000)]
+    [InlineData("'1500'", 10000)]
+    public async Task BootFailureGrace_UsesTheOverrideOnlyWhenItIsAPositiveNumber(string? overrideScript, int expectedMs)
+    {
+        await using IBrowserContext ctx = await fixture.Browser.NewContextAsync();
+
+        List<int> graceDelays = [];
+        await ctx.ExposeFunctionAsync("__recordGraceDelay", (int ms) =>
+        {
+            lock (graceDelays)
+            {
+                graceDelays.Add(ms);
+            }
+        });
+
+        if (overrideScript is not null)
+        {
+            await ctx.AddInitScriptAsync($"window.__ahkflowBootFailureGraceMs = {overrideScript};");
+        }
+
+        // Records only the timer the boot script starts for a failed download.
+        await ctx.AddInitScriptAsync(@"(function () {
+    var realSetTimeout = window.setTimeout;
+    window.setTimeout = function (callback, ms) {
+        if ((new Error().stack || '').indexOf('onUncaughtDuringBoot') !== -1) {
+            window.__recordGraceDelay(ms);
+        }
+        return realSetTimeout.apply(this, arguments);
+    };
+})();");
+
+        // The fault without BootFault's short grace, so the boot script picks its own value.
+        await ctx.RouteAsync(BootFault.AppAssemblyPattern, route => route.FulfillAsync(new RouteFulfillOptions
+        {
+            Status = 404,
+            ContentType = "text/plain",
+            Body = string.Empty,
+        }));
+
+        IPage page = await ctx.NewPageAsync();
+        await page.GotoAsync(fixture.Spa.BaseUrl, new PageGotoOptions { WaitUntil = WaitUntilState.Commit });
+
+        await WaitUntilAsync(
+            () =>
+            {
+                lock (graceDelays)
+                {
+                    return graceDelays.Count > 0;
+                }
+            },
+            "the boot script to start its grace timer");
+
+        lock (graceDelays)
+        {
+            graceDelays[0].Should().Be(expectedMs);
+        }
     }
 
     // Playwright's own waits are tied to a page, and the page navigates underneath these tests,

@@ -303,6 +303,8 @@ xUnit matches a fixture to a constructor parameter by exact type, so a parameter
 
 A test that changes process-wide state, such as an environment variable, belongs in `ExclusiveTestCollection` instead. xUnit runs every parallel collection to completion before it starts that one, so it runs last and on its own.
 
+A test that starts its own API hosts, and touches no process-wide state, belongs in `HostLifecycleTestCollection` (`E2E-HostLifecycle`). It has no fixture, and it runs beside the four groups. `HostLifecycleTests` and `StackIsolationTests` live there.
+
 The parallelism is capped at four in `tests/AHKFlowApp.E2E.Tests/xunit.runner.json`. Four is chosen for the CI runner, which has four cores, not for a development machine. To make the suite serial again, add `"parallelizeTestCollections": false` to that file.
 
 ### Writing a flow test
