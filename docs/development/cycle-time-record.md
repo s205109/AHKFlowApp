@@ -1144,3 +1144,59 @@ These classes are not audited. None holds a triage candidate or one of the 15 sl
 - `DownloadsSaveFailureFlowTests`: 4.12 s.
 - `PublishFreshnessTests`: 0.01 s.
 - `FirstPageLoadAdoptionTests`: 0.05 s.
+
+### Run 1
+
+This session had no workflow runtime. So a gitignored driver ran
+`.claude/workflows/test-audit.js` with stub functions. The driver wrote the script's own prompts
+and applied its own claim filter. Agents ran each prompt: five auditors in parallel, then five
+refuters one at a time, at medium effort.
+
+- Run: 2026-11-05, on revision B, `d98dea6f`, with the five Candidate groups of the ranking.
+- Minutes: about 2.5 for the audit phase, and 60 for the refute phase.
+- Subagent tokens: 549,605 for the auditors and 556,789 for the refuters, 1,106,394 in all.
+- Verdicts: 7 REMOVE, 18 MERGE, 11 SPEED UP, 1 REWORK.
+- Refuters: 25 claims. The audited test failed on the planted bug in all 25. 12 claims are upheld,
+  because another existing test failed on the same bug. 13 are refuted, because no other existing
+  test failed. In 12 of those 13, the receiving test of a merge did not hold the moved assertions
+  yet. Every refuter left the tree clean, checked with `git status --porcelain` and a diff
+  against B.
+
+The approval table had three sections. Section A holds the upheld claims, and section B the
+SPEED UP changes. Section C holds the refuted merges and the REWORK.
+
+- Approved: rows 1 to 12 (section A) and rows 13 to 23 (section B).
+- Approved on a condition: rows 26 to 29 of section C. Each merged test is written first, and must
+  then fail on the refuter's planted bug.
+- Rejected: rows 24, 25 and 30 to 37. They are in `docs/development/test-audit-deferred.md`, under
+  `## Backlog 194, E2E`.
+
+| Row | Test | Change | Estimate |
+|---:|---|---|---:|
+| 1 | `ShortcutWarningFlowTests.IgnoringTheWindowsUse_SilencesTheWarning_AndRestoringBringsItBack` | REMOVE the restore half | 5.5 s |
+| 2 | `ShortcutWarningFlowTests.AHotkeyOnAKeyTheProfileHeaderUses_IsWarnedAbout` | MERGE into `WhileTheProfileListIsStillLoading_TheCreateDialogStillWarns` | 6.0 s |
+| 3 | `ShortcutWarningFlowTests.ClearingTheModifier_RemovesTheWarning` | REMOVE | 4.07 s |
+| 4 | `ShortcutWarningFlowTests.RemappingCapsLockToCtrl_WarnsAboutTheDestination` | REMOVE | 5.07 s |
+| 5 | `ShortcutWarningFlowTests.AHotkeyOnAKnownShortcut_IsMarkedOnTheList` | MERGE into `WinE_ShowsTheWarningAndStillSaves` | 3.9 s |
+| 6 | `LocalAuthModeFlowTests.LocalInstallMode_SignsInSyntheticUserAndAllowsCrud` | REMOVE | 3.23 s |
+| 7 | `FirstPageLoadDiagnosticsTests.HealthyBoot_Open_ReturnsAPageShowingTheApp` | REMOVE | 2.61 s |
+| 8 | `RawHotstringFlowTests.CreateRawContinuationSection_SavesAndDownloadsSectionByteIdentical` | MERGE into `CreateRawViaDialog_WarningAlertMonospaceParsedSummaryMobileBadgeAndByteMatch` | 6.2 s |
+| 9 | `HotstringsMobileFlowTests.AddFab_OnPhoneViewport_OpensHotstringDialog` | MERGE into `MacroHotstringFlowTests.CreateMacroViaDialog_CaretInsertion_PreviewAndSave` | 2.8 s |
+| 10 | `HotstringImportPasteFlowTests.PasteAboveTheServerLimit_KeepsTheTextAndShowsTooLargeMessage` | MERGE into `PasteAtTheServerLimit_KeepsTheWholeScriptAndPreviewsIt` | 2.0 s |
+| 11 | `ProfileScriptDownloadFlowTests.LongName_SingleDownloadAndZip_UseOneStem` | REMOVE | 4.37 s |
+| 12 | `ClipboardDeliveryFlowTests.AutoLongText_DownloadedScriptContainsOneHelperAndPasteCall` | REMOVE | 4.87 s |
+| 13 | `ShortcutWarningFlowTests.AnOwnerRecord_WarnsOnItsOwnCombination` | SPEED UP: seed the owner record | 4.0 s |
+| 14 | `HotkeysCrudFlowTests.RawBodySaveError_ShowsInlineOnTheBodyField` | SPEED UP: wait 500 ms, not 1500 ms | 1.0 s |
+| 15 | `BootFailureFlowTests.SlowBoot_WithUnrelatedUncaughtError_StillRendersApp` | SPEED UP: the settable boot grace period | 6.5 s |
+| 16 | `HostStartGateTests` two cases, `StackIsolationTests` | SPEED UP: out of the exclusive collection | 0.66 s |
+| 17 | `RawHotstringFlowTests.CreateRawViaDialog_WarningAlertMonospaceParsedSummaryMobileBadgeAndByteMatch` | SPEED UP: seed the profile | 2.0 s |
+| 18 | `VersionHistoryFlowTests.HotstringHistoryRecycleRestoreAndPurge_DrivesBrowserFlow` | SPEED UP: create and edit through the API | 2.5 s |
+| 19 | `VersionHistoryFlowTests.HotkeyHistoryAndRecycleRestore_PreservesModifiersAndAction` | SPEED UP: the first edit through the API | 1.0 s |
+| 20 | `KeyboardAccessFlowTests.RowButtons_NameTheirHotstring` | Move into `InlineEditFields_NameWhatTheyHold` | 2.5 s |
+| 21 | `KeyboardAccessFlowTests.AppBarButtons_NameWhatPressingThemDoes` | Move into `SkipLink_FirstTabStop_MovesFocusIntoThePage` | 2.6 s |
+| 22 | `ProductAndPageNamesFlowTests.HomePage_SpellsTheProductOneWay` | Move into `HealthPage_UsesOneName` | 1.9 s |
+| 23 | `ProductAndPageNamesFlowTests.StaticFiles_SpellTheProductOneWay` | SPEED UP: fetch with `HttpClient` | 2.0 s |
+| 26 | `HotkeysCrudFlowTests.CreateRunHotkey_ShowsPreviewThenAppearsInGridWithActionChip` | MERGE into `CreateHotkeyLimitedToOneProgram_PreviewWrapsSnippetInHotIf`, with proof | 4.1 s |
+| 27 | `HotkeysCrudFlowTests.RawBodyPreviewError_ShowsInlineOnTheBodyField` | MERGE into `RawBodyInjectingAnotherHotkey_BlocksPreviewGeneration`, with proof | 3.6 s |
+| 28 | `HotkeysCrudFlowTests.SelectAll_OnDesktopViewport_SelectsEveryRowOnThePage` | MERGE into `BulkDelete_OnDesktopViewport_SelectsRowsWithTheirCheckboxes`, with proof | 2.4 s |
+| 29 | `HotstringsCrudFlowTests.SelectAll_OnDesktopViewport_SelectsEveryRowOnThePage` | MERGE into `BulkDelete_OnDesktopViewport_SelectsRowsWithTheirCheckboxes`, with proof | 2.3 s |
