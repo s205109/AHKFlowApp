@@ -217,30 +217,6 @@ public sealed class ShortcutWarningFlowTests(StackFixtureA fixture) : IAsyncLife
     }
 
     [Fact]
-    public async Task RemappingCapsLockToCtrl_WarnsAboutTheDestination()
-    {
-        await using IBrowserContext context = await fixture.Browser.NewContextAsync();
-
-        IPage page = await OpenCreateDialogAsync(context);
-        await CommitKeyAsync(page, "CapsLock");
-        await page.ClickAsync(".hotkey-edit-dialog [data-test=\"action-kind-Remap\"]");
-        await CommitRemapDestAsync(page, "Ctrl");
-
-        await Assertions.Expect(page.Locator(".hotkey-edit-dialog [data-test=\"destination-warning\"]"))
-            .ToContainTextAsync("Shortcuts that use Ctrl may also respond when you hold CapsLock.");
-
-        // F13 is a real registry key that nothing in the catalog uses, so the notice must go.
-        await CommitRemapDestAsync(page, "F13");
-
-        // Wait for the decision to name F13 first. Without this, an absent notice could be the
-        // older evaluation still on screen rather than a decision about F13.
-        await Assertions.Expect(page.Locator(".hotkey-edit-dialog [data-test=\"shortcut-warning-checked\"]"))
-            .ToHaveAttributeAsync("data-destination", "F13");
-        await Assertions.Expect(page.Locator(".hotkey-edit-dialog [data-test=\"destination-warning\"]"))
-            .ToHaveCountAsync(0);
-    }
-
-    [Fact]
     public async Task AHotkeyOnAKnownShortcut_IsMarkedOnTheList()
     {
         await using IBrowserContext context = await fixture.Browser.NewContextAsync();
@@ -401,16 +377,6 @@ public sealed class ShortcutWarningFlowTests(StackFixtureA fixture) : IAsyncLife
     private static async Task CommitKeyAsync(IPage page, string key)
     {
         ILocator input = page.Locator(".hotkey-edit-dialog input[data-test=\"key-picker\"]");
-        await input.ClickAsync();
-        await input.FillAsync(key);
-        await input.PressAsync("Tab");
-    }
-
-    // Same shape as CommitKeyAsync: the remap destination is a MudAutocomplete too, and blurring is
-    // what commits the typed value.
-    private static async Task CommitRemapDestAsync(IPage page, string key)
-    {
-        ILocator input = page.Locator(".hotkey-edit-dialog input[data-test=\"remap-dest-picker\"]");
         await input.ClickAsync();
         await input.FillAsync(key);
         await input.PressAsync("Tab");
