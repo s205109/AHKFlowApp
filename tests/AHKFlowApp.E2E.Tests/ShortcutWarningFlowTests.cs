@@ -35,6 +35,17 @@ public sealed class ShortcutWarningFlowTests(StackFixtureA fixture) : IAsyncLife
         await page.FillAsync(".hotkey-edit-dialog [data-test=\"text-input\"]", "my notes");
         await page.ClickAsync(".hotkey-edit-dialog button.commit-edit");
         await page.WaitForSelectorAsync("text=Hotkey created.");
+
+        // The saved row is marked on the list. Scoped to the desktop branch: the mobile branch
+        // renders too and is hidden by CSS only.
+        ILocator marker = page.Locator(".desktop-branch tr", new() { HasTextString = "E2E open my notes" })
+            .Locator("[data-test=\"known-shortcut-marker\"]");
+
+        await Assertions.Expect(marker).ToHaveCountAsync(1);
+
+        // The name a screen reader reads is the whole notice, the same sentence the dialog shows.
+        string? label = await marker.GetAttributeAsync("aria-label");
+        Assert.Contains("Windows uses Win+E to open File Explorer.", label, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -214,31 +225,6 @@ public sealed class ShortcutWarningFlowTests(StackFixtureA fixture) : IAsyncLife
         await page.WaitForSelectorAsync(".hotkey-edit-dialog [data-test=\"shortcut-warning\"]");
         string warning = await page.InnerTextAsync(".hotkey-edit-dialog [data-test=\"shortcut-warning\"]");
         Assert.Contains("My notes tool uses Ctrl+F7 to open my notes", warning, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task AHotkeyOnAKnownShortcut_IsMarkedOnTheList()
-    {
-        await using IBrowserContext context = await fixture.Browser.NewContextAsync();
-
-        // Win+L is a seeded Protected row: Windows locks the computer with it.
-        IPage page = await OpenCreateDialogAsync(context);
-        await CommitKeyAsync(page, "l");
-        await page.CheckAsync(".hotkey-edit-dialog input[data-test=\"win-checkbox\"]");
-        await page.FillAsync(".hotkey-edit-dialog input[data-test=\"description-input\"]", "E2E lock marker");
-        await page.FillAsync(".hotkey-edit-dialog [data-test=\"text-input\"]", "my notes");
-        await page.ClickAsync(".hotkey-edit-dialog button.commit-edit");
-        await page.WaitForSelectorAsync("text=Hotkey created.");
-
-        // Scoped to the desktop branch: the mobile branch renders too and is hidden by CSS only.
-        ILocator marker = page.Locator(".desktop-branch tr", new() { HasTextString = "E2E lock marker" })
-            .Locator("[data-test=\"known-shortcut-marker\"]");
-
-        await Assertions.Expect(marker).ToHaveCountAsync(1);
-
-        // The name a screen reader reads is the whole notice, the same sentence the dialog shows.
-        string? label = await marker.GetAttributeAsync("aria-label");
-        Assert.Contains("Windows uses Win+L to lock the computer.", label, StringComparison.Ordinal);
     }
 
     // A hotkey on a key the Profile header uses is warned about, and the row still saves. The test
