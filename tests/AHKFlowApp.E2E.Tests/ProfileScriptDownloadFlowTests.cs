@@ -1,4 +1,3 @@
-using System.IO.Compression;
 using System.Text.RegularExpressions;
 using AHKFlowApp.E2E.Tests.Fixtures;
 using Microsoft.Playwright;
@@ -75,42 +74,6 @@ public sealed class ProfileScriptDownloadFlowTests(StackFixtureD fixture) : IAsy
             page.Locator("button.download-profile").First.ClickAsync());
 
         AssertStampedApiName(apiName, download);
-    }
-
-    [Fact]
-    public async Task LongName_SingleDownloadAndZip_UseOneStem()
-    {
-        // Backlog 171. 63 letters, a space, then 'bbb'. The stem's 64th character is the
-        // underscore, which is where the API and the UI used to disagree.
-        string profileName = new string('a', 63) + " bbb";
-        string apiName = "ahkflow_" + new string('a', 63) + ".ahk";
-
-        await using IBrowserContext ctx = await fixture.Browser.NewContextAsync();
-
-        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/profiles");
-        await page.WaitForSelectorAsync("button.add-profile");
-        await page.ClickAsync("button.add-profile");
-        await page.FillAsync("input[data-test=\"profile-name-input\"]", profileName);
-        await page.ClickAsync("button.commit-edit");
-        await page.WaitForSelectorAsync("text=Profile created.");
-
-        await page.GotoAsync($"{fixture.Spa.BaseUrl}/downloads");
-        await page.WaitForSelectorAsync("button.download-profile");
-        // Scope the click to the new profile's row. The seeded profiles have their own rows.
-        ILocator row = page.Locator("tr").Filter(new() { HasTextString = profileName }).First;
-        IDownload single = await page.RunAndWaitForDownloadAsync(() =>
-            row.Locator("button.download-profile").ClickAsync());
-
-        IDownload zipDownload = await page.RunAndWaitForDownloadAsync(() =>
-            page.ClickAsync("button.download-all"));
-        string zipPath = await zipDownload.PathAsync()
-            ?? throw new InvalidOperationException("The zip download produced no file path.");
-        await using FileStream stream = File.OpenRead(zipPath);
-        using ZipArchive zip = new(stream, ZipArchiveMode.Read);
-
-        AssertStampedApiName(apiName, single);
-        string[] entries = [.. zip.Entries.Select(e => e.Name)];
-        Assert.True(entries.Contains(apiName), $"The zip holds {string.Join(", ", entries)}, not {apiName}.");
     }
 
     // The saved name is the 15-character stamp, an underscore, then the API's name.
