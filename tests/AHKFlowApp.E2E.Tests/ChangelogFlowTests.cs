@@ -18,8 +18,8 @@ namespace AHKFlowApp.E2E.Tests;
 // its own regex, never with ChangelogText, so a parser mistake cannot pass its own test. A new
 // entry inside the format never breaks this test. An entry outside it fails the format check, and
 // the message names the entry.
-[Collection(E2ECollectionC.Name)]
-public sealed class ChangelogFlowTests(StackFixtureC fixture)
+[Collection(E2ECollectionD.Name)]
+public sealed class ChangelogFlowTests(StackFixtureD fixture)
 {
     private const string ItemSelector = "[data-test=\"changelog-item\"]";
 

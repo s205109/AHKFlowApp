@@ -4,8 +4,8 @@ using Xunit;
 
 namespace AHKFlowApp.E2E.Tests;
 
-[Collection(E2ECollectionB.Name)]
-public sealed class DashboardFirstViewFlowTests(StackFixtureB fixture) : IAsyncLifetime
+[Collection(E2ECollectionA.Name)]
+public sealed class DashboardFirstViewFlowTests(StackFixtureA fixture) : IAsyncLifetime
 {
     public Task InitializeAsync() => fixture.ResetDataAsync();
 

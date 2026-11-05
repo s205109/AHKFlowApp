@@ -4,8 +4,8 @@ using Xunit;
 
 namespace AHKFlowApp.E2E.Tests;
 
-[Collection(E2ECollectionD.Name)]
-public sealed class MacroHotstringFlowTests(StackFixtureD fixture) : IAsyncLifetime
+[Collection(E2ECollectionB.Name)]
+public sealed class MacroHotstringFlowTests(StackFixtureB fixture) : IAsyncLifetime
 {
     private static readonly BrowserNewContextOptions PhoneViewport = new()
     {
@@ -44,6 +44,10 @@ public sealed class MacroHotstringFlowTests(StackFixtureD fixture) : IAsyncLifet
 
         await page.ClickAsync("button.add-hotstring-fab");
         await page.WaitForSelectorAsync(".hotstring-edit-dialog");
+
+        // A new hotstring starts with Trigger inside words off, as in AutoHotkey.
+        await Assertions.Expect(page.Locator(".hotstring-edit-dialog input[data-test=\"inside-words-checkbox\"]"))
+            .Not.ToBeCheckedAsync();
 
         await page.ClickAsync(".hotstring-edit-dialog .mud-toggle-item:has-text('Macro')");
         await page.WaitForSelectorAsync("[data-test=\"macro-toolbar\"]");

@@ -15,7 +15,7 @@ namespace AHKFlowApp.E2E.Tests.Fixtures;
 /// time, so a reset in one stack must not touch another stack's rows. ApiFactoryTests proves the
 /// names differ; this proves the databases behind those names really are separate.
 /// </remarks>
-[Collection(ExclusiveTestCollection.Name)]
+[Collection(HostLifecycleTestCollection.Name)]
 public sealed class StackIsolationTests
 {
     [Fact]

@@ -133,3 +133,25 @@ one before you apply it.
 
 - `MeasureTestModes`, "Soak mode holds the lock for every repetition" (0.8 s): Same harness arguments as 'Soak mode prepares one container for the whole soak and leaves it running' (:840 vs :659: -Soak tests/FakeProject -Runs 3 -NoBuild). Assert the three owner=True test signals (:843-847) in that case and drop one child harness run. **201: applied** in d9741b0c. Not timed under D2: it removes less than 1 s.
 - `MeasureTestModes`, "A failing soak run is counted and named, and the soak still finishes" (0.8 s): 'A soak run that fails with a half-written TRX is counted, not thrown' sets the same fail-run.txt=2 plus a malformed TRX and makes the same four assertions (:721-734 vs :680-693). **201: applied** in 0e5c6cba. Not timed under D2: it removes less than 1 s.
+
+## Backlog 194, E2E
+
+Run 1 of the .NET mode audited five Candidate groups of E2E tests on 2026-11-05, on revision
+`d98dea6f`. The rows below were refuted, then rejected. The full table is in
+`docs/development/cycle-time-record.md`, under `### Run 1`.
+
+Each row gives the test, the auditor's estimate of the seconds it saves, and the reason. A refuter
+planted the bug named in the row. The audited test failed on it, and no other existing test did.
+A merge of this kind needs its receiving test written first, and that test must then fail on the
+same bug.
+
+- `ShortcutWarningFlowTests.AHotkeyOnAKeyTheHeaderSpellsDifferently_IsWarnedAbout`, MERGE into `WhileTheProfileListIsStillLoading_TheCreateDialogStillWarns` (5.4 s): refuted, then rejected. With the client alias lookup off (`HotkeyKeyCatalog.cs:85`), both named backups passed. An unnamed test, `HotkeyKeyCatalogTests.CanonicalizeAsync_MatchesTheServersCanonicalForm`, failed.
+- `ShortcutWarningFlowTests.RekeyingAnExistingHotkeyInline_WarnsInTheRow`, MERGE into a new bUnit assertion in `HotkeysPageTests` (4.6 s): refuted, then rejected. With `Win="false"` on the inline row (`Hotkeys.razor:858`), the named bUnit test passed. No bUnit test asserts the known-shortcut notice in the inline row.
+- `WindowSnapFlowTests.SendKeysWinPlusArrow_ShowsAdvisoryUntilWinCleared_AndStillSaves`, MERGE into a bUnit untick-Win check (5.0 s): refuted, then rejected. With a warning that stays after Win is cleared (`HotkeyEditDialog.razor:321-322`), all four named bUnit tests passed.
+- `FirstPageLoadDiagnosticsTests.FailedBoot_Open_ReportsTheLastRequestsThePageMade`, MERGE into `FailedBoot_Open_ThrowsAMessageNamingTheBootFailure` (1.01 s): refuted, then rejected. No other test reads the request list (`FirstPageLoad.cs:246`).
+- `FirstPageLoadDiagnosticsTests.FailedBoot_Open_ReportsTheBrowsersOwnErrors`, MERGE into the same test (0.97 s): refuted, then rejected. No other test reads the error list (`FirstPageLoad.cs:241`). With its marker script, the failing open took 10.8 s, not about 1 s.
+- `FirstPageLoadDiagnosticsTests.FailedBoot_Open_GivesUpWithoutSpendingTheWholeBudget`, MERGE into the same test (0.59 s): refuted, then rejected. `FailedBoot_WhileWaitingForTheResponse_SurfacesTheBootFailureInsteadOfHanging` also catches the fail-fast part. Only the audited test catches a wrong reported time (`FirstPageLoad.cs:218`).
+- `ProfileCreateDefaultHeaderFlowTests.InsertPresetIntoANewProfile_KeepsTheDirectivesAboveThePreset`, MERGE into `CreateProfile_WithoutTouchingTheHeader_GeneratesAScriptWithTheDirectives` (2.0 s): refuted, then rejected. A new profile that drops the default directives (`Profiles.razor:409`) fails no other test.
+- `HotkeysMobileFlowTests.TabletViewport_DoesNotCreatePageHorizontalOverflow`, MERGE into `HotstringsMobileFlowTests.TabletViewport_DoesNotCreatePageHorizontalOverflow` (1.7 s): refuted, then rejected. Overflow on `/hotkeys` fails no other test.
+- `KnownShortcutsMobileFlowTests.TabletViewport_DoesNotCreatePageHorizontalOverflow`, MERGE into the same test (1.5 s): refuted, then rejected. Overflow on `/known-shortcuts` fails no other test.
+- `ShortcutWarningFlowTests.AnInlineEditableRow_CanStillOpenTheFullEditor`, REWORK into a bUnit test next to `HotkeysPageTests.EditButton_OnRawRow_OpensDialogInsteadOfInlineEdit` (3.8 s): rejected. No other test clicks `button.open-full-editor`, so the bUnit test must be written and shown to fail first.

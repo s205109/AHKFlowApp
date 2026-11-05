@@ -1061,3 +1061,239 @@ The seconds of each changed Suite at `c68c321b`:
 | `WorktreeMergedCleanupEligibility.Tests.ps1` | 65.0 | 49.9 |
 | `WorktreeMergedCleanupSweep.Tests.ps1` | 52.0 | 41.8 |
 | `WorktreeSweepRemoteBase.Tests.ps1` | 55.6 | 42.6 |
+
+## .NET test audit (backlog 194)
+
+Backlog 194 audits the E2E tests. The plan is
+`docs/superpowers/plans/2026-11-01-net-test-audit-plan-194.md`.
+
+### Gate before
+
+The command was `pwsh .\scripts\measure-test-modes.ps1 -Mode Gate -BaseRef HEAD -Change Code`, on
+2026-11-05, on a quiet machine. No run printed "Sharing the test Lane pool with:".
+
+- Revision: `059441548002c174eff3120ff1b26335b9c39082`.
+- Session folder: `TestResults\measure-test-modes\Gate\session-20261105-065912`.
+- Preparation run: 310.72 s (build 27.92, format 42.60, powershell 239.98, coverage 0.19,
+  diff-check 0.02).
+- Warm-up, discarded: 456.83 s (build 6.18, format 48.13, powershell 185.42, coverage 217.09,
+  diff-check 0.02).
+
+| Run | Gate | Build | Format | PowerShell | Coverage | Diff check |
+|---|---|---|---|---|---|---|
+| 1 | 415.93 s | 5.59 s | 38.33 s | 189.62 s | 182.36 s | 0.02 s |
+| 2 | 415.51 s | 5.30 s | 41.42 s | 188.58 s | 180.19 s | 0.02 s |
+| 3 | 413.77 s | 5.54 s | 40.07 s | 188.44 s | 179.70 s | 0.02 s |
+| Median | 415.51 s | 5.54 s | 40.07 s | 188.58 s | 180.19 s | 0.02 s |
+
+The spread of the three Gate runs is 0.5 % of the median. The .NET test time, the median of the
+coverage step, is 180.19 s.
+
+### Ranking
+
+The before session ran `pwsh .\scripts\measure-test-modes.ps1 -Mode E2E` with its defaults, on
+2026-11-05. It ran six warm-up runs until the build was ten minutes old, then five counted runs.
+Every counted run passed all 108 tests.
+
+- Session folder: `TestResults\measure-test-modes\E2E\session-20261105-073432`.
+- Revision B: `d98dea6ffb17ccf15590b5c523df97d2d0ad8d93`.
+- Counted runs: 104.18 / 106.49 / 102.97 / 102.57 / 102.74 s, median 102.97 s.
+- Slice wall median, from the first test start to the last test end: 97.5 s.
+
+Collection busy time is the sum of the test durations of one Collection in one run. Each figure is
+the median of the five runs.
+
+| Collection | Busy median | Span median |
+|---|---|---|
+| E2E-A | 76.6 s | 77.5 s |
+| E2E-B | 90.4 s | 91.4 s |
+| E2E-C | 75.2 s | 76.2 s |
+| E2E-D | 71.0 s | 72.0 s |
+| E2E-Exclusive | 2.6 s | 2.6 s |
+
+The exclusive collection took 2.6 s, not the 15.5 s that the triage measured.
+
+The 15 slowest tests:
+
+| # | Test | Median |
+|---:|---|---:|
+| 1 | `ShortcutWarningFlowTests.IgnoringTheWindowsUse_SilencesTheWarning_AndRestoringBringsItBack` | 12.46 s |
+| 2 | `VersionHistoryFlowTests.HotstringHistoryRecycleRestoreAndPurge_DrivesBrowserFlow` | 11.92 s |
+| 3 | `BootFailureFlowTests.SlowBoot_WithUnrelatedUncaughtError_StillRendersApp` | 10.31 s |
+| 4 | `RawHotstringFlowTests.CreateRawViaDialog_WarningAlertMonospaceParsedSummaryMobileBadgeAndByteMatch` | 8.61 s |
+| 5 | `RawHotstringFlowTests.CreateRawContinuationSection_SavesAndDownloadsSectionByteIdentical` | 8.27 s |
+| 6 | `VersionHistoryFlowTests.HotkeyHistoryAndRecycleRestore_PreservesModifiersAndAction` | 7.92 s |
+| 7 | `ShortcutWarningFlowTests.AnOwnerRecord_WarnsOnItsOwnCombination` | 7.78 s |
+| 8 | `ShortcutWarningFlowTests.AHotkeyOnAKeyTheProfileHeaderUses_IsWarnedAbout` | 6.33 s |
+| 9 | `ShortcutWarningFlowTests.WhileTheProfileListIsStillLoading_TheCreateDialogStillWarns` | 6.19 s |
+| 10 | `ShortcutWarningFlowTests.AHotkeyOnAKeyTheHeaderSpellsDifferently_IsWarnedAbout` | 5.65 s |
+| 11 | `HotkeysCrudFlowTests.RawBodySaveError_ShowsInlineOnTheBodyField` | 5.55 s |
+| 12 | `WindowSnapFlowTests.CreateSnapLeftHotkey_PreviewKeepsBlockBodyLines_ThenGridShowsWindowAction` | 5.35 s |
+| 13 | `ShortcutWarningFlowTests.RemappingCapsLockToCtrl_WarnsAboutTheDestination` | 5.07 s |
+| 14 | `WindowSnapFlowTests.SendKeysWinPlusArrow_ShowsAdvisoryUntilWinCleared_AndStillSaves` | 5.07 s |
+| 15 | `HotkeysCrudFlowTests.RawBodyInjectingAnotherHotkey_BlocksPreviewGeneration` | 5.07 s |
+
+Every class of the 15 slowest tests is already in one of the five Candidate groups of the spec
+(D12), so no class moves between groups. The tablet overflow tests bring `HotkeysMobileFlowTests`
+and `KnownShortcutsMobileFlowTests` into the hotstring editing group.
+
+These classes are not audited. None holds a triage candidate or one of the 15 slowest tests:
+
+- `ChangelogFlowTests`: 1.84 s.
+- `DashboardFirstViewFlowTests`: 1.57 s.
+- `DownloadsSaveFailureFlowTests`: 4.12 s.
+- `PublishFreshnessTests`: 0.01 s.
+- `FirstPageLoadAdoptionTests`: 0.05 s.
+
+### Run 1
+
+This session had no workflow runtime. So a gitignored driver ran
+`.claude/workflows/test-audit.js` with stub functions. The driver wrote the script's own prompts
+and applied its own claim filter. Agents ran each prompt: five auditors in parallel, then five
+refuters one at a time, at medium effort.
+
+- Run: 2026-11-05, on revision B, `d98dea6f`, with the five Candidate groups of the ranking.
+- Minutes: about 2.5 for the audit phase, and 60 for the refute phase.
+- Subagent tokens: 549,605 for the auditors and 556,789 for the refuters, 1,106,394 in all.
+- Verdicts: 7 REMOVE, 18 MERGE, 11 SPEED UP, 1 REWORK.
+- Refuters: 25 claims. The audited test failed on the planted bug in all 25. 12 claims are upheld,
+  because another existing test failed on the same bug. 13 are refuted, because no other existing
+  test failed. In 12 of those 13, the receiving test of a merge did not hold the moved assertions
+  yet. Every refuter left the tree clean, checked with `git status --porcelain` and a diff
+  against B.
+
+The approval table had three sections. Section A holds the upheld claims, and section B the
+SPEED UP changes. Section C holds the refuted merges and the REWORK.
+
+- Approved: rows 1 to 12 (section A) and rows 13 to 23 (section B).
+- Approved on a condition: rows 26 to 29 of section C. Each merged test is written first, and must
+  then fail on the refuter's planted bug.
+- Rejected: rows 24, 25 and 30 to 37. They are in `docs/development/test-audit-deferred.md`, under
+  `## Backlog 194, E2E`.
+
+| Row | Test | Change | Estimate |
+|---:|---|---|---:|
+| 1 | `ShortcutWarningFlowTests.IgnoringTheWindowsUse_SilencesTheWarning_AndRestoringBringsItBack` | REMOVE the restore half | 5.5 s |
+| 2 | `ShortcutWarningFlowTests.AHotkeyOnAKeyTheProfileHeaderUses_IsWarnedAbout` | MERGE into `WhileTheProfileListIsStillLoading_TheCreateDialogStillWarns` | 6.0 s |
+| 3 | `ShortcutWarningFlowTests.ClearingTheModifier_RemovesTheWarning` | REMOVE | 4.07 s |
+| 4 | `ShortcutWarningFlowTests.RemappingCapsLockToCtrl_WarnsAboutTheDestination` | REMOVE | 5.07 s |
+| 5 | `ShortcutWarningFlowTests.AHotkeyOnAKnownShortcut_IsMarkedOnTheList` | MERGE into `WinE_ShowsTheWarningAndStillSaves` | 3.9 s |
+| 6 | `LocalAuthModeFlowTests.LocalInstallMode_SignsInSyntheticUserAndAllowsCrud` | REMOVE | 3.23 s |
+| 7 | `FirstPageLoadDiagnosticsTests.HealthyBoot_Open_ReturnsAPageShowingTheApp` | REMOVE | 2.61 s |
+| 8 | `RawHotstringFlowTests.CreateRawContinuationSection_SavesAndDownloadsSectionByteIdentical` | MERGE into `CreateRawViaDialog_WarningAlertMonospaceParsedSummaryMobileBadgeAndByteMatch` | 6.2 s |
+| 9 | `HotstringsMobileFlowTests.AddFab_OnPhoneViewport_OpensHotstringDialog` | MERGE into `MacroHotstringFlowTests.CreateMacroViaDialog_CaretInsertion_PreviewAndSave` | 2.8 s |
+| 10 | `HotstringImportPasteFlowTests.PasteAboveTheServerLimit_KeepsTheTextAndShowsTooLargeMessage` | MERGE into `PasteAtTheServerLimit_KeepsTheWholeScriptAndPreviewsIt` | 2.0 s |
+| 11 | `ProfileScriptDownloadFlowTests.LongName_SingleDownloadAndZip_UseOneStem` | REMOVE | 4.37 s |
+| 12 | `ClipboardDeliveryFlowTests.AutoLongText_DownloadedScriptContainsOneHelperAndPasteCall` | REMOVE | 4.87 s |
+| 13 | `ShortcutWarningFlowTests.AnOwnerRecord_WarnsOnItsOwnCombination` | SPEED UP: seed the owner record | 4.0 s |
+| 14 | `HotkeysCrudFlowTests.RawBodySaveError_ShowsInlineOnTheBodyField` | SPEED UP: wait 500 ms, not 1500 ms | 1.0 s |
+| 15 | `BootFailureFlowTests.SlowBoot_WithUnrelatedUncaughtError_StillRendersApp` | SPEED UP: the settable boot grace period | 6.5 s |
+| 16 | `HostStartGateTests` two cases, `StackIsolationTests` | SPEED UP: out of the exclusive collection | 0.66 s |
+| 17 | `RawHotstringFlowTests.CreateRawViaDialog_WarningAlertMonospaceParsedSummaryMobileBadgeAndByteMatch` | SPEED UP: seed the profile | 2.0 s |
+| 18 | `VersionHistoryFlowTests.HotstringHistoryRecycleRestoreAndPurge_DrivesBrowserFlow` | SPEED UP: create and edit through the API | 2.5 s |
+| 19 | `VersionHistoryFlowTests.HotkeyHistoryAndRecycleRestore_PreservesModifiersAndAction` | SPEED UP: the first edit through the API | 1.0 s |
+| 20 | `KeyboardAccessFlowTests.RowButtons_NameTheirHotstring` | Move into `InlineEditFields_NameWhatTheyHold` | 2.5 s |
+| 21 | `KeyboardAccessFlowTests.AppBarButtons_NameWhatPressingThemDoes` | Move into `SkipLink_FirstTabStop_MovesFocusIntoThePage` | 2.6 s |
+| 22 | `ProductAndPageNamesFlowTests.HomePage_SpellsTheProductOneWay` | Move into `HealthPage_UsesOneName` | 1.9 s |
+| 23 | `ProductAndPageNamesFlowTests.StaticFiles_SpellTheProductOneWay` | SPEED UP: fetch with `HttpClient` | 2.0 s |
+| 26 | `HotkeysCrudFlowTests.CreateRunHotkey_ShowsPreviewThenAppearsInGridWithActionChip` | MERGE into `CreateHotkeyLimitedToOneProgram_PreviewWrapsSnippetInHotIf`, with proof | 4.1 s |
+| 27 | `HotkeysCrudFlowTests.RawBodyPreviewError_ShowsInlineOnTheBodyField` | MERGE into `RawBodyInjectingAnotherHotkey_BlocksPreviewGeneration`, with proof | 3.6 s |
+| 28 | `HotkeysCrudFlowTests.SelectAll_OnDesktopViewport_SelectsEveryRowOnThePage` | MERGE into `BulkDelete_OnDesktopViewport_SelectsRowsWithTheirCheckboxes`, with proof | 2.4 s |
+| 29 | `HotstringsCrudFlowTests.SelectAll_OnDesktopViewport_SelectsEveryRowOnThePage` | MERGE into `BulkDelete_OnDesktopViewport_SelectsRowsWithTheirCheckboxes`, with proof | 2.3 s |
+
+### After session
+
+- Session: `E2E\session-20261105-114155`, at commit `677ee83a`.
+- Runs: 76.20 / 73.15 / 76.50 / 76.07 / 74.72 s. Median 76.07 s, before 102.97 s. Spread 4.4 %.
+- Every counted run passed 90 of 90 tests. The before session ran 108.
+- Slice wall median 70.6 s, before 97.5 s.
+- Busy time per Collection: A 48.4, B 64.5, C 63.8, D 54.8, HostLifecycle 3.7, Exclusive 1.5 s.
+
+### Changes
+
+Each time is the median over the five counted runs, summed over the row's tests. A row's tests include the tests it removed. Row 16 reads the span of `E2E-Exclusive`, because its saving is wall time only. Rows 8 and 17 change the same test, so they are measured as one row. Every row saved at least 0.5 s, so every row is kept and none went to the deferred list.
+
+| Row | Commit | Tests | Before | After | Saved | Verdict |
+|---|---|---|---|---|---|---|
+| 1 | `ce7bcc5d` | `ShortcutWarningFlowTests.IgnoringTheWindowsUse_SilencesTheWarning` | 12.46 s | 6.38 s | 6.08 s | kept |
+| 2 | `e92ffb6a` | `ShortcutWarningFlowTests.WhileTheProfileListIsStillLoading_TheCreateDialogStillWarns` | 12.44 s | 6.28 s | 6.16 s | kept |
+| 3 | `fcecd810` | `ShortcutWarningFlowTests.ClearingTheModifier_RemovesTheWarning` | 4.07 s | 0.00 s | 4.07 s | kept |
+| 4 | `3b436198` | `ShortcutWarningFlowTests.RemappingCapsLockToCtrl_WarnsAboutTheDestination` | 5.07 s | 0.00 s | 5.07 s | kept |
+| 5 | `f5e9f9ab` | `ShortcutWarningFlowTests.WinE_ShowsTheWarningAndStillSaves` | 8.37 s | 4.22 s | 4.15 s | kept |
+| 6 | `ef98a709` | `LocalAuthModeFlowTests` | 3.23 s | 0.00 s | 3.23 s | kept |
+| 7 | `b37d9eb6` | `FirstPageLoadDiagnosticsTests.HealthyBoot_Open_ReturnsAPageShowingTheApp` | 2.61 s | 0.00 s | 2.61 s | kept |
+| 8 + 17 | `0d6a45e7` | `RawHotstringFlowTests.CreateRawViaDialog_WarningAlertMonospaceParsedSummaryMobileBadgeAndByteMatch` | 16.80 s | 13.34 s | 3.46 s | kept |
+| 9 | `59c1a974` | `MacroHotstringFlowTests.CreateMacroViaDialog_CaretInsertion_PreviewAndSave` | 6.66 s | 3.85 s | 2.81 s | kept |
+| 10 | `be1aecf0` | `HotstringImportPasteFlowTests.PasteAtTheServerLimit_...` | 7.05 s | 4.44 s | 2.61 s | kept |
+| 11 | `7f53c012` | `ProfileScriptDownloadFlowTests.LongName_SingleDownloadAndZip_UseOneStem` | 4.37 s | 0.00 s | 4.37 s | kept |
+| 12 | `7191c850` | `ClipboardDeliveryFlowTests` | 4.87 s | 0.00 s | 4.87 s | kept |
+| 13 | `aa3ad975` | `ShortcutWarningFlowTests.AnOwnerRecord_WarnsOnItsOwnCombination` | 7.78 s | 3.82 s | 3.96 s | kept |
+| 14 | `c32e7a7a` | `HotkeysCrudFlowTests.RawBodySaveError_ShowsInlineOnTheBodyField` | 5.54 s | 4.39 s | 1.15 s | kept |
+| 15 | `8ebc0724` | `BootFailureFlowTests`, `FirstPageLoadDiagnosticsTests` | 23.38 s | 17.23 s | 6.15 s | kept |
+| 16 | `1ab3234f` | span of `E2E-Exclusive` | 2.35 s | 1.54 s | 0.81 s | kept |
+| 18 | `a57f5e12` | `VersionHistoryFlowTests.HotstringHistoryRecycleRestoreAndPurge_DrivesBrowserFlow` | 11.91 s | 9.75 s | 2.16 s | kept |
+| 19 | `108237ee` | `VersionHistoryFlowTests.HotkeyHistoryAndRecycleRestore_PreservesModifiersAndAction` | 7.92 s | 7.19 s | 0.72 s | kept |
+| 20 | `0fbf99bc` | `KeyboardAccessFlowTests.InlineEditFields_NameWhatTheyHold` | 5.62 s | 3.15 s | 2.48 s | kept |
+| 21 | `a47534ca` | `KeyboardAccessFlowTests.SkipLink_FirstTabStop_MovesFocusIntoThePage` | 5.35 s | 2.87 s | 2.47 s | kept |
+| 22 | `b68c946a` | `ProductAndPageNamesFlowTests.HomeAndHealthPages_UseOneName` | 4.18 s | 2.29 s | 1.89 s | kept |
+| 23 | `b6061ac5` | `ProductAndPageNamesFlowTests.StaticFiles_SpellTheProductOneWay` | 2.35 s | 0.14 s | 2.21 s | kept |
+| 26 | `8cce31b3` | `HotkeysCrudFlowTests.CreateHotkeyLimitedToOneProgram_PreviewWrapsSnippetInHotIf` | 8.71 s | 4.99 s | 3.72 s | kept |
+| 27 | `3889ba4c` | `HotkeysCrudFlowTests.RawBodyInjectingAnotherHotkey_BlocksPreviewGeneration` | 9.77 s | 5.81 s | 3.96 s | kept |
+| 28 | `21c6f62e` | `HotkeysCrudFlowTests.BulkDelete_OnDesktopViewport_SelectsRowsWithTheirCheckboxes` | 5.64 s | 3.48 s | 2.16 s | kept |
+| 29 | `255fbb3f` | `HotstringsCrudFlowTests.BulkDelete_OnDesktopViewport_SelectsRowsWithTheirCheckboxes` | 5.87 s | 3.13 s | 2.74 s | kept |
+
+After the review, two merge targets were renamed for the coverage they took in. `WinE_ShowsTheWarningAndStillSaves` is now `WinE_ShowsTheWarningSaves_AndIsMarkedOnTheList`. `CreateHotkeyLimitedToOneProgram_PreviewWrapsSnippetInHotIf` is now `CreateRunHotkeyLimitedToOneProgram_PreviewWrapsInHotIf_AndGridShowsRunChip`. The times above use the old names.
+
+The rows save 86.1 s of test time in total. The slice wall time fell by 26.9 s, because the four Collections run side by side.
+
+### Rebalance
+
+- Commit `ae1c1f76`. The classes were placed longest first, each into the Collection with the smallest sum so far, from the after-session class medians. 17 classes moved.
+- Session: `E2E\session-20261105-120447`. Runs 70.32 / 70.07 / 69.52 / 70.37 / 71.99 s, median 70.32 s, spread 3.5 %. Every counted run passed 90 of 90 tests.
+
+| Collection | Busy before | Busy after |
+|---|---|---|
+| E2E-A | 48.4 s | 57.4 s |
+| E2E-B | 64.5 s | 59.1 s |
+| E2E-C | 63.8 s | 57.4 s |
+| E2E-D | 54.8 s | 58.9 s |
+
+- The slowest Collection fell from 64.5 s (B) to 59.1 s (B), a drop of 5.4 s. The rule needs 0.5 s, so the rebalance is kept.
+- Slice wall median: 70.6 s before, 65.1 s after.
+
+### Gate after
+
+The command was `pwsh .\scripts\measure-test-modes.ps1 -Mode Gate -BaseRef HEAD -Change Code`, on
+2026-11-05, on a quiet machine and a clean tree. No run printed "Sharing the test Lane pool with:".
+
+- Revision: `7e71d9f0f703b8440c6afceec95d91cbd55b0ff8`.
+- Session folder: `TestResults\measure-test-modes\Gate\session-20261105-124934`.
+- Preparation run: 272.91 s (build 23.23, format 39.20, powershell 210.31, coverage 0.13,
+  diff-check 0.02).
+- Warm-up, discarded: 406.76 s (build 5.67, format 38.24, powershell 193.75, coverage 169.07,
+  diff-check 0.03).
+
+| Run | Gate | Build | Format | PowerShell | Coverage | Diff check |
+|---|---|---|---|---|---|---|
+| 1 | 402.19 s | 6.05 s | 40.83 s | 193.08 s | 162.21 s | 0.02 s |
+| 2 | 416.17 s | 5.88 s | 39.26 s | 211.49 s | 159.51 s | 0.02 s |
+| 3 | 399.62 s | 5.44 s | 40.21 s | 198.96 s | 155.00 s | 0.02 s |
+| Median | 402.19 s | 5.88 s | 40.21 s | 198.96 s | 159.51 s | 0.02 s |
+
+The spread of the three Gate runs is 4.1 % of the median. The .NET test time, the median of the
+coverage step, is 159.51 s.
+
+### Result
+
+| Measure | Before | After | Change |
+|---|---|---|---|
+| Gate median | 415.51 s | 402.19 s | -13.32 s |
+| .NET test time (coverage step median) | 180.19 s | 159.51 s | -20.68 s |
+| E2E session median | 102.97 s | 70.32 s | -32.65 s |
+
+- The triage estimated an E2E saving of 30 to 46 s. The E2E session median fell by 32.65 s.
+- The kept rows save 86.1 s of test time in total, summed over their tests. The four
+  Collections run side by side, so the wall time falls by less than that sum.
+- The Gate fell by less than the .NET test time. The PowerShell step was 10.38 s slower in its
+  median than in the Gate before, and this audit did not change it.
+- No target is judged (D11).

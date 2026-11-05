@@ -14,8 +14,8 @@ namespace AHKFlowApp.E2E.Tests;
 // insertText, which adds a multi-line text one line at a time. In this dialog that took 15 s for
 // 400,000 characters and more than 60 s for 1 MiB. A real paste of the same 1 MiB took 0.5 s.
 // Headless Chromium keeps its own clipboard, so a run never touches the machine's clipboard.
-[Collection(E2ECollectionB.Name)]
-public sealed class HotstringImportPasteFlowTests(StackFixtureB fixture) : IAsyncLifetime
+[Collection(E2ECollectionA.Name)]
+public sealed class HotstringImportPasteFlowTests(StackFixtureA fixture) : IAsyncLifetime
 {
     private const string ScriptBox = "textarea[data-test=\"import-script\"]";
 
@@ -33,7 +33,7 @@ public sealed class HotstringImportPasteFlowTests(StackFixtureB fixture) : IAsyn
         Task.CompletedTask;
 
     [Fact]
-    public async Task PasteAtTheServerLimit_KeepsTheWholeScriptAndPreviewsIt()
+    public async Task PasteAtTheServerLimit_KeepsTheWholeScriptAndPreviewsIt_AndOneMoreCharacterShowsTooLarge()
     {
         string script = BuildScript(HotstringImportDialog.MaxScriptLength);
         await using IBrowserContext ctx = await fixture.Browser.NewContextAsync(DesktopViewport);
@@ -47,18 +47,14 @@ public sealed class HotstringImportPasteFlowTests(StackFixtureB fixture) : IAsyn
         await page.ClickAsync("button.preview-import");
         await Assertions.Expect(page.Locator(".import-summary"))
             .ToContainTextAsync("1 ready", new() { Timeout = 30_000 });
-    }
 
-    [Fact]
-    public async Task PasteAboveTheServerLimit_KeepsTheTextAndShowsTooLargeMessage()
-    {
-        string script = BuildScript(HotstringImportDialog.MaxScriptLength + 1);
-        await using IBrowserContext ctx = await fixture.Browser.NewContextAsync(DesktopViewport);
-        IPage page = await OpenImportDialogAsync(ctx);
+        // One character above the server limit. The box must keep it and say the script is too
+        // large, rather than cut the text without a word.
+        ILocator box = page.Locator(ScriptBox);
+        await box.PressAsync("Control+End");
+        await page.Keyboard.TypeAsync("x");
 
-        await PasteAsync(ctx, page, script);
-
-        Assert.Equal(script.Length, (await page.Locator(ScriptBox).InputValueAsync()).Length);
+        Assert.Equal(script.Length + 1, (await box.InputValueAsync()).Length);
         await Assertions.Expect(page.Locator(".import-too-large"))
             .ToContainTextAsync("This script is too large to import.");
         await Assertions.Expect(page.Locator("button.preview-import")).ToBeDisabledAsync();

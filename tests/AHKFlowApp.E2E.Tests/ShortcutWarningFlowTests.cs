@@ -1,4 +1,7 @@
 ﻿using AHKFlowApp.E2E.Tests.Fixtures;
+using AHKFlowApp.Infrastructure.Persistence;
+using AHKFlowApp.TestUtilities.Builders;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Playwright;
 using Xunit;
 
@@ -12,7 +15,7 @@ public sealed class ShortcutWarningFlowTests(StackFixtureA fixture) : IAsyncLife
     public Task DisposeAsync() => Task.CompletedTask;
 
     [Fact]
-    public async Task WinE_ShowsTheWarningAndStillSaves()
+    public async Task WinE_ShowsTheWarningSaves_AndIsMarkedOnTheList()
     {
         await using IBrowserContext context = await fixture.Browser.NewContextAsync();
 
@@ -35,22 +38,17 @@ public sealed class ShortcutWarningFlowTests(StackFixtureA fixture) : IAsyncLife
         await page.FillAsync(".hotkey-edit-dialog [data-test=\"text-input\"]", "my notes");
         await page.ClickAsync(".hotkey-edit-dialog button.commit-edit");
         await page.WaitForSelectorAsync("text=Hotkey created.");
-    }
 
-    [Fact]
-    public async Task ClearingTheModifier_RemovesTheWarning()
-    {
-        await using IBrowserContext context = await fixture.Browser.NewContextAsync();
+        // The saved row is marked on the list. Scoped to the desktop branch: the mobile branch
+        // renders too and is hidden by CSS only.
+        ILocator marker = page.Locator(".desktop-branch tr", new() { HasTextString = "E2E open my notes" })
+            .Locator("[data-test=\"known-shortcut-marker\"]");
 
-        IPage page = await OpenCreateDialogAsync(context);
+        await Assertions.Expect(marker).ToHaveCountAsync(1);
 
-        await CommitKeyAsync(page, "e");
-        await page.CheckAsync(".hotkey-edit-dialog input[data-test=\"win-checkbox\"]");
-        await page.WaitForSelectorAsync(".hotkey-edit-dialog [data-test=\"shortcut-warning\"]");
-
-        await page.UncheckAsync(".hotkey-edit-dialog input[data-test=\"win-checkbox\"]");
-        await page.WaitForSelectorAsync(".hotkey-edit-dialog [data-test=\"shortcut-warning\"]",
-            new PageWaitForSelectorOptions { State = WaitForSelectorState.Detached });
+        // The name a screen reader reads is the whole notice, the same sentence the dialog shows.
+        string? label = await marker.GetAttributeAsync("aria-label");
+        Assert.Contains("Windows uses Win+E to open File Explorer.", label, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -115,7 +113,7 @@ public sealed class ShortcutWarningFlowTests(StackFixtureA fixture) : IAsyncLife
         ".desktop-branch button{0}[data-shortcut-id=\"windows.file-explorer\"][data-used-by=\"Windows\"]";
 
     [Fact]
-    public async Task IgnoringTheWindowsUse_SilencesTheWarning_AndRestoringBringsItBack()
+    public async Task IgnoringTheWindowsUse_SilencesTheWarning()
     {
         await using IBrowserContext context = await fixture.Browser.NewContextAsync();
 
@@ -146,15 +144,8 @@ public sealed class ShortcutWarningFlowTests(StackFixtureA fixture) : IAsyncLife
 
         Assert.Null(await page.QuerySelectorAsync(".hotkey-edit-dialog [data-test=\"shortcut-warning\"]"));
 
-        // Bring it back.
-        await OpenKnownShortcutsAsync(page, "Win+E");
-        await page.ClickAsync(string.Format(WindowsFileExplorerUse, ".restore-use"));
-        await page.WaitForSelectorAsync(string.Format(WindowsFileExplorerUse, ".ignore-use"));
-
-        await OpenCreateDialogAsync(page);
-        await CommitKeyAsync(page, "e");
-        await page.CheckAsync(".hotkey-edit-dialog input[data-test=\"win-checkbox\"]");
-        await page.WaitForSelectorAsync(".hotkey-edit-dialog [data-test=\"shortcut-warning\"]");
+        // Restoring the use is proven elsewhere: KnownShortcutsControllerTests and
+        // KnownShortcutsMobileFlowTests.PhoneViewport_SilencesAUse_AndBringsItBack.
     }
 
     // The wrapper that holds the Windows use of Win+E. :has() picks the tooltip root by the button
@@ -212,25 +203,21 @@ public sealed class ShortcutWarningFlowTests(StackFixtureA fixture) : IAsyncLife
     {
         await using IBrowserContext context = await fixture.Browser.NewContextAsync();
 
-        IPage page = await OpenKnownShortcutsAsync(context);
-        await page.ClickAsync("button.add-known-shortcut");
+        // The record is seeded, not typed into the form. The add form is covered by
+        // KnownShortcutsPageTests.Add_SavesThroughCreate_AndShowsTheReturnedList.
+        await using (AsyncServiceScope scope = fixture.Api.Services.CreateAsyncScope())
+        {
+            AppDbContext db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.CustomKnownShortcuts.Add(new CustomKnownShortcutBuilder()
+                .ForOwner(TestAuthHandler.TestOwnerOid)
+                .WithCombination("F7", ctrl: true)
+                .UsedBy("My notes tool")
+                .Does("open my notes")
+                .Build());
+            await db.SaveChangesAsync();
+        }
 
-        ILocator keyInput = page.Locator("input[data-test=\"known-shortcut-key-picker\"]");
-        await keyInput.ClickAsync();
-        await keyInput.FillAsync("F7");
-        await keyInput.PressAsync("Tab");
-
-        await page.CheckAsync("input[data-test=\"ctrl-checkbox\"]");
-        await page.FillAsync("input[data-test=\"known-shortcut-usedby-input\"]", "My notes tool");
-        await page.FillAsync("input[data-test=\"known-shortcut-does-input\"]", "open my notes");
-        await page.ClickAsync("button.commit-edit");
-
-        // The table paginates 103 built-in rows plus this one, so search for the new row rather
-        // than hunting for it across pages.
-        await page.FillAsync("input[data-test=\"known-shortcut-search\"]", "My notes tool");
-        await page.WaitForSelectorAsync(".desktop-branch >> text=My notes tool");
-
-        await OpenCreateDialogAsync(page);
+        IPage page = await OpenCreateDialogAsync(context);
         await CommitKeyAsync(page, "F7");
         await page.CheckAsync(".hotkey-edit-dialog input[data-test=\"ctrl-checkbox\"]");
 
@@ -239,87 +226,11 @@ public sealed class ShortcutWarningFlowTests(StackFixtureA fixture) : IAsyncLife
         Assert.Contains("My notes tool uses Ctrl+F7 to open my notes", warning, StringComparison.Ordinal);
     }
 
-    [Fact]
-    public async Task RemappingCapsLockToCtrl_WarnsAboutTheDestination()
-    {
-        await using IBrowserContext context = await fixture.Browser.NewContextAsync();
-
-        IPage page = await OpenCreateDialogAsync(context);
-        await CommitKeyAsync(page, "CapsLock");
-        await page.ClickAsync(".hotkey-edit-dialog [data-test=\"action-kind-Remap\"]");
-        await CommitRemapDestAsync(page, "Ctrl");
-
-        await Assertions.Expect(page.Locator(".hotkey-edit-dialog [data-test=\"destination-warning\"]"))
-            .ToContainTextAsync("Shortcuts that use Ctrl may also respond when you hold CapsLock.");
-
-        // F13 is a real registry key that nothing in the catalog uses, so the notice must go.
-        await CommitRemapDestAsync(page, "F13");
-
-        // Wait for the decision to name F13 first. Without this, an absent notice could be the
-        // older evaluation still on screen rather than a decision about F13.
-        await Assertions.Expect(page.Locator(".hotkey-edit-dialog [data-test=\"shortcut-warning-checked\"]"))
-            .ToHaveAttributeAsync("data-destination", "F13");
-        await Assertions.Expect(page.Locator(".hotkey-edit-dialog [data-test=\"destination-warning\"]"))
-            .ToHaveCountAsync(0);
-    }
-
-    [Fact]
-    public async Task AHotkeyOnAKnownShortcut_IsMarkedOnTheList()
-    {
-        await using IBrowserContext context = await fixture.Browser.NewContextAsync();
-
-        // Win+L is a seeded Protected row: Windows locks the computer with it.
-        IPage page = await OpenCreateDialogAsync(context);
-        await CommitKeyAsync(page, "l");
-        await page.CheckAsync(".hotkey-edit-dialog input[data-test=\"win-checkbox\"]");
-        await page.FillAsync(".hotkey-edit-dialog input[data-test=\"description-input\"]", "E2E lock marker");
-        await page.FillAsync(".hotkey-edit-dialog [data-test=\"text-input\"]", "my notes");
-        await page.ClickAsync(".hotkey-edit-dialog button.commit-edit");
-        await page.WaitForSelectorAsync("text=Hotkey created.");
-
-        // Scoped to the desktop branch: the mobile branch renders too and is hidden by CSS only.
-        ILocator marker = page.Locator(".desktop-branch tr", new() { HasTextString = "E2E lock marker" })
-            .Locator("[data-test=\"known-shortcut-marker\"]");
-
-        await Assertions.Expect(marker).ToHaveCountAsync(1);
-
-        // The name a screen reader reads is the whole notice, the same sentence the dialog shows.
-        string? label = await marker.GetAttributeAsync("aria-label");
-        Assert.Contains("Windows uses Win+L to lock the computer.", label, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public async Task AHotkeyOnAKeyTheProfileHeaderUses_IsWarnedAbout()
-    {
-        await using IBrowserContext context = await fixture.Browser.NewContextAsync();
-
-        // Put the Caps Lock layer into the seeded profile's header template.
-        IPage page = await SetProfileHeaderAsync(context, CapsLockLayerHeader);
-
-        // Now bind a hotkey to the same key. "Apply to all profiles" avoids picking one by name.
-        await OpenCreateDialogAsync(page);
-        await CommitKeyAsync(page, "CapsLock");
-        await page.CheckAsync(".hotkey-edit-dialog input[data-test=\"applies-to-all-checkbox\"]");
-
-        await page.WaitForSelectorAsync(".hotkey-edit-dialog [data-test=\"template-warning\"]");
-        string warning = await page.InnerTextAsync(".hotkey-edit-dialog [data-test=\"template-warning\"]");
-
-        Assert.Contains("also uses CapsLock", warning, StringComparison.Ordinal);
-        Assert.Contains("Your hotkey may not fire.", warning, StringComparison.Ordinal);
-        Assert.DoesNotContain("never", warning, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("will not", warning, StringComparison.OrdinalIgnoreCase);
-
-        // The notice is advice, not a gate: the row still saves.
-        await page.FillAsync(".hotkey-edit-dialog input[data-test=\"description-input\"]", "E2E template notice");
-        await page.FillAsync(".hotkey-edit-dialog [data-test=\"text-input\"]", "my notes");
-        await page.ClickAsync(".hotkey-edit-dialog button.commit-edit");
-        await page.WaitForSelectorAsync("text=Hotkey created.");
-    }
-
-    // The page hands the create dialog the Profile list it holds at the moment the dialog opens.
-    // The list arrives from its own request, so a fast click can reach the dialog first. The
-    // template notice reads that list, and the dialog never receives a later one, so an early
-    // click used to produce a dialog that could never warn. This is the flake CI hit.
+    // A hotkey on a key the Profile header uses is warned about, and the row still saves. The test
+    // also covers a race. The page hands the create dialog the Profile list it holds at the moment
+    // the dialog opens. The list arrives from its own request, so a fast click can reach the dialog
+    // first. The template notice reads that list, and the dialog never receives a later one, so an
+    // early click used to produce a dialog that could never warn. This is the flake CI hit.
     [Fact]
     public async Task WhileTheProfileListIsStillLoading_TheCreateDialogStillWarns()
     {
@@ -345,10 +256,18 @@ public sealed class ShortcutWarningFlowTests(StackFixtureA fixture) : IAsyncLife
 
         await page.WaitForSelectorAsync(".hotkey-edit-dialog");
         await CommitKeyAsync(page, "CapsLock");
+        // "Apply to all profiles" avoids picking one by name.
         await page.CheckAsync(".hotkey-edit-dialog input[data-test=\"applies-to-all-checkbox\"]");
 
-        await Assertions.Expect(page.Locator(".hotkey-edit-dialog [data-test=\"template-warning\"]"))
-            .ToContainTextAsync("also uses CapsLock");
+        ILocator warning = page.Locator(".hotkey-edit-dialog [data-test=\"template-warning\"]");
+        await Assertions.Expect(warning).ToContainTextAsync("also uses CapsLock");
+        await Assertions.Expect(warning).ToContainTextAsync("Your hotkey may not fire.");
+
+        // The notice is advice, not a gate: the row still saves.
+        await page.FillAsync(".hotkey-edit-dialog input[data-test=\"description-input\"]", "E2E template notice");
+        await page.FillAsync(".hotkey-edit-dialog [data-test=\"text-input\"]", "my notes");
+        await page.ClickAsync(".hotkey-edit-dialog button.commit-edit");
+        await page.WaitForSelectorAsync("text=Hotkey created.");
     }
 
     // AutoHotkey spells one key two ways. The template says LControl, the row says LCtrl, and the
@@ -374,28 +293,15 @@ public sealed class ShortcutWarningFlowTests(StackFixtureA fixture) : IAsyncLife
 
     // The table holds a row per use, over a hundred of them, and pages at 25. Every row this file
     // acts on is addressed through the search box, never by paging to it.
-    private async Task<IPage> OpenKnownShortcutsAsync(IBrowserContext context, string? search = null)
+    private async Task<IPage> OpenKnownShortcutsAsync(IBrowserContext context, string search)
     {
         IPage page = await FirstPageLoad.OpenAsync(context, $"{fixture.Spa.BaseUrl}/known-shortcuts");
-        await OnKnownShortcutsAsync(page, search);
+        await page.WaitForSelectorAsync("button.reload-known-shortcuts");
+        await page.FillAsync("input[data-test=\"known-shortcut-search\"]", search);
         return page;
     }
 
-    private async Task OpenKnownShortcutsAsync(IPage page, string? search = null)
-    {
-        await page.GotoAsync($"{fixture.Spa.BaseUrl}/known-shortcuts");
-        await OnKnownShortcutsAsync(page, search);
-    }
-
-    private static async Task OnKnownShortcutsAsync(IPage page, string? search)
-    {
-        await page.WaitForSelectorAsync("button.reload-known-shortcuts");
-
-        if (search is not null)
-            await page.FillAsync("input[data-test=\"known-shortcut-search\"]", search);
-    }
-
-    // Writes one template into the seeded Profile's header and waits for the save to land. Three
+    // Writes one template into the seeded Profile's header and waits for the save to land. Two
     // tests start this way, and each of them then binds a hotkey to a key the template uses.
     private async Task<IPage> SetProfileHeaderAsync(IBrowserContext context, string template)
     {
@@ -448,16 +354,6 @@ public sealed class ShortcutWarningFlowTests(StackFixtureA fixture) : IAsyncLife
     private static async Task CommitKeyAsync(IPage page, string key)
     {
         ILocator input = page.Locator(".hotkey-edit-dialog input[data-test=\"key-picker\"]");
-        await input.ClickAsync();
-        await input.FillAsync(key);
-        await input.PressAsync("Tab");
-    }
-
-    // Same shape as CommitKeyAsync: the remap destination is a MudAutocomplete too, and blurring is
-    // what commits the typed value.
-    private static async Task CommitRemapDestAsync(IPage page, string key)
-    {
-        ILocator input = page.Locator(".hotkey-edit-dialog input[data-test=\"remap-dest-picker\"]");
         await input.ClickAsync();
         await input.FillAsync(key);
         await input.PressAsync("Tab");

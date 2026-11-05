@@ -8,8 +8,8 @@ using Xunit;
 
 namespace AHKFlowApp.E2E.Tests;
 
-[Collection(E2ECollectionC.Name)]
-public sealed class HotstringsCrudFlowTests(StackFixtureC fixture) : IAsyncLifetime
+[Collection(E2ECollectionD.Name)]
+public sealed class HotstringsCrudFlowTests(StackFixtureD fixture) : IAsyncLifetime
 {
     // 1280 px is well above the 959.95 px breakpoint where the page switches to the mobile list.
     private static readonly BrowserNewContextOptions DesktopViewport = new()
@@ -84,12 +84,31 @@ public sealed class HotstringsCrudFlowTests(StackFixtureC fixture) : IAsyncLifet
         ILocator rowA = page.Locator(".desktop-branch tbody tr", new() { HasTextString = "Row A text" });
         ILocator rowB = page.Locator(".desktop-branch tbody tr", new() { HasTextString = "Row B text" });
         ILocator bulkDelete = page.Locator(".desktop-branch button.bulk-delete-hotstrings");
+        ILocator checkboxA = rowA.Locator("td:first-child input[type=checkbox]");
+        ILocator checkboxB = rowB.Locator("td:first-child input[type=checkbox]");
+        ILocator selectAll = page.Locator(".desktop-branch thead th:first-child input[type=checkbox]");
         await rowA.WaitForAsync();
         await rowB.WaitForAsync();
 
-        await rowA.Locator("td:first-child input[type=checkbox]").CheckAsync();
+        // Backlog 180. The header's select-all checkbox lives in the same column, so a collapsed
+        // column would cover it too. Checking the rows start unticked means the ticks below can only
+        // come from select-all. The count proves the page's selection changed. The row ticks
+        // prove the owner can see it.
+        await Assertions.Expect(checkboxA).Not.ToBeCheckedAsync();
+        await Assertions.Expect(checkboxB).Not.ToBeCheckedAsync();
+        await selectAll.CheckAsync();
+        await Assertions.Expect(bulkDelete).ToContainTextAsync("Delete 2 selected");
+        await Assertions.Expect(checkboxA).ToBeCheckedAsync();
+        await Assertions.Expect(checkboxB).ToBeCheckedAsync();
+
+        // Clear the selection, so the row checkboxes below must each be clicked on their own.
+        await selectAll.UncheckAsync();
+        await Assertions.Expect(checkboxA).Not.ToBeCheckedAsync();
+        await Assertions.Expect(checkboxB).Not.ToBeCheckedAsync();
+
+        await checkboxA.CheckAsync();
         await Assertions.Expect(bulkDelete).ToContainTextAsync("Delete 1 selected");
-        await rowB.Locator("td:first-child input[type=checkbox]").CheckAsync();
+        await checkboxB.CheckAsync();
         await Assertions.Expect(bulkDelete).ToContainTextAsync("Delete 2 selected");
 
         await bulkDelete.ClickAsync();
@@ -100,37 +119,6 @@ public sealed class HotstringsCrudFlowTests(StackFixtureC fixture) : IAsyncLifet
         await page.WaitForSelectorAsync("text=Deleted 2 hotstring");
         await Assertions.Expect(rowA).ToHaveCountAsync(0);
         await Assertions.Expect(rowB).ToHaveCountAsync(0);
-    }
-
-    // Backlog 180. The header's select-all checkbox lives in the same column, so a collapsed
-    // column would cover it too.
-    [Fact]
-    public async Task SelectAll_OnDesktopViewport_SelectsEveryRowOnThePage()
-    {
-        await SeedHotstringsAsync(fixture, ("rowa", "Row A text"), ("rowb", "Row B text"));
-
-        await using IBrowserContext ctx = await fixture.Browser.NewContextAsync(DesktopViewport);
-
-        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/hotstrings");
-        ILocator rowA = page.Locator(".desktop-branch tbody tr", new() { HasTextString = "Row A text" });
-        ILocator rowB = page.Locator(".desktop-branch tbody tr", new() { HasTextString = "Row B text" });
-        ILocator checkboxA = rowA.Locator("td:first-child input[type=checkbox]");
-        ILocator checkboxB = rowB.Locator("td:first-child input[type=checkbox]");
-        await rowA.WaitForAsync();
-        await rowB.WaitForAsync();
-
-        // Checking the rows start unticked means the ticks below can only come from select-all.
-        await Assertions.Expect(checkboxA).Not.ToBeCheckedAsync();
-        await Assertions.Expect(checkboxB).Not.ToBeCheckedAsync();
-
-        await page.Locator(".desktop-branch thead th:first-child input[type=checkbox]").CheckAsync();
-
-        await Assertions.Expect(page.Locator(".desktop-branch button.bulk-delete-hotstrings"))
-            .ToContainTextAsync("Delete 2 selected");
-
-        // The count proves the page's selection changed. The row ticks prove the owner can see it.
-        await Assertions.Expect(checkboxA).ToBeCheckedAsync();
-        await Assertions.Expect(checkboxB).ToBeCheckedAsync();
     }
 
     // Backlog 185. Three 48 px buttons did not fit the 160 px Actions column. In view mode the last

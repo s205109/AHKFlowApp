@@ -8,8 +8,8 @@ using Xunit;
 
 namespace AHKFlowApp.E2E.Tests;
 
-[Collection(E2ECollectionB.Name)]
-public sealed class ProductAndPageNamesFlowTests(StackFixtureB fixture)
+[Collection(E2ECollectionA.Name)]
+public sealed class ProductAndPageNamesFlowTests(StackFixtureA fixture)
 {
     private const string ProductName = "AHKFlowApp";
 
@@ -32,28 +32,12 @@ public sealed class ProductAndPageNamesFlowTests(StackFixtureB fixture)
     }
 
     [Fact]
-    public async Task HomePage_SpellsTheProductOneWay()
-    {
-        await using IBrowserContext ctx = await fixture.Browser.NewContextAsync();
-        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/");
-
-        await Assertions.Expect(page).ToHaveTitleAsync(ProductName);
-        await Assertions.Expect(page.Locator("[data-test=\"app-title\"]")).ToHaveTextAsync(ProductName);
-        await Assertions.Expect(page.Locator("[data-test=\"hero-heading\"]")).ToHaveTextAsync($"Welcome to {ProductName}");
-    }
-
-    [Fact]
     public async Task StaticFiles_SpellTheProductOneWay()
     {
-        await using IBrowserContext ctx = await fixture.Browser.NewContextAsync();
-        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/");
-
-        string index = await page.EvaluateAsync<string>(
-            "url => fetch(url).then(response => response.text())",
-            $"{fixture.Spa.BaseUrl}/index.html");
-        string manifestJson = await page.EvaluateAsync<string>(
-            "url => fetch(url).then(response => response.text())",
-            $"{fixture.Spa.BaseUrl}/manifest.webmanifest");
+        // Plain files the SPA host serves, so no browser and no app boot is needed to read them.
+        using HttpClient http = new() { BaseAddress = new Uri(fixture.Spa.BaseUrl) };
+        string index = await http.GetStringAsync("/index.html");
+        string manifestJson = await http.GetStringAsync("/manifest.webmanifest");
 
         string indexTitle = Regex.Match(index, "<title>([^<]*)</title>").Groups[1].Value;
         using var manifest = JsonDocument.Parse(manifestJson);
@@ -69,11 +53,17 @@ public sealed class ProductAndPageNamesFlowTests(StackFixtureB fixture)
     }
 
     [Fact]
-    public async Task HealthPage_UsesOneName()
+    public async Task HomeAndHealthPages_UseOneName()
     {
         await using IBrowserContext ctx = await fixture.Browser.NewContextAsync();
         IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/");
 
+        // The home page spells the product one way.
+        await Assertions.Expect(page).ToHaveTitleAsync(ProductName);
+        await Assertions.Expect(page.Locator("[data-test=\"app-title\"]")).ToHaveTextAsync(ProductName);
+        await Assertions.Expect(page.Locator("[data-test=\"hero-heading\"]")).ToHaveTextAsync($"Welcome to {ProductName}");
+
+        // The Health page keeps one name for its nav link, its browser tab and its heading.
         ILocator navLink = page.Locator("a.mud-nav-link[href=\"health\"]");
         await Assertions.Expect(navLink).ToHaveTextAsync("Health");
         await navLink.ClickAsync();

@@ -7,14 +7,9 @@ using Xunit;
 
 namespace AHKFlowApp.E2E.Tests;
 
-[Collection(E2ECollectionC.Name)]
-public sealed class HotstringsMobileFlowTests(StackFixtureC fixture) : IAsyncLifetime
+[Collection(E2ECollectionB.Name)]
+public sealed class HotstringsMobileFlowTests(StackFixtureB fixture) : IAsyncLifetime
 {
-    private static readonly BrowserNewContextOptions PhoneViewport = new()
-    {
-        ViewportSize = new ViewportSize { Width = 375, Height = 812 },
-    };
-
     private static readonly BrowserNewContextOptions TabletViewport = new()
     {
         ViewportSize = new ViewportSize { Width = 768, Height = 1024 },
@@ -74,33 +69,6 @@ public sealed class HotstringsMobileFlowTests(StackFixtureC fixture) : IAsyncLif
 
         Assert.True(metrics.BodyOverflow <= 0, $"Body overflowed by {metrics.BodyOverflow}px.");
         Assert.True(metrics.DocumentOverflow <= 0, $"Document overflowed by {metrics.DocumentOverflow}px.");
-    }
-
-    [Fact]
-    public async Task AddFab_OnPhoneViewport_OpensHotstringDialog()
-    {
-        await using IBrowserContext ctx = await fixture.Browser.NewContextAsync(PhoneViewport);
-
-        // Both lists must have arrived before the click below. The page hands the dialog the lists
-        // it holds at the moment the dialog opens, so a click that lands first produces a dialog
-        // that can never warn. The helper registers these waits before it navigates, which is the
-        // only place early enough.
-        IPage page = await FirstPageLoad.OpenAsync(
-            ctx,
-            $"{fixture.Spa.BaseUrl}/hotstrings",
-            "/api/v1/profiles",
-            "/api/v1/categories");
-
-        await page.WaitForSelectorAsync("button.add-hotstring-fab");
-
-        await page.ClickAsync("button.add-hotstring-fab");
-        await page.WaitForSelectorAsync(".hotstring-edit-dialog");
-        await page.WaitForSelectorAsync(".hotstring-edit-dialog input[data-test=\"trigger-input\"]");
-        await page.WaitForSelectorAsync(".hotstring-edit-dialog textarea[data-test=\"replacement-input\"]");
-
-        // A new hotstring starts with Trigger inside words off, as in AutoHotkey.
-        await Assertions.Expect(page.Locator(".hotstring-edit-dialog input[data-test=\"inside-words-checkbox\"]"))
-            .Not.ToBeCheckedAsync();
     }
 
     [Fact]
