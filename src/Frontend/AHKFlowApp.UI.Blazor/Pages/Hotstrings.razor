@@ -638,8 +638,8 @@
             return;
 
         bool? confirm = await DialogService.ShowMessageBoxAsync(
-            title: "Delete hotstrings?",
-            message: $"Delete {ids.Length} hotstring(s)? You can restore them from the Recycle Bin.",
+            title: BulkDeleteWording.Title(ids.Length, "hotstring", "hotstrings"),
+            message: BulkDeleteWording.Message(ids.Length, "hotstring", "hotstrings"),
             yesText: "Delete", cancelText: "Cancel");
         if (confirm != true)
             return;
@@ -647,11 +647,8 @@
         ApiResult<BulkDeleteResultDto> result = await Api.BulkDeleteAsync(ids, _cts.Token);
         if (result.IsSuccess)
         {
-            int deleted = result.Value!.DeletedCount;
-            int missing = result.Value.MissingIds.Count;
-            string message = missing > 0
-                ? $"Deleted {deleted} hotstring(s); {missing} were already gone."
-                : $"Deleted {deleted} hotstring(s).";
+            string message = BulkDeleteWording.ResultMessage(
+                result.Value!.DeletedCount, result.Value.MissingIds.Count, "hotstring", "hotstrings");
             Snackbar.Add(message, Severity.Success);
             _selected = [];
             await ReloadAllAsync();
@@ -873,15 +870,18 @@
         if (ids.Count == 0) return;
 
         bool? confirm = await DialogService.ShowMessageBoxAsync(
-            title: "Delete hotstrings?",
-            message: $"Delete {ids.Count} hotstring(s)? You can restore them from the Recycle Bin.",
+            title: BulkDeleteWording.Title(ids.Count, "hotstring", "hotstrings"),
+            message: BulkDeleteWording.Message(ids.Count, "hotstring", "hotstrings"),
             yesText: "Delete", cancelText: "Cancel");
         if (confirm != true) return;
 
         ApiResult<BulkDeleteResultDto> result = await Api.BulkDeleteAsync(ids, _cts.Token);
         if (result.IsSuccess)
         {
-            Snackbar.Add($"Deleted {result.Value!.DeletedCount} hotstring(s).", Severity.Success);
+            Snackbar.Add(
+                BulkDeleteWording.ResultMessage(
+                    result.Value!.DeletedCount, result.Value.MissingIds.Count, "hotstring", "hotstrings"),
+                Severity.Success);
             await ReloadAllAsync();
         }
         else
