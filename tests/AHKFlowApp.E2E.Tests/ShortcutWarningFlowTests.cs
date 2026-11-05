@@ -1,4 +1,7 @@
 ﻿using AHKFlowApp.E2E.Tests.Fixtures;
+using AHKFlowApp.Infrastructure.Persistence;
+using AHKFlowApp.TestUtilities.Builders;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Playwright;
 using Xunit;
 
@@ -200,25 +203,21 @@ public sealed class ShortcutWarningFlowTests(StackFixtureA fixture) : IAsyncLife
     {
         await using IBrowserContext context = await fixture.Browser.NewContextAsync();
 
-        IPage page = await OpenKnownShortcutsAsync(context);
-        await page.ClickAsync("button.add-known-shortcut");
+        // The record is seeded, not typed into the form. The add form is covered by
+        // KnownShortcutsPageTests.Add_SavesThroughCreate_AndShowsTheReturnedList.
+        await using (AsyncServiceScope scope = fixture.Api.Services.CreateAsyncScope())
+        {
+            AppDbContext db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.CustomKnownShortcuts.Add(new CustomKnownShortcutBuilder()
+                .ForOwner(TestAuthHandler.TestOwnerOid)
+                .WithCombination("F7", ctrl: true)
+                .UsedBy("My notes tool")
+                .Does("open my notes")
+                .Build());
+            await db.SaveChangesAsync();
+        }
 
-        ILocator keyInput = page.Locator("input[data-test=\"known-shortcut-key-picker\"]");
-        await keyInput.ClickAsync();
-        await keyInput.FillAsync("F7");
-        await keyInput.PressAsync("Tab");
-
-        await page.CheckAsync("input[data-test=\"ctrl-checkbox\"]");
-        await page.FillAsync("input[data-test=\"known-shortcut-usedby-input\"]", "My notes tool");
-        await page.FillAsync("input[data-test=\"known-shortcut-does-input\"]", "open my notes");
-        await page.ClickAsync("button.commit-edit");
-
-        // The table paginates 103 built-in rows plus this one, so search for the new row rather
-        // than hunting for it across pages.
-        await page.FillAsync("input[data-test=\"known-shortcut-search\"]", "My notes tool");
-        await page.WaitForSelectorAsync(".desktop-branch >> text=My notes tool");
-
-        await OpenCreateDialogAsync(page);
+        IPage page = await OpenCreateDialogAsync(context);
         await CommitKeyAsync(page, "F7");
         await page.CheckAsync(".hotkey-edit-dialog input[data-test=\"ctrl-checkbox\"]");
 
