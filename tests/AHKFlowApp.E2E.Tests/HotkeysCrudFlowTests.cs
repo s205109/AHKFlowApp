@@ -40,7 +40,7 @@ public sealed class HotkeysCrudFlowTests(StackFixtureB fixture) : IAsyncLifetime
         Task.CompletedTask;
 
     [Fact]
-    public async Task CreateHotkeyLimitedToOneProgram_PreviewWrapsSnippetInHotIf()
+    public async Task CreateRunHotkeyLimitedToOneProgram_PreviewWrapsInHotIf_AndGridShowsRunChip()
     {
         await using IBrowserContext ctx = await fixture.Browser.NewContextAsync();
 

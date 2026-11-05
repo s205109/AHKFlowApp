@@ -1242,6 +1242,8 @@ Each time is the median over the five counted runs, summed over the row's tests.
 | 28 | `21c6f62e` | `HotkeysCrudFlowTests.BulkDelete_OnDesktopViewport_SelectsRowsWithTheirCheckboxes` | 5.64 s | 3.48 s | 2.16 s | kept |
 | 29 | `255fbb3f` | `HotstringsCrudFlowTests.BulkDelete_OnDesktopViewport_SelectsRowsWithTheirCheckboxes` | 5.87 s | 3.13 s | 2.74 s | kept |
 
+After the review, two merge targets were renamed for the coverage they took in. `WinE_ShowsTheWarningAndStillSaves` is now `WinE_ShowsTheWarningSaves_AndIsMarkedOnTheList`. `CreateHotkeyLimitedToOneProgram_PreviewWrapsSnippetInHotIf` is now `CreateRunHotkeyLimitedToOneProgram_PreviewWrapsInHotIf_AndGridShowsRunChip`. The times above use the old names.
+
 The rows save 86.1 s of test time in total. The slice wall time fell by 26.9 s, because the four Collections run side by side.
 
 ### Rebalance

@@ -15,7 +15,7 @@ public sealed class ShortcutWarningFlowTests(StackFixtureA fixture) : IAsyncLife
     public Task DisposeAsync() => Task.CompletedTask;
 
     [Fact]
-    public async Task WinE_ShowsTheWarningAndStillSaves()
+    public async Task WinE_ShowsTheWarningSaves_AndIsMarkedOnTheList()
     {
         await using IBrowserContext context = await fixture.Browser.NewContextAsync();
 
