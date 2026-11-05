@@ -129,11 +129,11 @@ public sealed class HotstringHistoryDialogTests : BunitContext, IAsyncLifetime
             "todaydate",
             "",
             null,
+            false,
             true,
             true,
-            true,
-            [],
-            [],
+            [Guid.NewGuid()],
+            [Guid.NewGuid(), Guid.NewGuid()],
             DateTimeOffset.UtcNow,
             DateTimeOffset.UtcNow,
             HotstringKind.DateTime,
@@ -152,6 +152,9 @@ public sealed class HotstringHistoryDialogTests : BunitContext, IAsyncLifetime
         await provider.InvokeAsync(() => provider.Find("button.history-version").Click());
 
         provider.WaitForAssertion(() => provider.Markup.Should().Contain("yyyy-MM-dd (+1 day)"));
+        // Backlog 169: the summary read "1 profile(s) · 2 category(s)".
+        provider.Markup.Should().Contain("1 profile · 2 categories");
+        provider.Markup.Should().NotContain("(s)");
     }
 
     [Fact]
@@ -176,7 +179,7 @@ public sealed class HotstringHistoryDialogTests : BunitContext, IAsyncLifetime
                     Status: 400, Detail: null, Instance: null,
                     Errors: new Dictionary<string, string[]>
                     {
-                        ["ContextValue"] = ["ContextValue must not contain double-quote characters."],
+                        ["ContextValue"] = ["Value under Window context must not contain double quotes."],
                     })));
 
         IRenderedComponent<MudDialogProvider> provider = await OpenDialogAsync();
@@ -188,7 +191,7 @@ public sealed class HotstringHistoryDialogTests : BunitContext, IAsyncLifetime
         await provider.InvokeAsync(() => provider.Find("button.revert-version").Click());
 
         provider.WaitForAssertion(() => _snackbar.Received(1).Add(
-            "ContextValue: ContextValue must not contain double-quote characters.",
+            "Value under Window context must not contain double quotes.",
             Severity.Error,
             Arg.Any<Action<SnackbarOptions>>(),
             Arg.Any<string>()));

@@ -33,21 +33,22 @@ internal static class WindowContextRules
         // Both-or-neither
         validator.RuleFor(contextMatchType)
             .Must((x, matchType) => (matchType is null) == (valueFn(x) is null))
-            .WithMessage("ContextMatchType and ContextValue must both be set or both be null.");
+            .WithMessage("Match by and Value under Window context must both be set, or both be empty.");
 
         validator.RuleFor(contextMatchType)
-            .IsInEnum();
+            .IsInEnum()
+            .WithMessage("Choose an option in Match by under Window context.");
 
         validator.RuleFor(contextValue)
             .Must(v => v is null || !string.IsNullOrWhiteSpace(v))
-                .WithMessage("ContextValue must not be blank or whitespace.")
+                .WithMessage("Value under Window context must not be blank.")
             .MaximumLength(ContextValueMaxLength)
-                .WithMessage($"ContextValue must be {ContextValueMaxLength} characters or fewer.")
+                .WithMessage($"Value under Window context must be {ContextValueMaxLength} characters or fewer.")
             .Must(v => v is null || !v.Contains('"'))
-                .WithMessage("ContextValue must not contain double-quote characters.")
+                .WithMessage("Value under Window context must not contain double quotes.")
             .Must(v => v is null || !v.Contains('`'))
-                .WithMessage("ContextValue must not contain backtick characters.")
+                .WithMessage("Value under Window context must not contain backticks.")
             .Must(v => v is null || !v.Any(char.IsControl))
-                .WithMessage("ContextValue must not contain control characters.");
+                .WithMessage("Value under Window context must not contain control characters.");
     }
 }

@@ -58,6 +58,32 @@ public sealed class HotkeyKindConditionalRulesTests
         _ => throw new ArgumentOutOfRangeException(nameof(field)),
     };
 
+    // The labels the hotkey edit dialog shows, written out by hand. A test that read the
+    // production map would agree with any typo in it.
+    private static string Label(string field) => field switch
+    {
+        "Text" => "Text to type",
+        "SendKeysContent" => "Key to press",
+        "RunTarget" => "Target",
+        "RunTargetKind" => "Target kind",
+        "WindowOp" => "Do what",
+        "RemapDest" => "Behaves as",
+        "Body" => "Action body",
+        _ => throw new ArgumentOutOfRangeException(nameof(field)),
+    };
+
+    private static string ActionLabel(HotkeyActionKind kind) => kind switch
+    {
+        HotkeyActionKind.SendText => "Send text",
+        HotkeyActionKind.SendKeys => "Send keys",
+        HotkeyActionKind.Run => "Run",
+        HotkeyActionKind.Window => "Window",
+        HotkeyActionKind.Remap => "Remap",
+        HotkeyActionKind.Disable => "Disable",
+        HotkeyActionKind.Raw => "Raw",
+        _ => throw new ArgumentOutOfRangeException(nameof(kind)),
+    };
+
     public static TheoryData<HotkeyActionKind> AllKinds()
     {
         TheoryData<HotkeyActionKind> data = [];
@@ -98,22 +124,22 @@ public sealed class HotkeyKindConditionalRulesTests
         result.IsValid.Should().BeFalse();
         result.Errors.Should().Contain(e =>
             e.PropertyName == field &&
-            e.ErrorMessage == $"{field} is only valid for the {Owner(field)} action.");
+            e.ErrorMessage == $"{Label(field)} is only valid for the {ActionLabel(Owner(field))} action.");
     }
 
     [Theory]
-    [InlineData(HotkeyActionKind.SendText, "Text")]
-    [InlineData(HotkeyActionKind.SendKeys, "SendKeysContent")]
-    [InlineData(HotkeyActionKind.Run, "RunTarget")]
-    [InlineData(HotkeyActionKind.Window, "WindowOp")]
-    [InlineData(HotkeyActionKind.Remap, "RemapDest")]
-    [InlineData(HotkeyActionKind.Raw, "Body")]
-    public void EveryKind_WithNoPayloadAtAll_FailsOnItsOwnField(HotkeyActionKind kind, string field)
+    [InlineData(HotkeyActionKind.SendText, "Text", "Text to type is required.")]
+    [InlineData(HotkeyActionKind.SendKeys, "SendKeysContent", "Key to press must be a valid key, for example {Volume_Up} or ^c.")]
+    [InlineData(HotkeyActionKind.Run, "RunTarget", "Target is required.")]
+    [InlineData(HotkeyActionKind.Window, "WindowOp", "Choose an option in Do what.")]
+    [InlineData(HotkeyActionKind.Remap, "RemapDest", "Behaves as must be a valid key.")]
+    [InlineData(HotkeyActionKind.Raw, "Body", "Action body is required.")]
+    public void EveryKind_WithNoPayloadAtAll_FailsOnItsOwnField(HotkeyActionKind kind, string field, string message)
     {
         ValidationResult result = Validate(Base(kind));
 
         result.IsValid.Should().BeFalse();
-        result.Errors.Should().Contain(e => e.PropertyName == field);
+        result.Errors.Should().Contain(e => e.PropertyName == field && e.ErrorMessage == message);
     }
 
     // --- Run: two required fields, two distinct failures ----------------------------------
@@ -135,9 +161,14 @@ public sealed class HotkeyKindConditionalRulesTests
             .Errors.Should().ContainSingle().Which.PropertyName.Should().Be("RunTarget");
 
     [Fact]
-    public void Run_WithoutTargetKind_FailsOnRunTargetKind() =>
-        Validate(Base(HotkeyActionKind.Run) with { RunTarget = "notepad.exe" })
-            .Errors.Should().ContainSingle().Which.PropertyName.Should().Be("RunTargetKind");
+    public void Run_WithoutTargetKind_FailsOnRunTargetKind()
+    {
+        ValidationFailure error = Validate(Base(HotkeyActionKind.Run) with { RunTarget = "notepad.exe" })
+            .Errors.Should().ContainSingle().Subject;
+
+        error.PropertyName.Should().Be("RunTargetKind");
+        error.ErrorMessage.Should().Be("Choose a Target kind.");
+    }
 
     [Fact]
     public void Run_UndefinedTargetKind_FailsOnRunTargetKind() =>
@@ -184,9 +215,14 @@ public sealed class HotkeyKindConditionalRulesTests
         Validate(Base((HotkeyActionKind)99)).IsValid.Should().BeFalse();
 
     [Fact]
-    public void UndefinedActionKind_FailsOnActionKind() =>
-        Validate(Base((HotkeyActionKind)99))
-            .Errors.Should().ContainSingle().Which.PropertyName.Should().Be("ActionKind");
+    public void UndefinedActionKind_FailsOnActionKind()
+    {
+        ValidationFailure error = Validate(Base((HotkeyActionKind)99))
+            .Errors.Should().ContainSingle().Subject;
+
+        error.PropertyName.Should().Be("ActionKind");
+        error.ErrorMessage.Should().Be("Choose an Action.");
+    }
 
     [Fact]
     public void UndefinedWindowOp_IsInvalid() =>
@@ -304,7 +340,7 @@ public sealed class HotkeyKindConditionalRulesTests
         result.IsValid.Should().BeFalse();
         result.Errors.Should().Contain(e =>
             e.PropertyName == field &&
-            e.ErrorMessage == $"{field} must be {PayloadMaxLength} characters or fewer.");
+            e.ErrorMessage == $"{Label(field)} must be {PayloadMaxLength} characters or fewer.");
     }
 
     [Theory]
@@ -320,7 +356,7 @@ public sealed class HotkeyKindConditionalRulesTests
         result.IsValid.Should().BeFalse();
         result.Errors.Should().Contain(e =>
             e.PropertyName == field &&
-            e.ErrorMessage == $"{field} must not contain control characters.");
+            e.ErrorMessage == $"{Label(field)} must not contain control characters.");
     }
 
     // AhkEscaping represents exactly these three at emission, so they stay legal input.

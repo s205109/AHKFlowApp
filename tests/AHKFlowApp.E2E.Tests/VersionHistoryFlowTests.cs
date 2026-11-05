@@ -241,7 +241,7 @@ public sealed class VersionHistoryFlowTests(StackFixtureD fixture) : IAsyncLifet
         // The warning names the rule the stored Snapshot failed, instead of the plain
         // "Hotstring restored." message a clean restore shows.
         await page.WaitForSelectorAsync("text=applies to no profile");
-        await page.WaitForSelectorAsync("text=ContextValue must not contain double-quote characters.");
+        await page.WaitForSelectorAsync("text=Value under Window context must not contain double quotes.");
 
         // The row leaves the Recycle Bin, because a live row now exists for that id.
         await page.WaitForSelectorAsync(

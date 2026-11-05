@@ -41,7 +41,7 @@ public sealed class DefinitionRuleCheckTests
             TextDefinition(contextMatchType: WindowMatchType.TitleContains, contextValue: "a \" b"));
 
         failures.Select(f => f.ErrorMessage).Should()
-            .Contain("ContextValue must not contain double-quote characters.");
+            .Contain("Value under Window context must not contain double quotes.");
     }
 
     [Fact]
@@ -63,7 +63,7 @@ public sealed class DefinitionRuleCheckTests
 
         failures.Select(f => f.ErrorMessage).Should()
             .Contain("Trigger must not have leading or trailing whitespace.")
-            .And.Contain("ContextValue must not contain double-quote characters.");
+            .And.Contain("Value under Window context must not contain double quotes.");
     }
 
     // Review Focus 2: a stored Raw definition is already normalized. Re-checking it must pass,
@@ -109,7 +109,7 @@ public sealed class DefinitionRuleCheckTests
 
         DefinitionRuleCheck.Check(dt)
             .Select(f => f.ErrorMessage)
-            .Should().Contain("DateTimeFormat is required.");
+            .Should().Contain("Custom format is required.");
     }
 
     // A legacy Kind=Script body holding AHK's own literal-brace idiom. The brace counter in
@@ -190,7 +190,7 @@ public sealed class DefinitionRuleCheckTests
 
         DefinitionRuleCheck.Check(bad)
             .Select(f => f.ErrorMessage)
-            .Should().Contain("ContextValue must not contain backtick characters.");
+            .Should().Contain("Value under Window context must not contain backticks.");
     }
 
     [Fact]
@@ -213,6 +213,6 @@ public sealed class DefinitionRuleCheckTests
             LegacyHotkeySnapshotConverter.ToDefinition(legacy));
 
         failures.Select(f => f.ErrorMessage).Should()
-            .Contain("Raw body braces are unbalanced.");
+            .Contain("The braces in Action body do not balance.");
     }
 }

@@ -17,9 +17,9 @@ internal static class ProfileRules
 
     public static IRuleBuilderOptions<T, string?> ValidHeaderTemplate<T>(this IRuleBuilderInitial<T, string?> rb) =>
         rb.MaximumLength(HeaderTemplateMaxLength)
-          .WithMessage($"HeaderTemplate must be {HeaderTemplateMaxLength} characters or fewer.");
+          .WithMessage($"Header template must be {HeaderTemplateMaxLength} characters or fewer.");
 
     public static IRuleBuilderOptions<T, string?> ValidFooterTemplate<T>(this IRuleBuilderInitial<T, string?> rb) =>
         rb.MaximumLength(FooterTemplateMaxLength)
-          .WithMessage($"FooterTemplate must be {FooterTemplateMaxLength} characters or fewer.");
+          .WithMessage($"Footer template must be {FooterTemplateMaxLength} characters or fewer.");
 }

@@ -1,6 +1,7 @@
 @page "/profiles"
 @using AHKFlowApp.UI.Blazor.Components.Profiles
 @using AHKFlowApp.UI.Blazor.DTOs
+@using AHKFlowApp.UI.Blazor.Helpers
 @using AHKFlowApp.UI.Blazor.Services
 @using AHKFlowApp.UI.Blazor.Validation
 @using MudBlazor
@@ -148,7 +149,7 @@
                                         @if (preview.Preview is not null)
                                         {
                                             <MudText Typo="Typo.caption">
-                                                @preview.Preview.HotstringCount hotstring(s), @preview.Preview.HotkeyCount hotkey(s)
+                                                @(CountWording.Of(preview.Preview.HotstringCount, "hotstring", "hotstrings")), @(CountWording.Of(preview.Preview.HotkeyCount, "hotkey", "hotkeys"))
                                             </MudText>
                                         }
                                     </MudStack>

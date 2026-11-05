@@ -1147,7 +1147,7 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
     [Fact]
     public async Task ApplyPreviewResult_ContextValueError_ShownInlineNotInPanel()
     {
-        const string contextMessage = "ContextValue must not contain double-quote characters.";
+        const string contextMessage = "Value under Window context must not contain double quotes.";
         _api.PreviewAsync(Arg.Any<HotstringPreviewRequestDto>(), Arg.Any<CancellationToken>())
             .Returns(ApiResult<HotstringPreviewDto>.Failure(ApiResultStatus.Validation,
                 new ApiProblemDetails(null, "Bad Request", 400, null, null,
@@ -1477,7 +1477,8 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
         IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
 
         provider.WaitForAssertion(() => provider.Find("[data-test=\"delivery-select\"]"));
-        provider.Markup.Should().Contain("Auto types short replacements and pastes 200+ characters via the clipboard");
+        provider.Markup.Should().Contain("Auto types a replacement shorter than 200 characters.");
+        provider.Markup.Should().NotContain("case-conforming");
 
         IRenderedComponent<MudToggleGroup<HotstringKind>> kindSelector = provider.FindComponent<MudToggleGroup<HotstringKind>>();
         await provider.InvokeAsync(() => kindSelector.Instance.ValueChanged.InvokeAsync(HotstringKind.Macro));

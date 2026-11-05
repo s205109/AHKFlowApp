@@ -81,7 +81,7 @@ public sealed class UpdateHotkeyCommandValidatorTests
         result.IsValid.Should().BeFalse();
         result.Errors.Should().Contain(e =>
             e.PropertyName == "Input.ProfileIds" &&
-            e.ErrorMessage == "ProfileIds must be empty when AppliesToAllProfiles is true.");
+            e.ErrorMessage == "Profiles must be empty when Apply to all profiles is on.");
     }
 
     [Fact]
@@ -93,7 +93,7 @@ public sealed class UpdateHotkeyCommandValidatorTests
         result.IsValid.Should().BeFalse();
         result.Errors.Should().Contain(e =>
             e.PropertyName == "Input.ProfileIds" &&
-            e.ErrorMessage == "At least one profile must be specified when AppliesToAllProfiles is false.");
+            e.ErrorMessage == "Choose at least one profile in Profiles, or turn on Apply to all profiles.");
     }
 
     [Fact]

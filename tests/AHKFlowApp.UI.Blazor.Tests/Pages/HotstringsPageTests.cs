@@ -214,7 +214,7 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
         Services.AddSingleton(dialogService);
 
         IRenderedComponent<Hotstrings> cut = RenderPage();
-        cut.WaitForState(() => cut.Markup.Contains(">a<") || cut.Markup.Contains("a"));
+        cut.WaitForAssertion(() => cut.Find("button.edit"));
 
         await cut.InvokeAsync(() => cut.Instance.OnSelectedItemsChanged(
             [HotstringEditModel.FromDto(a), HotstringEditModel.FromDto(b)]));
@@ -231,6 +231,44 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
         cut.WaitForAssertion(() => _api.Received().ListAsync(
             Arg.Any<HotstringListRequest>(),
             Arg.Any<CancellationToken>()));
+    }
+
+    // Backlog 169: a bulk delete of one row read "Delete 1 hotstring(s)? You can restore them".
+    // No test read the delete text, so nothing caught it.
+    [Fact]
+    public async Task Page_BulkDeleteOfOneRow_ReadsAsSingular()
+    {
+        var aId = Guid.NewGuid();
+        var a = new HotstringDto(aId, [], true, "a", "x", null, true, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+        StubList(Page(a));
+        _api.BulkDeleteAsync(Arg.Any<IReadOnlyList<Guid>>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<BulkDeleteResultDto>.Ok(new BulkDeleteResultDto(1, [])));
+
+        IDialogService dialogService = Substitute.For<IDialogService>();
+        dialogService.ShowMessageBoxAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(),
+            Arg.Any<DialogOptions>())
+            .Returns(Task.FromResult<bool?>(true));
+        Services.AddSingleton(dialogService);
+        // Registered after the constructor's AddMudServices, so it wins over MudBlazor's snackbar.
+        ISnackbar snackbar = Substitute.For<ISnackbar>();
+        Services.AddSingleton(snackbar);
+
+        IRenderedComponent<Hotstrings> cut = RenderPage();
+        cut.WaitForAssertion(() => cut.Find("button.edit"));
+
+        await cut.InvokeAsync(() => cut.Instance.OnSelectedItemsChanged([HotstringEditModel.FromDto(a)]));
+
+        cut.WaitForAssertion(() => cut.Find("button.bulk-delete-hotstrings"));
+        cut.Find("button.bulk-delete-hotstrings").Click();
+
+        cut.WaitForAssertion(() => dialogService.Received(1).ShowMessageBoxAsync(
+            Arg.Is<string>(t => t == "Delete hotstring?"),
+            Arg.Is<string>(m => m == "Delete 1 hotstring? You can restore it from the Recycle Bin."),
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<DialogOptions>()));
+        cut.WaitForAssertion(() => snackbar.Received(1).Add(
+            "Deleted 1 hotstring.", Severity.Success,
+            Arg.Any<Action<SnackbarOptions>>(), Arg.Any<string>()));
     }
 
     [Fact]

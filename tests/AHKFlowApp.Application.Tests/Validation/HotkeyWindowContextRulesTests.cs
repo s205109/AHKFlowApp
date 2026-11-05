@@ -89,7 +89,7 @@ public sealed class HotkeyWindowContextRulesTests
         ValidationResult result = ValidateCreate(WindowMatchType.Executable, null);
 
         result.Errors.Should().Contain(e =>
-            e.ErrorMessage == "ContextMatchType and ContextValue must both be set or both be null.");
+            e.ErrorMessage == "Match by and Value under Window context must both be set, or both be empty.");
     }
 
     [Fact]
@@ -98,7 +98,7 @@ public sealed class HotkeyWindowContextRulesTests
         ValidationResult result = ValidateCreate(null, "notepad.exe");
 
         result.Errors.Should().Contain(e =>
-            e.ErrorMessage == "ContextMatchType and ContextValue must both be set or both be null.");
+            e.ErrorMessage == "Match by and Value under Window context must both be set, or both be empty.");
     }
 
     [Theory]
@@ -109,7 +109,7 @@ public sealed class HotkeyWindowContextRulesTests
         ValidationResult result = ValidateCreate(WindowMatchType.Executable, value);
 
         result.Errors.Should().Contain(e =>
-            e.ErrorMessage == "ContextValue must not be blank or whitespace.");
+            e.ErrorMessage == "Value under Window context must not be blank.");
     }
 
     [Fact]
@@ -118,7 +118,7 @@ public sealed class HotkeyWindowContextRulesTests
         ValidationResult result = ValidateCreate(WindowMatchType.Executable, new string('a', 201));
 
         result.Errors.Should().Contain(e =>
-            e.ErrorMessage == "ContextValue must be 200 characters or fewer.");
+            e.ErrorMessage == "Value under Window context must be 200 characters or fewer.");
     }
 
     [Fact]
@@ -135,7 +135,7 @@ public sealed class HotkeyWindowContextRulesTests
         ValidationResult result = ValidateCreate(WindowMatchType.TitleContains, "say \"hi\"");
 
         result.Errors.Should().Contain(e =>
-            e.ErrorMessage == "ContextValue must not contain double-quote characters.");
+            e.ErrorMessage == "Value under Window context must not contain double quotes.");
     }
 
     [Fact]
@@ -144,7 +144,7 @@ public sealed class HotkeyWindowContextRulesTests
         ValidationResult result = ValidateCreate(WindowMatchType.TitleContains, "back`tick");
 
         result.Errors.Should().Contain(e =>
-            e.ErrorMessage == "ContextValue must not contain backtick characters.");
+            e.ErrorMessage == "Value under Window context must not contain backticks.");
     }
 
     [Fact]
@@ -153,7 +153,7 @@ public sealed class HotkeyWindowContextRulesTests
         ValidationResult result = ValidateCreate(WindowMatchType.TitleContains, "line\nbreak");
 
         result.Errors.Should().Contain(e =>
-            e.ErrorMessage == "ContextValue must not contain control characters.");
+            e.ErrorMessage == "Value under Window context must not contain control characters.");
     }
 
     [Fact]
@@ -162,7 +162,10 @@ public sealed class HotkeyWindowContextRulesTests
         ValidationResult result = ValidateCreate((WindowMatchType)99, "notepad.exe");
 
         result.IsValid.Should().BeFalse();
-        result.Errors.Should().Contain(e => e.PropertyName.EndsWith("ContextMatchType"));
+        // Backlog 169: the default text read "'Context Match Type' has a range of values...".
+        result.Errors.Should().Contain(e =>
+            e.PropertyName.EndsWith("ContextMatchType")
+            && e.ErrorMessage == "Choose an option in Match by under Window context.");
     }
 
     [Fact]
@@ -171,7 +174,7 @@ public sealed class HotkeyWindowContextRulesTests
         ValidationResult result = ValidateUpdate(WindowMatchType.Executable, null);
 
         result.Errors.Should().Contain(e =>
-            e.ErrorMessage == "ContextMatchType and ContextValue must both be set or both be null.");
+            e.ErrorMessage == "Match by and Value under Window context must both be set, or both be empty.");
     }
 
     [Fact]
@@ -188,7 +191,7 @@ public sealed class HotkeyWindowContextRulesTests
         ValidationResult result = ValidatePreview(WindowMatchType.Executable, null);
 
         result.Errors.Should().Contain(e =>
-            e.ErrorMessage == "ContextMatchType and ContextValue must both be set or both be null.");
+            e.ErrorMessage == "Match by and Value under Window context must both be set, or both be empty.");
     }
 
     [Fact]

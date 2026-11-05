@@ -241,7 +241,26 @@ public sealed class CreateHotstringCommandValidatorTests
     {
         ValidationResult result = _sut.Validate(Cmd(delivery: (HotstringDelivery)99));
 
-        result.Errors.Should().Contain(e => e.PropertyName == "Input.Delivery");
+        // Backlog 169: FluentValidation's default text named the property ("'Delivery' has a
+        // range of values..."), and the UI shows the message without its key.
+        result.Errors.Should().Contain(e =>
+            e.PropertyName == "Input.Delivery" && e.ErrorMessage == "Choose an option in Delivery.");
+    }
+
+    [Fact]
+    public void DateTimeKind_UndefinedOffsetUnit_FailsWithTheUnitLabel()
+    {
+        ValidationResult result = _sut.Validate(Cmd(
+            kind: HotstringKind.DateTime,
+            replacement: "",
+            dateTimeFormat: "yyyy-MM-dd",
+            dateOffsetAmount: 1,
+            dateOffsetUnit: (DateOffsetUnit)99));
+
+        // Backlog 169: the default text read "'Date Offset Unit' has a range of values...".
+        result.Errors.Should().Contain(e =>
+            e.PropertyName == "Input.DateOffsetUnit"
+            && e.ErrorMessage == "Choose an option in Unit under Adjust date.");
     }
 
     [Fact]
@@ -280,7 +299,7 @@ public sealed class CreateHotstringCommandValidatorTests
 
         result.IsValid.Should().BeFalse();
         result.Errors.Should().Contain(e =>
-            e.ErrorMessage == "ProfileIds must be empty when AppliesToAllProfiles is true.");
+            e.ErrorMessage == "Profiles must be empty when Apply to all profiles is on.");
     }
 
     [Fact]
@@ -292,7 +311,7 @@ public sealed class CreateHotstringCommandValidatorTests
 
         result.IsValid.Should().BeFalse();
         result.Errors.Should().Contain(e =>
-            e.ErrorMessage == "At least one profile must be specified when AppliesToAllProfiles is false.");
+            e.ErrorMessage == "Choose at least one profile in Profiles, or turn on Apply to all profiles.");
     }
 
     [Fact]
@@ -304,7 +323,7 @@ public sealed class CreateHotstringCommandValidatorTests
 
         result.IsValid.Should().BeFalse();
         result.Errors.Should().Contain(e =>
-            e.ErrorMessage == "ProfileIds must not contain empty GUIDs.");
+            e.ErrorMessage == "Profiles must not contain an empty profile id.");
     }
 
     [Fact]
@@ -318,7 +337,7 @@ public sealed class CreateHotstringCommandValidatorTests
 
         result.IsValid.Should().BeFalse();
         result.Errors.Should().Contain(e =>
-            e.ErrorMessage == "ProfileIds must not contain duplicates.");
+            e.ErrorMessage == "Profiles must not list the same profile twice.");
     }
 
     [Fact]
@@ -609,7 +628,7 @@ public sealed class CreateHotstringCommandValidatorTests
         result.IsValid.Should().BeFalse();
         result.Errors.Should().Contain(e =>
             e.PropertyName == "Input.DateTimeFormat" &&
-            e.ErrorMessage == "DateTimeFormat must be null unless Kind is Date & time.");
+            e.ErrorMessage == "Format must be empty unless Kind is Date & time.");
     }
 
     [Fact]
@@ -666,7 +685,9 @@ public sealed class CreateHotstringCommandValidatorTests
             dateTimeFormat: null));
 
         result.IsValid.Should().BeFalse();
-        result.Errors.Should().Contain(e => e.PropertyName == "Input.DateTimeFormat");
+        // Backlog 169: in the UI only the Custom format field can leave the format empty.
+        result.Errors.Should().Contain(e =>
+            e.PropertyName == "Input.DateTimeFormat" && e.ErrorMessage == "Custom format is required.");
     }
 
     [Fact]
@@ -720,7 +741,7 @@ public sealed class CreateHotstringCommandValidatorTests
         result.IsValid.Should().BeFalse();
         result.Errors.Should().Contain(e =>
             e.PropertyName == "Input.DateOffsetAmount" &&
-            e.ErrorMessage == "DateOffsetAmount and DateOffsetUnit must both be set or both be null.");
+            e.ErrorMessage == "Adjust date needs both an Amount and a Unit, or neither.");
     }
 
     [Theory]
@@ -812,7 +833,24 @@ public sealed class CreateHotstringCommandValidatorTests
             dateTimeFormat: new string('y', 51)));
 
         result.IsValid.Should().BeFalse();
-        result.Errors.Should().Contain(e => e.PropertyName == "Input.DateTimeFormat");
+        result.Errors.Should().Contain(e =>
+            e.PropertyName == "Input.DateTimeFormat"
+            && e.ErrorMessage == "Custom format must be 50 characters or fewer.");
+    }
+
+    // Backlog 169: every Format preset passes, so only text typed into Custom format can fail
+    // the token check. The message names that field, not the Format select.
+    [Fact]
+    public void DateTimeFormat_UnsupportedToken_NamesCustomFormat()
+    {
+        ValidationResult result = _sut.Validate(Cmd(
+            kind: HotstringKind.DateTime,
+            replacement: "",
+            dateTimeFormat: "yyyy KMM"));
+
+        result.Errors.Should().Contain(e =>
+            e.PropertyName == "Input.DateTimeFormat"
+            && e.ErrorMessage == "Custom format contains unsupported characters or tokens.");
     }
 
     [Fact]
@@ -836,7 +874,7 @@ public sealed class CreateHotstringCommandValidatorTests
         result.IsValid.Should().BeFalse();
         result.Errors.Should().Contain(e =>
             e.PropertyName == "Input.ContextMatchType" &&
-            e.ErrorMessage == "ContextMatchType and ContextValue must both be set or both be null.");
+            e.ErrorMessage == "Match by and Value under Window context must both be set, or both be empty.");
     }
 
     [Fact]
@@ -849,7 +887,7 @@ public sealed class CreateHotstringCommandValidatorTests
         result.IsValid.Should().BeFalse();
         result.Errors.Should().Contain(e =>
             e.PropertyName == "Input.ContextMatchType" &&
-            e.ErrorMessage == "ContextMatchType and ContextValue must both be set or both be null.");
+            e.ErrorMessage == "Match by and Value under Window context must both be set, or both be empty.");
     }
 
     [Fact]
@@ -873,7 +911,7 @@ public sealed class CreateHotstringCommandValidatorTests
         result.IsValid.Should().BeFalse();
         result.Errors.Should().Contain(e =>
             e.PropertyName == "Input.ContextValue" &&
-            e.ErrorMessage == "ContextValue must not be blank or whitespace.");
+            e.ErrorMessage == "Value under Window context must not be blank.");
     }
 
     [Fact]
@@ -886,7 +924,7 @@ public sealed class CreateHotstringCommandValidatorTests
         result.IsValid.Should().BeFalse();
         result.Errors.Should().Contain(e =>
             e.PropertyName == "Input.ContextValue" &&
-            e.ErrorMessage == "ContextValue must not be blank or whitespace.");
+            e.ErrorMessage == "Value under Window context must not be blank.");
     }
 
     [Fact]
@@ -910,7 +948,7 @@ public sealed class CreateHotstringCommandValidatorTests
         result.IsValid.Should().BeFalse();
         result.Errors.Should().Contain(e =>
             e.PropertyName == "Input.ContextValue" &&
-            e.ErrorMessage == "ContextValue must be 200 characters or fewer.");
+            e.ErrorMessage == "Value under Window context must be 200 characters or fewer.");
     }
 
     [Fact]

@@ -229,6 +229,8 @@ public sealed class ProfilesPageTests : BunitContext, IAsyncLifetime
             dto.Id,
             Arg.Any<CancellationToken>()));
         cut.Markup.Should().Contain("::btw::by the way");
+        // Backlog 169: the count read "1 hotstring(s), 0 hotkey(s)".
+        cut.Markup.Should().Contain("1 hotstring, 0 hotkeys");
     }
 
     [Fact]

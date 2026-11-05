@@ -194,7 +194,7 @@ public sealed class RecycleBinPageTests : BunitContext, IAsyncLifetime
             CreatedAt: DateTimeOffset.UtcNow,
             UpdatedAt: DateTimeOffset.UtcNow,
             CategoryIds: [],
-            RestoreWarnings: ["ContextValue must not contain double-quote characters."]);
+            RestoreWarnings: ["Value under Window context must not contain double quotes."]);
         _hotstrings.RestoreAsync(deleted.Id, Arg.Any<CancellationToken>())
             .Returns(ApiResult<HotstringDto>.Ok(restored));
 
@@ -204,7 +204,7 @@ public sealed class RecycleBinPageTests : BunitContext, IAsyncLifetime
 
         cut.WaitForAssertion(() => _snackbar.Received(1).Add(
             Arg.Is<string>(m => m.Contains("applies to no profile")
-                             && m.Contains("ContextValue must not contain double-quote characters.")),
+                             && m.Contains("Value under Window context must not contain double quotes.")),
             Severity.Warning,
             Arg.Any<Action<SnackbarOptions>>(), Arg.Any<string>()));
 
@@ -236,7 +236,7 @@ public sealed class RecycleBinPageTests : BunitContext, IAsyncLifetime
     }
 
     // Two failed rules in one message. Every rule message already ends in a period, so joining
-    // them with "; " would read "...whitespace.; ContextValue...".
+    // them with "; " would read "...whitespace.; Value under Window context...".
     [Fact]
     public void Restore_WithTwoWarnings_JoinsThemWithoutAStraySemicolon()
     {
@@ -248,14 +248,14 @@ public sealed class RecycleBinPageTests : BunitContext, IAsyncLifetime
                 deleted.Id,
                 "bad3",
                 "Trigger must not have leading or trailing whitespace.",
-                "ContextValue must not contain double-quote characters.")));
+                "Value under Window context must not contain double quotes.")));
 
         IRenderedComponent<RecycleBin> cut = RenderPage();
         cut.WaitForAssertion(() => cut.Find("button.restore-item"));
         cut.Find("button.restore-item").Click();
 
         cut.WaitForAssertion(() => _snackbar.Received(1).Add(
-            Arg.Is<string>(m => m.Contains("whitespace. ContextValue") && !m.Contains(".;")),
+            Arg.Is<string>(m => m.Contains("whitespace. Value under Window context") && !m.Contains(".;")),
             Severity.Warning,
             Arg.Any<Action<SnackbarOptions>>(), Arg.Any<string>()));
     }
@@ -326,7 +326,7 @@ public sealed class RecycleBinPageTests : BunitContext, IAsyncLifetime
             CategoryIds: [],
             RestoreWarnings: warnings.Length > 0
                 ? warnings
-                : ["ContextValue must not contain double-quote characters."]);
+                : ["Value under Window context must not contain double quotes."]);
 
     // Runs the page's own options callback and reports what it set, so the assertion reads the
     // real configuration rather than trusting that a callback was passed at all.

@@ -469,7 +469,7 @@ public sealed class HotkeyEditDialogTests : BunitContext, IAsyncLifetime
             .Returns(ApiResult<HotkeyDto>.Failure(
                 ApiResultStatus.Validation,
                 new ApiProblemDetails(null, "Validation failed", 400, null, null,
-                    new Dictionary<string, string[]> { ["Input.WindowOp"] = ["Window requires an operation."] })));
+                    new Dictionary<string, string[]> { ["Input.WindowOp"] = ["Choose an option in Do what."] })));
 
         IRenderedComponent<MudDialogProvider> provider = await ShowDialogAsync(
             new HotkeyEditModel { Description = "d", Key = "n", ActionKind = HotkeyActionKind.Window });
@@ -1392,7 +1392,7 @@ public sealed class HotkeyEditDialogTests : BunitContext, IAsyncLifetime
     [Fact]
     public async Task SaveError_OnContextValue_RendersInlineNotInTheGenericAlert()
     {
-        const string message = "ContextValue must not contain double-quote characters.";
+        const string message = "Value under Window context must not contain double quotes.";
         _api.CreateAsync(Arg.Any<CreateHotkeyDto>(), Arg.Any<CancellationToken>())
             .Returns(ApiResult<HotkeyDto>.Failure(ApiResultStatus.Validation,
                 new ApiProblemDetails(null, "Validation failed", 400, null, null,

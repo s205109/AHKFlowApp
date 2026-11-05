@@ -120,7 +120,7 @@ public sealed class GetHotstringPreviewQueryValidatorTests
         result.IsValid.Should().BeFalse();
         result.Errors.Should().Contain(e =>
             e.PropertyName == "Input.ContextMatchType" &&
-            e.ErrorMessage == "ContextMatchType and ContextValue must both be set or both be null.");
+            e.ErrorMessage == "Match by and Value under Window context must both be set, or both be empty.");
     }
 
     [Fact]
@@ -144,7 +144,7 @@ public sealed class GetHotstringPreviewQueryValidatorTests
         result.IsValid.Should().BeFalse();
         result.Errors.Should().Contain(e =>
             e.PropertyName == "Input.ContextValue" &&
-            e.ErrorMessage == "ContextValue must not be blank or whitespace.");
+            e.ErrorMessage == "Value under Window context must not be blank.");
     }
 
     [Fact]
@@ -157,7 +157,7 @@ public sealed class GetHotstringPreviewQueryValidatorTests
         result.IsValid.Should().BeFalse();
         result.Errors.Should().Contain(e =>
             e.PropertyName == "Input.ContextValue" &&
-            e.ErrorMessage == "ContextValue must not be blank or whitespace.");
+            e.ErrorMessage == "Value under Window context must not be blank.");
     }
 
     [Fact]

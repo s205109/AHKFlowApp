@@ -46,7 +46,23 @@ public sealed class OwnedIdsValidationTests(Profiles.ProfileDbFixture fx)
 
         error.Should().NotBeNull();
         error.Identifier.Should().Be("Input.ProfileIds");
-        error.ErrorMessage.Should().Be("One or more ProfileIds do not exist for this user.");
+        // Backlog 169: the message named the property, "One or more ProfileIds do not exist for
+        // this user.", and an owner reaches it by deleting a chosen profile in another tab.
+        error.ErrorMessage.Should().Be("One or more of the chosen profiles do not exist.");
+    }
+
+    [Fact]
+    public async Task CheckOwnedIdsAsync_WhenCategoryIdMissing_NamesCategoriesNotTheProperty()
+    {
+        await using AppDbContext db = fx.CreateContext();
+        Guid[] ids = [Guid.NewGuid()];
+
+        ValidationError? error = await OwnedIdsValidation.CheckOwnedIdsAsync(
+            db.Categories, c => ids.Contains(c.Id), ids, "CategoryIds", default);
+
+        error.Should().NotBeNull();
+        error.Identifier.Should().Be("Input.CategoryIds");
+        error.ErrorMessage.Should().Be("One or more of the chosen categories do not exist.");
     }
 
     [Fact]

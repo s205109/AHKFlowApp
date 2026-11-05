@@ -373,6 +373,43 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
         });
     }
 
+    // Backlog 169: a bulk delete of one row read "Delete 1 hotkey(s)? You can restore them".
+    // No test read the delete text, so nothing caught it.
+    [Fact]
+    public async Task Page_BulkDeleteOfOneRow_ReadsAsSingular()
+    {
+        HotkeyDto a = MakeHotkey("desc-a", "F1") with { Id = Guid.NewGuid() };
+        StubList(Page(a));
+        _api.BulkDeleteAsync(Arg.Any<IReadOnlyList<Guid>>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<BulkDeleteResultDto>.Ok(new BulkDeleteResultDto(1, [])));
+
+        IDialogService dialogService = Substitute.For<IDialogService>();
+        dialogService.ShowMessageBoxAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(),
+            Arg.Any<DialogOptions>())
+            .Returns(Task.FromResult<bool?>(true));
+        Services.AddSingleton(dialogService);
+        // Registered after the constructor's AddMudServices, so it wins over MudBlazor's snackbar.
+        ISnackbar snackbar = Substitute.For<ISnackbar>();
+        Services.AddSingleton(snackbar);
+
+        IRenderedComponent<Hotkeys> cut = RenderPage();
+        cut.WaitForState(() => cut.Markup.Contains("desc-a"));
+
+        await cut.InvokeAsync(() => cut.Instance.OnSelectedItemsChanged([HotkeyEditModel.FromDto(a)]));
+
+        cut.WaitForAssertion(() => cut.Find("button.bulk-delete-hotkeys"));
+        cut.Find("button.bulk-delete-hotkeys").Click();
+
+        cut.WaitForAssertion(() => dialogService.Received(1).ShowMessageBoxAsync(
+            Arg.Is<string>(t => t == "Delete hotkey?"),
+            Arg.Is<string>(m => m == "Delete 1 hotkey? You can restore it from the Recycle Bin."),
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<DialogOptions>()));
+        cut.WaitForAssertion(() => snackbar.Received(1).Add(
+            "Deleted 1 hotkey.", Severity.Success,
+            Arg.Any<Action<SnackbarOptions>>(), Arg.Any<string>()));
+    }
+
     [Fact]
     public void Page_ReloadWhileExpanded_KeepsMobileRowControls()
     {

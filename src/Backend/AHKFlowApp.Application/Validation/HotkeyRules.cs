@@ -53,7 +53,7 @@ internal static class HotkeyRules
             // Same for the two nested enums: `is null` alone accepts (WindowOp)99.
             if (!Enum.IsDefined(k))
             {
-                ctx.AddFailure("ActionKind", "ActionKind must be a valid HotkeyActionKind value.");
+                ctx.AddFailure("ActionKind", "Choose an Action.");
                 return;
             }
 
@@ -62,14 +62,14 @@ internal static class HotkeyRules
             {
                 case HotkeyActionKind.SendText:
                     if (string.IsNullOrEmpty(d.Text))
-                        ctx.AddFailure("Text", "SendText requires Text.");
+                        ctx.AddFailure("Text", "Text to type is required.");
                     else
                         ValidateFreeText(d.Text, "Text", ctx);
                     break;
 
                 case HotkeyActionKind.SendKeys:
                     if (!Tokens.IsValidSendKeysContent(d.SendKeysContent))
-                        ctx.AddFailure("SendKeysContent", "SendKeys requires a valid key token (for example {Volume_Up} or ^c).");
+                        ctx.AddFailure("SendKeysContent", "Key to press must be a valid key, for example {Volume_Up} or ^c.");
                     break;
 
                 // Two failures, two fields: a bad RunTargetKind must not be reported against
@@ -77,22 +77,22 @@ internal static class HotkeyRules
                 // field the client never sent wrong.
                 case HotkeyActionKind.Run:
                     if (string.IsNullOrEmpty(d.RunTarget))
-                        ctx.AddFailure("RunTarget", "Run requires a run target.");
+                        ctx.AddFailure("RunTarget", "Target is required.");
                     else
                         ValidateFreeText(d.RunTarget, "RunTarget", ctx);
 
                     if (d.RunTargetKind is not RunTargetKind rtk || !Enum.IsDefined(rtk))
-                        ctx.AddFailure("RunTargetKind", "Run requires a valid run target kind.");
+                        ctx.AddFailure("RunTargetKind", "Choose a Target kind.");
                     break;
 
                 case HotkeyActionKind.Window:
                     if (d.WindowOp is not WindowOp op || !Enum.IsDefined(op))
-                        ctx.AddFailure("WindowOp", "Window requires a valid window operation.");
+                        ctx.AddFailure("WindowOp", "Choose an option in Do what.");
                     break;
 
                 case HotkeyActionKind.Remap:
                     if (!Tokens.IsValidRemapDest(d.RemapDest))
-                        ctx.AddFailure("RemapDest", "Remap requires a valid destination key.");
+                        ctx.AddFailure("RemapDest", "Behaves as must be a valid key.");
                     break;
 
                 // The emitter writes Body verbatim (2026-07-22 decision), so a block body carries
@@ -100,9 +100,9 @@ internal static class HotkeyRules
                 // emitter-supplied wrapper.
                 case HotkeyActionKind.Raw:
                     if (string.IsNullOrEmpty(d.Body))
-                        ctx.AddFailure("Body", "Raw requires an action body.");
+                        ctx.AddFailure("Body", "Action body is required.");
                     else if (!BracesBalanced(d.Body))
-                        ctx.AddFailure("Body", "Raw body braces are unbalanced.");
+                        ctx.AddFailure("Body", "The braces in Action body do not balance.");
                     // Scanner runs before the directive check: "#" is both the directive prefix
                     // and the Win modifier symbol, so a line like "#a::Run(...)" is a genuine
                     // injected hotkey definition, not merely a directive-shaped string. Checking
@@ -115,7 +115,7 @@ internal static class HotkeyRules
                           + $"Line {line} starts a new definition. "
                           + "Create that definition as a separate hotkey or hotstring.");
                     else if (HasDirectiveLine(d.Body))
-                        ctx.AddFailure("Body", "Raw body must not contain a # directive.");
+                        ctx.AddFailure("Body", "Action body must not contain a # directive.");
                     else
                         ValidateFreeText(d.Body, "Body", ctx);
                     break;
@@ -147,10 +147,40 @@ internal static class HotkeyRules
     private static void ValidateFreeText<T>(string value, string field, ValidationContext<T> ctx)
     {
         if (value.Length > PayloadMaxLength)
-            ctx.AddFailure(field, $"{field} must be {PayloadMaxLength} characters or fewer.");
+            ctx.AddFailure(field, $"{FieldLabel(field)} must be {PayloadMaxLength} characters or fewer.");
         else if (value.Any(c => char.IsControl(c) && c is not '\n' and not '\r' and not '\t'))
-            ctx.AddFailure(field, $"{field} must not contain control characters.");
+            ctx.AddFailure(field, $"{FieldLabel(field)} must not contain control characters.");
     }
+
+    /// <summary>
+    /// The label the hotkey edit dialog shows for a payload field. Messages use it so an owner
+    /// reads the name on screen, while the failure key stays the property name the UI matches on.
+    /// The UI project references no backend project, so this map is a copy of the dialog labels.
+    /// </summary>
+    private static string FieldLabel(string field) => field switch
+    {
+        "Text" => "Text to type",
+        "SendKeysContent" => "Key to press",
+        "RunTarget" => "Target",
+        "RunTargetKind" => "Target kind",
+        "WindowOp" => "Do what",
+        "RemapDest" => "Behaves as",
+        "Body" => "Action body",
+        _ => throw new ArgumentOutOfRangeException(nameof(field), field, "No label for this hotkey field."),
+    };
+
+    /// <summary>The spaced action name the UI shows, as <c>CONTEXT.md</c> spells it.</summary>
+    private static string ActionLabel(HotkeyActionKind kind) => kind switch
+    {
+        HotkeyActionKind.SendText => "Send text",
+        HotkeyActionKind.SendKeys => "Send keys",
+        HotkeyActionKind.Run => "Run",
+        HotkeyActionKind.Window => "Window",
+        HotkeyActionKind.Remap => "Remap",
+        HotkeyActionKind.Disable => "Disable",
+        HotkeyActionKind.Raw => "Raw",
+        _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "No label for this action."),
+    };
 
     /// <summary>
     /// Equal counts of <c>{</c> and <c>}</c> — deliberately not nesting order, which a verbatim
@@ -198,7 +228,7 @@ internal static class HotkeyRules
         foreach ((HotkeyActionKind owner, string field, bool isSet) in fields)
         {
             if (owner != kind && isSet)
-                ctx.AddFailure(field, $"{field} is only valid for the {owner} action.");
+                ctx.AddFailure(field, $"{FieldLabel(field)} is only valid for the {ActionLabel(owner)} action.");
         }
     }
 
