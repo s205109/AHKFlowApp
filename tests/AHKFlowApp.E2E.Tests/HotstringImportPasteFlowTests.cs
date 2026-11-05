@@ -14,8 +14,8 @@ namespace AHKFlowApp.E2E.Tests;
 // insertText, which adds a multi-line text one line at a time. In this dialog that took 15 s for
 // 400,000 characters and more than 60 s for 1 MiB. A real paste of the same 1 MiB took 0.5 s.
 // Headless Chromium keeps its own clipboard, so a run never touches the machine's clipboard.
-[Collection(E2ECollectionB.Name)]
-public sealed class HotstringImportPasteFlowTests(StackFixtureB fixture) : IAsyncLifetime
+[Collection(E2ECollectionA.Name)]
+public sealed class HotstringImportPasteFlowTests(StackFixtureA fixture) : IAsyncLifetime
 {
     private const string ScriptBox = "textarea[data-test=\"import-script\"]";
 

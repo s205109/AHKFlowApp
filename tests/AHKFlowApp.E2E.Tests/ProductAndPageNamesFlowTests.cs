@@ -8,8 +8,8 @@ using Xunit;
 
 namespace AHKFlowApp.E2E.Tests;
 
-[Collection(E2ECollectionB.Name)]
-public sealed class ProductAndPageNamesFlowTests(StackFixtureB fixture)
+[Collection(E2ECollectionA.Name)]
+public sealed class ProductAndPageNamesFlowTests(StackFixtureA fixture)
 {
     private const string ProductName = "AHKFlowApp";
 

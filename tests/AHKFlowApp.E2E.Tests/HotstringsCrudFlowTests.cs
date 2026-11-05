@@ -8,8 +8,8 @@ using Xunit;
 
 namespace AHKFlowApp.E2E.Tests;
 
-[Collection(E2ECollectionC.Name)]
-public sealed class HotstringsCrudFlowTests(StackFixtureC fixture) : IAsyncLifetime
+[Collection(E2ECollectionD.Name)]
+public sealed class HotstringsCrudFlowTests(StackFixtureD fixture) : IAsyncLifetime
 {
     // 1280 px is well above the 959.95 px breakpoint where the page switches to the mobile list.
     private static readonly BrowserNewContextOptions DesktopViewport = new()

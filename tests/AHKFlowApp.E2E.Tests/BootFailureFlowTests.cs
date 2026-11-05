@@ -8,9 +8,9 @@ namespace AHKFlowApp.E2E.Tests;
 
 // Guards the boot path in wwwroot/js/bootBlazor.js. Blazor is started manually so a boot
 // failure ends in a visible message instead of a loading circle frozen at 99%.
-[Collection(E2ECollectionD.Name)]
+[Collection(E2ECollectionB.Name)]
 [OpensPagesWithoutDiagnosis("These tests break the boot on purpose and assert the failure screen, so a diagnosed open would throw before they could look.")]
-public sealed class BootFailureFlowTests(StackFixtureD fixture) : IAsyncLifetime
+public sealed class BootFailureFlowTests(StackFixtureB fixture) : IAsyncLifetime
 {
     private const string ReloadGuardKey = "ahkflowapp-boot-retry-reload";
 

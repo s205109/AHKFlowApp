@@ -4,8 +4,8 @@ using Xunit;
 
 namespace AHKFlowApp.E2E.Tests;
 
-[Collection(E2ECollectionA.Name)]
-public sealed class ProfileHeaderPresetFlowTests(StackFixtureA fixture) : IAsyncLifetime
+[Collection(E2ECollectionC.Name)]
+public sealed class ProfileHeaderPresetFlowTests(StackFixtureC fixture) : IAsyncLifetime
 {
     public Task InitializeAsync() => fixture.ResetDataAsync();
 

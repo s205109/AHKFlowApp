@@ -16,8 +16,8 @@ using HotkeyAction = AHKFlowApp.Application.Services.LegacyHotkeyDefinitionConve
 
 namespace AHKFlowApp.E2E.Tests;
 
-[Collection(E2ECollectionC.Name)]
-public sealed class VersionHistoryFlowTests(StackFixtureC fixture) : IAsyncLifetime
+[Collection(E2ECollectionD.Name)]
+public sealed class VersionHistoryFlowTests(StackFixtureD fixture) : IAsyncLifetime
 {
     public Task InitializeAsync() =>
         fixture.ResetDataAsync();
