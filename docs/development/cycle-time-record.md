@@ -1061,3 +1061,30 @@ The seconds of each changed Suite at `c68c321b`:
 | `WorktreeMergedCleanupEligibility.Tests.ps1` | 65.0 | 49.9 |
 | `WorktreeMergedCleanupSweep.Tests.ps1` | 52.0 | 41.8 |
 | `WorktreeSweepRemoteBase.Tests.ps1` | 55.6 | 42.6 |
+
+## .NET test audit (backlog 194)
+
+Backlog 194 audits the E2E tests. The plan is
+`docs/superpowers/plans/2026-11-01-net-test-audit-plan-194.md`.
+
+### Gate before
+
+The command was `pwsh .\scripts\measure-test-modes.ps1 -Mode Gate -BaseRef HEAD -Change Code`, on
+2026-11-05, on a quiet machine. No run printed "Sharing the test Lane pool with:".
+
+- Revision: `059441548002c174eff3120ff1b26335b9c39082`.
+- Session folder: `TestResults\measure-test-modes\Gate\session-20261105-065912`.
+- Preparation run: 310.72 s (build 27.92, format 42.60, powershell 239.98, coverage 0.19,
+  diff-check 0.02).
+- Warm-up, discarded: 456.83 s (build 6.18, format 48.13, powershell 185.42, coverage 217.09,
+  diff-check 0.02).
+
+| Run | Gate | Build | Format | PowerShell | Coverage | Diff check |
+|---|---|---|---|---|---|---|
+| 1 | 415.93 s | 5.59 s | 38.33 s | 189.62 s | 182.36 s | 0.02 s |
+| 2 | 415.51 s | 5.30 s | 41.42 s | 188.58 s | 180.19 s | 0.02 s |
+| 3 | 413.77 s | 5.54 s | 40.07 s | 188.44 s | 179.70 s | 0.02 s |
+| Median | 415.51 s | 5.54 s | 40.07 s | 188.58 s | 180.19 s | 0.02 s |
+
+The spread of the three Gate runs is 0.5 % of the median. The .NET test time, the median of the
+coverage step, is 180.19 s.
