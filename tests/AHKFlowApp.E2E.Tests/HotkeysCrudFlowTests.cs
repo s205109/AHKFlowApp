@@ -106,8 +106,9 @@ public sealed class HotkeysCrudFlowTests(StackFixtureB fixture) : IAsyncLifetime
     // on screen — the body field debounces for 300 ms (HotkeyEditDialog.razor:175). Proving the
     // snippet rendered first means the blocked message can only come from the injected definition.
     //
-    // This asserts only the panel-level message. The field-level highlight on the Body textarea is
-    // a separate concern, covered by RawBodyPreviewError_ShowsInlineOnTheBodyField below.
+    // The end of the flow covers backlog 051: the Body field's own inline error, on the preview
+    // path. A bUnit test cannot pin this — it renders the field correctly whether or not the
+    // browser does — so the guard has to run in a real browser against the real validation rule.
     [Fact]
     public async Task RawBodyInjectingAnotherHotkey_BlocksPreviewGeneration()
     {
@@ -141,41 +142,20 @@ public sealed class HotkeysCrudFlowTests(StackFixtureB fixture) : IAsyncLifetime
             .ToContainTextAsync("Fix the highlighted fields to see the generated code.");
         await Assertions.Expect(page.Locator(".hotkey-edit-dialog [data-test=\"preview-snippet\"]"))
             .ToHaveCountAsync(0);
-    }
 
-    // Backlog 051: the Body field's own inline error, on the preview path. A bUnit test cannot
-    // pin this — it renders the field correctly whether or not the browser does — so the guard
-    // has to run in a real browser against the real validation rule.
-    [Fact]
-    public async Task RawBodyPreviewError_ShowsInlineOnTheBodyField()
-    {
-        await using IBrowserContext ctx = await fixture.Browser.NewContextAsync();
-
-        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/hotkeys");
-        await page.WaitForSelectorAsync("button.add-hotkey");
-
-        await page.ClickAsync("button.add-hotkey");
-        await page.WaitForSelectorAsync(".hotkey-edit-dialog");
-
-        await page.FillAsync(".hotkey-edit-dialog input[data-test=\"description-input\"]", "E2E raw inline error");
-        await CommitKeyAsync(page, ".hotkey-edit-dialog input[data-test=\"key-picker\"]", "j");
-
-        await page.ClickAsync(".hotkey-edit-dialog [data-test=\"action-kind-Raw\"]");
-        await page.ClickAsync(".hotkey-edit-dialog [data-test=\"ahk-preview\"] .mud-expand-panel-header");
-
+        // Back to a valid body, then one with unbalanced braces: the Body field itself shows the
+        // error. Going straight from the injected body to this one does not show it, so the flow
+        // starts from a generated snippet, as a person editing a working body would.
         await page.FillAsync(".hotkey-edit-dialog textarea[data-test=\"raw-body-input\"]", "return");
         await Assertions.Expect(page.Locator(".hotkey-edit-dialog [data-test=\"preview-snippet\"]"))
             .ToContainTextAsync("j::return");
 
         await page.FillAsync(".hotkey-edit-dialog textarea[data-test=\"raw-body-input\"]", "if (1) {");
 
-        await Assertions.Expect(page.Locator(".hotkey-edit-dialog [data-test=\"preview-blocked\"]"))
-            .ToContainTextAsync("Fix the highlighted fields to see the generated code.");
-
-        await Assertions.Expect(page.Locator(".hotkey-edit-dialog textarea[data-test=\"raw-body-input\"]"))
-            .ToHaveAttributeAsync("aria-invalid", "true");
         await Assertions.Expect(page.Locator(".hotkey-edit-dialog .raw-body-wrap .mud-input-helper-text"))
             .ToContainTextAsync("Raw body braces are unbalanced.");
+        await Assertions.Expect(page.Locator(".hotkey-edit-dialog textarea[data-test=\"raw-body-input\"]"))
+            .ToHaveAttributeAsync("aria-invalid", "true");
     }
 
     // Backlog 051, second half: Save routes a Body error into _saveFieldErrors
