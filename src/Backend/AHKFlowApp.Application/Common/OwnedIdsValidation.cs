@@ -31,7 +31,16 @@ internal static class OwnedIdsValidation
             : new ValidationError
             {
                 Identifier = $"Input.{fieldName}",
-                ErrorMessage = $"One or more {fieldName} do not exist for this user.",
+                ErrorMessage = $"One or more of the chosen {ChosenItems(fieldName)} do not exist.",
             };
     }
+
+    // The owner reads this message, so it names what they chose, not the C# property. The
+    // Identifier above keeps the property name, because the UI matches field errors by it.
+    private static string ChosenItems(string fieldName) => fieldName switch
+    {
+        "ProfileIds" => "profiles",
+        "CategoryIds" => "categories",
+        _ => throw new ArgumentOutOfRangeException(nameof(fieldName), fieldName, "No label for this id field."),
+    };
 }
