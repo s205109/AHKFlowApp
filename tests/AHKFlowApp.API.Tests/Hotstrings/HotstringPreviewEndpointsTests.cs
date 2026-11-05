@@ -232,7 +232,7 @@ public sealed class HotstringPreviewEndpointsTests(ApiTestFixture fixture)
         JsonElement errors = root.GetProperty("errors");
         errors.TryGetProperty("Input.ContextMatchType", out JsonElement contextErrors).Should().BeTrue();
         contextErrors.EnumerateArray().Select(e => e.GetString()).Should().Contain(
-            "ContextMatchType and ContextValue must both be set or both be null.");
+            "Match by and Value under Window context must both be set, or both be empty.");
     }
 
     [Fact]

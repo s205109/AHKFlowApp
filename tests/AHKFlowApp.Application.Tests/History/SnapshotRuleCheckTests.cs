@@ -67,7 +67,7 @@ public sealed class SnapshotRuleCheckTests(HistoryDbFixture fx)
 
         result.Status.Should().Be(ResultStatus.Invalid);
         result.ValidationErrors.Select(e => e.ErrorMessage).Should()
-            .Contain("ContextValue must not contain double-quote characters.");
+            .Contain("Value under Window context must not contain double quotes.");
 
         Hotstring after = await db.Hotstrings.AsNoTracking().SingleAsync(h => h.Id == entity.Id);
         after.Trigger.Should().Be("good1");
@@ -241,7 +241,7 @@ public sealed class SnapshotRuleCheckTests(HistoryDbFixture fx)
         result.Value.AppliesToAllProfiles.Should().BeFalse();
         result.Value.ProfileIds.Should().BeEmpty();
         result.Value.RestoreWarnings.Should()
-            .Contain("ContextValue must not contain double-quote characters.");
+            .Contain("Value under Window context must not contain double quotes.");
 
         Hotstring stored = await db.Hotstrings.AsNoTracking().SingleAsync(h => h.Id == id);
         stored.AppliesToAllProfiles.Should().BeFalse();

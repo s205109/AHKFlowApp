@@ -137,7 +137,7 @@ public sealed class HotstringHistoryEndpointsTests(ApiTestFixture fixture)
 
         revert.StatusCode.Should().Be(HttpStatusCode.BadRequest);
         string body = await revert.Content.ReadAsStringAsync();
-        body.Should().Contain("ContextValue must not contain double-quote characters.");
+        body.Should().Contain("Value under Window context must not contain double quotes.");
     }
 
     [Fact]
@@ -178,7 +178,7 @@ public sealed class HotstringHistoryEndpointsTests(ApiTestFixture fixture)
         restored.AppliesToAllProfiles.Should().BeFalse();
         restored.ProfileIds.Should().BeEmpty();
         restored.RestoreWarnings.Should().HaveCount(2)
-            .And.Contain("ContextValue must not contain double-quote characters.")
+            .And.Contain("Value under Window context must not contain double quotes.")
             .And.Contain("Trigger must not have leading or trailing whitespace.");
     }
 

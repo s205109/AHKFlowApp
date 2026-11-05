@@ -1147,7 +1147,7 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
     [Fact]
     public async Task ApplyPreviewResult_ContextValueError_ShownInlineNotInPanel()
     {
-        const string contextMessage = "ContextValue must not contain double-quote characters.";
+        const string contextMessage = "Value under Window context must not contain double quotes.";
         _api.PreviewAsync(Arg.Any<HotstringPreviewRequestDto>(), Arg.Any<CancellationToken>())
             .Returns(ApiResult<HotstringPreviewDto>.Failure(ApiResultStatus.Validation,
                 new ApiProblemDetails(null, "Bad Request", 400, null, null,

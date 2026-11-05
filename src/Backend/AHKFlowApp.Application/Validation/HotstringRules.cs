@@ -42,11 +42,11 @@ internal static partial class HotstringRules
     /// </summary>
     public static IRuleBuilderOptions<T, string?> ValidDateTimeFormat<T>(this IRuleBuilderInitial<T, string?> rb) =>
         rb.Cascade(CascadeMode.Stop)
-          .NotEmpty().WithMessage("DateTimeFormat is required.")
+          .NotEmpty().WithMessage("Format is required.")
           .MaximumLength(DateTimeFormatMaxLength)
-              .WithMessage($"DateTimeFormat must be {DateTimeFormatMaxLength} characters or fewer.")
+              .WithMessage($"Format must be {DateTimeFormatMaxLength} characters or fewer.")
           .Must(f => f is not null && DateTimeFormatWhitelistRegex().IsMatch(f))
-              .WithMessage("DateTimeFormat contains unsupported characters or tokens.");
+              .WithMessage("Format contains unsupported characters or tokens.");
 
     /// <summary>
     /// Adds profile-association validation rules to a validator.
@@ -65,25 +65,25 @@ internal static partial class HotstringRules
         validator.RuleFor(profileIds)
             .Must(ids => ids is null || ids.Length == 0)
             .When(x => appliesToAllFn(x))
-            .WithMessage("ProfileIds must be empty when AppliesToAllProfiles is true.");
+            .WithMessage("Profiles must be empty when Apply to all profiles is on.");
 
         // When AppliesToAllProfiles = false, at least one profile required
         validator.RuleFor(profileIds)
             .Must(ids => ids is { Length: > 0 })
             .When(x => !appliesToAllFn(x))
-            .WithMessage("At least one profile must be specified when AppliesToAllProfiles is false.");
+            .WithMessage("Choose at least one profile in Profiles, or turn on Apply to all profiles.");
 
         // No empty GUIDs in the array
         validator.RuleFor(profileIds)
             .Must(ids => ids is null || ids.All(id => id != Guid.Empty))
             .When(x => !appliesToAllFn(x))
-            .WithMessage("ProfileIds must not contain empty GUIDs.");
+            .WithMessage("Profiles must not contain an empty profile id.");
 
         // No duplicate GUIDs in the array
         validator.RuleFor(profileIds)
             .Must(ids => ids is null || ids.Length == ids.Distinct().Count())
             .When(x => !appliesToAllFn(x))
-            .WithMessage("ProfileIds must not contain duplicates.");
+            .WithMessage("Profiles must not list the same profile twice.");
     }
 
     /// <summary>
@@ -130,29 +130,29 @@ internal static partial class HotstringRules
         validator.RuleFor(dateTimeFormat)
             .Must(f => f is null)
             .When(x => !IsDateTime(x))
-            .WithMessage("DateTimeFormat must be null unless Kind is Date & time.");
+            .WithMessage("Format must be empty unless Kind is Date & time.");
 
         // DateOffsetAmount / DateOffsetUnit: must be null unless DateTime
         validator.RuleFor(dateOffsetAmount)
             .Must(a => a is null)
             .When(x => !IsDateTime(x))
-            .WithMessage("DateOffsetAmount must be null unless Kind is Date & time.");
+            .WithMessage("Amount under Adjust date must be empty unless Kind is Date & time.");
 
         validator.RuleFor(dateOffsetUnit)
             .Must(u => u is null)
             .When(x => !IsDateTime(x))
-            .WithMessage("DateOffsetUnit must be null unless Kind is Date & time.");
+            .WithMessage("Unit under Adjust date must be empty unless Kind is Date & time.");
 
         // For DateTime: both-or-neither, range + enum checks when both are set (0 is a valid amount)
         validator.RuleFor(dateOffsetAmount)
             .Must((x, a) => (a is null) == (unitFn(x) is null))
             .When(IsDateTime)
-            .WithMessage("DateOffsetAmount and DateOffsetUnit must both be set or both be null.");
+            .WithMessage("Adjust date needs both an Amount and a Unit, or neither.");
 
         validator.RuleFor(dateOffsetAmount)
             .InclusiveBetween(-DateOffsetAmountMax, DateOffsetAmountMax)
             .When(x => IsDateTime(x) && BothOffsetsSet(x))
-            .WithMessage($"DateOffsetAmount must be between -{DateOffsetAmountMax} and {DateOffsetAmountMax}.");
+            .WithMessage($"Amount under Adjust date must be between -{DateOffsetAmountMax} and {DateOffsetAmountMax}.");
 
         validator.RuleFor(dateOffsetUnit)
             .IsInEnum()
