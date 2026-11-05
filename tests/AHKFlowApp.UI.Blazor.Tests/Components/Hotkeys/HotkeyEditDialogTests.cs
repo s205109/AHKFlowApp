@@ -469,7 +469,7 @@ public sealed class HotkeyEditDialogTests : BunitContext, IAsyncLifetime
             .Returns(ApiResult<HotkeyDto>.Failure(
                 ApiResultStatus.Validation,
                 new ApiProblemDetails(null, "Validation failed", 400, null, null,
-                    new Dictionary<string, string[]> { ["Input.WindowOp"] = ["Window requires an operation."] })));
+                    new Dictionary<string, string[]> { ["Input.WindowOp"] = ["Choose an option in Do what."] })));
 
         IRenderedComponent<MudDialogProvider> provider = await ShowDialogAsync(
             new HotkeyEditModel { Description = "d", Key = "n", ActionKind = HotkeyActionKind.Window });

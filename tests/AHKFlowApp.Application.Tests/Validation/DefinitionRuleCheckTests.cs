@@ -213,6 +213,6 @@ public sealed class DefinitionRuleCheckTests
             LegacyHotkeySnapshotConverter.ToDefinition(legacy));
 
         failures.Select(f => f.ErrorMessage).Should()
-            .Contain("Raw body braces are unbalanced.");
+            .Contain("The braces in Action body do not balance.");
     }
 }

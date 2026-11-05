@@ -59,7 +59,7 @@ public sealed class HotkeysCrudFlowTests(StackFixtureB fixture) : IAsyncLifetime
         await CommitKeyAsync(page, ".hotkey-edit-dialog input[data-test=\"key-picker\"]", "n");
 
         // Run's fields only exist once Run is the selected kind. A Run action requires both a
-        // target and a target kind (HotkeyRules: "Run requires a valid run target kind."), so the
+        // target and a target kind (HotkeyRules: "Choose a Target kind."), so the
         // flow picks the kind exactly as a user would — otherwise the preview stays blocked.
         await page.ClickAsync(".hotkey-edit-dialog [data-test=\"action-kind-Run\"]");
         await SelectRunTargetKindAsync(page, "Application");
@@ -132,7 +132,7 @@ public sealed class HotkeysCrudFlowTests(StackFixtureB fixture) : IAsyncLifetime
     // expanded (HotkeyEditDialog.razor:613-616), so the flow opens it before typing the body.
     //
     // The flow goes through a VALID body first and waits for the generated snippet. An empty Raw
-    // body is itself invalid ("Raw requires an action body.", HotkeyRules.cs:102-103), so asserting
+    // body is itself invalid ("Action body is required.", HotkeyRules.cs:102-103), so asserting
     // the blocked message straight after typing would also pass while that first error was still
     // on screen — the body field debounces for 300 ms (HotkeyEditDialog.razor:175). Proving the
     // snippet rendered first means the blocked message can only come from the injected definition.
@@ -206,7 +206,7 @@ public sealed class HotkeysCrudFlowTests(StackFixtureB fixture) : IAsyncLifetime
         await Assertions.Expect(page.Locator(".hotkey-edit-dialog textarea[data-test=\"raw-body-input\"]"))
             .ToHaveAttributeAsync("aria-invalid", "true");
         await Assertions.Expect(page.Locator(".hotkey-edit-dialog .raw-body-wrap .mud-input-helper-text"))
-            .ToContainTextAsync("Raw body braces are unbalanced.");
+            .ToContainTextAsync("The braces in Action body do not balance.");
     }
 
     // Backlog 051, second half: Save routes a Body error into _saveFieldErrors
@@ -233,7 +233,7 @@ public sealed class HotkeysCrudFlowTests(StackFixtureB fixture) : IAsyncLifetime
         await page.ClickAsync(".hotkey-edit-dialog button.commit-edit");
 
         await Assertions.Expect(page.Locator(".hotkey-edit-dialog .raw-body-wrap .mud-input-helper-text"))
-            .ToContainTextAsync("Raw body braces are unbalanced.");
+            .ToContainTextAsync("The braces in Action body do not balance.");
         await Assertions.Expect(page.Locator(".hotkey-edit-dialog textarea[data-test=\"raw-body-input\"]"))
             .ToHaveAttributeAsync("aria-invalid", "true");
 
@@ -245,7 +245,7 @@ public sealed class HotkeysCrudFlowTests(StackFixtureB fixture) : IAsyncLifetime
         // makes this test prove the user can actually read the message.
         await page.WaitForTimeoutAsync(1500);
         await Assertions.Expect(page.Locator(".hotkey-edit-dialog .raw-body-wrap .mud-input-helper-text"))
-            .ToContainTextAsync("Raw body braces are unbalanced.");
+            .ToContainTextAsync("The braces in Action body do not balance.");
         await Assertions.Expect(page.Locator(".hotkey-edit-dialog textarea[data-test=\"raw-body-input\"]"))
             .ToHaveAttributeAsync("aria-invalid", "true");
 
