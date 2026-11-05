@@ -120,9 +120,9 @@ public sealed class BootFailureFlowTests(StackFixtureD fixture) : IAsyncLifetime
     {
         await using IBrowserContext ctx = await fixture.Browser.NewContextAsync();
 
-        // Well past any grace period, so a timer-based failure signal would fire before the app
-        // finishes booting.
-        await BootFault.DelayAppAssemblyAsync(ctx, TimeSpan.FromSeconds(8));
+        // Twice the grace period the fault sets, so a timer-based failure signal would fire before
+        // the app finishes booting.
+        await BootFault.DelayAppAssemblyAsync(ctx, TimeSpan.FromMilliseconds(2 * BootFault.ShortGraceMs));
 
         // An uncaught error from something other than the boot: a browser extension, an analytics
         // script, or any other page script.

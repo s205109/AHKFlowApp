@@ -109,8 +109,14 @@
     var startFailurePattern = /Failed to start platform/;
 
     // The runtime retries a failed download, so one failed download does not mean the boot is lost.
-    // Wait, then report only if the boot still has not finished.
-    var bootFailureGraceMs = 10000;
+    // Wait, then report only if the boot still has not finished. The E2E Stack sets a short wait in
+    // window.__ahkflowBootFailureGraceMs, so its boot-failure tests do not wait 10 s. Production
+    // never sets it, so production waits 10 s.
+    var bootFailureGraceMs = isPositiveNumber(window.__ahkflowBootFailureGraceMs) ? window.__ahkflowBootFailureGraceMs : 10000;
+
+    function isPositiveNumber(value) {
+        return typeof value === 'number' && isFinite(value) && value > 0;
+    }
 
     var bootSettled = false;
 
