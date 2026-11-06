@@ -712,9 +712,8 @@ $script:RoundBranch = 'chore/wt-backlog-housekeeping'
 function Get-RoundPrBody {
     param([int] $Pr)
 
-    # gh writes the body as UTF-8 bytes. PowerShell decodes a native command's output with
-    # [Console]::OutputEncoding, which on Windows is the OEM code page. The body is written back,
-    # so a wrong decode would damage every character outside ASCII once per transition.
+    # gh writes UTF-8, but on Windows PowerShell decodes native output with the OEM code page.
+    # The body is written back, so a wrong decode damages non-ASCII text on every transition.
     $previousEncoding = [Console]::OutputEncoding
     try {
         [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)

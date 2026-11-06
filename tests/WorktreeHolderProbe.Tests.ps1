@@ -41,7 +41,7 @@ function Start-HolderChild {
     param([string] $Name, [string] $WorkingDirectory, [string] $Setup = '')
 
     $ready = Join-Path $readyDir "$Name.ready"
-    $command = "$Setup; Set-Content -LiteralPath '$ready' -Value ready; Start-Sleep -Seconds 60"
+    $command = (@($Setup, "Set-Content -LiteralPath '$ready' -Value ready", 'Start-Sleep -Seconds 60') -ne '') -join '; '
     $process = Start-Process -FilePath 'powershell.exe' -WindowStyle Hidden -PassThru `
         -WorkingDirectory $WorkingDirectory -ArgumentList @('-NoProfile', '-Command', $command)
     $script:processes += $process
@@ -59,14 +59,18 @@ function Start-HolderChild {
     return $process
 }
 
-# Says why a holder was not named, so a failure that does not reproduce still leaves evidence.
-function Get-HolderMissReport {
-    param([System.Diagnostics.Process] $Process)
+# A miss says why, so a failure that does not reproduce still leaves evidence.
+function Assert-HolderNamed {
+    param([string] $Path, [System.Diagnostics.Process] $Process, [string] $Label)
+
+    $named = @(Get-WorktreeFolderHolder -Path $Path | Where-Object { $_.ProcessId -eq $Process.Id }).Count -eq 1
+    if ($named) { return }
 
     $alive = -not $Process.HasExited
     $exit = if ($alive) { 'none' } else { [string] $Process.ExitCode }
     $directory = Get-ProcessCurrentDirectory -ProcessId $Process.Id
-    return "alive=$alive exit=$exit currentDirectory='$directory' pebType=$($script:HolderCwdTypeAdded) rmType=$($script:HolderRmTypeAdded)"
+    throw ("The $Label holder (PID $($Process.Id)) must be named. alive=$alive exit=$exit " +
+        "currentDirectory='$directory' pebType=$($script:HolderCwdTypeAdded) rmType=$($script:HolderRmTypeAdded)")
 }
 
 try {
@@ -81,23 +85,16 @@ try {
     $cwdDir = Join-Path $temp 'cwd'
     New-Item -ItemType Directory -Path $cwdDir -Force | Out-Null
     $cwdProc = Start-HolderChild -Name 'cwd' -WorkingDirectory $cwdDir
-    $cwdHolders = @(Get-WorktreeFolderHolder -Path $cwdDir)
-    $cwdNamed = @($cwdHolders | Where-Object { $_.ProcessId -eq $cwdProc.Id }).Count -eq 1
-    Assert-True $cwdNamed `
-        "The current-directory holder (PID $($cwdProc.Id)) must be named. $(if (-not $cwdNamed) { Get-HolderMissReport -Process $cwdProc })"
+    Assert-HolderNamed -Path $cwdDir -Process $cwdProc -Label 'current-directory'
 
     # --- an open-file holder ----------------------------------------------
     $fileDir = Join-Path $temp 'openfile'
     New-Item -ItemType Directory -Path $fileDir -Force | Out-Null
     $held = Join-Path $fileDir 'held.txt'
     Set-Content -LiteralPath $held -Value 'x'
-    # The child exits after its sleep, and the OS closes the file then. So the setup needs no Dispose.
     $fileProc = Start-HolderChild -Name 'openfile' -WorkingDirectory ([System.IO.Path]::GetTempPath()) `
         -Setup "`$s = [System.IO.File]::Open('$held', 'Open', 'Read', 'None')"
-    $fileHolders = @(Get-WorktreeFolderHolder -Path $fileDir)
-    $fileNamed = @($fileHolders | Where-Object { $_.ProcessId -eq $fileProc.Id }).Count -eq 1
-    Assert-True $fileNamed `
-        "The open-file holder (PID $($fileProc.Id)) must be named. $(if (-not $fileNamed) { Get-HolderMissReport -Process $fileProc })"
+    Assert-HolderNamed -Path $fileDir -Process $fileProc -Label 'open-file'
 
     # --- a sibling folder with the same prefix is not a holder --------------
     # Every worktree sits in one parent folder, so wt-feature and wt-feature-extra are siblings.

@@ -263,7 +263,12 @@ function New-FakeGh {
     # 'view', because each of those queries is a 'gh pr view' too. 'view' and 'edit' are tested
     # before 'create', because 'gh pr create' also carries the word 'create' and an earlier
     # branch would swallow it.
-    $native = [bool] $Native
+    # The native child writes raw bytes, because Write-Output would encode with its console code page.
+    $viewBody = if ($Native) {
+        "`$b = [System.IO.File]::ReadAllBytes('$bodyFile'); `$o = [Console]::OpenStandardOutput(); `$o.Write(`$b, 0, `$b.Length); `$o.Flush()"
+    } else {
+        "Get-Content -Raw -LiteralPath '$bodyFile'"
+    }
     $script = @"
 #!/usr/bin/env pwsh
 `$args -join ' ' | Add-Content -LiteralPath '$log'
@@ -271,18 +276,7 @@ if (`$args -contains 'headRefName') { Write-Output '$HeadRefName'; exit 0 }
 if (`$args -contains 'isDraft') { Write-Output '$IsDraft'; exit 0 }
 if (`$args -contains 'baseRefName') { Write-Output '$BaseRefName'; exit 0 }
 if (`$args -contains 'list') { Write-Output '$ExistingPr'; exit 0 }
-if (`$args -contains 'view') {
-    if (`$$native) {
-        # Raw bytes, not Write-Output: this child would encode text with its console code page.
-        `$bytes = [System.IO.File]::ReadAllBytes('$bodyFile')
-        `$out = [Console]::OpenStandardOutput()
-        `$out.Write(`$bytes, 0, `$bytes.Length)
-        `$out.Flush()
-    } else {
-        Get-Content -Raw -LiteralPath '$bodyFile'
-    }
-    exit 0
-}
+if (`$args -contains 'view') { $viewBody; exit 0 }
 if (`$args -contains 'edit') {
     `$i = [array]::IndexOf(`$args, '--body-file')
     if (`$i -ge 0) { Copy-Item -LiteralPath `$args[`$i + 1] -Destination '$bodyFile' -Force }
