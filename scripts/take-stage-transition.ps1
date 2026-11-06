@@ -709,6 +709,22 @@ function Get-ShippedProgressSource {
 # body. The branch name is fixed precisely so a round can be found.
 $script:RoundBranch = 'chore/wt-backlog-housekeeping'
 
+function Get-RoundPrBody {
+    param([int] $Pr)
+
+    # gh writes UTF-8, but on Windows PowerShell decodes native output with the OEM code page.
+    # The body is written back, so a wrong decode damages non-ASCII text on every transition.
+    $previousEncoding = [Console]::OutputEncoding
+    try {
+        [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+        # -join is not cosmetic. PowerShell captures multiline native output as System.Object[],
+        # and [regex]::Matches on an array matches nothing.
+        return (& gh pr view $Pr --repo s205109/AHKFlowApp --json body -q .body) -join "`n"
+    } finally {
+        [Console]::OutputEncoding = $previousEncoding
+    }
+}
+
 function Invoke-RoundTransition {
     param(
         [string] $Worktree, [string] $Edge, [int] $Pr, [string] $To = '',
@@ -733,9 +749,7 @@ function Invoke-RoundTransition {
 
     $rx = '(?m)^Stage: [^\r\n]+'
 
-    # -join is not cosmetic. PowerShell captures multiline native output as System.Object[], and
-    # [regex]::Matches on an array matches nothing.
-    $body = (& gh pr view $Pr --repo s205109/AHKFlowApp --json body -q .body) -join "`n"
+    $body = Get-RoundPrBody -Pr $Pr
     $hits = ([regex]::Matches($body, $rx)).Count
     if ($hits -ne 1) { throw "PR $Pr body: expected 1 Stage line, found $hits." }
 
@@ -794,7 +808,7 @@ function Invoke-RoundTransition {
     }
 
     # The read-back is the check, and it is part of the transition.
-    $after = (& gh pr view $Pr --repo s205109/AHKFlowApp --json body -q .body) -join "`n"
+    $after = Get-RoundPrBody -Pr $Pr
     # \r? because GitHub returns a pull request body with CRLF line endings, and '$' in
     # multiline mode matches before the '\n' only, so the '\r' would sit in the way.
     $confirmed = ([regex]::Matches($after, "(?m)^Stage: $([regex]::Escape($target))\r?$")).Count
