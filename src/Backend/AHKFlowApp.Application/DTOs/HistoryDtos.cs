@@ -36,12 +36,20 @@ public sealed record HotkeyHistoryVersionDto(
 /// <param name="Replacement">Replacement at deletion time.</param>
 /// <param name="Description">Description at deletion time.</param>
 /// <param name="DeletedAt">UTC timestamp of the deletion.</param>
+/// <param name="Kind">Kind at deletion time. Text for a snapshot stored before the Kind existed.</param>
+/// <param name="DateTimeFormat">Date &amp; time format at deletion time; null for other Kinds.</param>
+/// <param name="DateOffsetAmount">Signed date offset at deletion time; null when there is none.</param>
+/// <param name="DateOffsetUnit">Unit for <paramref name="DateOffsetAmount"/>; null when there is no offset.</param>
 public sealed record DeletedHotstringDto(
     Guid Id,
     string Trigger,
     string Replacement,
     string? Description,
-    DateTimeOffset DeletedAt);
+    DateTimeOffset DeletedAt,
+    HotstringKind Kind = HotstringKind.Text,
+    string? DateTimeFormat = null,
+    int? DateOffsetAmount = null,
+    DateOffsetUnit? DateOffsetUnit = null);
 
 /// <summary>A deleted hotkey shown in the Recycle Bin.</summary>
 /// <param name="Id">The original hotkey id; restore keeps it.</param>

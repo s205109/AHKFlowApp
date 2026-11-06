@@ -1,0 +1,13 @@
+/* Shows a Raw definition's first line, cut with an ellipsis, as the Hotstrings grid does.
+   The grid's own rule, "::deep .hotstrings-grid .script-summary" in Hotstrings.razor.css,
+   needs the grid's table-layout: fixed. This table uses auto layout. There, a line that cannot
+   wrap makes its column wider, and Restore and Delete move out of view. So this rule lets the
+   line wrap like other cell text, and then shows only its first visual line. */
+.script-summary {
+    font-family: ui-monospace, "Cascadia Code", "Consolas", monospace;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 1;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+}

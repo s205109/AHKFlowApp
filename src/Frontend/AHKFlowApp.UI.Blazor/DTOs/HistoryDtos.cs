@@ -73,7 +73,11 @@ public sealed record DeletedHotstringDto(
     string Trigger,
     string Replacement,
     string? Description,
-    DateTimeOffset DeletedAt);
+    DateTimeOffset DeletedAt,
+    HotstringKind Kind = HotstringKind.Text,
+    string? DateTimeFormat = null,
+    int? DateOffsetAmount = null,
+    DateOffsetUnit? DateOffsetUnit = null);
 
 public sealed record DeletedHotkeyDto(
     Guid Id,
