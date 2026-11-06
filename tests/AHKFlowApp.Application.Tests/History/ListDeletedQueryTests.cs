@@ -21,9 +21,11 @@ public sealed class ListDeletedQueryTests(HistoryDbFixture fx)
 {
     private const int DeletedListCap = 500;
 
-    private async Task<Hotstring> SeedAndDeleteHotstringAsync(Guid owner, string trigger)
+    private Task<Hotstring> SeedAndDeleteHotstringAsync(Guid owner, string trigger) =>
+        SeedAndDeleteHotstringAsync(new HotstringBuilder().WithOwner(owner).WithTrigger(trigger).Build());
+
+    private async Task<Hotstring> SeedAndDeleteHotstringAsync(Hotstring entity)
     {
-        Hotstring entity = new HotstringBuilder().WithOwner(owner).WithTrigger(trigger).Build();
         await using (AppDbContext seed = fx.CreateContext())
         {
             seed.Hotstrings.Add(entity);
@@ -32,7 +34,7 @@ public sealed class ListDeletedQueryTests(HistoryDbFixture fx)
 
         await using AppDbContext db = fx.CreateContext();
         DeleteHotstringCommandHandler handler = new(
-            db, CurrentUserHelper.For(owner), new EntityHistoryRecorder(db, TimeProvider.System));
+            db, CurrentUserHelper.For(entity.OwnerOid), new EntityHistoryRecorder(db, TimeProvider.System));
         Result result = await handler.ExecuteAsync(new DeleteHotstringCommand(entity.Id), default);
         result.IsSuccess.Should().BeTrue();
 
@@ -143,6 +145,68 @@ public sealed class ListDeletedQueryTests(HistoryDbFixture fx)
         dto.Id.Should().Be(deleted.Id);
         dto.Trigger.Should().Be("ld1");
         dto.Replacement.Should().Be(deleted.Replacement);
+    }
+
+    // The Recycle Bin shows a Date & time hotstring by its format, and every Kind by its own
+    // display. Before backlog 206 the list dropped the Kind and the date fields.
+    [Fact]
+    public async Task ListDeletedHotstrings_ReturnsKindAndDateFieldsFromSnapshot()
+    {
+        var owner = Guid.NewGuid();
+        Hotstring deleted = await SeedAndDeleteHotstringAsync(new HotstringBuilder()
+            .WithOwner(owner).WithTrigger("ld5").WithReplacement("")
+            .WithKind(HotstringKind.DateTime)
+            .WithDateTimeFormat("yyyy-MM-dd")
+            .WithDateOffset(1, DateOffsetUnit.Days)
+            .Build());
+
+        await using AppDbContext db = fx.CreateContext();
+        ListDeletedHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner));
+
+        Result<DeletedHotstringDto[]> result = await handler.ExecuteAsync(new ListDeletedHotstringsQuery(), default);
+
+        DeletedHotstringDto dto = result.Value.Should().ContainSingle().Subject;
+        dto.Id.Should().Be(deleted.Id);
+        dto.Kind.Should().Be(HotstringKind.DateTime);
+        dto.DateTimeFormat.Should().Be("yyyy-MM-dd");
+        dto.DateOffsetAmount.Should().Be(1);
+        dto.DateOffsetUnit.Should().Be(DateOffsetUnit.Days);
+    }
+
+    // A Delete Snapshot stored before the Kind and the date fields existed has none of them in
+    // its JSON. It must still list, as a Text hotstring with its Replacement.
+    [Fact]
+    public async Task ListDeletedHotstrings_SnapshotWithoutKindOrDateFields_ListsAsText()
+    {
+        var owner = Guid.NewGuid();
+        var id = Guid.NewGuid();
+        const string legacyJson =
+            """
+            {"Trigger":"ld6","Replacement":"old text","Description":null,"AppliesToAllProfiles":true,
+             "IsEndingCharacterRequired":true,"IsTriggerInsideWord":true,"ProfileIds":[],"CategoryIds":[],
+             "CreatedAt":"2026-01-01T00:00:00+00:00","UpdatedAt":"2026-01-01T00:00:00+00:00"}
+            """;
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.EntityHistories.Add(EntityHistory.Create(
+                owner, TrackedEntityType.Hotstring, id, 1, HistoryChangeType.Delete, 1,
+                legacyJson, TimeProvider.System));
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext db = fx.CreateContext();
+        ListDeletedHotstringsQueryHandler handler = new(db, CurrentUserHelper.For(owner));
+
+        Result<DeletedHotstringDto[]> result = await handler.ExecuteAsync(new ListDeletedHotstringsQuery(), default);
+
+        result.IsSuccess.Should().BeTrue();
+        DeletedHotstringDto dto = result.Value.Should().ContainSingle().Subject;
+        dto.Id.Should().Be(id);
+        dto.Replacement.Should().Be("old text");
+        dto.Kind.Should().Be(HotstringKind.Text);
+        dto.DateTimeFormat.Should().BeNull();
+        dto.DateOffsetAmount.Should().BeNull();
+        dto.DateOffsetUnit.Should().BeNull();
     }
 
     [Fact]

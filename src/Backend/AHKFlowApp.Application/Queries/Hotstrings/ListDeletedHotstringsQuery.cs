@@ -48,7 +48,11 @@ internal sealed class ListDeletedHotstringsQueryHandler(
                     x.Snapshot!.Trigger,
                     x.Snapshot.Replacement,
                     x.Snapshot.Description,
-                    x.Row.CapturedAt))
+                    x.Row.CapturedAt,
+                    x.Snapshot.Kind,
+                    x.Snapshot.DateTimeFormat,
+                    x.Snapshot.DateOffsetAmount,
+                    x.Snapshot.DateOffsetUnit))
         ];
 
         return Result.Success(items);
