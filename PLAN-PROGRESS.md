@@ -25,3 +25,5 @@ Finding 2 (optional), same run: a Text replacement line one\nline two renders as
 
 **Recovery task:** Task 3: a long Raw first line stays inside the Recycle Bin table, shown as one line cut with an ellipsis (round 1, finding 1, required). Task 4: a multi-line Text replacement keeps its line breaks in the Recycle Bin, as in the grid (round 1, finding 2, optional, fixed in the same pass).
 
+- Task 3: done at ccaff0e5. Tests: VersionHistoryFlowTests 4/4 pass, red was the long Raw line not cut short at 1024 px. Deferrals: none.
+- Task 3: Ruling: a line-clamp rule replaces the copied grid rule (plan Decision 5) and the suggested 40vw. The copy needs table-layout: fixed, and 40vw failed live at 1024 px (table 807 px in a 704 px container). Cost if wrong: one CSS rule to swap.
