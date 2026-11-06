@@ -4,7 +4,7 @@
 
 - **Epic**: Domain model adoption
 - **Type**: Defect
-- **Interfaces**: UI
+- **Interfaces**: API, UI
 - **Difficulty**: moderate
 - **Stage**: 3-plan
 
@@ -22,6 +22,10 @@ that I can recognise the item before I restore it.
 
 - [ ] The Recycle Bin shows a Macro definition the same way the grid does, not as the raw
       `{{cursor}}` token.
+- [ ] The Recycle Bin shows a Date & time definition by its format summary, the same way the
+      grid does, not as an empty Details cell.
+- [ ] The Recycle Bin shows a Raw definition by the first line of its definition, the same way
+      the grid does, not as the whole multi-line definition.
 
 ## Out of scope
 
@@ -37,4 +41,6 @@ that I can recognise the item before I restore it.
 - **F18, the Recycle Bin.** A deleted Macro hotstring's details read `<a
   href="{{cursor}}"></a>`. The grid renders the same value as a `⌖ cursor` chip.
 - Spec: none — the grid already shows the result the owner expects, so nothing needs designing.
-- Plan: none — moderate work, goes straight to Plan at pickup.
+- Plan: `docs/superpowers/plans/2026-11-06-recycle-bin-shows-hotstring-kinds-plan-206.md`
+- Scope widened at Plan on 2026-11-06: the owner asked to include Date & time in this pull
+  request. Raw comes in too, because it needs only the Kind that the fix adds anyway.
