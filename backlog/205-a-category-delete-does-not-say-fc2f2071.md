@@ -20,7 +20,7 @@ so that I know what the delete changes before I confirm it.
 
 ## Acceptance criteria
 
-- [ ] The category delete confirmation says how many hotstrings and hotkeys use that category.
+- [x] The category delete confirmation says how many hotstrings and hotkeys use that category.
 
 ## Out of scope
 
