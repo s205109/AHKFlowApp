@@ -44,3 +44,6 @@ that I can recognise the item before I restore it.
 - Plan: `docs/superpowers/plans/2026-11-06-recycle-bin-shows-hotstring-kinds-plan-206.md`
 - Scope widened at Plan on 2026-11-06: the owner asked to include Date & time in this pull
   request. Raw comes in too, because it needs only the Kind that the fix adds anyway.
+- Follow-up, not yet filed: the History dialog also shows a Macro snapshot's raw `{{cursor}}`
+  text. The plan review on 2026-11-06 kept it out of this item. The new item must first decide
+  whether that preview shows chips or the exact stored text.
