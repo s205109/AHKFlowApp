@@ -197,6 +197,22 @@ public sealed class CategoriesEndpointsTests(ApiTestFixture fixture)
         response.StatusCode.Should().Be(HttpStatusCode.NoContent);
     }
 
+    // Backlog 205: the category delete confirmation reads its counts from this route.
+    [Fact]
+    public async Task GET_usage_returns_200_with_counts()
+    {
+        using HttpClient client = CreateAuthed(Guid.NewGuid());
+        HttpResponseMessage created = await client.PostAsJsonAsync(
+            "/api/v1/categories", new CreateCategoryDto("Unused"));
+        CategoryDto p = (await created.Content.ReadFromJsonAsync<CategoryDto>())!;
+
+        HttpResponseMessage response = await client.GetAsync($"/api/v1/categories/{p.Id}/usage");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await response.Content.ReadFromJsonAsync<CategoryUsageDto>())
+            .Should().Be(new CategoryUsageDto(0, 0));
+    }
+
     [Fact]
     public async Task DELETE_nonexistent_id_returns_404()
     {

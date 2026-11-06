@@ -20,6 +20,7 @@ namespace AHKFlowApp.API.Controllers;
 public sealed class CategoriesController(
     IUseCase<ListCategoriesQuery, Result<PagedList<CategoryDto>>> listCategories,
     IUseCase<GetCategoryQuery, Result<CategoryDto>> getCategory,
+    IUseCase<GetCategoryUsageQuery, Result<CategoryUsageDto>> getCategoryUsage,
     IUseCase<CreateCategoryCommand, Result<CategoryDto>> createCategory,
     IUseCase<UpdateCategoryCommand, Result<CategoryDto>> updateCategory,
     IUseCase<DeleteCategoryCommand, Result> deleteCategory) : ControllerBase
@@ -42,6 +43,13 @@ public sealed class CategoriesController(
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     public async Task<ActionResult<CategoryDto>> Get(Guid id, CancellationToken ct) =>
         (await getCategory.ExecuteAsync(new GetCategoryQuery(id), ct)).ToProblemActionResult(this);
+
+    /// <summary>Count the hotstrings and hotkeys that use a category.</summary>
+    [HttpGet("{id:guid}/usage")]
+    [ProducesResponseType(typeof(CategoryUsageDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<CategoryUsageDto>> GetUsage(Guid id, CancellationToken ct) =>
+        (await getCategoryUsage.ExecuteAsync(new GetCategoryUsageQuery(id), ct)).ToProblemActionResult(this);
 
     /// <summary>Create a new category for the current user.</summary>
     [HttpPost]

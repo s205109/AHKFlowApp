@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using AHKFlowApp.UI.Blazor.DTOs;
+using AHKFlowApp.UI.Blazor.Helpers;
 using AHKFlowApp.UI.Blazor.Pages;
 using AHKFlowApp.UI.Blazor.Services;
 using Bunit;
@@ -47,6 +48,21 @@ public sealed class CategoriesPageTests : BunitContext, IAsyncLifetime
     private void StubList(params CategoryDto[] items) =>
         _api.ListAsync(Arg.Any<CategoryListRequest>(), Arg.Any<CancellationToken>())
             .Returns(ApiResult<PagedList<CategoryDto>>.Ok(Page(items)));
+
+    private void StubUsage(Guid id, int hotstrings, int hotkeys) =>
+        _api.GetUsageAsync(id, Arg.Any<CancellationToken>())
+            .Returns(ApiResult<CategoryUsageDto>.Ok(new CategoryUsageDto(hotstrings, hotkeys)));
+
+    private IDialogService StubDialogAnswering(bool? answer)
+    {
+        IDialogService dialogService = Substitute.For<IDialogService>();
+        dialogService.ShowMessageBoxAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(),
+            Arg.Any<DialogOptions>())
+            .Returns(Task.FromResult(answer));
+        Services.AddSingleton(dialogService);
+        return dialogService;
+    }
 
     private void StubListFailure(ApiResultStatus status, ApiProblemDetails? problem = null) =>
         _api.ListAsync(Arg.Any<CategoryListRequest>(), Arg.Any<CancellationToken>())
@@ -120,6 +136,7 @@ public sealed class CategoriesPageTests : BunitContext, IAsyncLifetime
     {
         CategoryDto dto = MakeCategory("ToDelete");
         StubList(dto);
+        StubUsage(dto.Id, 0, 0);
 
         // The stub answers the confirmation with "cancel". Without it the message box never
         // resolves in bUnit, and the delete handler would stay suspended, proving nothing.
@@ -139,6 +156,51 @@ public sealed class CategoriesPageTests : BunitContext, IAsyncLifetime
             Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(),
             Arg.Any<DialogOptions>()));
 
+        _ = _api.DidNotReceive().DeleteAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
+    }
+
+    // Backlog 205: the confirmation named only the category, not the items that lose it.
+    [Fact]
+    public void Page_Delete_ConfirmationSaysHowManyItemsUseTheCategory()
+    {
+        CategoryDto dto = MakeCategory("Code");
+        StubList(dto);
+        StubUsage(dto.Id, 5, 2);
+        IDialogService dialogService = StubDialogAnswering(false);
+
+        IRenderedComponent<Categories> cut = RenderPage();
+        cut.WaitForState(() => cut.Markup.Contains("Code"));
+        cut.Find("button.delete").Click();
+
+        cut.WaitForAssertion(() => dialogService.Received(1).ShowMessageBoxAsync(
+            "Delete category?",
+            CategoryDeleteWording.Message("Code", 5, 2),
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<DialogOptions>()));
+    }
+
+    // Backlog 205: when the usage call fails, the owner sees the error and nothing is deleted.
+    [Fact]
+    public void Page_Delete_UsageFails_ShowsTheErrorAndNoConfirmation()
+    {
+        CategoryDto dto = MakeCategory("Gone");
+        StubList(dto);
+        _api.GetUsageAsync(dto.Id, Arg.Any<CancellationToken>())
+            .Returns(ApiResult<CategoryUsageDto>.Failure(ApiResultStatus.NotFound, null));
+        IDialogService dialogService = StubDialogAnswering(true);
+        ISnackbar snackbar = Substitute.For<ISnackbar>();
+        Services.AddSingleton(snackbar);
+
+        IRenderedComponent<Categories> cut = RenderPage();
+        cut.WaitForState(() => cut.Markup.Contains("Gone"));
+        cut.Find("button.delete").Click();
+
+        // The error snackbar is the signal that the failure branch finished.
+        cut.WaitForAssertion(() => snackbar.Received(1).Add(
+            ApiErrorMessageFactory.Build(ApiResultStatus.NotFound, null), Severity.Error,
+            Arg.Any<Action<SnackbarOptions>>(), Arg.Any<string>()));
+        _ = dialogService.DidNotReceive().ShowMessageBoxAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(),
+            Arg.Any<DialogOptions>());
         _ = _api.DidNotReceive().DeleteAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
     }
 

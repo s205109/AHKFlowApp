@@ -22,6 +22,9 @@ public sealed class CategoriesApiClient(HttpClient httpClient) : ApiClientBase(h
     public Task<ApiResult<CategoryDto>> GetAsync(Guid id, CancellationToken ct = default) =>
         SendAsync<CategoryDto>(HttpMethod.Get, $"{BasePath}/{id}", content: null, ct);
 
+    public Task<ApiResult<CategoryUsageDto>> GetUsageAsync(Guid id, CancellationToken ct = default) =>
+        SendAsync<CategoryUsageDto>(HttpMethod.Get, $"{BasePath}/{id}/usage", content: null, ct);
+
     public Task<ApiResult<CategoryDto>> CreateAsync(CreateCategoryDto input, CancellationToken ct = default) =>
         SendAsync<CategoryDto>(HttpMethod.Post, BasePath, JsonContent.Create(input), ct);
 

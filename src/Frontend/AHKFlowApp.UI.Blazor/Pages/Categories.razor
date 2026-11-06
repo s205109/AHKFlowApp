@@ -1,5 +1,6 @@
 @page "/categories"
 @using AHKFlowApp.UI.Blazor.DTOs
+@using AHKFlowApp.UI.Blazor.Helpers
 @using AHKFlowApp.UI.Blazor.Services
 @using AHKFlowApp.UI.Blazor.Validation
 @using MudBlazor
@@ -229,9 +230,18 @@
 
     private async Task DeleteAsync(CategoryDto dto)
     {
+        // Ask how many items use the category first, so the confirmation can say what changes.
+        ApiResult<CategoryUsageDto> usageResult = await Api.GetUsageAsync(dto.Id, _cts.Token);
+        if (!usageResult.IsSuccess)
+        {
+            Snackbar.Add(ApiErrorMessageFactory.Build(usageResult.Status, usageResult.Problem), Severity.Error);
+            return;
+        }
+
+        CategoryUsageDto usage = usageResult.Value!;
         bool? confirm = await DialogService.ShowMessageBoxAsync(
             title: "Delete category?",
-            message: $"Delete \"{dto.Name}\"? This cannot be undone.",
+            message: CategoryDeleteWording.Message(dto.Name, usage.HotstringCount, usage.HotkeyCount),
             yesText: "Delete", cancelText: "Cancel");
         if (confirm != true) return;
 
