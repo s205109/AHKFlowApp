@@ -27,3 +27,4 @@ Finding 2 (optional), same run: a Text replacement line one\nline two renders as
 
 - Task 3: done at ccaff0e5. Tests: VersionHistoryFlowTests 4/4 pass, red was the long Raw line not cut short at 1024 px. Deferrals: none.
 - Task 3: Ruling: a line-clamp rule replaces the copied grid rule (plan Decision 5) and the suggested 40vw. The copy needs table-layout: fixed, and 40vw failed live at 1024 px (table 807 px in a 704 px container). Cost if wrong: one CSS rule to swap.
+- Task 4: done at b03626a9. Tests: RecycleBinPageTests 10/10 pass, red was no pre-wrap span on the Text row. Deferrals: none.
