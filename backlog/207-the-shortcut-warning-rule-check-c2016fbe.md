@@ -21,9 +21,9 @@ that I understand why my text was or was not accepted.
 
 ## Acceptance criteria
 
-- [ ] `ShortcutWording.BannedTerms` refuses a positive absolute claim such as `will open the
+- [x] `ShortcutWording.BannedTerms` refuses a positive absolute claim such as `will open the
       panel`, or the refusal message stops promising to cover what will happen.
-- [ ] A test proves the banned-term list is complete against a set of examples written
+- [x] A test proves the banned-term list is complete against a set of examples written
       independently of the list itself.
 
 ## Out of scope
