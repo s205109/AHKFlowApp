@@ -2,6 +2,7 @@ using System.Security.Claims;
 using AHKFlowApp.UI.Blazor.DTOs;
 using AHKFlowApp.UI.Blazor.Pages;
 using AHKFlowApp.UI.Blazor.Services;
+using AngleSharp.Dom;
 using Bunit;
 using FluentAssertions;
 using Microsoft.AspNetCore.Components.Authorization;
@@ -70,6 +71,46 @@ public sealed class RecycleBinPageTests : BunitContext, IAsyncLifetime
         // an Item; "Type" is on its Avoid list and clashed with a Hotstring's Kind.
         cut.Find("th").TextContent.Trim().Should().Be("Item");
     }
+
+    // F18: a deleted Macro showed its raw {{cursor}} token. A Date & time showed an empty cell,
+    // and a Raw showed its whole definition. The grid shows each Kind its own way.
+    [Fact]
+    public void Page_HotstringKinds_ShowDetailsTheWayTheGridDoes()
+    {
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        StubDeleted(
+        [
+            new(Guid.NewGuid(), "greet", "Dear{{key:Enter}}{{cursor}}Alex", null, now, HotstringKind.Macro),
+            new(Guid.NewGuid(), "now", "", null, now.AddMinutes(-1), HotstringKind.DateTime,
+                "yyyy-MM-dd", 1, DateOffsetUnit.Days),
+            new(Guid.NewGuid(), "~ver", ":*:~ver::\n{\nMsgBox A_AhkVersion\n}", null, now.AddMinutes(-2),
+                HotstringKind.Raw),
+            new(Guid.NewGuid(), "brb", "back {{cursor}} soon", null, now.AddMinutes(-3)),
+        ], []);
+
+        IRenderedComponent<RecycleBin> cut = RenderPage();
+
+        cut.WaitForAssertion(() =>
+        {
+            IElement macro = RowFor(cut, "greet");
+            macro.TextContent.Should().NotContain("{{cursor}}").And.NotContain("{{key:Enter}}");
+            macro.TextContent.Should().Contain("⌖ cursor");
+            macro.QuerySelectorAll(".macro-token-chip").Length.Should().Be(2);
+
+            RowFor(cut, "now").TextContent.Should().Contain("yyyy-MM-dd (+1 day)");
+
+            IElement raw = RowFor(cut, "~ver");
+            raw.QuerySelector(".script-summary")!.TextContent.Should().Be(":*:~ver::");
+            raw.TextContent.Should().NotContain("MsgBox A_AhkVersion");
+
+            IElement text = RowFor(cut, "brb");
+            text.TextContent.Should().Contain("back {{cursor}} soon");
+            text.QuerySelectorAll(".macro-token-chip").Should().BeEmpty();
+        });
+    }
+
+    private static IElement RowFor(IRenderedComponent<RecycleBin> cut, string name) =>
+        cut.FindAll("tbody tr").Single(row => row.Children[1].TextContent.Trim() == name);
 
     [Fact]
     public void Page_OnEmptyBin_ShowsEmptyMessage()

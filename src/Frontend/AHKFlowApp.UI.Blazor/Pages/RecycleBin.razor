@@ -2,6 +2,7 @@
 @using AHKFlowApp.UI.Blazor.DTOs
 @using AHKFlowApp.UI.Blazor.Helpers
 @using AHKFlowApp.UI.Blazor.Services
+@using AHKFlowApp.UI.Blazor.Validation
 @using Microsoft.AspNetCore.Components.Authorization
 @using MudBlazor
 @implements IDisposable
@@ -48,7 +49,21 @@
             <RowTemplate>
                 <MudTd>@context.Type</MudTd>
                 <MudTd>@context.Name</MudTd>
-                <MudTd>@context.Details</MudTd>
+                <MudTd>
+                    @* Mirrors the Replacement column of the Hotstrings grid, Kind by Kind. *@
+                    @if (context.Kind == HotstringKind.Macro)
+                    {
+                        <span style="white-space: pre-wrap"><MacroReplacementDisplay Replacement="@context.Details" /></span>
+                    }
+                    else if (context.Kind == HotstringKind.Raw)
+                    {
+                        <span class="script-summary">@context.Details</span>
+                    }
+                    else
+                    {
+                        @context.Details
+                    }
+                </MudTd>
                 <MudTd>@context.DeletedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</MudTd>
                 <MudTd>
                     <MudIconButton Class="restore-item" Icon="@Icons.Material.Filled.RestoreFromTrash"
@@ -128,8 +143,9 @@
                     dto.Id,
                     HotstringType,
                     dto.Trigger,
-                    dto.Replacement,
-                    dto.DeletedAt)),
+                    HotstringDetails(dto),
+                    dto.DeletedAt,
+                    dto.Kind)),
                 .. hotkeys.Value!.Select(dto => new RecycleBinRow(
                     dto.Id,
                     HotkeyType,
@@ -240,6 +256,20 @@
             : (ApiErrorMessageFactory.Build(result.Status, result.Problem), null);
     }
 
+    private static string HotstringDetails(DeletedHotstringDto dto)
+    {
+        // The grid's own summaries. Each returns null for any other Kind.
+        HotstringEditModel model = new()
+        {
+            Kind = dto.Kind,
+            Replacement = dto.Replacement,
+            DateTimeFormat = dto.DateTimeFormat,
+            DateOffsetAmount = dto.DateOffsetAmount,
+            DateOffsetUnit = dto.DateOffsetUnit,
+        };
+        return model.DateTimeSummary ?? model.RawSummary ?? dto.Replacement;
+    }
+
     private static string BusyKey(RecycleBinRow row) => $"{row.Type}:{row.Id}";
 
     private bool IsBusy(RecycleBinRow row) => _busy.Contains(BusyKey(row));
@@ -255,5 +285,6 @@
         string Type,
         string Name,
         string Details,
-        DateTimeOffset DeletedAt);
+        DateTimeOffset DeletedAt,
+        HotstringKind? Kind = null);
 }

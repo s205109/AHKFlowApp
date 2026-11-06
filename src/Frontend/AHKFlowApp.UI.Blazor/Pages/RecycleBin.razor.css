@@ -1,0 +1,11 @@
+/* Copied from "::deep .hotstrings-grid .script-summary" in Hotstrings.razor.css, so a Raw row
+   reads the same in both places. Change both together. */
+.script-summary {
+    font-family: ui-monospace, "Cascadia Code", "Consolas", monospace;
+    display: inline-block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: bottom;
+}

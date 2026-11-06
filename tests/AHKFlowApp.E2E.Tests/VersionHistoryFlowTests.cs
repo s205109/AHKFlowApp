@@ -131,6 +131,42 @@ public sealed class VersionHistoryFlowTests(StackFixtureD fixture) : IAsyncLifet
         Assert.Equal("wt.exe", restored.RunTarget);
     }
 
+    // F18: the Recycle Bin showed a deleted Macro's raw {{cursor}} token. This drives the real
+    // API, so it also proves the two DeletedHotstringDto records agree over the wire.
+    [Fact]
+    public async Task RecycleBin_ShowsEachHotstringKindTheWayTheGridDoes()
+    {
+        using HttpClient client = fixture.Api.CreateClient();
+        await CreateAndDeleteThroughApiAsync(client, new CreateHotstringDto(
+            "rb-mac", "Hi {{{{first_name}}}},{{key:Enter}}{{cursor}}", Kind: HotstringKind.Macro));
+        await CreateAndDeleteThroughApiAsync(client, new CreateHotstringDto(
+            "rb-dt", "", Kind: HotstringKind.DateTime,
+            DateTimeFormat: "yyyy-MM-dd", DateOffsetAmount: 1, DateOffsetUnit: DateOffsetUnit.Days));
+        await CreateAndDeleteThroughApiAsync(client, new CreateHotstringDto(
+            "", ":*:rbcol::\n(\nred\ngreen\nblue\n)", Kind: HotstringKind.Raw));
+        await CreateAndDeleteThroughApiAsync(client, new CreateHotstringDto("rb-txt", "back {{cursor}} soon"));
+
+        await using IBrowserContext ctx = await fixture.Browser.NewContextAsync();
+        IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/recycle-bin");
+        ILocator Row(string trigger) => page.Locator("tbody tr", new() { HasTextString = trigger });
+
+        await Assertions.Expect(Row("rb-mac").Locator(".macro-token-chip")).ToHaveCountAsync(2);
+        await Assertions.Expect(Row("rb-mac")).Not.ToContainTextAsync("{{cursor}}");
+        await Assertions.Expect(Row("rb-dt")).ToContainTextAsync("yyyy-MM-dd (+1 day)");
+        await Assertions.Expect(Row("rbcol").Locator(".script-summary")).ToHaveTextAsync(":*:rbcol::");
+        await Assertions.Expect(Row("rbcol")).Not.ToContainTextAsync("green");
+        await Assertions.Expect(Row("rb-txt")).ToContainTextAsync("back {{cursor}} soon");
+        await Assertions.Expect(Row("rb-txt").Locator(".macro-token-chip")).ToHaveCountAsync(0);
+    }
+
+    private static async Task CreateAndDeleteThroughApiAsync(HttpClient client, CreateHotstringDto dto)
+    {
+        HttpResponseMessage created = await client.PostAsJsonAsync("/api/v1/hotstrings", dto);
+        created.EnsureSuccessStatusCode();
+        HotstringDto hotstring = (await created.Content.ReadFromJsonAsync<HotstringDto>())!;
+        (await client.DeleteAsync($"/api/v1/hotstrings/{hotstring.Id}")).EnsureSuccessStatusCode();
+    }
+
     private static async Task<Guid> CreateHotstringThroughApiAsync(HttpClient client, string trigger, string replacement)
     {
         HttpResponseMessage response = await client.PostAsJsonAsync(
