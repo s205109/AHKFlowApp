@@ -45,4 +45,4 @@ so that I know what the delete changes before I confirm it.
 - This is a behaviour change, not wording. It mirrors the delete half of item 166, so read that
   item before planning this one.
 - Spec: none — the server already knows the count, and the dialog only has to show it.
-- Plan: none — moderate work, goes straight to Plan at pickup.
+- Plan: `docs/superpowers/plans/2026-11-06-category-delete-names-its-reach-plan-205.md`
