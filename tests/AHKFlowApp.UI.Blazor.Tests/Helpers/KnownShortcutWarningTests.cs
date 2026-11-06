@@ -8,8 +8,6 @@ namespace AHKFlowApp.UI.Blazor.Tests.Helpers;
 
 public sealed class KnownShortcutWarningTests
 {
-    private static readonly string[] BannedTerms = ["never", "will not", "cannot", "won't", "can't"];
-
     private static KnownShortcutDto Shortcut(string id, string key, bool ctrl, bool alt, bool shift, bool win,
         params ShortcutUseDto[] uses) =>
         new(id, key, ctrl, alt, shift, win, uses, null);
@@ -189,8 +187,7 @@ public sealed class KnownShortcutWarningTests
 
         string text = KnownShortcutWarning.TextFor(shortcut, "Win+E");
 
-        foreach (string banned in BannedTerms)
-            text.Should().NotContainEquivalentOf(banned, $"'{banned}' promises an outcome we cannot know");
+        ShortcutWordingFixtures.MakesAbsoluteClaim(text).Should().BeFalse(text);
     }
 
     [Fact]
@@ -250,8 +247,7 @@ public sealed class KnownShortcutWarningTests
         string? text = KnownShortcutWarning.DestinationTextFor(catalog, "F12", "CapsLock");
 
         text.Should().NotContain("override");
-        foreach (string banned in BannedTerms)
-            text.Should().NotContainEquivalentOf(banned);
+        ShortcutWordingFixtures.MakesAbsoluteClaim(text!).Should().BeFalse(text);
     }
 
     [Fact]
