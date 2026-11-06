@@ -37,6 +37,7 @@ public static class DependencyInjection
             .AddUseCase<DeleteCategoryCommand, Result, DeleteCategoryCommandHandler>()
             .AddUseCase<ListCategoriesQuery, Result<PagedList<CategoryDto>>, ListCategoriesQueryHandler>()
             .AddUseCase<GetCategoryQuery, Result<CategoryDto>, GetCategoryQueryHandler>()
+            .AddUseCase<GetCategoryUsageQuery, Result<CategoryUsageDto>, GetCategoryUsageQueryHandler>()
             .AddUseCase<SeedCategoriesCommand, Result<IReadOnlyList<CategoryDto>>, SeedCategoriesCommandHandler>()
             .AddUseCase<CreateHotstringCommand, Result<HotstringDto>, CreateHotstringCommandHandler>()
             .AddUseCase<UpdateHotstringCommand, Result<HotstringDto>, UpdateHotstringCommandHandler>()
