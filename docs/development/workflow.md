@@ -147,6 +147,10 @@ $pr   = <round PR number>
 $next = '<N-name>'                      # e.g. 9-ship
 $rx   = '(?m)^Stage: [^\r\n]+'          # CRLF-safe: does not eat the carriage return
 
+# gh writes UTF-8. On Windows PowerShell decodes native output with the OEM code page, so
+# without this line every em dash and emoji in the body is damaged when it is written back.
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
+
 # -join is not cosmetic. PowerShell captures multiline native output as System.Object[],
 # and [regex]::Matches on an array matches nothing, so the check below would always throw.
 $body = (gh pr view $pr --repo s205109/AHKFlowApp --json body -q .body) -join "`n"

@@ -243,7 +243,12 @@ function New-FakeGh {
         [string] $IsDraft = 'true',
         # What 'gh pr view <n> --json baseRefName' answers. Pickup refuses a pull request opened
         # against a base other than the one it was asked for.
-        [string] $BaseRefName = 'main'
+        [string] $BaseRefName = 'main',
+        # Run the fake as a separate process that writes its output as UTF-8 bytes, the way the
+        # real gh does. Without it PowerShell runs gh.ps1 inside the caller's own process, so its
+        # output is never decoded and a decoding defect cannot show. It is slower, so only a case
+        # about decoding asks for it.
+        [switch] $Native
     )
 
     $dir = New-Root -Prefix 'fake-gh'
@@ -258,6 +263,7 @@ function New-FakeGh {
     # 'view', because each of those queries is a 'gh pr view' too. 'view' and 'edit' are tested
     # before 'create', because 'gh pr create' also carries the word 'create' and an earlier
     # branch would swallow it.
+    $native = [bool] $Native
     $script = @"
 #!/usr/bin/env pwsh
 `$args -join ' ' | Add-Content -LiteralPath '$log'
@@ -265,7 +271,18 @@ if (`$args -contains 'headRefName') { Write-Output '$HeadRefName'; exit 0 }
 if (`$args -contains 'isDraft') { Write-Output '$IsDraft'; exit 0 }
 if (`$args -contains 'baseRefName') { Write-Output '$BaseRefName'; exit 0 }
 if (`$args -contains 'list') { Write-Output '$ExistingPr'; exit 0 }
-if (`$args -contains 'view') { Get-Content -Raw -LiteralPath '$bodyFile'; exit 0 }
+if (`$args -contains 'view') {
+    if (`$$native) {
+        # Raw bytes, not Write-Output: this child would encode text with its console code page.
+        `$bytes = [System.IO.File]::ReadAllBytes('$bodyFile')
+        `$out = [Console]::OpenStandardOutput()
+        `$out.Write(`$bytes, 0, `$bytes.Length)
+        `$out.Flush()
+    } else {
+        Get-Content -Raw -LiteralPath '$bodyFile'
+    }
+    exit 0
+}
 if (`$args -contains 'edit') {
     `$i = [array]::IndexOf(`$args, '--body-file')
     if (`$i -ge 0) { Copy-Item -LiteralPath `$args[`$i + 1] -Destination '$bodyFile' -Force }
@@ -278,18 +295,20 @@ if (`$args -contains 'create') {
 }
 exit 0
 "@
-    Set-Content -LiteralPath (Join-Path $dir 'gh.ps1') -Value $script -Encoding utf8
+    # PowerShell resolves 'gh' to gh.ps1 before gh.cmd and runs it in its own process. The native
+    # fake takes another name, so only the shim below answers to 'gh'.
+    $scriptName = if ($Native) { 'gh-native.ps1' } else { 'gh.ps1' }
+    Set-Content -LiteralPath (Join-Path $dir $scriptName) -Value $script -Encoding utf8
 
-    # The shim the shell will actually pick, which differs by platform. Both are written from the
-    # one gh.ps1 above, so the fake's behaviour has a single definition.
+    # The shim a native caller picks, which differs by platform. Both run the one script above, so
+    # the fake's behaviour has a single definition.
     if ($IsWindows) {
-        # Windows resolves gh.cmd before gh.ps1.
         Set-Content -LiteralPath (Join-Path $dir 'gh.cmd') `
-            -Value "@echo off`r`npwsh -NoProfile -File `"%~dp0gh.ps1`" %*" -Encoding ascii
+            -Value "@echo off`r`npwsh -NoProfile -File `"%~dp0$scriptName`" %*" -Encoding ascii
     } else {
         # Linux needs an extensionless executable named exactly 'gh'.
         $sh = Join-Path $dir 'gh'
-        Set-Content -LiteralPath $sh -Value "#!/bin/sh`nexec pwsh -NoProfile -File `"`$(dirname `"`$0`")/gh.ps1`" `"`$@`"" -Encoding utf8
+        Set-Content -LiteralPath $sh -Value "#!/bin/sh`nexec pwsh -NoProfile -File `"`$(dirname `"`$0`")/$scriptName`" `"`$@`"" -Encoding utf8
         & chmod +x $sh
     }
 
@@ -1032,6 +1051,32 @@ try {
         & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $rd.Root -Edge 'success' -Pr 500 *> $null
     }
     Assert-True ($script:LastTransitionExit -ne 0) 'A body with two Stage lines must be refused'
+
+    # --- A round keeps text outside ASCII intact (issue 449) ---
+    # gh writes the body as UTF-8 bytes, and PowerShell decodes native output with
+    # [Console]::OutputEncoding. On Windows that is the OEM code page, so each transition used to
+    # damage every em dash and emoji. The case sets the code page itself, because a parent that
+    # already runs in UTF-8 would hide the defect. Built from code points so this file stays ASCII.
+    $emDash = [string] [char] 0x2014
+    $robot = [char]::ConvertFromUtf32(0x1F916)
+    $nonAsciiBody = "## Gate`n`n- Format $emDash green`n`nStage: 4-execute`n`n$robot Generated"
+    $rdGh3 = New-FakeGh -Body $nonAsciiBody -HeadRefName 'chore/wt-backlog-housekeeping' -Native
+    $savedEncoding = [Console]::OutputEncoding
+    try {
+        [Console]::OutputEncoding = [System.Text.Encoding]::GetEncoding(437)
+        Invoke-WithFakeGh -Gh $rdGh3 -Action {
+            & "$suiteRoot/scripts/take-stage-transition.ps1" -Worktree $rd.Root -Edge 'success' -Pr 500 *> $null
+        }
+        $encodingAfter = [Console]::OutputEncoding.CodePage
+    } finally {
+        [Console]::OutputEncoding = $savedEncoding
+    }
+    Assert-Equal 0 $script:LastTransitionExit 'A round transition on a non-ASCII body must succeed'
+    $nonAsciiWritten = [System.IO.File]::ReadAllText($rdGh3.BodyFile, [System.Text.Encoding]::UTF8)
+    Assert-True ($nonAsciiWritten -match '(?m)^Stage: 8-review\r?$') 'The non-ASCII round body must read the new stage'
+    Assert-True ($nonAsciiWritten.Contains("Format $emDash green")) 'A round transition must keep an em dash intact'
+    Assert-True ($nonAsciiWritten.Contains("$robot Generated")) 'A round transition must keep an emoji intact'
+    Assert-Equal 437 $encodingAfter 'A round transition must restore the caller''s console output encoding'
 
     # ================= Copilot review round, PR 421 =================
 
