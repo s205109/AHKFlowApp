@@ -26,6 +26,8 @@ that I can recognise the item before I restore it.
       grid does, not as an empty Details cell.
 - [x] The Recycle Bin shows a Raw definition by the first line of its definition, the same way
       the grid does, not as the whole multi-line definition.
+- [x] The Recycle Bin shows a multi-line Text replacement with its line breaks, the same way
+      the grid does. Added in review round 1, finding 2.
 
 ## Out of scope
 
