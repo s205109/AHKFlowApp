@@ -7,7 +7,8 @@ internal static partial class ShortcutWording
 {
     /// <summary>
     /// Absolute claims a warning must never make. A shortcut warning says what else uses the keys;
-    /// it never promises what will happen when they are pressed (<c>CONTEXT.md:99</c>). The list
+    /// it never promises what will happen when they are pressed
+    /// (`CONTEXT.md:99`, "it never promises what will happen when the keys are pressed"). The list
     /// covers both directions: "will open" is refused as well as "will not open", and "always" as
     /// well as "never". One exception: "always" followed by "on top" is the name of the PowerToys
     /// utility Always On Top (https://learn.microsoft.com/windows/powertoys/always-on-top), so
