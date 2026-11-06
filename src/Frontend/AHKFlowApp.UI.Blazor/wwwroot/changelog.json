@@ -35,7 +35,8 @@
           "name": "Fixed",
           "items": [
             "The changelog page shows commands and names as code, and bold text as bold. It no longer shows the backtick and asterisk characters around them.",
-            "The CLI quickstart card shows `ahkflow hotstring new` and `ahkflow hotstring list`. It used to show `ahkflow new` and `ahkflow list`, which the CLI does not have. It also says to replace `work` with an existing profile name."
+            "The CLI quickstart card shows `ahkflow hotstring new` and `ahkflow hotstring list`. It used to show `ahkflow new` and `ahkflow list`, which the CLI does not have. It also says to replace `work` with an existing profile name.",
+            "The Recycle Bin shows a deleted hotstring the same way the Hotstrings grid does. A Macro shows its cursor and key chips, not the raw `{{cursor}}` text. A Date & time shows its format, not an empty cell. A Raw definition shows only its first line."
           ]
         }
       ]

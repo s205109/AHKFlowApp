@@ -20,11 +20,11 @@ that I can recognise the item before I restore it.
 
 ## Acceptance criteria
 
-- [ ] The Recycle Bin shows a Macro definition the same way the grid does, not as the raw
+- [x] The Recycle Bin shows a Macro definition the same way the grid does, not as the raw
       `{{cursor}}` token.
-- [ ] The Recycle Bin shows a Date & time definition by its format summary, the same way the
+- [x] The Recycle Bin shows a Date & time definition by its format summary, the same way the
       grid does, not as an empty Details cell.
-- [ ] The Recycle Bin shows a Raw definition by the first line of its definition, the same way
+- [x] The Recycle Bin shows a Raw definition by the first line of its definition, the same way
       the grid does, not as the whole multi-line definition.
 
 ## Out of scope
