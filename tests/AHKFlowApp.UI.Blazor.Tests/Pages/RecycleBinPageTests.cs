@@ -85,7 +85,7 @@ public sealed class RecycleBinPageTests : BunitContext, IAsyncLifetime
                 "yyyy-MM-dd", 1, DateOffsetUnit.Days),
             new(Guid.NewGuid(), "~ver", ":*:~ver::\n{\nMsgBox A_AhkVersion\n}", null, now.AddMinutes(-2),
                 HotstringKind.Raw),
-            new(Guid.NewGuid(), "brb", "back {{cursor}} soon", null, now.AddMinutes(-3)),
+            new(Guid.NewGuid(), "brb", "back {{cursor}}\nsoon", null, now.AddMinutes(-3)),
         ], []);
 
         IRenderedComponent<RecycleBin> cut = RenderPage();
@@ -103,8 +103,11 @@ public sealed class RecycleBinPageTests : BunitContext, IAsyncLifetime
             raw.QuerySelector(".script-summary")!.TextContent.Should().Be(":*:~ver::");
             raw.TextContent.Should().NotContain("MsgBox A_AhkVersion");
 
+            // The grid keeps a Text replacement's line breaks with white-space: pre-wrap.
             IElement text = RowFor(cut, "brb");
-            text.TextContent.Should().Contain("back {{cursor}} soon");
+            IElement? wrapped = text.QuerySelector("span[style*='pre-wrap']");
+            wrapped.Should().NotBeNull("a multi-line Text replacement keeps its line breaks, as in the grid");
+            wrapped!.TextContent.Should().Be("back {{cursor}}\nsoon");
             text.QuerySelectorAll(".macro-token-chip").Should().BeEmpty();
         });
     }
