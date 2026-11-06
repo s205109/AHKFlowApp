@@ -1,3 +1,4 @@
+using AHKFlowApp.TestUtilities.Fixtures;
 using AHKFlowApp.UI.Blazor.Helpers;
 using FluentAssertions;
 using Xunit;
@@ -6,9 +7,6 @@ namespace AHKFlowApp.UI.Blazor.Tests.Helpers;
 
 public sealed class TemplateUseTextTests
 {
-    // The notice must never promise an outcome. CONTEXT.md:99 rules that out, and the AutoHotkey
-    // docs say "eclipsed" without promising it in every case.
-    private static readonly string[] BannedTerms = ["never", "will not", "cannot", "won't", "can't"];
 
     private static TemplateHotkey Wildcard(string key) => new(key, true, false, false, false, false);
 
@@ -186,7 +184,10 @@ public sealed class TemplateUseTextTests
     {
         string text = TemplateUseText.TextFor([Both("Work", Wildcard("CapsLock"))], Row("CapsLock"))!;
 
-        foreach (string banned in BannedTerms)
-            text.Should().NotContainEquivalentOf(banned);
+        // The notice must never promise an outcome. CONTEXT.md rules that out
+        // (`CONTEXT.md:99`, "it never promises what will happen when the keys are pressed"), and the
+        // AutoHotkey docs say "eclipsed" without promising it in every case. The fixture checks
+        // the same rule the app enforces on owner-written warnings.
+        ShortcutWordingFixtures.MakesAbsoluteClaim(text).Should().BeFalse(text);
     }
 }

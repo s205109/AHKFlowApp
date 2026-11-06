@@ -99,6 +99,10 @@ public sealed class CreateCustomKnownShortcutCommandValidatorTests
     [InlineData("3D view toggle")]
     [InlineData("open whenever the window is focused")]
     [InlineData("open the window")]
+    [InlineData("toggle Always On Top")]
+    [InlineData("keep the window always-on-top")]
+    [InlineData("switch to the Willow theme")]
+    [InlineData("open the user’s folder")]
     public void Validate_AcceptableDoesPhrases_Pass(string does)
     {
         _validator.Validate(Command(does: does)).IsValid.Should().BeTrue(does);
@@ -110,6 +114,32 @@ public sealed class CreateCustomKnownShortcutCommandValidatorTests
     {
         Result(Command(does: $"open the window and {term} close it")).Should()
             .Contain(e => e.ErrorMessage == "Say what the keys do, not what will or will not happen.");
+    }
+
+    // Backlog 207: the rule refused "will not open the panel" but accepted "will open the panel"
+    // and "always opens the panel". These rows are written by hand, not read from BannedTerms,
+    // so a word missing from the list fails here. The theory above proves only that every listed
+    // word is enforced.
+    [Theory]
+    [InlineData("will open the panel")]
+    [InlineData("open the panel, and it will stay open")]
+    [InlineData("open the panel so you'll see it")]
+    [InlineData("open the panel so it’ll stay open")]
+    [InlineData("will not open the panel")]
+    [InlineData("won't open the panel")]
+    [InlineData("won’t open the panel")]
+    [InlineData("always open the panel")]
+    [InlineData("always opens the panel")]
+    [InlineData("open the panel, ALWAYS")]
+    [InlineData("never open the panel")]
+    [InlineData("cannot be overridden")]
+    [InlineData("can not be overridden")]
+    [InlineData("can't be overridden")]
+    [InlineData("can’t be overridden")]
+    public void Validate_DoesPromisesAnOutcome_Fails(string does)
+    {
+        Result(Command(does: does)).Should()
+            .Contain(e => e.ErrorMessage == "Say what the keys do, not what will or will not happen.", does);
     }
 
     [Fact]
