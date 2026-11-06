@@ -49,4 +49,4 @@ that I understand why my text was or was not accepted.
   "never promises what will happen when the keys are pressed", which covers both halves. Plan
   makes the decision and records why.
 - Spec: none — the decision is which side moves, and it fits in the plan.
-- Plan: none — moderate work, goes straight to Plan at pickup.
+- Plan: `docs/superpowers/plans/2026-11-06-shortcut-warning-rule-refuses-positive-claims-plan-207.md`
