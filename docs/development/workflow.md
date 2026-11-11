@@ -1139,7 +1139,7 @@ to explain a past failure is not handed over, so these rules do not apply to it.
   often copies one line, and a line that relied on an earlier one then fails on its own. A
   directory change also leaves their terminal in another folder.
 - A tool with no directory option gets one line that returns to where it started:
-  `Push-Location <absolute path>; <command>; Pop-Location`.
+  `Push-Location <absolute path> -ErrorAction Stop; try { <command> } finally { Pop-Location }`.
 - A handed-over command never starts with `!`. That prefix belongs to the Claude Code prompt,
   and a real shell reads it as an operator. In bash, `! true && echo ran` prints nothing: bash
   runs the first command, reads its success as failure, and skips the rest. In PowerShell 7,

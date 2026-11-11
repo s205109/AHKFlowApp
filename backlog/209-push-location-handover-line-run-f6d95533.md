@@ -24,12 +24,12 @@ repository and my terminal stays where I left it.
 
 ## Acceptance criteria
 
-- [ ] The rule for a tool with no directory option in `docs/development/workflow.md` gives
+- [x] The rule for a tool with no directory option in `docs/development/workflow.md` gives
       `Push-Location <absolute path> -ErrorAction Stop; try { <command> } finally { Pop-Location }`.
-- [ ] Both copies of the `handover-commands` skill, `.agents/handover-commands/SKILL.md` and
+- [x] Both copies of the `handover-commands` skill, `.agents/handover-commands/SKILL.md` and
       `plugins/ahkflowapp/skills/handover-commands/SKILL.md`, quote that rule word for word, and
       `tests/HandoverRules.Tests.ps1` passes.
-- [ ] No handover rule in `docs/development/workflow.md` or in either skill copy still gives
+- [x] No handover rule in `docs/development/workflow.md` or in either skill copy still gives
       `Push-Location <absolute path>; <command>; Pop-Location`.
 
 ## Out of scope
