@@ -26,4 +26,9 @@
 - Gate attempt at `fc49d3b9`: Release build passed with zero warnings and errors; format verification passed.
 - PowerShell Gate: 72 of 73 suites passed. `CitationFreshness.Tests.ps1` found the old-rule citation in the backlog summary.
 - Recovery: mark the old-rule citation as historical at revision `97794138`, retaining the original evidence. Mark the plan's baseline citations likewise.
-- Gate: pending after the citation correction.
+- Citation correction: targeted checks passed for the backlog and the private plan.
+- Gate green at `53234f7b1f3ad1082d398001f199611410075bb9`.
+- Build and format evidence from `fc49d3b9` remains valid: only this progress file and the item changed afterward.
+- PowerShell rerun: all 73 suites passed; 72 ran and one reused valid evidence. Timing-budget warnings were advisory.
+- Coverage: `Coverage slice skipped` and `Every changed file matched an exclusion, so a coverage run would measure nothing new.`
+- Both branch-range and working-tree whitespace checks passed.
