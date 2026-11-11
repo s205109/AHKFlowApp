@@ -5,7 +5,7 @@
 - **Epic**: Development process
 - **Type**: Bug
 - **Interfaces**: none (`docs/development/workflow.md`, the `handover-commands` skill)
-- **Difficulty**: trivial
+- **Difficulty**: moderate
 - **Stage**: 1-pickup
 
 ## Summary
@@ -55,4 +55,5 @@ repository and my terminal stays where I left it.
   design is outside this repository:
   `C:\Users\btase\.claude\docs\superpowers\specs\2026-11-08-stapjes-design.md`, under "The folder".
 - Spec: none — a one-line rule change, with the evidence above.
-- Plan: none — the acceptance criteria are the plan.
+- Pickup classification: moderate — filed items require a plan under the current workflow.
+- Plan: none — to be written at Stage 3 before implementation.
