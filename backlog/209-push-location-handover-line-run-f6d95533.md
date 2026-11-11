@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: none (`docs/development/workflow.md`, the `handover-commands` skill)
 - **Difficulty**: moderate
-- **Stage**: 1-pickup
+- **Stage**: 3-plan
 
 ## Summary
 
