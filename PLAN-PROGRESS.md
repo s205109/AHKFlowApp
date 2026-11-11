@@ -23,4 +23,7 @@
 - Simplify: nothing to simplify. The two quoted copies are intentional and match the canonical rule.
 - Verify: PASS under AGENTS.md exemption 1, docs and skills only. Existing suite, equality, targeted text checks, and diff review passed.
 - Document: PASS. Both skill examples match the rule, and all acceptance criteria have evidence.
-- Gate: pending on the final revision.
+- Gate attempt at `fc49d3b9`: Release build passed with zero warnings and errors; format verification passed.
+- PowerShell Gate: 72 of 73 suites passed. `CitationFreshness.Tests.ps1` found the old-rule citation in the backlog summary.
+- Recovery: mark the old-rule citation as historical at revision `97794138`, retaining the original evidence. Mark the plan's baseline citations likewise.
+- Gate: pending after the citation correction.

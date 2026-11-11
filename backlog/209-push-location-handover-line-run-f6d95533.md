@@ -11,7 +11,7 @@
 ## Summary
 
 The handover rule gives a tool with no directory option one line
-(`docs/development/workflow.md:1142`, "`Push-Location <absolute path>; <command>; Pop-Location`.").
+(`docs/development/workflow.md:1142`, "`Push-Location <absolute path>; <command>; Pop-Location`."). <!-- citation-check:ignore — historical evidence at revision 97794138, before this fix -->
 In pwsh 7.6.9 that line runs the command in the wrong folder when the folder is missing, and it
 leaves the terminal in the new folder when the command throws. This item replaces it with a line
 that stops before the command and always returns to the folder where it started.
