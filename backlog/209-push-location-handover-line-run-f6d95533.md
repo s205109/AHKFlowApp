@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: none (`docs/development/workflow.md`, the `handover-commands` skill)
 - **Difficulty**: moderate
-- **Stage**: 3-plan
+- **Stage**: 4-execute
 
 ## Summary
 
@@ -56,4 +56,4 @@ repository and my terminal stays where I left it.
   `C:\Users\btase\.claude\docs\superpowers\specs\2026-11-08-stapjes-design.md`, under "The folder".
 - Spec: none — a one-line rule change, with the evidence above.
 - Pickup classification: moderate — filed items require a plan under the current workflow.
-- Plan: none — to be written at Stage 3 before implementation.
+- Plan: `docs/superpowers/plans/2026-11-11-209-push-location-handover.md`
