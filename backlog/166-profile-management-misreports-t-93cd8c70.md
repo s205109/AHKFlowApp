@@ -23,7 +23,7 @@ from the profile I chose.
 
 - [x] The failing call is reproduced before any fix is written, and the record says what made it
       fail.
-- [ ] Ticking Default on a profile that is not the default makes it the default and clears the
+- [x] Ticking Default on a profile that is not the default makes it the default and clears the
       previous one, through the UI and through `PUT /api/v1/profiles/{id}`.
 - [x] A duplicate-key violation from the owner-default index produces a message about the
       default, and only a real name collision produces the name message.
