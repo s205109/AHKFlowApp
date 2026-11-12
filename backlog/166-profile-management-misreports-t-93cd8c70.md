@@ -87,4 +87,4 @@ from the profile I chose.
   switch, criteria 1 to 4 of the original. What a delete costs, criteria 5 and 6 with finding F23,
   moved to backlog 210. Its worktree stacks on this item's branch, as the original note asked.
 - Spec: none — the cause is found, and the fix has one correct outcome.
-- Plan: none — written at Plan, the next stage.
+- Plan: `docs/superpowers/plans/2026-11-12-profile-default-switch-plan-166.md`
