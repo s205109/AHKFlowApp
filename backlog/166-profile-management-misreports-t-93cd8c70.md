@@ -1,90 +1,90 @@
-# 166 - Profile management misreports the default and the delete
+# 166 - Profile management misreports the default
 
 ## Metadata
 
 - **Epic**: Profiles
 - **Type**: Bug
 - **Interfaces**: UI | API
-- **Difficulty**: complex
+- **Difficulty**: moderate
 - **Stage**: 1-pickup
 
 ## Summary
 
-Two separate defects on the Profiles page. Changing which profile is the default failed, and the
-error blamed a name collision that did not exist. Deleting a profile silently leaves every item
-scoped to it in the Applies to no profile state, so those items disappear from every generated
-script with no warning.
+Changing which profile is the default fails, and the error blames a name collision that does not
+exist. Every switch through `PUT /api/v1/profiles/{id}` fails this way, with or without a rename.
+The delete half of this item moved to backlog 210 at Pickup.
 
 ## User story
 
-As an owner, I want to change which profile is the default and to be told what a delete will
-cost me, so that I do not lose items from my scripts without knowing.
+As an owner, I want to change which profile is the default, so that the scripts I download start
+from the profile I chose.
 
 ## Acceptance criteria
 
 - [ ] The failing call is reproduced before any fix is written, and the record says what made it
-      fail. The notes below name a hypothesis, not a cause.
+      fail.
 - [ ] Ticking Default on a profile that is not the default makes it the default and clears the
       previous one, through the UI and through `PUT /api/v1/profiles/{id}`.
 - [ ] A duplicate-key violation from the owner-default index produces a message about the
       default, and only a real name collision produces the name message.
 - [ ] An integration test sets the default on a second profile and asserts exactly one default
       remains.
-- [ ] The delete confirmation names how many items are scoped to that profile only, and what
-      happens to them.
-- [ ] An item left with no profile after a profile delete is marked or reported somewhere the
-      owner can find after a reload.
 
 ## Out of scope
 
 - Changing the one-default-per-owner rule itself.
-- Reworking the Applies to no profile state. Item 175 covers how that state is recorded.
+- What a profile delete costs the owner. Backlog 210 covers it.
 
 ## Notes / dependencies
 
-- Found by the acceptance sweep on 2026-10-13, findings F22 and F23, both S2. Full evidence in
+- Found by the acceptance sweep on 2026-10-13, finding F22, S2. Full evidence in
   `.superpowers/acceptance-sweep-2026-10-12/findings.md`, which is local and gitignored.
-- **F22, the default. What is confirmed.** Renaming a profile and setting it as the default in one
+- **F22, what the sweep saw.** Renaming a profile and setting it as the default in one
   `PUT /api/v1/profiles/{id}` call failed with `A profile named 'Work2' already exists.` when no
-  profile named Work2 existed. So a duplicate-key violation really was raised, and the handler
-  really did report it as a name collision. Confirmed at the API level, so this is not a UI
-  problem. `Commands/Profiles/UpdateProfileCommand.cs` has one catch block that maps every
-  duplicate-key violation to that one message, which is why any violation reads as a name
-  collision.
-- **F22. What is not confirmed: the cause.** The sweep's explanation was that both rows carry
-  `IsDefault = 1` inside the single `SaveChangesAsync`, so the filtered unique index
-  `IX_Profile_Owner_DefaultOnly` on `(OwnerOid, IsDefault)` rejects it. The handler does clear the
-  other profile's flag before it saves, so that explanation only holds if EF Core sends the two
-  `UPDATE` statements in the order that sets before it clears. Nothing captured the SQL, so this
-  is the leading hypothesis and not a diagnosis.
-- **A green test covers the same switch**, which is the main reason to doubt the hypothesis as
-  written. `Setting_IsDefault_true_clears_existing_default` in
-  `tests/AHKFlowApp.Application.Tests/Profiles/UpdateProfileCommandHandlerTests.cs` switches the
-  default between two profiles against a migrated database, and it passes. Design has to find what
-  the failing call did differently. The visible differences are that the failing call also renamed
-  the profile, and that it ran against a context which loaded the target profile before the old
-  default. Capture the SQL before writing a fix.
-- The create path works. `POST /api/v1/profiles` with `isDefault: true` cleared the previous
-  default correctly.
-- **F23, the delete.** The dialog says only `Delete "Work"? This cannot be undone.` and the
-  snackbar says only `Profile deleted.` A hotstring scoped to that profile alone came back with
-  `appliesToAllProfiles=false` and zero profiles, and appeared in neither remaining script.
-  Nothing marks it as needing repair.
-- The inconsistency is the point. ADR-0021 treats this same state as serious enough to name every
-  failed rule when a Restore causes it. When a profile delete causes it, the owner is told
-  nothing.
-- Deleting every profile does not leave an owner with none. `Queries/Profiles/ListProfilesQuery.cs`
-  guards seeding with a row count rather than a marker, so a fresh `Default` appears. That makes
-  the orphaning worse, not better: the owner ends up with a new empty profile and every
-  named-profile item orphaned.
-- **Split at pickup, one pull request per outcome.** The two halves share only the page they live
-  on, and each one is verifiable on its own:
-  1. **The default switch.** Reproduce the failure, fix it, and make the duplicate-key message say
-     which rule failed. Criteria 1 to 4.
-  2. **What a delete costs.** Tell the owner how many items a profile delete affects, and leave a
-     record an affected item can be found by. Criteria 5 and 6.
-  Keep them stacked rather than mixed. Half 2 overlaps item 175, which asks the same question for
-  the restore path — read that item before designing this one.
-- Spec: none — the delete half needs a Design decision on what to tell the owner and whether to
-  offer a reassign.
-- Plan: none — complex, so Design comes first at pickup.
+  profile named Work2 existed. The sweep confirmed it at the API level, so it is not a UI problem.
+- **The cause, reproduced on 2026-11-12.** The rename plays no part. The switch fails whenever
+  the handler runs in a fresh context, and every API request gets a fresh context.
+  1. The handler loads the target profile first, so the context tracks it first
+     (`src/Backend/AHKFlowApp.Application/Commands/Profiles/UpdateProfileCommand.cs:36`, "Profile? profile = await db.Profiles.FirstOrDefaultAsync(").
+  2. It loads the old default second, and clears its flag
+     (`src/Backend/AHKFlowApp.Application/Commands/Profiles/UpdateProfileCommand.cs:53`, "await foreach (Profile other in db.Profiles").
+  3. EF Core 10.0.6 sends the two `UPDATE` statements in that tracking order. The first one sets
+     `IsDefault = 1` on the target while the old default still has it.
+  4. SQL Server checks the filtered unique index after each statement
+     (`src/Backend/AHKFlowApp.Infrastructure/Persistence/Configurations/ProfileConfiguration.cs:39`, "builder.HasIndex(x => new { x.OwnerOid, x.IsDefault })").
+     So the first `UPDATE` fails with a duplicate key.
+  5. One catch block turns every duplicate key into the name message
+     (`src/Backend/AHKFlowApp.Application/Commands/Profiles/UpdateProfileCommand.cs:70`, "catch (DbUpdateException ex) when (ex.IsDuplicateKeyViolation())").
+     Without a rename, the message names the profile's own name: `A profile named 'Work' already exists.`
+- **The evidence.** A throwaway test ran the switch 40 times in each of four shapes, against a
+  migrated SQL Server database, and captured the SQL.
+  - Fresh context, as in the API: 40 of 40 failed, with a rename and without one.
+  - The context that inserted both rows: 40 of 40 passed, with a rename and without one.
+  - The order of the two `Id` values made no difference in either shape.
+
+  The batch from a failing run, with the parameter values in comments:
+
+  ```sql
+  UPDATE [Profiles] SET [IsDefault] = @p0, [UpdatedAt] = @p1 OUTPUT 1 WHERE [Id] = @p2; -- @p0 = True,  @p2 = target
+  UPDATE [Profiles] SET [IsDefault] = @p3, [UpdatedAt] = @p4 OUTPUT 1 WHERE [Id] = @p5; -- @p3 = False, @p5 = old default
+  ```
+
+  A passing run sends the same two statements in the other order. The test and its full output
+  are in the worktree's `.superpowers/166-repro/`, which is local and gitignored.
+- **Why the green test passes.** `Setting_IsDefault_true_clears_existing_default` adds both
+  profiles to the context the handler then uses, old default first
+  (`tests/AHKFlowApp.Application.Tests/Profiles/UpdateProfileCommandHandlerTests.cs:111`, "ctx.Profiles.AddRange(a, b);").
+  So the context tracks the old default first, and EF clears it first. The test for criterion 4
+  needs a fresh context for the handler, or it passes against the bug.
+- **The create path works for the same reason.** `POST /api/v1/profiles` with `isDefault: true`
+  loads the old default before it adds the new profile
+  (`src/Backend/AHKFlowApp.Application/Commands/Profiles/CreateProfileCommand.cs:63`, "db.Profiles.Add(profile);").
+  It relies on the same tracking order, so the plan decides whether to harden it too.
+- **Difficulty dropped from complex to moderate at Pickup.** The item was complex because of the
+  delete half, which needs a Design decision. The default half has one correct outcome: the old
+  default is cleared before the target is set, whatever order the context tracks them in.
+- **Split at Pickup on 2026-11-12, one pull request per outcome.** This item keeps the default
+  switch, criteria 1 to 4 of the original. What a delete costs, criteria 5 and 6 with finding F23,
+  moved to backlog 210. Its worktree stacks on this item's branch, as the original note asked.
+- Spec: none — the cause is found, and the fix has one correct outcome.
+- Plan: none — written at Plan, the next stage.
