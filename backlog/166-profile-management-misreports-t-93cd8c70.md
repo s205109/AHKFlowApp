@@ -21,13 +21,13 @@ from the profile I chose.
 
 ## Acceptance criteria
 
-- [ ] The failing call is reproduced before any fix is written, and the record says what made it
+- [x] The failing call is reproduced before any fix is written, and the record says what made it
       fail.
 - [ ] Ticking Default on a profile that is not the default makes it the default and clears the
       previous one, through the UI and through `PUT /api/v1/profiles/{id}`.
-- [ ] A duplicate-key violation from the owner-default index produces a message about the
+- [x] A duplicate-key violation from the owner-default index produces a message about the
       default, and only a real name collision produces the name message.
-- [ ] An integration test sets the default on a second profile and asserts exactly one default
+- [x] An integration test sets the default on a second profile and asserts exactly one default
       remains.
 
 ## Out of scope
