@@ -144,4 +144,31 @@ public sealed class CreateProfileCommandHandlerTests(ProfileDbFixture fx)
         Profile reloaded = await ctx.Profiles.AsNoTracking().FirstAsync(p => p.Id == existing.Id);
         reloaded.IsDefault.Should().BeFalse();
     }
+
+    // Backlog 166: the create handler had the same catch block, so a default index
+    // violation read as a name collision here too.
+    [Fact]
+    public async Task A_default_set_at_the_same_time_returns_the_default_message_and_saves_nothing()
+    {
+        await using (AppDbContext seed = fx.CreateContext())
+        {
+            seed.Profiles.Add(new ProfileBuilder().WithOwner(_ownerOid).WithName("Old").AsDefault(true).Build());
+            await seed.SaveChangesAsync();
+        }
+
+        await using AppDbContext ctx = fx.CreateContext(new RivalDefaultInterceptor(_ownerOid));
+        ICurrentUser user = Substitute.For<ICurrentUser>();
+        user.Oid.Returns(_ownerOid);
+        var sut = new CreateProfileCommandHandler(ctx, user, _clock);
+
+        Result<ProfileDto> result = await sut.ExecuteAsync(
+            new CreateProfileCommand(new CreateProfileDto("New", IsDefault: true)), CancellationToken.None);
+
+        result.Status.Should().Be(ResultStatus.Conflict);
+        result.Errors.Should().Equal(ProfileDefaults.ChangedAtTheSameTime);
+        await using AppDbContext check = fx.CreateContext();
+        List<Profile> all = await check.Profiles.AsNoTracking().Where(p => p.OwnerOid == _ownerOid).ToListAsync();
+        all.Should().ContainSingle().Which.Name.Should().Be("Old");
+        all.Single().IsDefault.Should().BeTrue();
+    }
 }
