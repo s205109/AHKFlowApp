@@ -47,14 +47,14 @@ from the profile I chose.
   1. The handler loads the target profile first, so the context tracks it first
      (`src/Backend/AHKFlowApp.Application/Commands/Profiles/UpdateProfileCommand.cs:36`, "Profile? profile = await db.Profiles.FirstOrDefaultAsync(").
   2. It loads the old default second, and clears its flag
-     (`src/Backend/AHKFlowApp.Application/Commands/Profiles/UpdateProfileCommand.cs:53`, "await foreach (Profile other in db.Profiles").
+     (`src/Backend/AHKFlowApp.Application/Commands/Profiles/UpdateProfileCommand.cs:53`, "await foreach (Profile other in db.Profiles"). Old code, replaced by the fix. citation-check:ignore
   3. EF Core 10.0.6 sends the two `UPDATE` statements in that tracking order. The first one sets
      `IsDefault = 1` on the target while the old default still has it.
   4. SQL Server checks the filtered unique index after each statement
      (`src/Backend/AHKFlowApp.Infrastructure/Persistence/Configurations/ProfileConfiguration.cs:39`, "builder.HasIndex(x => new { x.OwnerOid, x.IsDefault })").
      So the first `UPDATE` fails with a duplicate key.
   5. One catch block turns every duplicate key into the name message
-     (`src/Backend/AHKFlowApp.Application/Commands/Profiles/UpdateProfileCommand.cs:70`, "catch (DbUpdateException ex) when (ex.IsDuplicateKeyViolation())").
+     (`src/Backend/AHKFlowApp.Application/Commands/Profiles/UpdateProfileCommand.cs:70`, "catch (DbUpdateException ex) when (ex.IsDuplicateKeyViolation())"). Old code, replaced by the fix. citation-check:ignore
      Without a rename, the message names the profile's own name: `A profile named 'Work' already exists.`
 - **The evidence.** A throwaway test ran the switch 40 times in each of four shapes, against a
   migrated SQL Server database, and captured the SQL.
@@ -73,7 +73,7 @@ from the profile I chose.
   are in the worktree's `.superpowers/166-repro/`, which is local and gitignored.
 - **Why the green test passes.** `Setting_IsDefault_true_clears_existing_default` adds both
   profiles to the context the handler then uses, old default first
-  (`tests/AHKFlowApp.Application.Tests/Profiles/UpdateProfileCommandHandlerTests.cs:111`, "ctx.Profiles.AddRange(a, b);").
+  (`tests/AHKFlowApp.Application.Tests/Profiles/UpdateProfileCommandHandlerTests.cs:111`, "ctx.Profiles.AddRange(a, b);"). Old test, reworked by the fix. citation-check:ignore
   So the context tracks the old default first, and EF clears it first. The test for criterion 4
   needs a fresh context for the handler, or it passes against the bug.
 - **The create path works for the same reason.** `POST /api/v1/profiles` with `isDefault: true`
