@@ -17,6 +17,9 @@ public sealed class ProfileIndexViolationTests(ProfileDbFixture fx)
     [Theory]
     [InlineData("A", true, "B", true, ProfileIndexNames.OwnerDefault, ProfileIndexNames.OwnerName)]
     [InlineData("Same", false, "Same", false, ProfileIndexNames.OwnerName, ProfileIndexNames.OwnerDefault)]
+    // Review of 166: SQL Server puts the duplicate profile name in the message after the index name.
+    // A name that quotes the other index must not make the name collision read as a default collision.
+    [InlineData("'IX_Profile_Owner_DefaultOnly'", false, "'IX_Profile_Owner_DefaultOnly'", false, ProfileIndexNames.OwnerName, ProfileIndexNames.OwnerDefault)]
     public async Task IsUniqueIndexViolation_names_the_index_that_refused_the_save(
         string firstName, bool firstDefault, string secondName, bool secondDefault,
         string refusingIndex, string otherIndex)
