@@ -28,7 +28,8 @@ jobs:
         run: ./scripts/ci/check-repo-invariants.ps1
 
   build-test:
-    runs-on: ubuntu-latest
+    # Pinned: ubuntu-latest became Ubuntu 26.04, and Playwright does not support chromium there.
+    runs-on: ubuntu-24.04
     needs: repo-invariants
     permissions:
       contents: read
