@@ -155,5 +155,7 @@ public sealed class HistorySaveRetryTests(HistoryDbFixture fx)
 
         public IExecutionStrategy CreateExecutionStrategy()
             => inner.CreateExecutionStrategy();
+
+        public void ClearTracking() => inner.ClearTracking();
     }
 }

@@ -42,4 +42,6 @@ internal sealed class ThrowOnNthSaveDbContext(AppDbContext inner, int failOnCall
 
     public IExecutionStrategy CreateExecutionStrategy()
         => inner.CreateExecutionStrategy();
+
+    public void ClearTracking() => inner.ClearTracking();
 }

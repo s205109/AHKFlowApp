@@ -7,6 +7,7 @@ using AHKFlowApp.Domain.Entities;
 using Ardalis.Result;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace AHKFlowApp.Application.Commands.Profiles;
 
@@ -33,45 +34,53 @@ internal sealed class UpdateProfileCommandHandler(
         if (currentUser.Oid is not Guid ownerOid)
             return Result.Unauthorized();
 
-        Profile? profile = await db.Profiles.FirstOrDefaultAsync(
-            p => p.Id == request.Id && p.OwnerOid == ownerOid, ct);
-        if (profile is null)
-            return Result.NotFound();
-
         UpdateProfileDto input = request.Input;
 
-        if (input.Name != profile.Name)
+        // The transaction needs the execution strategy, because the context retries on failure.
+        // The strategy can run this delegate again, so every attempt starts from an empty tracker.
+        IExecutionStrategy strategy = db.CreateExecutionStrategy();
+        return await strategy.ExecuteAsync(async token =>
         {
-            bool nameTaken = await db.Profiles.AnyAsync(
-                p => p.OwnerOid == ownerOid && p.Id != profile.Id && p.Name == input.Name, ct);
-            if (nameTaken)
-                return Result.Conflict($"A profile named '{input.Name}' already exists.");
-        }
+            db.ClearTracking();
+            await using IDbContextTransaction tx = await db.BeginTransactionAsync(token);
 
-        if (input.IsDefault && !profile.IsDefault)
-        {
-            await foreach (Profile other in db.Profiles
-                .Where(p => p.OwnerOid == ownerOid && p.IsDefault && p.Id != profile.Id)
-                .AsAsyncEnumerable()
-                .WithCancellation(ct))
+            Profile? profile = await db.Profiles.FirstOrDefaultAsync(
+                p => p.Id == request.Id && p.OwnerOid == ownerOid, token);
+            if (profile is null)
+                return Result<ProfileDto>.NotFound();
+
+            if (input.Name != profile.Name)
             {
-                other.MarkDefault(false, clock);
+                bool nameTaken = await db.Profiles.AnyAsync(
+                    p => p.OwnerOid == ownerOid && p.Id != profile.Id && p.Name == input.Name, token);
+                if (nameTaken)
+                    return Result<ProfileDto>.Conflict($"A profile named '{input.Name}' already exists.");
             }
-        }
 
-        profile.Update(input.Name, input.HeaderTemplate, input.FooterTemplate, clock);
-        if (input.IsDefault != profile.IsDefault)
-            profile.MarkDefault(input.IsDefault, clock);
+            try
+            {
+                // Save 1 clears the old default. The target changes only after it,
+                // so save 1 does not send the target too.
+                if (input.IsDefault && !profile.IsDefault)
+                    await ProfileDefaults.ClearOthersAsync(db, ownerOid, profile.Id, clock, token);
 
-        try
-        {
-            await db.SaveChangesAsync(ct);
-        }
-        catch (DbUpdateException ex) when (ex.IsDuplicateKeyViolation())
-        {
-            return Result.Conflict($"A profile named '{input.Name}' already exists.");
-        }
+                profile.Update(input.Name, input.HeaderTemplate, input.FooterTemplate, clock);
+                if (input.IsDefault != profile.IsDefault)
+                    profile.MarkDefault(input.IsDefault, clock);
 
-        return Result.Success(profile.ToDto());
+                await db.SaveChangesAsync(token);   // save 2
+            }
+            catch (DbUpdateException ex) when (ex.IsUniqueIndexViolation(ProfileIndexNames.OwnerDefault))
+            {
+                return Result<ProfileDto>.Conflict(ProfileDefaults.ChangedAtTheSameTime);
+            }
+            catch (DbUpdateException ex) when (ex.IsUniqueIndexViolation(ProfileIndexNames.OwnerName))
+            {
+                return Result<ProfileDto>.Conflict($"A profile named '{input.Name}' already exists.");
+            }
+
+            await tx.CommitAsync(token);
+            return Result.Success(profile.ToDto());
+        }, ct);
     }
 }
