@@ -1,5 +1,6 @@
 using AHKFlowApp.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Xunit;
 
 namespace AHKFlowApp.TestUtilities.Fixtures;
@@ -33,10 +34,11 @@ public abstract class MigratedDbFixture : IAsyncLifetime
 
     public Task DisposeAsync() => Task.CompletedTask;
 
-    public AppDbContext CreateContext()
+    public AppDbContext CreateContext(params IInterceptor[] interceptors)
     {
         DbContextOptions<AppDbContext> options = new DbContextOptionsBuilder<AppDbContext>()
             .UseSqlServer(ConnectionString)
+            .AddInterceptors(interceptors)
             .Options;
         return new AppDbContext(options);
     }

@@ -8,6 +8,7 @@ using AHKFlowApp.Domain.Entities;
 using Ardalis.Result;
 using FluentValidation;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace AHKFlowApp.Application.Commands.Profiles;
 
@@ -36,41 +37,47 @@ internal sealed class CreateProfileCommandHandler(
 
         CreateProfileDto input = request.Input;
 
-        bool nameTaken = await db.Profiles.AnyAsync(
-            p => p.OwnerOid == ownerOid && p.Name == input.Name, ct);
-        if (nameTaken)
-            return Result.Conflict($"A profile named '{input.Name}' already exists.");
-
-        if (input.IsDefault)
+        // The transaction needs the execution strategy, because the context retries on failure.
+        // The strategy can run this delegate again, so every attempt starts from an empty tracker.
+        IExecutionStrategy strategy = db.CreateExecutionStrategy();
+        return await strategy.ExecuteAsync(async token =>
         {
-            await foreach (Profile existing in db.Profiles
-                .Where(p => p.OwnerOid == ownerOid && p.IsDefault)
-                .AsAsyncEnumerable()
-                .WithCancellation(ct))
+            db.ClearTracking();
+            await using IDbContextTransaction tx = await db.BeginTransactionAsync(token);
+
+            bool nameTaken = await db.Profiles.AnyAsync(
+                p => p.OwnerOid == ownerOid && p.Name == input.Name, token);
+            if (nameTaken)
+                return Result<ProfileDto>.Conflict($"A profile named '{input.Name}' already exists.");
+
+            var profile = Profile.Create(
+                ownerOid,
+                input.Name,
+                input.IsDefault,
+                input.HeaderTemplate ?? DefaultProfileTemplates.Header,
+                input.FooterTemplate ?? DefaultProfileTemplates.Footer,
+                clock);
+
+            try
             {
-                existing.MarkDefault(false, clock);
+                // Save 1 clears the old default. The new profile is added only after it.
+                if (input.IsDefault)
+                    await ProfileDefaults.ClearOthersAsync(db, ownerOid, profile.Id, clock, token);
+
+                db.Profiles.Add(profile);
+                await db.SaveChangesAsync(token);   // save 2
             }
-        }
+            catch (DbUpdateException ex) when (ex.IsUniqueIndexViolation(ProfileIndexNames.OwnerDefault))
+            {
+                return Result<ProfileDto>.Conflict(ProfileDefaults.ChangedAtTheSameTime);
+            }
+            catch (DbUpdateException ex) when (ex.IsUniqueIndexViolation(ProfileIndexNames.OwnerName))
+            {
+                return Result<ProfileDto>.Conflict($"A profile named '{input.Name}' already exists.");
+            }
 
-        var profile = Profile.Create(
-            ownerOid,
-            input.Name,
-            input.IsDefault,
-            input.HeaderTemplate ?? DefaultProfileTemplates.Header,
-            input.FooterTemplate ?? DefaultProfileTemplates.Footer,
-            clock);
-
-        db.Profiles.Add(profile);
-
-        try
-        {
-            await db.SaveChangesAsync(ct);
-        }
-        catch (DbUpdateException ex) when (ex.IsDuplicateKeyViolation())
-        {
-            return Result.Conflict($"A profile named '{input.Name}' already exists.");
-        }
-
-        return Result.Success(profile.ToDto());
+            await tx.CommitAsync(token);
+            return Result.Success(profile.ToDto());
+        }, ct);
     }
 }

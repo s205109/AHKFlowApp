@@ -90,6 +90,25 @@ public sealed class ProfilesEndpointsTests(ApiTestFixture fixture)
         updated.Name.Should().Be("Work2");
     }
 
+    // Backlog 166: PUT failed with 409 and a name message whenever the owner already had a default.
+    [Fact]
+    public async Task PUT_sets_default_and_leaves_exactly_one_default()
+    {
+        using HttpClient client = CreateAuthed();
+        (await client.GetAsync("/api/v1/profiles")).StatusCode.Should().Be(HttpStatusCode.OK);
+        HttpResponseMessage created = await client.PostAsJsonAsync(
+            "/api/v1/profiles", new CreateProfileDto("Work"));
+        ProfileDto work = (await created.Content.ReadFromJsonAsync<ProfileDto>())!;
+
+        HttpResponseMessage response = await client.PutAsJsonAsync(
+            $"/api/v1/profiles/{work.Id}",
+            new UpdateProfileDto(work.Name, work.HeaderTemplate, work.FooterTemplate, true));
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        IReadOnlyList<ProfileDto> items = (await client.GetFromJsonAsync<IReadOnlyList<ProfileDto>>("/api/v1/profiles"))!;
+        items.Where(p => p.IsDefault).Should().ContainSingle().Which.Name.Should().Be("Work");
+    }
+
     [Fact]
     public async Task DELETE_returns_204()
     {

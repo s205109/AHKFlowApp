@@ -1,3 +1,4 @@
+using AHKFlowApp.Application.Common;
 using AHKFlowApp.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
@@ -33,12 +34,12 @@ internal sealed class ProfileConfiguration : IEntityTypeConfiguration<Profile>
         // Name unique per owner.
         builder.HasIndex(x => new { x.OwnerOid, x.Name })
             .IsUnique()
-            .HasDatabaseName("IX_Profile_Owner_Name");
+            .HasDatabaseName(ProfileIndexNames.OwnerName);
 
         // At most one default profile per owner (filtered unique index).
         builder.HasIndex(x => new { x.OwnerOid, x.IsDefault })
             .IsUnique()
             .HasFilter("[IsDefault] = 1")
-            .HasDatabaseName("IX_Profile_Owner_DefaultOnly");
+            .HasDatabaseName(ProfileIndexNames.OwnerDefault);
     }
 }

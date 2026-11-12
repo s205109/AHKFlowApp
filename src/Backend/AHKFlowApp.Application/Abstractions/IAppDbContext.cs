@@ -26,4 +26,6 @@ public interface IAppDbContext
     Task<IDbContextTransaction> BeginTransactionAsync(CancellationToken cancellationToken = default);
 
     IExecutionStrategy CreateExecutionStrategy();
+
+    void ClearTracking();
 }

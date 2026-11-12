@@ -44,4 +44,6 @@ internal sealed class RunBeforeNthSaveDbContext(AppDbContext inner, int runBefor
 
     public IExecutionStrategy CreateExecutionStrategy()
         => inner.CreateExecutionStrategy();
+
+    public void ClearTracking() => inner.ClearTracking();
 }
