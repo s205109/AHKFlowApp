@@ -6,7 +6,7 @@
 - **Type**: Defect
 - **Interfaces**: API | UI
 - **Difficulty**: complex
-- **Stage**: 2-design
+- **Stage**: 3-plan
 
 ## Summary
 
@@ -79,6 +79,8 @@ it without having to guess.
   Design decided this on 2026-11-13.
 - **Depends on backlogs 210 and 211.** This item extends 210's "No profile" chip, and 211's
   `LoadedWithNoProfile` and edit dialog notice. Backlog 210's plan moved the notice into 211, which
-  stacks on 210's branch. Write the plan after both merge, then merge `main` into this branch.
+  stacks on 210's branch. The plan was written before both merged. Its Tasks 1 and 2 need
+  neither item. Its Task 3 waits until both merge, then merges `main` into this branch and
+  checks every name the plan took from their plans.
 - Spec: `docs/superpowers/specs/2026-11-13-restored-item-says-why-design-175.md`
-- Plan: none — complex, so Design comes first at pickup.
+- Plan: `docs/superpowers/plans/2026-11-13-restored-item-says-why-plan-175.md`
