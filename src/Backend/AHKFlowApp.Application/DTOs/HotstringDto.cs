@@ -25,7 +25,7 @@ namespace AHKFlowApp.Application.DTOs;
 /// <param name="Delivery">Requested delivery mode for Text hotstrings; non-Text kinds require <see cref="HotstringDelivery.Auto"/>.</param>
 /// <param name="ReplacementIsTruncated">True only for list projections when a long Text replacement was shortened; detail responses always contain the full replacement.</param>
 /// <param name="EffectiveDelivery">Resolved delivery for display; never <see cref="HotstringDelivery.Auto"/>.</param>
-/// <param name="BrokenRules"></param>
+/// <param name="BrokenRules">The rules this item breaks, when it applies to no profile. Null on every other response. See ADR-0021.</param>
 public sealed record HotstringDto(
     Guid Id,
     Guid[] ProfileIds,

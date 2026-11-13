@@ -25,7 +25,7 @@ namespace AHKFlowApp.Application.DTOs;
 /// <param name="CreatedAt">UTC creation timestamp.</param>
 /// <param name="UpdatedAt">UTC last-update timestamp.</param>
 /// <param name="CategoryIds">Categories assigned to this hotkey.</param>
-/// <param name="BrokenRules"></param>
+/// <param name="BrokenRules">The rules this item breaks, when it applies to no profile. Null on every other response. See ADR-0021.</param>
 public sealed record HotkeyDto(
     Guid Id,
     Guid[] ProfileIds,
