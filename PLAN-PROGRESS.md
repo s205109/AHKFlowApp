@@ -1,3 +1,7 @@
 - Task 1: done at 542be49. Tests: pass (UI.Blazor dialog and hotstring page tests, 234/234; both mutation steps red as planned). Deferrals: none.
 - Task 2: done at 4953a53. Tests: pass (new E2E flow; mutation step red at the hotstring notice). Deferrals: full E2E lane runs at Verify.
 - Task 3: done at 1114257. Tests: pass (CLI List_ItemWithNoProfile plus HotstringTableFormatterTests, 30/30). Deferrals: none.
+- Simplify: nothing to simplify. The duplicated notice markup stays in each dialog, as the plan and spec place it.
+- Verify: full E2E lane green (96/96); Fast and Integration lanes covered by the Gate's Coverage step (all test projects green).
+- Document: item boxes ticked, plan steps ticked, docs/cli/hotstrings.md names the 'no profile' value.
+- Gate green at b8277f3.
