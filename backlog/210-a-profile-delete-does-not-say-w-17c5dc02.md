@@ -68,7 +68,7 @@ from my scripts without knowing.
   both." Read it before designing this one.
 - **Split at Plan on 2026-11-13.** The first plan met the split trigger, and both split tests
   found the same two tasks: the edit dialog notice and the CLI text, spec sections 5 and 6. They
-  move to a stacked item whose branch starts from this one. This item keeps the usage route, the
+  move to backlog 211, whose branch starts from this one. This item keeps the usage route, the
   confirmation, the snackbar and the "No profile" chip, which together close its user story.
 - Spec: `docs/superpowers/specs/2026-11-13-profile-delete-says-what-it-costs-design-210.md`
 - Plan: `docs/superpowers/plans/2026-11-13-profile-delete-says-what-it-costs-plan-210.md`
