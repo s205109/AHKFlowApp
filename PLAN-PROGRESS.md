@@ -1,0 +1,1 @@
+- Task 1: done at 542be49. Tests: pass (UI.Blazor dialog and hotstring page tests, 234/234; both mutation steps red as planned). Deferrals: none.
