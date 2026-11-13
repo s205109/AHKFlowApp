@@ -1458,6 +1458,26 @@ public sealed class HotkeyEditDialogTests : BunitContext, IAsyncLifetime
         return provider;
     }
 
+    // Backlog 211: the hotkey dialog gave no reason for an empty Profiles field either.
+    [Fact]
+    public async Task EditMode_ItemWithNoProfile_ShowsTheNoticeUntilApplyToAllIsOn()
+    {
+        // Built the way the hotkey page opens the dialog: from the stored DTO, then cloned.
+        HotkeyEditModel item = HotkeyEditModel.FromDto(new HotkeyDto(Guid.NewGuid(), [], false, "Open terminal", "T",
+            true, false, false, false, HotkeyActionKind.Run, null, null, "wt.exe", RunTargetKind.Application,
+            null, null, null, null, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow)).Clone();
+
+        IRenderedComponent<MudDialogProvider> provider =
+            await ShowDialogWithProfilesAsync(item, Profile("Work", "#Requires AutoHotkey v2.0"));
+
+        provider.WaitForAssertion(() => provider.Find("[data-test=\"no-profile-notice\"]").TextContent
+            .Should().Contain("This item applies to no profile, so no script contains it. Choose its profiles, or turn on Apply to all profiles."));
+
+        provider.Find("input[data-test=\"applies-to-all-checkbox\"]").Change(true);
+
+        provider.WaitForAssertion(() => provider.FindAll("[data-test=\"no-profile-notice\"]").Should().BeEmpty());
+    }
+
     [Fact]
     public async Task TemplateNotice_AppearsWhenAProfileHeaderUsesTheRowsKey()
     {

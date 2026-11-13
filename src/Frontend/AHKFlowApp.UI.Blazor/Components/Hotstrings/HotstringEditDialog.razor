@@ -238,6 +238,13 @@
                           MaxLength="200" HelperText="Emitted as ; comment lines in the generated script."
                           UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "description-input" })" />
 
+            @if (Item.LoadedWithNoProfile && !Item.AppliesToAllProfiles && Item.ProfileIds.Count == 0)
+            {
+                <MudAlert Severity="Severity.Warning" Dense="true"
+                          UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "no-profile-notice" })">
+                    This item applies to no profile, so no script contains it. Choose its profiles, or turn on Apply to all profiles.
+                </MudAlert>
+            }
             <MudCheckBox T="bool" @bind-Value="Item.AppliesToAllProfiles" Label="Apply to all profiles"
                          UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "applies-to-all-checkbox" })" />
             @if (!Item.AppliesToAllProfiles)

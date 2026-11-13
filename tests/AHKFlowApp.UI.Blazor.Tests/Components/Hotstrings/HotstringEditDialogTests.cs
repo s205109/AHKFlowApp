@@ -1,3 +1,4 @@
+using AHKFlowApp.UI.Blazor.Components.Common;
 using AHKFlowApp.UI.Blazor.Components.Hotstrings;
 using AHKFlowApp.UI.Blazor.DTOs;
 using AHKFlowApp.UI.Blazor.Helpers;
@@ -1656,6 +1657,39 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
         });
     }
 
+    // Backlog 211: an item with no profile opened with an empty Profiles field and no reason.
+    [Fact]
+    public async Task EditMode_ItemWithNoProfile_ShowsTheNoticeUntilAProfileIsChosen()
+    {
+        ProfileDto work = new(Guid.NewGuid(), "Work", false, "", "", DateTimeOffset.UnixEpoch, DateTimeOffset.UnixEpoch);
+        // Built the way the grid opens the dialog: from the stored DTO, then cloned.
+        HotstringEditModel item = HotstringEditModel.FromDto(new HotstringDto(Guid.NewGuid(), [], false, "orphan", "x",
+            null, true, false, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow)).Clone();
+
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item, work);
+
+        provider.WaitForAssertion(() => provider.Find("[data-test=\"no-profile-notice\"]").TextContent
+            .Should().Contain("This item applies to no profile, so no script contains it. Choose its profiles, or turn on Apply to all profiles."));
+
+        await provider.InvokeAsync(() => provider
+            .FindComponents<EntityMultiSelect>()
+            .Single(s => s.Instance.DataTest == "profile-select")
+            .Instance.SelectedIdsChanged.InvokeAsync([work.Id]));
+
+        provider.WaitForAssertion(() => provider.FindAll("[data-test=\"no-profile-notice\"]").Should().BeEmpty());
+    }
+
+    // Backlog 211: an unsaved item applies to nothing yet, so it gets no notice.
+    [Fact]
+    public async Task CreateMode_NoProfileChosen_ShowsNoNotice()
+    {
+        IRenderedComponent<MudDialogProvider> provider =
+            await RenderDialogAsync(new HotstringEditModel { AppliesToAllProfiles = false });
+
+        provider.WaitForAssertion(() => provider.Find("[data-test=\"profile-select\"]"));
+        provider.FindAll("[data-test=\"no-profile-notice\"]").Should().BeEmpty();
+    }
+
     private static void DisablePreviewDebounce(IRenderedComponent<MudDialogProvider> provider) =>
         provider.FindComponent<HotstringEditDialog>().Instance.PreviewDebounce = TimeSpan.Zero;
 
@@ -1669,7 +1703,9 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
     /// popover provider's tree, not the dialog's, so a test that inspects menu items needs this.</summary>
     private IRenderedComponent<MudPopoverProvider>? _popoverProvider;
 
-    private async Task<IRenderedComponent<MudDialogProvider>> RenderDialogAsync(HotstringEditModel? item = null)
+    private async Task<IRenderedComponent<MudDialogProvider>> RenderDialogAsync(
+        HotstringEditModel? item = null,
+        params ProfileDto[] profiles)
     {
         _popoverProvider = Render<MudPopoverProvider>();
         IRenderedComponent<MudDialogProvider> provider = Render<MudDialogProvider>();
@@ -1679,7 +1715,7 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
             IDialogService dialogService = Services.GetRequiredService<IDialogService>();
             DialogParameters parameters = new()
             {
-                [nameof(HotstringEditDialog.Profiles)] = (IReadOnlyList<ProfileDto>)[],
+                [nameof(HotstringEditDialog.Profiles)] = (IReadOnlyList<ProfileDto>)profiles,
                 [nameof(HotstringEditDialog.Categories)] = (IReadOnlyList<CategoryDto>)[],
             };
             if (item is not null)

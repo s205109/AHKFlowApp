@@ -26,6 +26,13 @@ public sealed class HotstringEditModel
 
     public bool AppliesToAllProfiles { get; set; } = true;
     public List<Guid> ProfileIds { get; set; } = [];
+
+    /// <summary>
+    /// True when the stored item applied to no profile at load time. Only <see cref="FromDto"/>
+    /// sets it, and <see cref="Clone"/> copies it, so an unsaved edit cannot change it.
+    /// </summary>
+    public bool LoadedWithNoProfile { get; init; }
+
     public bool IsEndingCharacterRequired { get; set; } = true;
     // Off by default, as in AutoHotkey: a hotstring fires inside a word only when its definition carries ?.
     public bool IsTriggerInsideWord { get; set; }
@@ -138,6 +145,7 @@ public sealed class HotstringEditModel
         Description = dto.Description,
         AppliesToAllProfiles = dto.AppliesToAllProfiles,
         ProfileIds = [.. dto.ProfileIds],
+        LoadedWithNoProfile = !dto.AppliesToAllProfiles && dto.ProfileIds.Length == 0,
         IsEndingCharacterRequired = dto.IsEndingCharacterRequired,
         IsTriggerInsideWord = dto.IsTriggerInsideWord,
         CategoryIds = [.. dto.CategoryIds ?? []],
@@ -162,6 +170,7 @@ public sealed class HotstringEditModel
         Description = Description,
         AppliesToAllProfiles = AppliesToAllProfiles,
         ProfileIds = [.. ProfileIds],
+        LoadedWithNoProfile = LoadedWithNoProfile,
         IsEndingCharacterRequired = IsEndingCharacterRequired,
         IsTriggerInsideWord = IsTriggerInsideWord,
         CategoryIds = [.. CategoryIds],

@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using AHKFlowApp.UI.Blazor.Components.Common;
 using AHKFlowApp.UI.Blazor.DTOs;
 using AHKFlowApp.UI.Blazor.Pages;
 using AHKFlowApp.UI.Blazor.Services;
@@ -574,6 +575,42 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
                 .Instance.Item.Replacement.Should().Be("by the way!");
         });
         return Task.CompletedTask;
+    }
+
+    // Backlog 211: the first plan read the dialog's current values, so clearing profiles inline
+    // and promoting the edit claimed the stored item applied to no profile.
+    [Fact]
+    public async Task Page_PromoteAfterClearingProfilesInline_ShowsNoNotice()
+    {
+        ProfileDto work = new(Guid.NewGuid(), "Work", false, "header text", "footer text", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+        StubProfiles(work);
+        var dto = new HotstringDto(Guid.NewGuid(), [work.Id], false, "btw", "by the way", null, true, true, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow);
+        StubList(Page(dto));
+
+        Render<MudPopoverProvider>();
+        IRenderedComponent<MudDialogProvider> provider = Render<MudDialogProvider>();
+        IRenderedComponent<Hotstrings> cut = Render<Hotstrings>(p => p.AddCascadingValue(AuthenticatedState));
+
+        cut.WaitForAssertion(() => cut.Find("button.edit"));
+        cut.Find("button.edit").Click();
+
+        cut.WaitForAssertion(() => cut.Find("[data-test=\"profile-select\"]"));
+        await cut.InvokeAsync(() => cut
+            .FindComponents<EntityMultiSelect>()
+            .Single(s => s.Instance.DataTest == "profile-select")
+            .Instance.SelectedIdsChanged.InvokeAsync([]));
+        cut.Find("button.promote-edit").Click();
+
+        // The dialog really holds the cleared state, so the empty notice list below means something.
+        provider.WaitForAssertion(() =>
+        {
+            provider.Find(".hotstring-edit-dialog");
+            HotstringEditModel item = provider
+                .FindComponent<global::AHKFlowApp.UI.Blazor.Components.Hotstrings.HotstringEditDialog>().Instance.Item;
+            item.AppliesToAllProfiles.Should().BeFalse();
+            item.ProfileIds.Should().BeEmpty();
+        });
+        provider.FindAll("[data-test=\"no-profile-notice\"]").Should().BeEmpty();
     }
 
     [Fact]
