@@ -66,6 +66,5 @@ from my scripts without knowing.
 - **Design this with item 175.** Item 175 asks the same question for the restore path. Its note
   says: "if a restore and a profile delete both need a durable record, one mechanism should serve
   both." Read it before designing this one.
-- Spec: needed — what to tell the owner, whether to offer a reassign, and where the record lives
-  are Design decisions.
+- Spec: `docs/superpowers/specs/2026-11-13-profile-delete-says-what-it-costs-design-210.md`
 - Plan: none — complex, so Design comes first at pickup.
