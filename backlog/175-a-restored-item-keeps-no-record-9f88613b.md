@@ -6,7 +6,7 @@
 - **Type**: Defect
 - **Interfaces**: API | UI
 - **Difficulty**: complex
-- **Stage**: 1-pickup
+- **Stage**: 4-execute
 
 ## Summary
 
@@ -72,6 +72,15 @@ it without having to guess.
 - Related. Item 166 records that a profile delete produces this same state with no warning at
   all. One path shouts and the other is silent. Design the two together: if a restore and a
   profile delete both need a durable record, one mechanism should serve both.
-- Spec: needed — where the reason lives is a design decision. Options include persisting
-  `restoreWarnings` on the item, writing a history entry, or marking the item as needing repair.
-- Plan: none — complex, so Design comes first at pickup.
+- **Criterion 3 has no "on purpose" case.** An Owner can never choose Applies to no profile:
+  every save refuses `AppliesToAllProfiles` false with no profiles. Backlog 210 established this.
+  So the distinction this item delivers is between the two causes that do exist. An item that
+  breaks rules needs its values fixed. An item that lost its profiles only needs profiles chosen.
+  Design decided this on 2026-11-13.
+- **Depends on backlogs 210 and 211.** This item extends 210's "No profile" chip, and 211's
+  `LoadedWithNoProfile` and edit dialog notice. Backlog 210's plan moved the notice into 211, which
+  stacks on 210's branch. The plan was written before both merged. Its Tasks 1 and 2 need
+  neither item. Its Task 3 waits until both merge, then merges `main` into this branch and
+  checks every name the plan took from their plans.
+- Spec: `docs/superpowers/specs/2026-11-13-restored-item-says-why-design-175.md`
+- Plan: `docs/superpowers/plans/2026-11-13-restored-item-says-why-plan-175.md`

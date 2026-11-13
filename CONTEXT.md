@@ -164,6 +164,10 @@ _Avoid_: rollback, undo, restore
 Bringing back a deleted hotstring or hotkey. Distinct from Revert, which acts on an item that was never deleted.
 _Avoid_: undelete, recover, revert
 
+**Broken rule**:
+A rule a new save must pass that a stored hotstring or hotkey fails. A failing Restore can bring one back, and the item then Applies to no profile until the Owner fixes it (see ADR-0021).
+_Avoid_: warning, restore warning, violation, validation error
+
 **Purge**:
 Permanently discarding every Snapshot of a deleted hotstring or hotkey, making recovery impossible.
 _Avoid_: hard delete, destroy, wipe
