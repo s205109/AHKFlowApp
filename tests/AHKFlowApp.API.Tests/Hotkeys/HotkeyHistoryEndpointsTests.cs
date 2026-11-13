@@ -187,6 +187,13 @@ public sealed class HotkeyHistoryEndpointsTests(ApiTestFixture fixture)
         restored.BrokenRules.Should().HaveCount(2)
             .And.Contain(new BrokenRuleDto("Description", "Description is required."))
             .And.Contain(r => r.Field == "Key" && r.Message.StartsWith("Key must be a known key name"));
+
+        // Backlog 175: the hotkey reads returned no reason either. GET /api/v1/hotkeys/{id} and
+        // GET /api/v1/hotkeys must both name the rules the Restore named.
+        HotkeyDto? reread = await client.GetFromJsonAsync<HotkeyDto>($"/api/v1/hotkeys/{id}");
+        PagedList<HotkeyDto>? listed = await client.GetFromJsonAsync<PagedList<HotkeyDto>>("/api/v1/hotkeys");
+        reread!.BrokenRules.Should().Equal(restored.BrokenRules!);
+        listed!.Items.Single(h => h.Id == id).BrokenRules.Should().Equal(restored.BrokenRules!);
     }
 
     [Fact]

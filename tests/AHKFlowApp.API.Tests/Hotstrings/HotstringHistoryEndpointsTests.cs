@@ -5,6 +5,7 @@ using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Domain.Enums;
 using AHKFlowApp.Infrastructure.Persistence;
+using AHKFlowApp.TestUtilities.Builders;
 using AHKFlowApp.TestUtilities.Fixtures;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
@@ -180,6 +181,58 @@ public sealed class HotstringHistoryEndpointsTests(ApiTestFixture fixture)
         restored.BrokenRules.Should().HaveCount(2)
             .And.Contain(new BrokenRuleDto("Trigger", "Trigger must not have leading or trailing whitespace."))
             .And.Contain(new BrokenRuleDto("ContextValue", "Value under Window context must not contain double quotes."));
+
+        // Backlog 175: after the Restore, a read returned restoreWarnings: null. It must name the
+        // rules the Restore named (criterion 2).
+        HotstringDto? reread = await client.GetFromJsonAsync<HotstringDto>($"/api/v1/hotstrings/{id}");
+        reread!.BrokenRules.Should().Equal(restored.BrokenRules!);
+    }
+
+    // Backlog 175: after a reload, nothing said why an item reached no script. The list must read
+    // the stored row, because its Replacement is cut to 200 characters.
+    [Fact]
+    public async Task ListAndGet_NameBrokenRules_OnlyForAnItemWithNoProfileThatBreaksThem()
+    {
+        var oid = Guid.NewGuid();
+        using HttpClient client = CreateAuthed(oid);
+
+        await using (AsyncServiceScope scope = _factory.Services.CreateAsyncScope())
+        {
+            AppDbContext db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            db.Hotstrings.AddRange(
+                new HotstringBuilder().WithOwner(oid).WithTrigger("bad")
+                    .AppliesToAllProfiles(false)
+                    .WithContext(WindowMatchType.TitleContains, "a \" b").Build(),
+                new HotstringBuilder().WithOwner(oid).WithTrigger("long")
+                    .AppliesToAllProfiles(false)
+                    .WithDelivery(HotstringDelivery.Type)
+                    .WithReplacement(new string('x', 4001)).Build(),
+                new HotstringBuilder().WithOwner(oid).WithTrigger("lost")
+                    .AppliesToAllProfiles(false).Build(),
+                new HotstringBuilder().WithOwner(oid).WithTrigger("scoped")
+                    .AppliesToAllProfiles(true)
+                    .WithContext(WindowMatchType.TitleContains, "a \" b").Build());
+            await db.SaveChangesAsync();
+        }
+
+        PagedList<HotstringDto>? page = await client.GetFromJsonAsync<PagedList<HotstringDto>>("/api/v1/hotstrings");
+        var byTrigger = page!.Items.ToDictionary(h => h.Trigger);
+
+        byTrigger["bad"].BrokenRules.Should().Equal(
+            new BrokenRuleDto("ContextValue", "Value under Window context must not contain double quotes."));
+        byTrigger["long"].BrokenRules.Should().Equal(                    // Review Focus 2
+            new BrokenRuleDto("Replacement", "Replacement must be 4000 characters or fewer."));
+        byTrigger["lost"].BrokenRules.Should().BeNull();
+        byTrigger["scoped"].BrokenRules.Should().BeNull();              // Review Focus 3
+
+        foreach (HotstringDto listed in byTrigger.Values)
+        {
+            HotstringDto? single = await client.GetFromJsonAsync<HotstringDto>($"/api/v1/hotstrings/{listed.Id}");
+            if (listed.BrokenRules is null)
+                single!.BrokenRules.Should().BeNull();
+            else
+                single!.BrokenRules.Should().Equal(listed.BrokenRules);
+        }
     }
 
     [Fact]

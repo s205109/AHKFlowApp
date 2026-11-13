@@ -2,6 +2,7 @@ using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Application.Common;
 using AHKFlowApp.Application.Constants;
 using AHKFlowApp.Application.DTOs;
+using AHKFlowApp.Application.Validation;
 using AHKFlowApp.Domain.Constants;
 using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Domain.Enums;
@@ -162,7 +163,33 @@ internal sealed class ListHotkeysQueryHandler(
                 h.Categories.Select(c => c.CategoryId).ToArray()))
             .ToListAsync(ct);
 
+        await FillBrokenRulesAsync(items, ownerOid, ct);
+
         return Result.Success(new PagedList<HotkeyDto>(items, request.Page, request.PageSize, total));
+    }
+
+    // Backlog 175: an item that applies to no profile names the rules it breaks.
+    private async Task FillBrokenRulesAsync(List<HotkeyDto> items, Guid ownerOid, CancellationToken ct)
+    {
+        Guid[] ids =
+        [
+            .. items
+                .Where(i => i is { AppliesToAllProfiles: false, ProfileIds.Length: 0 })
+                .Select(i => i.Id)
+        ];
+        if (ids.Length == 0)
+            return;
+
+        Dictionary<Guid, Hotkey> rows = await db.Hotkeys
+            .AsNoTracking()
+            .Where(h => h.OwnerOid == ownerOid && ids.Contains(h.Id))
+            .ToDictionaryAsync(h => h.Id, ct);
+
+        for (int i = 0; i < items.Count; i++)
+        {
+            if (rows.TryGetValue(items[i].Id, out Hotkey? row))
+                items[i] = items[i] with { BrokenRules = DefinitionRuleCheck.BrokenRules(row) };
+        }
     }
 
     private async Task EnsureHotkeysSeededAsync(Guid ownerOid, CancellationToken ct)
