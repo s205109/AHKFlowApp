@@ -37,8 +37,9 @@ from my scripts without knowing.
   `.superpowers/acceptance-sweep-2026-10-12/findings.md`, which is local and gitignored.
 - **Split from backlog 166 at its Pickup on 2026-11-12.** That item held two outcomes that share
   only the Profiles page. It keeps the default switch, and this item takes criteria 5 and 6. Its
-  note asked to keep the two pull requests stacked rather than mixed, so this worktree branches
-  from 166's branch.
+  note asked to keep the two pull requests stacked rather than mixed. Pull request #480 merged
+  backlog 166 into `main` on 2026-11-12, before this pickup. So this worktree branches from
+  `main` at `ba020699`, and no stack is needed.
 - **F23, what the sweep saw.** The dialog says only `Delete "Work"? This cannot be undone.` and the
   snackbar says only `Profile deleted.` A hotstring scoped to that profile alone came back with
   `appliesToAllProfiles=false` and zero profiles, and appeared in neither remaining script.
