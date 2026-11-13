@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: UI | API
 - **Difficulty**: complex
-- **Stage**: 1-pickup
+- **Stage**: 2-design
 
 ## Summary
 
