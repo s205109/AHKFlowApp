@@ -8,8 +8,8 @@ using Xunit;
 
 namespace AHKFlowApp.E2E.Tests;
 
-[Collection(E2ECollectionA.Name)]
-public sealed class NoProfileNoticeFlowTests(StackFixtureA fixture) : IAsyncLifetime
+[Collection(E2ECollectionB.Name)]
+public sealed class NoProfileNoticeFlowTests(StackFixtureB fixture) : IAsyncLifetime
 {
     // Well above the 959.95 px breakpoint, so the page shows the desktop grid.
     private static readonly BrowserNewContextOptions DesktopViewport = new()

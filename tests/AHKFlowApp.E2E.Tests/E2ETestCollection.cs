@@ -13,7 +13,7 @@ namespace AHKFlowApp.E2E.Tests;
 /// <summary>Group A — 58.54 s. ShortcutWarningFlowTests 38.44, ProfileScriptDownloadFlowTests 9.22, ProductAndPageNamesFlowTests 4.74, HotstringImportPasteFlowTests 4.44, DashboardFirstViewFlowTests 1.69.</summary>
 public sealed class StackFixtureA() : StackFixture("AHKFlowApp.E2E.Tests.A") { }
 
-/// <summary>Group B — 56.99 s. HotkeysCrudFlowTests 23.90, HotstringsMobileFlowTests 11.08, KnownShortcutsMobileFlowTests 10.19, BootFailureFlowTests 7.96, MacroHotstringFlowTests 3.85, PublishFreshnessTests 0.01.</summary>
+/// <summary>Group B — 56.99 s. HotkeysCrudFlowTests 23.90, HotstringsMobileFlowTests 11.08, KnownShortcutsMobileFlowTests 10.19, BootFailureFlowTests 7.96, MacroHotstringFlowTests 3.85, PublishFreshnessTests 0.01. Added later, not yet measured: NoProfileNoticeFlowTests (backlog 211).</summary>
 public sealed class StackFixtureB() : StackFixture("AHKFlowApp.E2E.Tests.B") { }
 
 /// <summary>Group C — 57.47 s. RawHotstringFlowTests 21.80, KeyboardAccessFlowTests 12.44, WindowSnapFlowTests 10.35, FirstPageLoadDiagnosticsTests 9.08, ProfileHeaderPresetFlowTests 3.81.</summary>
