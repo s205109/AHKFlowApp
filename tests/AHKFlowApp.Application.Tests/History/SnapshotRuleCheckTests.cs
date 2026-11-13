@@ -240,8 +240,8 @@ public sealed class SnapshotRuleCheckTests(HistoryDbFixture fx)
         result.IsSuccess.Should().BeTrue();
         result.Value.AppliesToAllProfiles.Should().BeFalse();
         result.Value.ProfileIds.Should().BeEmpty();
-        result.Value.RestoreWarnings.Should()
-            .Contain("Value under Window context must not contain double quotes.");
+        result.Value.BrokenRules.Should()
+            .Contain(new BrokenRuleDto("ContextValue", "Value under Window context must not contain double quotes."));
 
         Hotstring stored = await db.Hotstrings.AsNoTracking().SingleAsync(h => h.Id == id);
         stored.AppliesToAllProfiles.Should().BeFalse();
@@ -277,7 +277,7 @@ public sealed class SnapshotRuleCheckTests(HistoryDbFixture fx)
 
         result.IsSuccess.Should().BeTrue();
         result.Value.ProfileIds.Should().BeEmpty();
-        result.Value.RestoreWarnings.Should().NotBeNullOrEmpty();
+        result.Value.BrokenRules.Should().NotBeNullOrEmpty();
         (await db.HotstringProfiles.CountAsync(j => j.HotstringId == id)).Should().Be(0);
     }
 
@@ -314,7 +314,7 @@ public sealed class SnapshotRuleCheckTests(HistoryDbFixture fx)
 
         result.IsSuccess.Should().BeTrue();
         result.Value.ProfileIds.Should().BeEmpty();
-        result.Value.RestoreWarnings.Should().BeNullOrEmpty();
+        result.Value.BrokenRules.Should().BeNull();
         result.Value.AppliesToAllProfiles.Should().BeFalse("the snapshot said false and it passed the rules");
     }
 
@@ -342,7 +342,7 @@ public sealed class SnapshotRuleCheckTests(HistoryDbFixture fx)
         result.IsSuccess.Should().BeTrue();
         result.Value.AppliesToAllProfiles.Should().BeFalse();
         result.Value.ProfileIds.Should().BeEmpty();
-        result.Value.RestoreWarnings.Should().NotBeNullOrEmpty();
+        result.Value.BrokenRules.Should().NotBeNullOrEmpty();
         (await db.HotkeyProfiles.CountAsync(j => j.HotkeyId == id)).Should().Be(0);
     }
 
@@ -382,7 +382,7 @@ public sealed class SnapshotRuleCheckTests(HistoryDbFixture fx)
         result.IsSuccess.Should().BeTrue();
         result.Value.ProfileIds.Should().BeEmpty();
         result.Value.AppliesToAllProfiles.Should().BeFalse();
-        result.Value.RestoreWarnings.Should().NotBeNullOrEmpty();
+        result.Value.BrokenRules.Should().NotBeNullOrEmpty();
         (await db.HotkeyProfiles.CountAsync(j => j.HotkeyId == id)).Should().Be(0);
     }
 
@@ -419,7 +419,7 @@ public sealed class SnapshotRuleCheckTests(HistoryDbFixture fx)
 
         result.IsSuccess.Should().BeTrue();
         result.Value.ProfileIds.Should().BeEmpty();
-        result.Value.RestoreWarnings.Should().BeNullOrEmpty();
+        result.Value.BrokenRules.Should().BeNull();
         result.Value.AppliesToAllProfiles.Should().BeFalse("the snapshot said false and it passed the rules");
     }
 }

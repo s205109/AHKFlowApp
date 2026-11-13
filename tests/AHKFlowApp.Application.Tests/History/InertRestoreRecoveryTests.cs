@@ -94,7 +94,7 @@ public sealed class InertRestoreRecoveryTests(HistoryDbFixture fx)
             restored.IsSuccess.Should().BeTrue();
             restored.Value.ProfileIds.Should().BeEmpty();
             restored.Value.AppliesToAllProfiles.Should().BeFalse();
-            restored.Value.RestoreWarnings.Should().NotBeNullOrEmpty();
+            restored.Value.BrokenRules.Should().NotBeNullOrEmpty();
         }
 
         // 3. The Profile script does not contain it.
@@ -201,7 +201,7 @@ public sealed class InertRestoreRecoveryTests(HistoryDbFixture fx)
             restored.IsSuccess.Should().BeTrue();
             restored.Value.ProfileIds.Should().BeEmpty();
             restored.Value.AppliesToAllProfiles.Should().BeFalse();
-            restored.Value.RestoreWarnings.Should().NotBeNullOrEmpty();
+            restored.Value.BrokenRules.Should().NotBeNullOrEmpty();
         }
 
         // 3. The Profile script does not contain it.

@@ -177,9 +177,9 @@ public sealed class HotstringHistoryEndpointsTests(ApiTestFixture fixture)
         restored!.Id.Should().Be(id);
         restored.AppliesToAllProfiles.Should().BeFalse();
         restored.ProfileIds.Should().BeEmpty();
-        restored.RestoreWarnings.Should().HaveCount(2)
-            .And.Contain("Value under Window context must not contain double quotes.")
-            .And.Contain("Trigger must not have leading or trailing whitespace.");
+        restored.BrokenRules.Should().HaveCount(2)
+            .And.Contain(new BrokenRuleDto("Trigger", "Trigger must not have leading or trailing whitespace."))
+            .And.Contain(new BrokenRuleDto("ContextValue", "Value under Window context must not contain double quotes."));
     }
 
     [Fact]

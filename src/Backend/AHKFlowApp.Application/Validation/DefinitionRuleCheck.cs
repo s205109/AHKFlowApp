@@ -1,3 +1,4 @@
+using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Domain.Entities;
 using Ardalis.Result;
 using FluentValidation.Results;
@@ -31,6 +32,15 @@ internal static class DefinitionRuleCheck
     /// </summary>
     public static ValidationError[] Check(HotkeyDefinition definition) =>
         ToErrors(s_hotkey.Validate(new HotkeyDefinitionDraft(definition)));
+
+    /// <summary>
+    /// Turns the errors into the wire shape. Returns null for an empty array, because the API
+    /// never sends an empty list of broken rules.
+    /// </summary>
+    public static IReadOnlyList<BrokenRuleDto>? ToBrokenRules(ValidationError[] errors) =>
+        errors.Length == 0
+            ? null
+            : [.. errors.Select(e => new BrokenRuleDto(e.Identifier, e.ErrorMessage))];
 
     private static ValidationError[] ToErrors(ValidationResult result) =>
         [.. result.Errors.Select(failure => new ValidationError

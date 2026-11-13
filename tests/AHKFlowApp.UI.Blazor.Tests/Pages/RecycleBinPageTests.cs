@@ -238,7 +238,7 @@ public sealed class RecycleBinPageTests : BunitContext, IAsyncLifetime
             CreatedAt: DateTimeOffset.UtcNow,
             UpdatedAt: DateTimeOffset.UtcNow,
             CategoryIds: [],
-            RestoreWarnings: ["Value under Window context must not contain double quotes."]);
+            BrokenRules: [new BrokenRuleDto("ContextValue", "Value under Window context must not contain double quotes.")]);
         _hotstrings.RestoreAsync(deleted.Id, Arg.Any<CancellationToken>())
             .Returns(ApiResult<HotstringDto>.Ok(restored));
 
@@ -336,7 +336,7 @@ public sealed class RecycleBinPageTests : BunitContext, IAsyncLifetime
             DateTimeOffset.UtcNow,
             DateTimeOffset.UtcNow,
             [],
-            ["Key must be a known key name (for example a, F5, Escape, Numpad0)."]);
+            [new BrokenRuleDto("Key", "Key must be a known key name (for example a, F5, Escape, Numpad0).")]);
         _hotkeys.RestoreAsync(deleted.Id, Arg.Any<CancellationToken>())
             .Returns(ApiResult<HotkeyDto>.Ok(restored));
 
@@ -368,9 +368,9 @@ public sealed class RecycleBinPageTests : BunitContext, IAsyncLifetime
             CreatedAt: DateTimeOffset.UtcNow,
             UpdatedAt: DateTimeOffset.UtcNow,
             CategoryIds: [],
-            RestoreWarnings: warnings.Length > 0
-                ? warnings
-                : ["Value under Window context must not contain double quotes."]);
+            BrokenRules: warnings.Length > 0
+                ? [.. warnings.Select(w => new BrokenRuleDto("ContextValue", w))]
+                : [new BrokenRuleDto("ContextValue", "Value under Window context must not contain double quotes.")]);
 
     // Runs the page's own options callback and reports what it set, so the assertion reads the
     // real configuration rather than trusting that a callback was passed at all.
