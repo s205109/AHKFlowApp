@@ -1,1 +1,2 @@
 - Task 1: done at 542be49. Tests: pass (UI.Blazor dialog and hotstring page tests, 234/234; both mutation steps red as planned). Deferrals: none.
+- Task 2: done at 4953a53. Tests: pass (new E2E flow; mutation step red at the hotstring notice). Deferrals: full E2E lane runs at Verify.
