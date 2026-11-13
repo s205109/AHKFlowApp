@@ -6,7 +6,7 @@
 - **Type**: Defect
 - **Interfaces**: API | UI
 - **Difficulty**: complex
-- **Stage**: 1-pickup
+- **Stage**: 2-design
 
 ## Summary
 
