@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: UI | API
 - **Difficulty**: complex
-- **Stage**: 2-design
+- **Stage**: 3-plan
 
 ## Summary
 
