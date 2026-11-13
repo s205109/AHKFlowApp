@@ -4,7 +4,7 @@
 
 - **Epic**: Profiles
 - **Type**: Bug
-- **Interfaces**: UI | API
+- **Interfaces**: UI | API | CLI
 - **Difficulty**: complex
 - **Stage**: 3-plan
 
@@ -67,4 +67,4 @@ from my scripts without knowing.
   says: "if a restore and a profile delete both need a durable record, one mechanism should serve
   both." Read it before designing this one.
 - Spec: `docs/superpowers/specs/2026-11-13-profile-delete-says-what-it-costs-design-210.md`
-- Plan: none — complex, so Design comes first at pickup.
+- Plan: `docs/superpowers/plans/2026-11-13-profile-delete-says-what-it-costs-plan-210.md`
