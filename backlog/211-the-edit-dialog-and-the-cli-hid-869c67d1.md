@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: UI | CLI
 - **Difficulty**: moderate
-- **Stage**: 0-intake
+- **Stage**: 1-pickup
 
 ## Summary
 
