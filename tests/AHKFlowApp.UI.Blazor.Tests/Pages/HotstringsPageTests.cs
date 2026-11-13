@@ -1,5 +1,4 @@
 using System.Security.Claims;
-using AHKFlowApp.UI.Blazor.Components.Common;
 using AHKFlowApp.UI.Blazor.DTOs;
 using AHKFlowApp.UI.Blazor.Pages;
 using AHKFlowApp.UI.Blazor.Services;
@@ -596,7 +595,7 @@ public sealed class HotstringsPageTests : BunitContext, IAsyncLifetime
 
         cut.WaitForAssertion(() => cut.Find("[data-test=\"profile-select\"]"));
         await cut.InvokeAsync(() => cut
-            .FindComponents<EntityMultiSelect>()
+            .FindComponents<global::AHKFlowApp.UI.Blazor.Components.Common.EntityMultiSelect>()
             .Single(s => s.Instance.DataTest == "profile-select")
             .Instance.SelectedIdsChanged.InvokeAsync([]));
         cut.Find("button.promote-edit").Click();
