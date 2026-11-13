@@ -20,12 +20,12 @@ I can find and repair it from either place.
 
 ## Acceptance criteria
 
-- [ ] The hotstring and hotkey edit dialogs show a notice when they open a stored item that
+- [x] The hotstring and hotkey edit dialogs show a notice when they open a stored item that
       applies to no profile.
-- [ ] The notice hides once the owner chooses a profile or turns on Apply to all profiles.
-- [ ] A new item opens with no notice. So does a stored item whose profiles were cleared only in
+- [x] The notice hides once the owner chooses a profile or turns on Apply to all profiles.
+- [x] A new item opens with no notice. So does a stored item whose profiles were cleared only in
       an unsaved inline edit.
-- [ ] `ahkflow` lists an item that applies to no profile with `no profile` in its Profiles column,
+- [x] `ahkflow` lists an item that applies to no profile with `no profile` in its Profiles column,
       not `all`.
 
 ## Out of scope
