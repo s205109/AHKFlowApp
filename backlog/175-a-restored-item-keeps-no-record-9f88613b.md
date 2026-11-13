@@ -75,7 +75,7 @@ it without having to guess.
 - **Backlog 210 builds the shared part (Design, 2026-11-13).** An item that applies to no profile
   gets a "No profile" chip in the grids. The chip comes from the item's state, so nothing new is
   stored. That is safe because an Owner cannot choose this state:
-  `src/Backend/AHKFlowApp.Application/Validation/HotstringRules.cs:72`, ".Must(ids => ids is { Length: > 0 })".
+  (`src/Backend/AHKFlowApp.Application/Validation/HotstringRules.cs:72`, ".Must(ids => ids is { Length: > 0 })").
   Every Create, Update and Import validator uses that rule. So the third criterion above has no
   "on purpose" case to tell apart. What stays for this item is storing the rule messages a
   failing Restore names, so the chip or the item can show them after a reload.
