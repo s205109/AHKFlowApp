@@ -51,6 +51,29 @@ public sealed class EntityChipsTests : BunitContext, IAsyncLifetime
         cut.Markup.Should().NotContain("Work");
     }
 
+    // Backlog 210: an item with no profile showed an empty Profiles cell.
+    [Theory]
+    [InlineData(true, false, false, 1)]   // a profile cell, no profile: the chip
+    [InlineData(true, false, true, 0)]    // a profile cell with a profile: that name only
+    [InlineData(false, false, false, 0)]  // a category cell with no categories: nothing
+    [InlineData(true, true, false, 0)]    // Apply to all profiles: the All profiles chip only
+    public void MarksNoProfile_OnlyWhereAskedAndOnlyWhenEmpty(bool markNoProfile, bool appliesToAll, bool hasProfile, int expected)
+    {
+        var work = Guid.NewGuid();
+        Guid[] ids = hasProfile ? [work] : [];
+        List<EntityOption> options = hasProfile ? [new(work, "Work")] : [];
+
+        // The chip sits in a MudTooltip, which needs a popover provider.
+        Render<MudBlazor.MudPopoverProvider>();
+        IRenderedComponent<EntityChips> cut = Render<EntityChips>(ps => ps
+            .Add(p => p.Ids, ids)
+            .Add(p => p.Options, options)
+            .Add(p => p.MarkNoProfile, markNoProfile)
+            .Add(p => p.AppliesToAllProfiles, appliesToAll));
+
+        cut.FindAll(".no-profile-chip").Should().HaveCount(expected);
+    }
+
     [Fact]
     public void Falls_back_to_truncated_id_for_unknown_option()
     {
