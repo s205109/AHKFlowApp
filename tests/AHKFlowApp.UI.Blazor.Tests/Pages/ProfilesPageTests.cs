@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using AHKFlowApp.UI.Blazor.DTOs;
+using AHKFlowApp.UI.Blazor.Helpers;
 using AHKFlowApp.UI.Blazor.Pages;
 using AHKFlowApp.UI.Blazor.Services;
 using AngleSharp.Dom;
@@ -61,6 +62,21 @@ public sealed class ProfilesPageTests : BunitContext, IAsyncLifetime
     private void StubList(params ProfileDto[] profiles) =>
         _api.ListAsync(Arg.Any<CancellationToken>())
             .Returns(ApiResult<IReadOnlyList<ProfileDto>>.Ok(profiles));
+
+    private void StubUsage(Guid id, int hotstrings, int hotkeys) =>
+        _api.GetUsageAsync(id, Arg.Any<CancellationToken>())
+            .Returns(ApiResult<ProfileUsageDto>.Ok(new ProfileUsageDto(hotstrings, hotkeys)));
+
+    private IDialogService StubDialog(bool answer)
+    {
+        IDialogService dialogService = Substitute.For<IDialogService>();
+        dialogService.ShowMessageBoxAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(),
+            Arg.Any<DialogOptions>())
+            .Returns(Task.FromResult<bool?>(answer));
+        Services.AddSingleton(dialogService);
+        return dialogService;
+    }
 
     private void StubListFailure(ApiResultStatus status, ApiProblemDetails? problem = null) =>
         _api.ListAsync(Arg.Any<CancellationToken>())
@@ -150,6 +166,7 @@ public sealed class ProfilesPageTests : BunitContext, IAsyncLifetime
     {
         ProfileDto dto = MakeProfile("Work");
         StubList(dto);
+        StubUsage(dto.Id, 0, 0);
         _api.DeleteAsync(dto.Id, Arg.Any<CancellationToken>())
             .Returns(ApiResult.Ok());
 
@@ -173,6 +190,70 @@ public sealed class ProfilesPageTests : BunitContext, IAsyncLifetime
 
         _ = _api.DidNotReceive().DeleteAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
         return Task.CompletedTask;
+    }
+
+    // Backlog 210: the confirmation named only the profile, not the items left with no profile.
+    [Fact]
+    public void Page_Delete_ConfirmationSaysHowManyItemsReachNoScript()
+    {
+        ProfileDto dto = MakeProfile("Work");
+        StubList(dto);
+        StubUsage(dto.Id, 3, 1);
+        IDialogService dialogService = StubDialog(false);
+
+        IRenderedComponent<Profiles> cut = RenderPage();
+        cut.WaitForAssertion(() => cut.Find("button.delete"));
+        cut.Find("button.delete").Click();
+
+        cut.WaitForAssertion(() => dialogService.Received(1).ShowMessageBoxAsync(
+            "Delete profile?",
+            ProfileDeleteWording.Confirmation("Work", 3, 1),
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<DialogOptions>()));
+    }
+
+    // Backlog 210 (Review Focus 3): a failed usage call must not open the confirmation.
+    [Fact]
+    public void Page_Delete_UsageFails_ShowsTheErrorAndNoConfirmation()
+    {
+        ProfileDto dto = MakeProfile("Work");
+        StubList(dto);
+        _api.GetUsageAsync(dto.Id, Arg.Any<CancellationToken>())
+            .Returns(ApiResult<ProfileUsageDto>.Failure(ApiResultStatus.NotFound, null));
+        IDialogService dialogService = StubDialog(true);
+
+        IRenderedComponent<Profiles> cut = RenderPage();
+        cut.WaitForAssertion(() => cut.Find("button.delete"));
+        cut.Find("button.delete").Click();
+
+        cut.WaitForAssertion(() => _snackbar.Received(1).Add(
+            ApiErrorMessageFactory.Build(ApiResultStatus.NotFound, null), Severity.Error,
+            Arg.Any<Action<SnackbarOptions>>(), Arg.Any<string>()));
+        _ = dialogService.DidNotReceive().ShowMessageBoxAsync(
+            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(),
+            Arg.Any<DialogOptions>());
+        _ = _api.DidNotReceive().DeleteAsync(Arg.Any<Guid>(), Arg.Any<CancellationToken>());
+    }
+
+    // Backlog 210: the snackbar said only "Profile deleted." after items lost their last profile.
+    [Theory]
+    [InlineData(1, 0, Severity.Warning)]
+    [InlineData(0, 0, Severity.Success)]
+    public void Page_Delete_SnackbarRepeatsTheCount(int hotstrings, int hotkeys, Severity severity)
+    {
+        ProfileDto dto = MakeProfile("Work");
+        StubList(dto);
+        StubUsage(dto.Id, hotstrings, hotkeys);
+        _api.DeleteAsync(dto.Id, Arg.Any<CancellationToken>())
+            .Returns(ApiResult.Ok());
+        StubDialog(true);
+
+        IRenderedComponent<Profiles> cut = RenderPage();
+        cut.WaitForAssertion(() => cut.Find("button.delete"));
+        cut.Find("button.delete").Click();
+
+        cut.WaitForAssertion(() => _snackbar.Received(1).Add(
+            ProfileDeleteWording.Deleted(hotstrings, hotkeys), severity,
+            Arg.Any<Action<SnackbarOptions>>(), Arg.Any<string>()));
     }
 
     [Fact]
