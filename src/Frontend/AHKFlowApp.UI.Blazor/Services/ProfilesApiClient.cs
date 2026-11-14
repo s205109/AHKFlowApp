@@ -13,6 +13,9 @@ public sealed class ProfilesApiClient(HttpClient httpClient) : ApiClientBase(htt
     public Task<ApiResult<ProfileDto>> GetAsync(Guid id, CancellationToken ct = default) =>
         SendAsync<ProfileDto>(HttpMethod.Get, $"{BasePath}/{id}", content: null, ct);
 
+    public Task<ApiResult<ProfileUsageDto>> GetUsageAsync(Guid id, CancellationToken ct = default) =>
+        SendAsync<ProfileUsageDto>(HttpMethod.Get, $"{BasePath}/{id}/usage", content: null, ct);
+
     public Task<ApiResult<ProfileDto>> CreateAsync(CreateProfileDto input, CancellationToken ct = default) =>
         SendAsync<ProfileDto>(HttpMethod.Post, BasePath, JsonContent.Create(input), ct);
 

@@ -19,6 +19,7 @@ namespace AHKFlowApp.API.Controllers;
 public sealed class ProfilesController(
     IUseCase<ListProfilesQuery, Result<IReadOnlyList<ProfileDto>>> listProfiles,
     IUseCase<GetProfileQuery, Result<ProfileDto>> getProfile,
+    IUseCase<GetProfileUsageQuery, Result<ProfileUsageDto>> getProfileUsage,
     IUseCase<CreateProfileCommand, Result<ProfileDto>> createProfile,
     IUseCase<UpdateProfileCommand, Result<ProfileDto>> updateProfile,
     IUseCase<DeleteProfileCommand, Result> deleteProfile,
@@ -46,6 +47,13 @@ public sealed class ProfilesController(
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     public async Task<ActionResult<ProfileDto>> Get(Guid id, CancellationToken ct) =>
         (await getProfile.ExecuteAsync(new GetProfileQuery(id), ct)).ToProblemActionResult(this);
+
+    /// <summary>Count the hotstrings and hotkeys that a delete would leave applying to no profile.</summary>
+    [HttpGet("{id:guid}/usage")]
+    [ProducesResponseType(typeof(ProfileUsageDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ProfileUsageDto>> GetUsage(Guid id, CancellationToken ct) =>
+        (await getProfileUsage.ExecuteAsync(new GetProfileUsageQuery(id), ct)).ToProblemActionResult(this);
 
     /// <summary>Create a new profile for the current user.</summary>
     [HttpPost]

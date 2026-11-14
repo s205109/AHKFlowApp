@@ -107,6 +107,15 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
         };
     }
 
+    // Backlog 210: the hotkey grid showed an empty Profiles cell for an item with no profile.
+    [Fact]
+    public void Grid_ItemWithNoProfile_ShowsOneNoProfileChip()
+    {
+        IRenderedComponent<Hotkeys> cut = RenderPageWith(MakeHotkey() with { AppliesToAllProfiles = false });
+        // MakeHotkey has no categories, so exactly one chip also proves the Categories cell stays empty.
+        cut.FindAll(".no-profile-chip").Should().ContainSingle().Which.TextContent.Should().Contain("No profile");
+    }
+
     private IRenderedComponent<Hotkeys> RenderPageWith(HotkeyDto dto, bool keysValid = true)
     {
         StubKeyCatalog(keysValid);

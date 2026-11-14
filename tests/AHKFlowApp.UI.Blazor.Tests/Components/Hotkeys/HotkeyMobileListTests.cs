@@ -71,6 +71,25 @@ public sealed class HotkeyMobileListTests : BunitContext, IAsyncLifetime
         cut.Find("tr.mobile-row-expanded").TextContent.Should().Contain("notepad.exe");
     }
 
+    // Backlog 210: the expanded row showed an empty Profiles line for an item with no profile.
+    [Fact]
+    public async Task ExpandedRow_ItemWithNoProfile_ShowsNoProfileChip()
+    {
+        HotkeyEditModel item = Item();
+        item.AppliesToAllProfiles = false;
+
+        // The chip sits in a MudTooltip, which needs a popover provider.
+        Render<MudBlazor.MudPopoverProvider>();
+        IRenderedComponent<HotkeyMobileList> cut = Render<HotkeyMobileList>(p => p
+            .Add(c => c.Items, [item])
+            .Add(c => c.Profiles, (IReadOnlyList<ProfileDto>)[])
+            .Add(c => c.Categories, (IReadOnlyList<CategoryDto>)[]));
+
+        await cut.InvokeAsync(() => cut.Find("tr.mobile-row").Click());
+
+        cut.WaitForAssertion(() => cut.FindAll(".no-profile-chip").Should().ContainSingle());
+    }
+
     [Fact]
     public async Task ExpandedRow_WithWindowContext_ShowsTheContextRow()
     {
