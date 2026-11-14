@@ -1699,4 +1699,65 @@ public sealed class HotkeyEditDialogTests : BunitContext, IAsyncLifetime
 
         order.Should().Equal("source-warning", "template-warning", "destination-warning");
     }
+
+    // Backlog 175: a rule on a field the dialog does not show, such as Body on a Send text hotkey,
+    // had nowhere to appear. A rule on a visible select belongs on that select, not in the notice.
+    // Turning on Apply to all profiles must not hide the notice.
+    [Fact]
+    public async Task EditMode_RuleOnAFieldNotShown_ListedInANoticeThatOutlastsApplyToAll()
+    {
+        const string body = "Action body is only valid for the Raw action.";
+        const string matchBy = "Match by and Value under Window context must both be set, or both be empty.";
+        HotkeyEditModel item = HotkeyEditModel.FromDto(new HotkeyDto(
+            Guid.NewGuid(), [], false, "Greet", "F1", false, false, false, false,
+            HotkeyActionKind.SendText, "hi", null, null, null, null, null, "Send x",
+            WindowMatchType.TitleContains, null,
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow,
+            BrokenRules: [new("Body", body), new("ContextMatchType", matchBy)])).Clone();
+        IRenderedComponent<MudDialogProvider> provider = await ShowDialogAsync(item);
+
+        provider.WaitForAssertion(() => provider.Find("[data-test=\"broken-rules-notice\"]").TextContent
+            .Should().Contain("These rules belong to fields that are not shown:").And.Contain(body)
+            .And.NotContain(matchBy));
+        provider.WaitForAssertion(() =>
+            provider.FindComponents<MudSelect<WindowMatchType>>().Single(s => s.Instance.Label == "Match by").Instance
+                .GetState(x => x.ErrorText).Should().Be(matchBy));
+        provider.FindAll("[data-test=\"no-profile-notice\"]").Should().ContainSingle();
+
+        provider.Find("input[data-test=\"applies-to-all-checkbox\"]").Change(true);
+
+        provider.WaitForAssertion(() => provider.FindAll("[data-test=\"no-profile-notice\"]").Should().BeEmpty());
+        provider.FindAll("[data-test=\"broken-rules-notice\"]").Should().ContainSingle();
+    }
+
+    // Backlog 175: MudBlazor validates some inputs once the dialog opens, and that clears an Error
+    // set from outside. Every kind of input must still show its broken rule at open.
+    [Theory]
+    [InlineData(HotkeyActionKind.SendText, "Key")]
+    [InlineData(HotkeyActionKind.SendText, "Description")]
+    [InlineData(HotkeyActionKind.SendText, "Text")]
+    [InlineData(HotkeyActionKind.SendKeys, "SendKeysContent")]
+    [InlineData(HotkeyActionKind.Run, "RunTarget")]
+    [InlineData(HotkeyActionKind.Run, "RunTargetKind")]
+    [InlineData(HotkeyActionKind.Window, "WindowOp")]
+    [InlineData(HotkeyActionKind.Remap, "RemapDest")]
+    [InlineData(HotkeyActionKind.Raw, "Body")]
+    [InlineData(HotkeyActionKind.SendText, "ContextMatchType")]
+    [InlineData(HotkeyActionKind.SendText, "ContextValue")]
+    public async Task EditMode_BrokenRule_ShowsOnItsOwnInputAtOpen(HotkeyActionKind kind, string field)
+    {
+        string message = $"Broken {field}.";
+        HotkeyEditModel item = HotkeyEditModel.FromDto(new HotkeyDto(
+            Guid.NewGuid(), [], true, "Greet", "F1", false, false, false, false,
+            kind, "t", "^a", "notepad.exe", Enum.GetValues<RunTargetKind>().First(), Enum.GetValues<WindowOp>().First(), "F2", "body",
+            WindowMatchType.TitleContains, "x",
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow,
+            BrokenRules: [new(field, message)])).Clone();
+
+        IRenderedComponent<MudDialogProvider> provider = await ShowDialogAsync(item);
+
+        provider.WaitForAssertion(() => provider.Markup.Should().Contain(message));
+        provider.Find("[data-test=\"broken-rules-notice\"]").TextContent.Should()
+            .NotContain(message, "the input shows it, so the notice does not list it again");
+    }
 }

@@ -19,6 +19,10 @@
     <DialogContent>
         <MudForm @ref="_form" Model="@Item">
         <MudStack Spacing="3" Class="pa-2">
+            @if (_brokenRules.Any)
+            {
+                <BrokenRulesNotice NotShown="@_brokenRules.NotShown(IsOnScreen, Item.FieldValue)" />
+            }
             <MudToggleGroup T="HotstringKind" Value="Item.Kind" ValueChanged="OnKindChangedAsync"
                              UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "kind-selector" })">
                 <MudToggleItem Value="HotstringKind.Text" Text="Text" />
@@ -42,6 +46,11 @@
                     </MudStack>
                 </MudToggleItem>
             </MudToggleGroup>
+            @if (FieldError(nameof(HotstringEditModel.Kind)) is string kindError)
+            {
+                <MudText Typo="Typo.caption" Color="Color.Error"
+                         UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "kind-field-error" })">@kindError</MudText>
+            }
 
             @if (Item.Kind != HotstringKind.Raw)
             {
@@ -71,6 +80,8 @@
             @if (Item.Kind == HotstringKind.Text)
             {
                 <MudSelect T="HotstringDelivery" @bind-Value="Item.Delivery" Label="Delivery"
+                           Validation="@(BrokenRuleCheck<HotstringDelivery>(nameof(HotstringEditModel.Delivery)))"
+                           Error="@(FieldError(nameof(HotstringEditModel.Delivery)) is not null)" ErrorText="@FieldError(nameof(HotstringEditModel.Delivery))"
                            UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "delivery-select" })">
                     <MudSelectItem T="HotstringDelivery" Value="HotstringDelivery.Auto">@DeliveryDisplay.OptionLabel(HotstringDelivery.Auto)</MudSelectItem>
                     <MudSelectItem T="HotstringDelivery" Value="HotstringDelivery.Type">@DeliveryDisplay.OptionLabel(HotstringDelivery.Type)</MudSelectItem>
@@ -89,7 +100,7 @@
                               MaxLength="@Item.ReplacementMaxLength"
                               Validation="@(new Func<string, string?>(Item.ValidateReplacement))"
                               Placeholder="@(Item.Kind == HotstringKind.Raw ? ":K1000 SE*:ftw::for the win" : null)"
-                              Error="@(PreviewFieldError(nameof(HotstringEditModel.Replacement)) is not null)" ErrorText="@PreviewFieldError(nameof(HotstringEditModel.Replacement))"
+                              Error="@(FieldError(nameof(HotstringEditModel.Replacement)) is not null)" ErrorText="@FieldError(nameof(HotstringEditModel.Replacement))"
                               HelperText="@ReplacementHelperText"
                               UserAttributes="@GetReplacementUserAttributes()" />
             }
@@ -181,6 +192,8 @@
             {
                 <MudText Typo="Typo.subtitle2" Class="mt-1">Date &amp; time</MudText>
                 <MudSelect T="string" Value="_selectedFormatOption" ValueChanged="OnFormatOptionChanged" Label="Format"
+                           Validation="@(BrokenRuleCheck<string>(nameof(HotstringEditModel.DateTimeFormat)))"
+                           Error="@(FieldError(nameof(HotstringEditModel.DateTimeFormat)) is not null)" ErrorText="@FieldError(nameof(HotstringEditModel.DateTimeFormat))"
                            UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "datetime-format-select" })">
                     @foreach ((string label, string format) in DateTimeFormatPresets)
                     {
@@ -200,8 +213,12 @@
                 {
                     <MudStack Row="true" Spacing="2">
                         <MudNumericField T="int?" Label="Amount" @bind-Value="Item.DateOffsetAmount" Min="-3650" Max="3650"
+                                         Validation="@(BrokenRuleCheck<int?>(nameof(HotstringEditModel.DateOffsetAmount)))"
+                                         Error="@(FieldError(nameof(HotstringEditModel.DateOffsetAmount)) is not null)" ErrorText="@FieldError(nameof(HotstringEditModel.DateOffsetAmount))"
                                          UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "date-offset-amount" })" />
                         <MudSelect T="DateOffsetUnit?" @bind-Value="Item.DateOffsetUnit" Label="Unit"
+                                   Validation="@(BrokenRuleCheck<DateOffsetUnit?>(nameof(HotstringEditModel.DateOffsetUnit)))"
+                                   Error="@(FieldError(nameof(HotstringEditModel.DateOffsetUnit)) is not null)" ErrorText="@FieldError(nameof(HotstringEditModel.DateOffsetUnit))"
                                    UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "date-offset-unit" })">
                             <MudSelectItem T="DateOffsetUnit?" Value="DateOffsetUnit.Seconds">Seconds</MudSelectItem>
                             <MudSelectItem T="DateOffsetUnit?" Value="DateOffsetUnit.Minutes">Minutes</MudSelectItem>
@@ -236,6 +253,7 @@
 
             <MudTextField T="string" Label="Description" @bind-Value="Item.Description"
                           MaxLength="200" HelperText="Emitted as ; comment lines in the generated script."
+                          Error="@(FieldError(nameof(HotstringEditModel.Description)) is not null)" ErrorText="@FieldError(nameof(HotstringEditModel.Description))"
                           UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "description-input" })" />
 
             @if (Item.LoadedWithNoProfile && !Item.AppliesToAllProfiles && Item.ProfileIds.Count == 0)
@@ -277,6 +295,8 @@
             {
                 <MudSelect T="WindowMatchType" Value="Item.ContextMatchType.Value" ValueChanged="OnContextMatchTypeChanged"
                            Label="Match by"
+                           Validation="@(BrokenRuleCheck<WindowMatchType>(nameof(HotstringEditModel.ContextMatchType)))"
+                           Error="@(FieldError(nameof(HotstringEditModel.ContextMatchType)) is not null)" ErrorText="@FieldError(nameof(HotstringEditModel.ContextMatchType))"
                            UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "context-match-type-select" })">
                     <MudSelectItem T="WindowMatchType" Value="WindowMatchType.Executable">Program</MudSelectItem>
                     <MudSelectItem T="WindowMatchType" Value="WindowMatchType.WindowClass">Window class</MudSelectItem>
@@ -285,7 +305,7 @@
                 <MudTextField T="string" Label="Value" @bind-Value="Item.ContextValue" Immediate="true"
                               Required="true" RequiredError="Value is required" MaxLength="200"
                               Placeholder="@ContextValuePlaceholder"
-                              Error="@(PreviewFieldError(nameof(HotstringEditModel.ContextValue)) is not null)" ErrorText="@PreviewFieldError(nameof(HotstringEditModel.ContextValue))"
+                              Error="@(FieldError(nameof(HotstringEditModel.ContextValue)) is not null)" ErrorText="@FieldError(nameof(HotstringEditModel.ContextValue))"
                               UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "context-value-input" })" />
             }
 
@@ -400,10 +420,41 @@
     // Cancellation, generation counting and the fire-and-forget boundary live in the scheduler.
     private PreviewScheduler<HotstringPreviewRequestDto, HotstringPreviewDto> _preview = default!;
 
-    private string? PreviewFieldError(string field) => _previewFieldErrors.GetValueOrDefault(field);
+    // The broken rules come first. They hold every message for the field, and a preview message
+    // holds only the first (backlog 175, Review Focus 4).
+    private string? FieldError(string field) =>
+        _brokenRules.TextFor(field, Item.FieldValue) ?? _previewFieldErrors.GetValueOrDefault(field);
+
+    // The rules the stored item broke when it was loaded. Set when the item changes, and cleared
+    // when Save starts, so from then on Save's own result decides what shows.
+    private BrokenRuleSet _brokenRules = BrokenRuleSet.None;
+
+    // A MudSelect that holds a value validates itself when the dialog opens, and that clears an
+    // Error set from outside. Its Validation hook runs at the same time, so a broken rule on a
+    // select goes through this check as well.
+    private Func<T, string?> BrokenRuleCheck<T>(string field) =>
+        _ => _brokenRules.TextFor(field, Item.FieldValue);
+
+    /// <summary>
+    /// True exactly when the dialog renders the input for <paramref name="field"/> at this moment.
+    /// A broken rule on any other field is listed in the notice, because it has no input to sit on.
+    /// </summary>
+    private bool IsOnScreen(string field) => field switch
+    {
+        nameof(HotstringEditModel.Trigger) => Item.Kind != HotstringKind.Raw,
+        nameof(HotstringEditModel.Replacement) => Item.Kind != HotstringKind.DateTime,
+        nameof(HotstringEditModel.Description) or nameof(HotstringEditModel.Kind) => true,
+        nameof(HotstringEditModel.Delivery) => Item.Kind == HotstringKind.Text,
+        nameof(HotstringEditModel.DateTimeFormat) => Item.Kind == HotstringKind.DateTime,
+        nameof(HotstringEditModel.DateOffsetAmount) or nameof(HotstringEditModel.DateOffsetUnit) =>
+            Item.Kind == HotstringKind.DateTime && Item.DateOffsetAmount is not null,
+        nameof(HotstringEditModel.ContextMatchType) or nameof(HotstringEditModel.ContextValue) =>
+            Item.ContextMatchType is not null,
+        _ => false,
+    };
 
     private string? TriggerErrorText =>
-        _triggerError ?? PreviewFieldError(nameof(HotstringEditModel.Trigger));
+        _triggerError ?? FieldError(nameof(HotstringEditModel.Trigger));
 
     private bool HasCursorToken => MacroTokens.CursorTokenStart(Item.Replacement) is not null;
 
@@ -427,6 +478,7 @@
         if (!ReferenceEquals(_lastItem, Item))
         {
             _lastItem = Item;
+            _brokenRules = Item.BrokenRules;
             _selectedFormatOption = Item.DateTimeFormat is not null
                 && DateTimeFormatPresets.Any(preset => preset.Format == Item.DateTimeFormat)
                 ? Item.DateTimeFormat
@@ -752,6 +804,7 @@
             _error = null;
             _triggerError = null;
             _previewFieldErrors.Clear();
+            _brokenRules = BrokenRuleSet.None;
 
             await _form.ValidateAsync();
             if (!_form.IsValid)
