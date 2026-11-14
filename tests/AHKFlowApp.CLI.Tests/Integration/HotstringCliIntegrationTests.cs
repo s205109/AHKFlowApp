@@ -57,11 +57,13 @@ public sealed class HotstringCliIntegrationTests(SqlContainerFixture sql) : IAsy
         return p;
     }
 
-    private async Task<Hotstring> SeedHotstringAsync(string trigger, string replacement = "x", Guid? profileId = null)
+    private async Task<Hotstring> SeedHotstringAsync(
+        string trigger, string replacement = "x", Guid? profileId = null, bool appliesToAllProfiles = true)
     {
         using IServiceScope scope = _factory.Services.CreateScope();
         AppDbContext db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         HotstringBuilder b = new HotstringBuilder().WithOwner(_testUserOid).WithTrigger(trigger).WithReplacement(replacement);
+        b = b.AppliesToAllProfiles(appliesToAllProfiles);
         if (profileId is { } pid) b = b.InProfile(pid);
         Hotstring h = b.Build();
         db.Hotstrings.Add(h);
@@ -138,6 +140,20 @@ public sealed class HotstringCliIntegrationTests(SqlContainerFixture sql) : IAsy
         stdout.Should().Contain("aaa");
         stdout.Should().Contain("bbb");
         stdout.Should().Contain("Kind");
+    }
+
+    // Backlog 211: hotstring list printed "all" for an item that applies to no profile.
+    [Fact]
+    public async Task List_ItemWithNoProfile_ShowsNoProfileInProfilesColumn()
+    {
+        await SeedHotstringAsync("orphan", appliesToAllProfiles: false);
+
+        (int exit, string? stdout, string _) = await RunAsync(["hotstring", "list"]);
+
+        exit.Should().Be(0);
+        // The starter hotstrings print "all", so check the seeded row's own line.
+        string row = stdout!.Split('\n').Single(line => line.StartsWith("orphan ", StringComparison.Ordinal));
+        row.Should().Contain(" no profile ").And.NotContain(" all ");
     }
 
     [Fact]
