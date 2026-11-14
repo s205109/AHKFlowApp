@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: UI | API
 - **Difficulty**: complex
-- **Stage**: 3-plan
+- **Stage**: 9-ship
 
 ## Summary
 
@@ -21,9 +21,9 @@ from my scripts without knowing.
 
 ## Acceptance criteria
 
-- [ ] The delete confirmation names how many items are scoped to that profile only, and what
+- [x] The delete confirmation names how many items are scoped to that profile only, and what
       happens to them.
-- [ ] An item left with no profile after a profile delete is marked or reported somewhere the
+- [x] An item left with no profile after a profile delete is marked or reported somewhere the
       owner can find after a reload.
 
 ## Out of scope
@@ -68,7 +68,7 @@ from my scripts without knowing.
   both." Read it before designing this one.
 - **Split at Plan on 2026-11-13.** The first plan met the split trigger, and both split tests
   found the same two tasks: the edit dialog notice and the CLI text, spec sections 5 and 6. They
-  move to a stacked item whose branch starts from this one. This item keeps the usage route, the
+  move to backlog 211, whose branch starts from this one. This item keeps the usage route, the
   confirmation, the snackbar and the "No profile" chip, which together close its user story.
 - Spec: `docs/superpowers/specs/2026-11-13-profile-delete-says-what-it-costs-design-210.md`
 - Plan: `docs/superpowers/plans/2026-11-13-profile-delete-says-what-it-costs-plan-210.md`

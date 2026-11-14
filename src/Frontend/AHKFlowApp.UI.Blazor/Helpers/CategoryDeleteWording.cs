@@ -12,13 +12,7 @@ internal static class CategoryDeleteWording
         if (total == 0)
             return $"Delete \"{name}\"? No hotstrings or hotkeys use this category. This cannot be undone.";
 
-        List<string> parts = [];
-        if (hotstringCount > 0)
-            parts.Add(CountWording.Of(hotstringCount, "hotstring", "hotstrings"));
-        if (hotkeyCount > 0)
-            parts.Add(CountWording.Of(hotkeyCount, "hotkey", "hotkeys"));
-
-        string subject = string.Join(" and ", parts);
+        string subject = CountWording.HotstringsAndHotkeys(hotstringCount, hotkeyCount);
         string usage = total == 1
             ? $"{subject} uses this category. It is not deleted, but it loses this category."
             : $"{subject} use this category. They are not deleted, but they lose this category.";

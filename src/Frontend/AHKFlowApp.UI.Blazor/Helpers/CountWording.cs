@@ -8,4 +8,19 @@ internal static class CountWording
 {
     public static string Of(int count, string singular, string plural) =>
         $"{count} {(count == 1 ? singular : plural)}";
+
+    /// <summary>
+    /// "2 hotstrings and 1 hotkey". A kind with a count of zero is left out, so the caller
+    /// handles a total of zero itself.
+    /// </summary>
+    public static string HotstringsAndHotkeys(int hotstringCount, int hotkeyCount)
+    {
+        List<string> parts = [];
+        if (hotstringCount > 0)
+            parts.Add(Of(hotstringCount, "hotstring", "hotstrings"));
+        if (hotkeyCount > 0)
+            parts.Add(Of(hotkeyCount, "hotkey", "hotkeys"));
+
+        return string.Join(" and ", parts);
+    }
 }
