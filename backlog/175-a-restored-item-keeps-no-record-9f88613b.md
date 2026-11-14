@@ -21,11 +21,11 @@ it without having to guess.
 
 ## Acceptance criteria
 
-- [ ] After a reload, an item left applying to no profile by a restore still says somewhere why.
-- [ ] That reason names the same rules the snackbar named at restore time.
-- [ ] An item in this state is distinguishable in the grid from one an owner scoped to no profile
+- [x] After a reload, an item left applying to no profile by a restore still says somewhere why.
+- [x] That reason names the same rules the snackbar named at restore time.
+- [x] An item in this state is distinguishable in the grid from one an owner scoped to no profile
       on purpose, or the item records why that distinction is not needed.
-- [ ] An E2E flow test reloads after the restore and asserts the reason is still reachable.
+- [x] An E2E flow test reloads after the restore and asserts the reason is still reachable.
 
 ## Out of scope
 
