@@ -6,7 +6,7 @@
 - **Type**: Defect
 - **Interfaces**: API | UI
 - **Difficulty**: complex
-- **Stage**: 8-review
+- **Stage**: 9-ship
 
 ## Summary
 
