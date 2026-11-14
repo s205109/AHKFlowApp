@@ -59,8 +59,8 @@ internal sealed class RestoreHotstringCommandHandler(
         // The rules a new save must pass (backlog 162). A Snapshot that fails them still comes
         // back, but attached to no Profile, so it reaches no generated script until the Owner
         // repairs it. ADR-0021 holds the reasoning.
-        string[] warnings = [.. DefinitionRuleCheck.Check(definition).Select(e => e.ErrorMessage)];
-        bool keepProfileScope = warnings.Length == 0;
+        ValidationError[] errors = DefinitionRuleCheck.Check(definition);
+        bool keepProfileScope = errors.Length == 0;
         if (!keepProfileScope)
             definition = definition with { AppliesToAllProfiles = false };
 
@@ -102,6 +102,6 @@ internal sealed class RestoreHotstringCommandHandler(
                 : Result.Conflict(HotstringConflictMessages.DuplicateTrigger);
         }
 
-        return Result.Success(entity.ToDto() with { RestoreWarnings = warnings.Length > 0 ? warnings : null });
+        return Result.Success(entity.ToDto() with { BrokenRules = DefinitionRuleCheck.ToBrokenRules(errors) });
     }
 }

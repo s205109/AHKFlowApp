@@ -1,0 +1,19 @@
+@namespace AHKFlowApp.UI.Blazor.Components.Common
+
+<MudAlert Severity="Severity.Warning" Dense="true"
+          UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "broken-rules-notice" })">
+    <MudText Typo="Typo.body2">This item breaks rules that every save must pass. Fix the values marked below before you save.</MudText>
+    @if (NotShown.Count > 0)
+    {
+        <MudText Typo="Typo.body2">These rules belong to fields that are not shown:</MudText>
+        @foreach (string message in NotShown)
+        {
+            <MudText Typo="Typo.body2">@message</MudText>
+        }
+    }
+</MudAlert>
+
+@code {
+    /// <summary>The messages of the broken rules whose field has no input on screen. Each one gets its own line.</summary>
+    [Parameter] public IReadOnlyList<string> NotShown { get; set; } = [];
+}

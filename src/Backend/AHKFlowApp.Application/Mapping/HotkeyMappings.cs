@@ -42,6 +42,29 @@ internal static class HotkeyMappings
             ContextValue: d.ContextValue);
     }
 
+    /// <summary>
+    /// Copies back every field that <c>Hotkey.Apply</c> writes, so the rule check runs over the
+    /// stored row (backlog 175). It does not canonicalize: the stored value is what the check judges.
+    /// </summary>
+    public static HotkeyDefinition ToDefinition(this Hotkey h) => new(
+        Description: h.Description,
+        Key: h.Key,
+        Ctrl: h.Ctrl,
+        Alt: h.Alt,
+        Shift: h.Shift,
+        Win: h.Win,
+        ActionKind: h.ActionKind,
+        AppliesToAllProfiles: h.AppliesToAllProfiles,
+        Text: h.Text,
+        SendKeysContent: h.SendKeysContent,
+        RunTarget: h.RunTarget,
+        RunTargetKind: h.RunTargetKind,
+        WindowOp: h.WindowOp,
+        RemapDest: h.RemapDest,
+        Body: h.Body,
+        ContextMatchType: h.ContextMatchType,
+        ContextValue: h.ContextValue);
+
     public static HotkeyDto ToDto(this Hotkey h) => new(
         h.Id,
         h.Profiles.Select(p => p.ProfileId).ToArray(),

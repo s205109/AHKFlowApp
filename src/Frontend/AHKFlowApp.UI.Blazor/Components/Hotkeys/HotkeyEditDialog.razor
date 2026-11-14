@@ -20,6 +20,10 @@
     <DialogContent>
         <MudForm @ref="_form">
         <MudStack Spacing="3" Class="pa-2">
+            @if (_brokenRules.Any)
+            {
+                <BrokenRulesNotice NotShown="@_brokenRules.NotShown(IsOnScreen, Item.FieldValue)" />
+            }
 
             @* ---- Activating input: key + modifiers ----
                  Bound through a handler, not @bind-Value: the key is half the emitted line, so
@@ -67,6 +71,11 @@
                         </MudToggleItem>
                     }
                 </MudToggleGroup>
+                @if (FieldError(nameof(HotkeyEditModel.ActionKind)) is string actionKindError)
+                {
+                    <MudText Typo="Typo.caption" Color="Color.Error"
+                             UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "action-kind-field-error" })">@actionKindError</MudText>
+                }
             </div>
 
             @* ---- Exactly one action panel. Disable renders none: it owns no fields, and an
@@ -79,6 +88,7 @@
                                       Lines="4" MaxLength="@HotkeyEditModel.TextMaxLength" Immediate="true"
                                       OnDebounceIntervalElapsed="@(() => OnFieldDebounced(nameof(HotkeyEditModel.Text)))"
                                       DebounceInterval="300"
+                                      Validation="@(BrokenRuleCheck<string>(nameof(HotkeyEditModel.Text)))"
                                       Error="@(FieldError(nameof(HotkeyEditModel.Text)) is not null)"
                                       ErrorText="@FieldError(nameof(HotkeyEditModel.Text))"
                                       HelperText="Typed literally. Quotes and newlines are escaped for you."
@@ -117,6 +127,7 @@
                     <div data-test="run-panel">
                         <MudSelect T="RunTargetKind?" Label="Target kind" Value="Item.RunTargetKind"
                                    ValueChanged="OnRunTargetKindChanged"
+                                   Validation="@(BrokenRuleCheck<RunTargetKind?>(nameof(HotkeyEditModel.RunTargetKind)))"
                                    Error="@(FieldError(nameof(HotkeyEditModel.RunTargetKind)) is not null)"
                                    ErrorText="@FieldError(nameof(HotkeyEditModel.RunTargetKind))"
                                    UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "run-target-kind-select" })">
@@ -130,6 +141,7 @@
                                       OnDebounceIntervalElapsed="@(() => OnFieldDebounced(nameof(HotkeyEditModel.RunTarget)))"
                                       DebounceInterval="300"
                                       Placeholder="@RunTargetPlaceholder()"
+                                      Validation="@(BrokenRuleCheck<string>(nameof(HotkeyEditModel.RunTarget)))"
                                       Error="@(FieldError(nameof(HotkeyEditModel.RunTarget)) is not null)"
                                       ErrorText="@FieldError(nameof(HotkeyEditModel.RunTarget))"
                                       HelperText="A command line — arguments are allowed, e.g. rundll32.exe user32.dll,LockWorkStation"
@@ -141,6 +153,7 @@
                     <div data-test="window-panel">
                         <MudSelect T="WindowOp?" Label="Do what" Value="Item.WindowOp"
                                    ValueChanged="OnWindowOpChanged"
+                                   Validation="@(BrokenRuleCheck<WindowOp?>(nameof(HotkeyEditModel.WindowOp)))"
                                    Error="@(FieldError(nameof(HotkeyEditModel.WindowOp)) is not null)"
                                    ErrorText="@FieldError(nameof(HotkeyEditModel.WindowOp))"
                                    HelperText="Applies to the active window."
@@ -175,6 +188,7 @@
                                           Lines="6" MaxLength="@HotkeyEditModel.BodyMaxLength" Immediate="true"
                                           OnDebounceIntervalElapsed="@(() => OnFieldDebounced(nameof(HotkeyEditModel.Body)))"
                                           DebounceInterval="300"
+                                          Validation="@(BrokenRuleCheck<string>(nameof(HotkeyEditModel.Body)))"
                                           Error="@(FieldError(nameof(HotkeyEditModel.Body)) is not null)"
                                           ErrorText="@FieldError(nameof(HotkeyEditModel.Body))"
                                           HelperText="Emitted verbatim after ::. Include your own { } for a block body. Braces must balance; # directives and lines that define another hotkey or hotstring are rejected."
@@ -199,6 +213,7 @@
                           Required="true" RequiredError="Description is required" MaxLength="200" Immediate="true"
                           OnDebounceIntervalElapsed="@(() => OnFieldDebounced(nameof(HotkeyEditModel.Description)))"
                           DebounceInterval="300"
+                          Validation="@(BrokenRuleCheck<string>(nameof(HotkeyEditModel.Description)))"
                           Error="@(FieldError(nameof(HotkeyEditModel.Description)) is not null)"
                           ErrorText="@FieldError(nameof(HotkeyEditModel.Description))"
                           HelperText="Emitted as ; comment lines in the generated script."
@@ -229,6 +244,9 @@
             {
                 <MudSelect T="WindowMatchType" Value="Item.ContextMatchType.Value" ValueChanged="OnContextMatchTypeChanged"
                            Label="Match by"
+                           Validation="@(BrokenRuleCheck<WindowMatchType>(nameof(HotkeyEditModel.ContextMatchType)))"
+                           Error="@(FieldError(nameof(HotkeyEditModel.ContextMatchType)) is not null)"
+                           ErrorText="@FieldError(nameof(HotkeyEditModel.ContextMatchType))"
                            UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "context-match-type-select" })">
                     <MudSelectItem T="WindowMatchType" Value="WindowMatchType.Executable">Program</MudSelectItem>
                     <MudSelectItem T="WindowMatchType" Value="WindowMatchType.WindowClass">Window class</MudSelectItem>
@@ -239,6 +257,7 @@
                               OnDebounceIntervalElapsed="OnContextValueDebounced"
                               DebounceInterval="300"
                               Placeholder="@ContextValuePlaceholder"
+                              Validation="@(BrokenRuleCheck<string>(nameof(HotkeyEditModel.ContextValue)))"
                               Error="@(FieldError(nameof(HotkeyEditModel.ContextValue)) is not null)"
                               ErrorText="@FieldError(nameof(HotkeyEditModel.ContextValue))"
                               UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "context-value-input" })" />
@@ -352,6 +371,7 @@
         if (!ReferenceEquals(_lastItem, Item))
         {
             _lastItem = Item;
+            _brokenRules = Item.BrokenRules;
             if (Item.ActionKind == HotkeyActionKind.SendKeys)
                 DecomposeSendKeys();
         }
@@ -372,7 +392,29 @@
     private string? FieldError(string field) =>
         (field == nameof(HotkeyEditModel.Key) ? _duplicateCombination : null)
         ?? _saveFieldErrors.GetValueOrDefault(field)
+        ?? _brokenRules.TextFor(field, Item.FieldValue)
         ?? _previewFieldErrors.GetValueOrDefault(field);
+
+    // The rules the stored item broke when it was loaded (backlog 175). Set when the item changes,
+    // and cleared when Save starts, so from then on Save's own result decides what shows.
+    private BrokenRuleSet _brokenRules = BrokenRuleSet.None;
+
+    // A MudSelect that holds a value validates itself when the dialog opens, and that clears an
+    // Error set from outside. Its Validation hook runs at the same time, so a broken rule on a
+    // select goes through this check as well.
+    private Func<T, string?> BrokenRuleCheck<T>(string field) =>
+        _ => _brokenRules.TextFor(field, Item.FieldValue);
+
+    /// <summary>
+    /// True exactly when the dialog renders the input for <paramref name="field"/> at this moment.
+    /// A broken rule on any other field is listed in the notice, because it has no input to sit on.
+    /// </summary>
+    private bool IsOnScreen(string field) => field switch
+    {
+        nameof(HotkeyEditModel.Key) or nameof(HotkeyEditModel.Description) or nameof(HotkeyEditModel.ActionKind) => true,
+        nameof(HotkeyEditModel.ContextMatchType) or nameof(HotkeyEditModel.ContextValue) => Item.ContextMatchType is not null,
+        _ => HotkeyEditModel.FieldNamesOwnedBy(Item.ActionKind).Contains(field),
+    };
 
     /// <summary>
     /// Drops a save error the moment the user edits the field it sits on. A save error is a verdict
@@ -409,6 +451,7 @@
         _error = null;
         _saveFieldErrors.Clear();
         _duplicateCombination = null;
+        _brokenRules = BrokenRuleSet.None;
         try
         {
             await _form.ValidateAsync();

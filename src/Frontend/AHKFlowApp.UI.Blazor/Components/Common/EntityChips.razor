@@ -1,4 +1,5 @@
 @namespace AHKFlowApp.UI.Blazor.Components.Common
+@using AHKFlowApp.UI.Blazor.DTOs
 
 @if (AppliesToAllProfiles)
 {
@@ -6,7 +7,7 @@
 }
 else if (MarkNoProfile && Ids.Count == 0)
 {
-    <MudTooltip Text="No script contains this item. Open it and choose its profiles.">
+    <MudTooltip Text="@NoProfileText" Class="no-profile-tooltip-text">
         <MudChip T="string" Size="Size.Small" Color="MudBlazor.Color.Warning" Variant="Variant" Class="no-profile-chip">No profile</MudChip>
     </MudTooltip>
 }
@@ -28,10 +29,17 @@ else
     /// <summary>When true, an item with no profile gets one "No profile" chip instead of an empty cell. Set it for profile cells only, never for category cells.</summary>
     [Parameter] public bool MarkNoProfile { get; set; }
 
+    /// <summary>The rules the item breaks, from the server. When the list is not empty, the "No profile" hover text names them. Backlog 175.</summary>
+    [Parameter] public IReadOnlyList<BrokenRuleDto> BrokenRules { get; set; } = [];
+
     [Parameter] public Variant Variant { get; set; } = Variant.Filled;
 
     /// <summary>Color for the id chips. Null keeps MudBlazor's default (grey). Does not affect the "All profiles" chip.</summary>
     [Parameter] public MudBlazor.Color? Color { get; set; }
+
+    private string NoProfileText => BrokenRules.Count == 0
+        ? "No script contains this item. Open it and choose its profiles."
+        : $"No script contains this item. It breaks these rules: {string.Join(' ', BrokenRules.Select(r => r.Message))} Open it, fix those values, and choose its profiles.";
 
     private string NameFor(Guid id) =>
         Options.FirstOrDefault(o => o.Id == id)?.Name ?? id.ToString()[..8];

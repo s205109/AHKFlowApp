@@ -68,6 +68,15 @@ for a new item, so the exception would quietly become the rule for most items.
 3. **"Applies to no profile" has two causes that look identical.** An item can also reach it because
    the Owner deleted every Profile it named, which Restore already allowed before this decision.
    Nothing persisted tells the two apart. Only the Restore response carries the rule messages.
+
+   > **Amendment, 2026-11-13 (backlog 175):** The two causes still look identical in what is
+   > stored. They no longer look identical on screen. The bad value stays stored, so every read of
+   > an item that applies to no profile runs the same rule check again and returns the rules it
+   > breaks, as **Broken rules**. An empty result means the Owner only has to choose profiles. A
+   > non-empty result means the Owner must fix those values first. The Restore response is no
+   > longer the only place the rule messages appear. The check names the rules as they read today,
+   > so a rule whose text changed later shows its new text. Nothing new is stored, so "no new
+   > column" above still holds.
 4. **The rules now have a second caller.** A rule tightened for Create and Update immediately
    governs Restore and Revert as well. That is the point of the decision, and it means a future
    tightening can refuse a Revert that worked the day before.

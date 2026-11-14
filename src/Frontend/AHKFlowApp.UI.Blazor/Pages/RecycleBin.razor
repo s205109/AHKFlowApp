@@ -184,8 +184,9 @@
             if (warnings is { Length: > 0 })
             {
                 // Each rule message already ends in a period, so a single space joins them.
-                // RequireInteraction keeps the message up until the Owner closes it: nothing
-                // persisted records which rules failed, so this toast is the only copy.
+                // RequireInteraction keeps the message up until the Owner closes it. Afterwards
+                // the item's No profile chip and its edit dialog name the same rules, because
+                // every read checks the stored value again (backlog 175).
                 Snackbar.Add(
                     $"{row.Type} restored, but it applies to no profile: {string.Join(" ", warnings)} "
                     + "Open it, fix those values, and choose its profiles again.",
@@ -244,7 +245,7 @@
     {
         ApiResult<HotstringDto> result = await Hotstrings.RestoreAsync(id, _cts.Token);
         return result.IsSuccess
-            ? (null, result.Value?.RestoreWarnings)
+            ? (null, result.Value?.BrokenRules?.Select(r => r.Message).ToArray())
             : (ApiErrorMessageFactory.Build(result.Status, result.Problem), null);
     }
 
@@ -252,7 +253,7 @@
     {
         ApiResult<HotkeyDto> result = await Hotkeys.RestoreAsync(id, _cts.Token);
         return result.IsSuccess
-            ? (null, result.Value?.RestoreWarnings)
+            ? (null, result.Value?.BrokenRules?.Select(r => r.Message).ToArray())
             : (ApiErrorMessageFactory.Build(result.Status, result.Problem), null);
     }
 

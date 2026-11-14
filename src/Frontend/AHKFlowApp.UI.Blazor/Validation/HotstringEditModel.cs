@@ -33,6 +33,13 @@ public sealed class HotstringEditModel
     /// </summary>
     public bool LoadedWithNoProfile { get; init; }
 
+    /// <summary>
+    /// The rules the stored item broke when it was loaded (backlog 175). Only <see cref="FromDto"/>
+    /// sets it, and <see cref="Clone"/> copies the reference, so an inline edit that is promoted
+    /// to the dialog keeps the values from the load, not the values the Owner has typed since.
+    /// </summary>
+    public BrokenRuleSet BrokenRules { get; private set; } = BrokenRuleSet.None;
+
     public bool IsEndingCharacterRequired { get; set; } = true;
     // Off by default, as in AutoHotkey: a hotstring fires inside a word only when its definition carries ?.
     public bool IsTriggerInsideWord { get; set; }
@@ -137,30 +144,35 @@ public sealed class HotstringEditModel
         }
     }
 
-    public static HotstringEditModel FromDto(HotstringDto dto) => new()
+    public static HotstringEditModel FromDto(HotstringDto dto)
     {
-        Id = dto.Id,
-        Trigger = dto.Trigger,
-        Replacement = dto.Replacement,
-        Description = dto.Description,
-        AppliesToAllProfiles = dto.AppliesToAllProfiles,
-        ProfileIds = [.. dto.ProfileIds],
-        LoadedWithNoProfile = !dto.AppliesToAllProfiles && dto.ProfileIds.Length == 0,
-        IsEndingCharacterRequired = dto.IsEndingCharacterRequired,
-        IsTriggerInsideWord = dto.IsTriggerInsideWord,
-        CategoryIds = [.. dto.CategoryIds ?? []],
-        Kind = dto.Kind,
-        IsCaseSensitive = dto.IsCaseSensitive,
-        OmitEndingCharacter = dto.OmitEndingCharacter,
-        DateTimeFormat = dto.DateTimeFormat,
-        DateOffsetAmount = dto.DateOffsetAmount,
-        DateOffsetUnit = dto.DateOffsetUnit,
-        ContextMatchType = dto.ContextMatchType,
-        ContextValue = dto.ContextValue,
-        Delivery = dto.Delivery,
-        ReplacementIsTruncated = dto.ReplacementIsTruncated,
-        EffectiveDelivery = dto.EffectiveDelivery,
-    };
+        HotstringEditModel model = new()
+        {
+            Id = dto.Id,
+            Trigger = dto.Trigger,
+            Replacement = dto.Replacement,
+            Description = dto.Description,
+            AppliesToAllProfiles = dto.AppliesToAllProfiles,
+            ProfileIds = [.. dto.ProfileIds],
+            LoadedWithNoProfile = !dto.AppliesToAllProfiles && dto.ProfileIds.Length == 0,
+            IsEndingCharacterRequired = dto.IsEndingCharacterRequired,
+            IsTriggerInsideWord = dto.IsTriggerInsideWord,
+            CategoryIds = [.. dto.CategoryIds ?? []],
+            Kind = dto.Kind,
+            IsCaseSensitive = dto.IsCaseSensitive,
+            OmitEndingCharacter = dto.OmitEndingCharacter,
+            DateTimeFormat = dto.DateTimeFormat,
+            DateOffsetAmount = dto.DateOffsetAmount,
+            DateOffsetUnit = dto.DateOffsetUnit,
+            ContextMatchType = dto.ContextMatchType,
+            ContextValue = dto.ContextValue,
+            Delivery = dto.Delivery,
+            ReplacementIsTruncated = dto.ReplacementIsTruncated,
+            EffectiveDelivery = dto.EffectiveDelivery,
+        };
+        model.BrokenRules = BrokenRuleSet.Capture(dto.BrokenRules, model.FieldValue);
+        return model;
+    }
 
     public HotstringEditModel Clone() => new()
     {
@@ -171,6 +183,7 @@ public sealed class HotstringEditModel
         AppliesToAllProfiles = AppliesToAllProfiles,
         ProfileIds = [.. ProfileIds],
         LoadedWithNoProfile = LoadedWithNoProfile,
+        BrokenRules = BrokenRules,
         IsEndingCharacterRequired = IsEndingCharacterRequired,
         IsTriggerInsideWord = IsTriggerInsideWord,
         CategoryIds = [.. CategoryIds],
@@ -185,6 +198,26 @@ public sealed class HotstringEditModel
         Delivery = Delivery,
         ReplacementIsTruncated = ReplacementIsTruncated,
         EffectiveDelivery = EffectiveDelivery,
+    };
+
+    /// <summary>
+    /// The model's value for each field the server's rule check can name, and null for any other
+    /// name. <see cref="BrokenRuleSet"/> compares these values to find out whether the Owner has
+    /// changed a field since the load.
+    /// </summary>
+    internal object? FieldValue(string field) => field switch
+    {
+        nameof(Trigger) => Trigger,
+        nameof(Replacement) => Replacement,
+        nameof(Description) => Description,
+        nameof(Kind) => Kind,
+        nameof(Delivery) => Delivery,
+        nameof(DateTimeFormat) => DateTimeFormat,
+        nameof(DateOffsetAmount) => DateOffsetAmount,
+        nameof(DateOffsetUnit) => DateOffsetUnit,
+        nameof(ContextMatchType) => ContextMatchType,
+        nameof(ContextValue) => ContextValue,
+        _ => null,
     };
 
     public CreateHotstringDto ToCreateDto()

@@ -23,7 +23,6 @@ public sealed record HotkeyDto(
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
     Guid[]? CategoryIds = null,
-    // The rules a Restore's stored snapshot failed, when the item came back applying to no
-    // profile. Null or empty on every other response. The name matches the backend DTO, so
-    // System.Text.Json binds it with no attribute.
-    string[]? RestoreWarnings = null);
+    // The rules this item breaks, when it applies to no profile. Null on every other response.
+    // The name matches the backend DTO, so System.Text.Json binds it with no attribute.
+    IReadOnlyList<BrokenRuleDto>? BrokenRules = null);

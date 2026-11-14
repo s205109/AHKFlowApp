@@ -1690,6 +1690,121 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
         provider.FindAll("[data-test=\"no-profile-notice\"]").Should().BeEmpty();
     }
 
+    // Backlog 175: the dialog showed no broken rule until Save. Every rule must show at open on its
+    // visible input, and a preview at open must not replace them (Review Focus 4).
+    [Fact]
+    public async Task EditMode_BrokenRulesOnVisibleInputs_ShowInlineAndOutlastThePreview()
+    {
+        const string quotes = "Value under Window context must not contain double quotes.";
+        const string backticks = "Value under Window context must not contain backticks.";
+        const string description = "Description must be 200 characters or fewer.";
+        _api.PreviewAsync(Arg.Any<HotstringPreviewRequestDto>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HotstringPreviewDto>.Failure(ApiResultStatus.Validation,
+                new ApiProblemDetails(null, "Bad Request", 400, null, null,
+                    new Dictionary<string, string[]> { ["Input.ContextValue"] = ["A preview message."] })));
+        HotstringEditModel item = HotstringEditModel.FromDto(new HotstringDto(
+            Guid.NewGuid(), [], false, "btw", "by the way", new string('d', 201), true, false,
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow,
+            ContextMatchType: WindowMatchType.TitleContains, ContextValue: "a \" ` b",
+            BrokenRules: [new("ContextValue", quotes), new("ContextValue", backticks), new("Description", description)])).Clone();
+
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
+        DisablePreviewDebounce(provider);
+        provider.WaitForAssertion(() => provider.Find("[data-test=\"ahk-preview\"]"));
+        await provider.InvokeAsync(() => provider.Find("[data-test=\"ahk-preview\"] .mud-expand-panel-header").Click());
+        provider.WaitForAssertion(() => _api.Received(1).PreviewAsync(Arg.Any<HotstringPreviewRequestDto>(), Arg.Any<CancellationToken>()));
+        await PreviewRun(provider);
+
+        provider.WaitForAssertion(() =>
+            provider.FindComponents<MudTextField<string>>().Single(f => f.Instance.Label == "Value").Instance
+                .GetState(x => x.ErrorText).Should().Be($"{quotes} {backticks}"));
+        provider.FindComponents<MudTextField<string>>().Single(f => f.Instance.Label == "Description").Instance
+            .GetState(x => x.ErrorText).Should().Be(description);
+        provider.Find("[data-test=\"broken-rules-notice\"]").TextContent.Should()
+            .Contain("This item breaks rules that every save must pass. Fix the values marked below before you save.")
+            .And.NotContain("These rules belong to fields that are not shown:");
+    }
+
+    // Backlog 175 (Review Focus 5): pressing Save must still reach the API, and its own result
+    // then replaces the broken rules, as Save's result did before.
+    [Fact]
+    public async Task EditMode_SavePressed_SaveResultReplacesTheBrokenRules()
+    {
+        _api.UpdateAsync(Arg.Any<Guid>(), Arg.Any<UpdateHotstringDto>(), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HotstringDto>.Failure(ApiResultStatus.Validation,
+                new ApiProblemDetails(null, "Bad Request", 400, null, null,
+                    new Dictionary<string, string[]> { ["ContextValue"] = ["Save says this."] })));
+        HotstringEditModel item = HotstringEditModel.FromDto(new HotstringDto(
+            Guid.NewGuid(), [], false, "btw", "by the way", null, true, false,
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow,
+            ContextMatchType: WindowMatchType.TitleContains, ContextValue: "a \" b",
+            BrokenRules: [new("ContextValue", "Value under Window context must not contain double quotes.")])).Clone();
+
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
+        provider.WaitForAssertion(() => provider.Find("[data-test=\"broken-rules-notice\"]"));
+        await provider.InvokeAsync(() => provider.Find("button.commit-edit").Click());
+
+        provider.WaitForAssertion(() =>
+            provider.FindComponents<MudTextField<string>>().Single(f => f.Instance.Label == "Value").Instance
+                .GetState(x => x.ErrorText).Should().Be("Save says this."));
+        await _api.Received(1).UpdateAsync(Arg.Any<Guid>(), Arg.Any<UpdateHotstringDto>(), Arg.Any<CancellationToken>());
+        provider.FindAll("[data-test=\"broken-rules-notice\"]").Should().BeEmpty();
+    }
+
+    // Backlog 175: MudBlazor validates some inputs once the dialog opens, and that clears an Error
+    // set from outside. Every kind of input must still show its broken rule at open.
+    [Theory]
+    [InlineData(HotstringKind.Text, "Trigger")]
+    [InlineData(HotstringKind.Text, "Replacement")]
+    [InlineData(HotstringKind.Text, "Description")]
+    [InlineData(HotstringKind.Text, "Kind")]
+    [InlineData(HotstringKind.Text, "Delivery")]
+    [InlineData(HotstringKind.Text, "ContextMatchType")]
+    [InlineData(HotstringKind.Text, "ContextValue")]
+    [InlineData(HotstringKind.DateTime, "DateTimeFormat")]
+    [InlineData(HotstringKind.DateTime, "DateOffsetAmount")]
+    [InlineData(HotstringKind.DateTime, "DateOffsetUnit")]
+    [InlineData(HotstringKind.Macro, "Replacement")]
+    public async Task EditMode_BrokenRule_ShowsOnItsOwnInputAtOpen(HotstringKind kind, string field)
+    {
+        string message = $"Broken {field}.";
+        HotstringEditModel item = HotstringEditModel.FromDto(new HotstringDto(
+            Guid.NewGuid(), [], true, "btw", "by the way", "A note", true, false,
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow,
+            Kind: kind, DateTimeFormat: "yyyy-MM-dd", DateOffsetAmount: 1, DateOffsetUnit: DateOffsetUnit.Days,
+            ContextMatchType: WindowMatchType.TitleContains, ContextValue: "x", Delivery: HotstringDelivery.Auto,
+            BrokenRules: [new(field, message)])).Clone();
+
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
+
+        provider.WaitForAssertion(() => provider.Markup.Should().Contain(message));
+        provider.Find("[data-test=\"broken-rules-notice\"]").TextContent.Should()
+            .NotContain(message, "the input shows it, so the notice does not list it again");
+    }
+
+    // Backlog 175 (final review): MudBlazor validates a text field when it loses focus, and that
+    // cleared an Error set from outside. An Owner who tabs through the form must still see the marks.
+    [Theory]
+    [InlineData("trigger-input", "Trigger")]
+    [InlineData("description-input", "Description")]
+    [InlineData("context-value-input", "ContextValue")]
+    [InlineData("replacement-input", "Replacement")]
+    public async Task EditMode_BrokenRule_StaysMarkedWhenTheFieldLosesFocusUnchanged(string dataTest, string field)
+    {
+        string message = $"Broken {field}.";
+        HotstringEditModel item = HotstringEditModel.FromDto(new HotstringDto(
+            Guid.NewGuid(), [], true, "btw", "by the way", "A note", true, false,
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow,
+            ContextMatchType: WindowMatchType.TitleContains, ContextValue: "x",
+            BrokenRules: [new(field, message)])).Clone();
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
+        provider.WaitForAssertion(() => provider.Markup.Should().Contain(message));
+
+        await provider.InvokeAsync(() => provider.Find($"[data-test=\"{dataTest}\"]").Blur());
+
+        provider.Markup.Should().Contain(message);
+    }
+
     private static void DisablePreviewDebounce(IRenderedComponent<MudDialogProvider> provider) =>
         provider.FindComponent<HotstringEditDialog>().Instance.PreviewDebounce = TimeSpan.Zero;
 

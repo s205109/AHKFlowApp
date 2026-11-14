@@ -6,7 +6,7 @@
 - **Type**: Defect
 - **Interfaces**: API | UI
 - **Difficulty**: complex
-- **Stage**: 1-pickup
+- **Stage**: 9-ship
 
 ## Summary
 
@@ -21,11 +21,11 @@ it without having to guess.
 
 ## Acceptance criteria
 
-- [ ] After a reload, an item left applying to no profile by a restore still says somewhere why.
-- [ ] That reason names the same rules the snackbar named at restore time.
-- [ ] An item in this state is distinguishable in the grid from one an owner scoped to no profile
+- [x] After a reload, an item left applying to no profile by a restore still says somewhere why.
+- [x] That reason names the same rules the snackbar named at restore time.
+- [x] An item in this state is distinguishable in the grid from one an owner scoped to no profile
       on purpose, or the item records why that distinction is not needed.
-- [ ] An E2E flow test reloads after the restore and asserts the reason is still reachable.
+- [x] An E2E flow test reloads after the restore and asserts the reason is still reachable.
 
 ## Out of scope
 
@@ -72,13 +72,15 @@ it without having to guess.
 - Related. Item 166 records that a profile delete produces this same state with no warning at
   all. One path shouts and the other is silent. Design the two together: if a restore and a
   profile delete both need a durable record, one mechanism should serve both.
-- **Backlog 210 builds the shared part (Design, 2026-11-13).** An item that applies to no profile
-  gets a "No profile" chip in the grids. The chip comes from the item's state, so nothing new is
-  stored. That is safe because an Owner cannot choose this state:
-  (`src/Backend/AHKFlowApp.Application/Validation/HotstringRules.cs:72`, ".Must(ids => ids is { Length: > 0 })").
-  Every Create, Update and Import validator uses that rule. So the third criterion above has no
-  "on purpose" case to tell apart. What stays for this item is storing the rule messages a
-  failing Restore names, so the chip or the item can show them after a reload.
-- Spec: needed — where the reason lives is a design decision. Options include persisting
-  `restoreWarnings` on the item, writing a history entry, or marking the item as needing repair.
-- Plan: none — complex, so Design comes first at pickup.
+- **Criterion 3 has no "on purpose" case.** An Owner can never choose Applies to no profile:
+  every save refuses `AppliesToAllProfiles` false with no profiles. Backlog 210 established this.
+  So the distinction this item delivers is between the two causes that do exist. An item that
+  breaks rules needs its values fixed. An item that lost its profiles only needs profiles chosen.
+  Design decided this on 2026-11-13.
+- **Depends on backlogs 210 and 211.** This item extends 210's "No profile" chip, and 211's
+  `LoadedWithNoProfile` and edit dialog notice. Backlog 210's plan moved the notice into 211, which
+  stacks on 210's branch. The plan was written before both merged. Its Tasks 1 and 2 need
+  neither item. Its Task 3 waits until both merge, then merges `main` into this branch and
+  checks every name the plan took from their plans.
+- Spec: `docs/superpowers/specs/2026-11-13-restored-item-says-why-design-175.md`
+- Plan: `docs/superpowers/plans/2026-11-13-restored-item-says-why-plan-175.md`

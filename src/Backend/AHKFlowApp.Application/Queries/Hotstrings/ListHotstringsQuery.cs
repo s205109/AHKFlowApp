@@ -4,6 +4,7 @@ using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Application.Commands.Dev;
 using AHKFlowApp.Application.Common;
 using AHKFlowApp.Application.DTOs;
+using AHKFlowApp.Application.Validation;
 using AHKFlowApp.Domain.Constants;
 using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Domain.Enums;
@@ -234,7 +235,34 @@ internal sealed class ListHotstringsQueryHandler(
             }
         }
 
+        await FillBrokenRulesAsync(items, ownerOid, ct);
+
         return Result.Success(new PagedList<HotstringDto>(items, request.Page, request.PageSize, total));
+    }
+
+    // Backlog 175: an item that applies to no profile names the rules it breaks. The check needs the
+    // stored row, because the projection above cuts a long Replacement to the preview length.
+    private async Task FillBrokenRulesAsync(List<HotstringDto> items, Guid ownerOid, CancellationToken ct)
+    {
+        Guid[] ids =
+        [
+            .. items
+                .Where(i => i is { AppliesToAllProfiles: false, ProfileIds.Length: 0 })
+                .Select(i => i.Id)
+        ];
+        if (ids.Length == 0)
+            return;
+
+        Dictionary<Guid, Hotstring> rows = await db.Hotstrings
+            .AsNoTracking()
+            .Where(h => h.OwnerOid == ownerOid && ids.Contains(h.Id))
+            .ToDictionaryAsync(h => h.Id, ct);
+
+        for (int i = 0; i < items.Count; i++)
+        {
+            if (rows.TryGetValue(items[i].Id, out Hotstring? row))
+                items[i] = items[i] with { BrokenRules = DefinitionRuleCheck.BrokenRules(row) };
+        }
     }
 
     private async Task EnsureHotstringsSeededAsync(Guid ownerOid, CancellationToken ct)

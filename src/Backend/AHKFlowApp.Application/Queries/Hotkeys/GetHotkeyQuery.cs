@@ -1,6 +1,7 @@
 using AHKFlowApp.Application.Abstractions;
 using AHKFlowApp.Application.DTOs;
 using AHKFlowApp.Application.Mapping;
+using AHKFlowApp.Application.Validation;
 using AHKFlowApp.Domain.Entities;
 using Ardalis.Result;
 using Microsoft.EntityFrameworkCore;
@@ -24,8 +25,14 @@ internal sealed class GetHotkeyQueryHandler(
             .Include(h => h.Profiles)
             .FirstOrDefaultAsync(h => h.Id == request.Id && h.OwnerOid == ownerOid, ct);
 
-        return entity is null
-            ? Result.NotFound()
-            : Result.Success(entity.ToDto());
+        if (entity is null)
+            return Result.NotFound();
+
+        HotkeyDto dto = entity.ToDto();
+
+        // Backlog 175: only an item that applies to no profile names its broken rules.
+        return Result.Success(entity is { AppliesToAllProfiles: false, Profiles.Count: 0 }
+            ? dto with { BrokenRules = DefinitionRuleCheck.BrokenRules(entity) }
+            : dto);
     }
 }
