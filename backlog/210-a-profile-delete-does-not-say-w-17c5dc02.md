@@ -21,9 +21,9 @@ from my scripts without knowing.
 
 ## Acceptance criteria
 
-- [ ] The delete confirmation names how many items are scoped to that profile only, and what
+- [x] The delete confirmation names how many items are scoped to that profile only, and what
       happens to them.
-- [ ] An item left with no profile after a profile delete is marked or reported somewhere the
+- [x] An item left with no profile after a profile delete is marked or reported somewhere the
       owner can find after a reload.
 
 ## Out of scope
