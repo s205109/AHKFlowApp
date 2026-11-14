@@ -43,7 +43,7 @@ actual CLI surface and how each hotstring kind renders in `list` output.
 | Trigger | The abbreviation, truncated to 20 chars. |
 | Kind | `Text`, `DateTime`, `Macro`, or `Raw`. |
 | Replacement | Per-kind summary — see below. |
-| Profiles | Resolved profile names, or `all`. |
+| Profiles | Resolved profile names. `all` when the hotstring applies to all profiles. `no profile` when it applies to no profile, so no script contains it. |
 | Context | Window-context summary (`exe:`/`class:`/`title:` prefix), blank when global. |
 | Updated | Last-updated timestamp, local time. |
 
