@@ -51,6 +51,9 @@ public sealed class BrokenRuleSet
     /// </summary>
     public string? TextFor(string field, Func<string, object?> valueOf)
     {
+        if (!Any)
+            return null;
+
         string[] messages = [.. LiveRules(valueOf).Where(r => r.Field == field).Select(r => r.Message)];
         return messages.Length == 0 ? null : string.Join(' ', messages);
     }
@@ -59,7 +62,7 @@ public sealed class BrokenRuleSet
     /// The messages of the live rules whose field <paramref name="isOnScreen"/> rejects, in order.
     /// </summary>
     public IReadOnlyList<string> NotShown(Func<string, bool> isOnScreen, Func<string, object?> valueOf) =>
-        [.. LiveRules(valueOf).Where(r => !isOnScreen(r.Field)).Select(r => r.Message)];
+        !Any ? [] : [.. LiveRules(valueOf).Where(r => !isOnScreen(r.Field)).Select(r => r.Message)];
 
     private IEnumerable<BrokenRuleDto> LiveRules(Func<string, object?> valueOf) =>
         Rules.Where(r => Equals(valueOf(r.Field), _valueAtLoad[r.Field]));
