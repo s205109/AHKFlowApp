@@ -172,12 +172,7 @@ public sealed class ProfilesPageTests : BunitContext, IAsyncLifetime
 
         // The stub answers the confirmation with "cancel". Without it the message box never
         // resolves in bUnit, and the delete handler would stay suspended, proving nothing.
-        IDialogService dialogService = Substitute.For<IDialogService>();
-        dialogService.ShowMessageBoxAsync(
-            Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(),
-            Arg.Any<DialogOptions>())
-            .Returns(Task.FromResult<bool?>(false));
-        Services.AddSingleton(dialogService);
+        IDialogService dialogService = StubDialog(false);
 
         IRenderedComponent<Profiles> cut = RenderPage();
         cut.WaitForAssertion(() => cut.Find("button.delete"));

@@ -13,7 +13,7 @@ internal static class ProfileDeleteWording
         if (total == 0)
             return $"Delete \"{name}\"? No hotstrings or hotkeys apply only to this profile. This cannot be undone.";
 
-        string subject = Subject(hotstringCount, hotkeyCount);
+        string subject = CountWording.HotstringsAndHotkeys(hotstringCount, hotkeyCount);
         string effect = total == 1
             ? $"{subject} applies only to this profile. After the delete it applies to no profile, so no script contains it until you choose its profiles again."
             : $"{subject} apply only to this profile. After the delete they apply to no profile, so no script contains them until you choose their profiles again.";
@@ -28,17 +28,6 @@ internal static class ProfileDeleteWording
             return "Profile deleted.";
 
         string verb = total == 1 ? "applies" : "apply";
-        return $"Profile deleted. {Subject(hotstringCount, hotkeyCount)} now {verb} to no profile.";
-    }
-
-    private static string Subject(int hotstringCount, int hotkeyCount)
-    {
-        List<string> parts = [];
-        if (hotstringCount > 0)
-            parts.Add(CountWording.Of(hotstringCount, "hotstring", "hotstrings"));
-        if (hotkeyCount > 0)
-            parts.Add(CountWording.Of(hotkeyCount, "hotkey", "hotkeys"));
-
-        return string.Join(" and ", parts);
+        return $"Profile deleted. {CountWording.HotstringsAndHotkeys(hotstringCount, hotkeyCount)} now {verb} to no profile.";
     }
 }

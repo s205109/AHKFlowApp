@@ -23,10 +23,10 @@ public sealed class ProfileDeleteFlowTests(StackFixtureB fixture) : IAsyncLifeti
         // the JSON. The page tests stub the client, so they cannot show that.
         using HttpClient client = fixture.Api.CreateClient();
         ProfileDto work = await PostAsync<ProfileDto>(client, "/api/v1/profiles", new CreateProfileDto("Work"));
-        await PostAsync<HotstringDto>(client, "/api/v1/hotstrings", new CreateHotstringDto(
-            "orphan", "left behind", ProfileIds: [work.Id], AppliesToAllProfiles: false));
-        await PostAsync<HotkeyDto>(client, "/api/v1/hotkeys", new CreateHotkeyDto(
-            "Left behind", "f16", HotkeyActionKind.Disable, ProfileIds: [work.Id]));
+        (await client.PostAsJsonAsync("/api/v1/hotstrings", new CreateHotstringDto(
+            "orphan", "left behind", ProfileIds: [work.Id], AppliesToAllProfiles: false))).EnsureSuccessStatusCode();
+        (await client.PostAsJsonAsync("/api/v1/hotkeys", new CreateHotkeyDto(
+            "Left behind", "f16", HotkeyActionKind.Disable, ProfileIds: [work.Id]))).EnsureSuccessStatusCode();
 
         await using IBrowserContext ctx = await fixture.Browser.NewContextAsync();
         IPage page = await FirstPageLoad.OpenAsync(ctx, $"{fixture.Spa.BaseUrl}/profiles");
