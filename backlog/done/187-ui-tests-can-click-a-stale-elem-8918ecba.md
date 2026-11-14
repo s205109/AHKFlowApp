@@ -74,9 +74,9 @@ removed" and "tests cover the new API" cannot.
   'onclick' event in the current render tree.` The `Find` form and the `InvokeAsync` form passed
   every time.
 - The hotkey edit dialog renders on its own through the MudBlazor text-field debounce, at
-  (`src/Frontend/AHKFlowApp.UI.Blazor/Components/Hotkeys/HotkeyEditDialog.razor:81`, "DebounceInterval=")
+  (`src/Frontend/AHKFlowApp.UI.Blazor/Components/Hotkeys/HotkeyEditDialog.razor:90`, "DebounceInterval=")
   and on four more fields. Its `PreviewScheduler` adds no delay, at
-  (`src/Frontend/AHKFlowApp.UI.Blazor/Components/Hotkeys/HotkeyEditDialog.razor:329`, "Debounce is TimeSpan.Zero here").
+  (`src/Frontend/AHKFlowApp.UI.Blazor/Components/Hotkeys/HotkeyEditDialog.razor:355`, "Debounce is TimeSpan.Zero here").
   All 52 bare events in its test file use `Find`. None use `FindAll`.
 - On `main` at `eefd8142`, 10 bare events fire on a `FindAll` element, in 5 files:
   `HotkeyMobileListTests.cs` (2), `HotstringMobileListTests.cs` (2), `CliQuickstartCardTests.cs`
