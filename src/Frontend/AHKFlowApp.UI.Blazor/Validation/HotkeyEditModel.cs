@@ -55,6 +55,13 @@ public sealed class HotkeyEditModel
     /// </summary>
     public bool LoadedWithNoProfile { get; init; }
 
+    /// <summary>
+    /// The rules the stored item broke when it was loaded (backlog 175). Only <see cref="FromDto"/>
+    /// sets it, and <see cref="Clone"/> copies the reference, so an inline edit that is promoted
+    /// to the dialog keeps the values from the load, not the values the Owner has typed since.
+    /// </summary>
+    public BrokenRuleSet BrokenRules { get; private set; } = BrokenRuleSet.None;
+
     public List<Guid> CategoryIds { get; set; } = [];
 
     /// <summary>
@@ -79,30 +86,35 @@ public sealed class HotkeyEditModel
         ActionKind is HotkeyActionKind.SendText or HotkeyActionKind.Run
         && catalog.IsValidKey(Key);
 
-    public static HotkeyEditModel FromDto(HotkeyDto dto) => new()
+    public static HotkeyEditModel FromDto(HotkeyDto dto)
     {
-        Id = dto.Id,
-        Description = dto.Description,
-        Key = dto.Key,
-        Ctrl = dto.Ctrl,
-        Alt = dto.Alt,
-        Shift = dto.Shift,
-        Win = dto.Win,
-        ActionKind = dto.ActionKind,
-        Text = dto.Text,
-        SendKeysContent = dto.SendKeysContent,
-        RunTarget = dto.RunTarget,
-        RunTargetKind = dto.RunTargetKind,
-        WindowOp = dto.WindowOp,
-        RemapDest = dto.RemapDest,
-        Body = dto.Body,
-        ContextMatchType = dto.ContextMatchType,
-        ContextValue = dto.ContextValue,
-        AppliesToAllProfiles = dto.AppliesToAllProfiles,
-        ProfileIds = [.. dto.ProfileIds],
-        LoadedWithNoProfile = !dto.AppliesToAllProfiles && dto.ProfileIds.Length == 0,
-        CategoryIds = [.. dto.CategoryIds ?? []],
-    };
+        HotkeyEditModel model = new()
+        {
+            Id = dto.Id,
+            Description = dto.Description,
+            Key = dto.Key,
+            Ctrl = dto.Ctrl,
+            Alt = dto.Alt,
+            Shift = dto.Shift,
+            Win = dto.Win,
+            ActionKind = dto.ActionKind,
+            Text = dto.Text,
+            SendKeysContent = dto.SendKeysContent,
+            RunTarget = dto.RunTarget,
+            RunTargetKind = dto.RunTargetKind,
+            WindowOp = dto.WindowOp,
+            RemapDest = dto.RemapDest,
+            Body = dto.Body,
+            ContextMatchType = dto.ContextMatchType,
+            ContextValue = dto.ContextValue,
+            AppliesToAllProfiles = dto.AppliesToAllProfiles,
+            ProfileIds = [.. dto.ProfileIds],
+            LoadedWithNoProfile = !dto.AppliesToAllProfiles && dto.ProfileIds.Length == 0,
+            CategoryIds = [.. dto.CategoryIds ?? []],
+        };
+        model.BrokenRules = BrokenRuleSet.Capture(dto.BrokenRules, model.FieldValue);
+        return model;
+    }
 
     public HotkeyEditModel Clone() => new()
     {
@@ -126,7 +138,30 @@ public sealed class HotkeyEditModel
         AppliesToAllProfiles = AppliesToAllProfiles,
         ProfileIds = [.. ProfileIds],
         LoadedWithNoProfile = LoadedWithNoProfile,
+        BrokenRules = BrokenRules,
         CategoryIds = [.. CategoryIds],
+    };
+
+    /// <summary>
+    /// The model's value for each field the server's rule check can name, and null for any other
+    /// name. <see cref="BrokenRuleSet"/> compares these values to find out whether the Owner has
+    /// changed a field since the load. The action fields are the ones in <see cref="AllActionFieldNames"/>.
+    /// </summary>
+    internal object? FieldValue(string field) => field switch
+    {
+        nameof(Key) => Key,
+        nameof(Description) => Description,
+        nameof(ActionKind) => ActionKind,
+        nameof(ContextMatchType) => ContextMatchType,
+        nameof(ContextValue) => ContextValue,
+        nameof(Text) => Text,
+        nameof(SendKeysContent) => SendKeysContent,
+        nameof(RunTarget) => RunTarget,
+        nameof(RunTargetKind) => RunTargetKind,
+        nameof(WindowOp) => WindowOp,
+        nameof(RemapDest) => RemapDest,
+        nameof(Body) => Body,
+        _ => null,
     };
 
     public CreateHotkeyDto ToCreateDto()

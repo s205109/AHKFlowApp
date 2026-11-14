@@ -522,4 +522,26 @@ public sealed class HotstringEditModelTests
         model.ToCreateDto().Delivery.Should().Be(HotstringDelivery.ClipboardPaste);
         model.ToUpdateDto().Delivery.Should().Be(HotstringDelivery.ClipboardPaste);
     }
+
+    // Backlog 175 (Review Focus 1): the grid promotes an inline edit by cloning the edited row.
+    // A Clone that captured the values again would mark the field the Owner had just fixed.
+    [Fact]
+    public void BrokenRules_FieldFixedBeforeThePromoteClone_IsNoLongerMarked()
+    {
+        const string trigger = "Trigger must not have leading or trailing whitespace.";
+        const string description = "Description must be 200 characters or fewer.";
+        var row = HotstringEditModel.FromDto(new HotstringDto(
+            Guid.NewGuid(), [], false, "btw ", "by the way", new string('d', 201), true, false,
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow,
+            BrokenRules: [new("Trigger", trigger), new("Description", description)]));
+        row.IsInlineEditable.Should().BeTrue("the promote path starts from an inline edit");
+        row.BrokenRules.TextFor("Trigger", row.FieldValue).Should().Be(trigger);
+
+        row.Trigger = "btw";
+        HotstringEditModel promoted = row.Clone();
+
+        promoted.BrokenRules.TextFor("Trigger", promoted.FieldValue).Should().BeNull();
+        promoted.BrokenRules.TextFor("Description", promoted.FieldValue).Should().Be(description);
+        promoted.BrokenRules.Any.Should().BeTrue("the dialog notice stays until Save");
+    }
 }
