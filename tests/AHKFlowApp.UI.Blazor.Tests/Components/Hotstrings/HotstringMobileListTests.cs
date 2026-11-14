@@ -366,6 +366,25 @@ public sealed class HotstringMobileListTests : BunitContext, IAsyncLifetime
         });
     }
 
+    // Backlog 210: the expanded row showed an empty Profiles line for an item with no profile.
+    [Fact]
+    public async Task ExpandedDetail_ItemWithNoProfile_ShowsNoProfileChip()
+    {
+        HotstringEditModel item = Item();
+        item.AppliesToAllProfiles = false;
+
+        // The chip sits in a MudTooltip, which needs a popover provider.
+        Render<MudBlazor.MudPopoverProvider>();
+        IRenderedComponent<HotstringMobileList> cut = Render<HotstringMobileList>(p => p
+            .Add(c => c.Items, [item])
+            .Add(c => c.Profiles, (IReadOnlyList<ProfileDto>)[])
+            .Add(c => c.Categories, (IReadOnlyList<CategoryDto>)[]));
+
+        await cut.InvokeAsync(() => cut.Find("tr.mobile-row").Click());
+
+        cut.WaitForAssertion(() => cut.FindAll(".no-profile-chip").Should().ContainSingle());
+    }
+
     [Fact]
     public async Task ExpandedDetail_GlobalHotstring_HidesContextRow()
     {

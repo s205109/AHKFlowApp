@@ -4,6 +4,12 @@
 {
     <MudChip T="string" Size="Size.Small" Color="MudBlazor.Color.Info" Variant="Variant">All profiles</MudChip>
 }
+else if (MarkNoProfile && Ids.Count == 0)
+{
+    <MudTooltip Text="No script contains this item. Open it and choose its profiles.">
+        <MudChip T="string" Size="Size.Small" Color="MudBlazor.Color.Warning" Variant="Variant" Class="no-profile-chip">No profile</MudChip>
+    </MudTooltip>
+}
 else
 {
     @foreach (Guid id in Ids)
@@ -18,6 +24,9 @@ else
 
     /// <summary>When true, renders a single "All profiles" chip instead of the id list (profiles case).</summary>
     [Parameter] public bool AppliesToAllProfiles { get; set; }
+
+    /// <summary>When true, an item with no profile gets one "No profile" chip instead of an empty cell. Set it for profile cells only, never for category cells.</summary>
+    [Parameter] public bool MarkNoProfile { get; set; }
 
     [Parameter] public Variant Variant { get; set; } = Variant.Filled;
 

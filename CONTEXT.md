@@ -18,6 +18,7 @@ Use the full term everywhere there is room, such as a dialog or a form label.
 | Canonical term | Short form |
 |---|---|
 | Apply to all profiles | All profiles |
+| Applies to no profile | No profile |
 
 ### Definitions
 
@@ -111,7 +112,9 @@ Short form in narrow places: "All profiles". See **Short forms** above.
 _Avoid_: Any, global, shared, all-profiles
 
 **Applies to no profile**:
-Said of a hotstring or hotkey that belongs to no Profile at all, so no Profile script contains it. The Owner still sees it, edits it, and deletes it. The mirror of **Apply to all profiles**. A Restore produces this state when the stored Snapshot fails the rules a new save must pass (see ADR-0021).
+Said of a hotstring or hotkey that belongs to no Profile at all, so no Profile script contains it. The Owner still sees it, edits it, and deletes it. The mirror of **Apply to all profiles**.
+The Owner never chooses this state: a save needs **Apply to all profiles** or at least one Profile. It happens only as a side effect, in four ways. A Profile delete removes an item's last Profile. A Restore brings back a Snapshot that fails the rules a new save must pass (see ADR-0021). A Restore or a Revert brings back a Snapshot whose Profiles were all deleted since.
+Short form in narrow places: "No profile". See **Short forms** above.
 _Avoid_: disabled, inactive, orphaned, quarantined, unscoped
 
 **Category**:

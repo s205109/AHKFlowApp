@@ -48,6 +48,13 @@ public sealed class HotkeyEditModel
 
     public bool AppliesToAllProfiles { get; set; } = true;
     public List<Guid> ProfileIds { get; set; } = [];
+
+    /// <summary>
+    /// True when the stored item applied to no profile at load time. Only <see cref="FromDto"/>
+    /// sets it, and <see cref="Clone"/> copies it, so an unsaved edit cannot change it.
+    /// </summary>
+    public bool LoadedWithNoProfile { get; init; }
+
     public List<Guid> CategoryIds { get; set; } = [];
 
     /// <summary>
@@ -93,6 +100,7 @@ public sealed class HotkeyEditModel
         ContextValue = dto.ContextValue,
         AppliesToAllProfiles = dto.AppliesToAllProfiles,
         ProfileIds = [.. dto.ProfileIds],
+        LoadedWithNoProfile = !dto.AppliesToAllProfiles && dto.ProfileIds.Length == 0,
         CategoryIds = [.. dto.CategoryIds ?? []],
     };
 
@@ -117,6 +125,7 @@ public sealed class HotkeyEditModel
         ContextValue = ContextValue,
         AppliesToAllProfiles = AppliesToAllProfiles,
         ProfileIds = [.. ProfileIds],
+        LoadedWithNoProfile = LoadedWithNoProfile,
         CategoryIds = [.. CategoryIds],
     };
 

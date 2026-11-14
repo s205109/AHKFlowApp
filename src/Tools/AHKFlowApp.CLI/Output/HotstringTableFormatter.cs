@@ -60,7 +60,7 @@ public static class HotstringTableFormatter
     private static string FormatProfiles(HotstringDto dto, IReadOnlyDictionary<Guid, string> names)
     {
         if (dto.AppliesToAllProfiles) return "all";
-        if (dto.ProfileIds.Length == 0) return "all";
+        if (dto.ProfileIds.Length == 0) return "no profile";
 
         List<string> resolved = [];
         int unresolved = 0;

@@ -459,16 +459,26 @@
 
     private async Task DeleteAsync(ProfileDto dto)
     {
+        ApiResult<ProfileUsageDto> usageResult = await Api.GetUsageAsync(dto.Id, _cts.Token);
+        if (!usageResult.IsSuccess)
+        {
+            Snackbar.Add(ApiErrorMessageFactory.Build(usageResult.Status, usageResult.Problem), Severity.Error);
+            return;
+        }
+
+        ProfileUsageDto usage = usageResult.Value!;
         bool? confirm = await DialogService.ShowMessageBoxAsync(
             title: "Delete profile?",
-            message: $"Delete \"{dto.Name}\"? This cannot be undone.",
+            message: ProfileDeleteWording.Confirmation(dto.Name, usage.HotstringsLeftWithNoProfile, usage.HotkeysLeftWithNoProfile),
             yesText: "Delete", cancelText: "Cancel");
         if (confirm != true) return;
 
         ApiResult result = await Api.DeleteAsync(dto.Id, _cts.Token);
         if (result.IsSuccess)
         {
-            Snackbar.Add("Profile deleted.", Severity.Success);
+            Snackbar.Add(
+                ProfileDeleteWording.Deleted(usage.HotstringsLeftWithNoProfile, usage.HotkeysLeftWithNoProfile),
+                usage.Total > 0 ? Severity.Warning : Severity.Success);
             await ReloadAsync();
         }
         else Snackbar.Add(ApiErrorMessageFactory.Build(result.Status, result.Problem), Severity.Error);

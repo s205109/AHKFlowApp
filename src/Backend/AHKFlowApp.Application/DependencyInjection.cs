@@ -82,6 +82,7 @@ public static class DependencyInjection
             .AddUseCase<DeleteProfileCommand, Result, DeleteProfileCommandHandler>()
             .AddUseCase<ListProfilesQuery, Result<IReadOnlyList<ProfileDto>>, ListProfilesQueryHandler>()
             .AddUseCase<GetProfileQuery, Result<ProfileDto>, GetProfileQueryHandler>()
+            .AddUseCase<GetProfileUsageQuery, Result<ProfileUsageDto>, GetProfileUsageQueryHandler>()
             .AddUseCase<GetUserPreferenceQuery, Result<UserPreferenceDto>, GetUserPreferenceQueryHandler>()
             .AddUseCase<UpdateUserPreferenceCommand, Result<UserPreferenceDto>, UpdateUserPreferenceCommandHandler>()
             .AddUseCase<GetDashboardStatsQuery, Result<DashboardStatsDto>, GetDashboardStatsQueryHandler>()
