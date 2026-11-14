@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using AHKFlowApp.Application.DTOs;
+using AHKFlowApp.Domain.Enums;
 using AHKFlowApp.TestUtilities.Fixtures;
 using FluentAssertions;
 using Xunit;
@@ -107,6 +108,34 @@ public sealed class ProfilesEndpointsTests(ApiTestFixture fixture)
         response.StatusCode.Should().Be(HttpStatusCode.OK);
         IReadOnlyList<ProfileDto> items = (await client.GetFromJsonAsync<IReadOnlyList<ProfileDto>>("/api/v1/profiles"))!;
         items.Where(p => p.IsDefault).Should().ContainSingle().Which.Name.Should().Be("Work");
+    }
+
+    // Backlog 210: the delete confirmation reads its counts from this route. The two counts differ,
+    // so a dropped or swapped field fails. The handler tests do not go through JSON.
+    [Fact]
+    public async Task GET_usage_returns_200_with_counts()
+    {
+        using HttpClient client = CreateAuthed(Guid.NewGuid());
+        HttpResponseMessage created = await client.PostAsJsonAsync(
+            "/api/v1/profiles", new CreateProfileDto("Work"));
+        ProfileDto work = (await created.Content.ReadFromJsonAsync<ProfileDto>())!;
+        foreach (string trigger in new[] { "u1", "u2" })
+        {
+            (await client.PostAsJsonAsync(
+                "/api/v1/hotstrings",
+                new CreateHotstringDto(trigger, "x", ProfileIds: [work.Id], AppliesToAllProfiles: false)))
+                .EnsureSuccessStatusCode();
+        }
+        (await client.PostAsJsonAsync(
+            "/api/v1/hotkeys",
+            new CreateHotkeyDto("Left behind", "f16", HotkeyActionKind.Disable, ProfileIds: [work.Id])))
+            .EnsureSuccessStatusCode();
+
+        HttpResponseMessage response = await client.GetAsync($"/api/v1/profiles/{work.Id}/usage");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        (await response.Content.ReadFromJsonAsync<ProfileUsageDto>())
+            .Should().Be(new ProfileUsageDto(HotstringsLeftWithNoProfile: 2, HotkeysLeftWithNoProfile: 1));
     }
 
     [Fact]
