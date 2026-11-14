@@ -277,7 +277,7 @@ public sealed class VersionHistoryFlowTests(StackFixtureD fixture) : IAsyncLifet
     }
 
     [Fact]
-    public async Task RestoreOfSnapshotFailingCurrentRules_WarnsAndAppliesToNoProfile()
+    public async Task RestoreOfSnapshotFailingCurrentRules_WarnsThenStillSaysWhyAfterAReload()
     {
         // A tombstone whose window context carries a double quote. The rule forbidding that
         // landed after Snapshots started being written, so a stored row can hold one. There is
@@ -306,6 +306,23 @@ public sealed class VersionHistoryFlowTests(StackFixtureD fixture) : IAsyncLifet
         restored.AppliesToAllProfiles.Should().BeFalse();
         restored.Profiles.Should().BeEmpty(
             "an item applying to no profile is excluded from every generated profile script");
+
+        // Backlog 175: after a reload, nothing said why the item reached no script. A fresh navigation
+        // reloads the app, so the snackbar and the Restore response are both gone.
+        await page.GotoAsync($"{fixture.Spa.BaseUrl}/hotstrings");
+
+        ILocator row = page.Locator(".desktop-branch tbody tr", new() { HasTextString = "rb-bad" });
+        await page.Mouse.MoveAsync(0, 0);
+        await row.Locator(".no-profile-chip").HoverAsync();
+        await Assertions.Expect(page.Locator(".mud-popover-open.no-profile-tooltip-text"))
+            .ToContainTextAsync("It breaks these rules: Value under Window context must not contain double quotes.");
+
+        // The item has a window context, so Edit opens the dialog straight away.
+        await row.Locator("button.edit").ClickAsync();
+        await Assertions.Expect(page.Locator(".hotstring-edit-dialog [data-test=\"broken-rules-notice\"]"))
+            .ToBeVisibleAsync();
+        await Assertions.Expect(page.Locator(".hotstring-edit-dialog"))
+            .ToContainTextAsync("Value under Window context must not contain double quotes.");
     }
 
     private async Task<Guid> SeedFailingHotstringTombstoneAsync(string trigger)
