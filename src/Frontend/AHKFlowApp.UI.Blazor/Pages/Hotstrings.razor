@@ -151,7 +151,7 @@
                             }
                             else
                             {
-                                @RenderProfiles(context.Item.AppliesToAllProfiles, context.Item.ProfileIds)
+                                @RenderProfiles(context.Item.AppliesToAllProfiles, context.Item.ProfileIds, context.Item.BrokenRules.Rules)
                             }
                         </CellTemplate>
                     </TemplateColumn>
@@ -958,8 +958,8 @@
         await LoadMobileAsync();
     }
 
-    private RenderFragment RenderProfiles(bool appliesToAllProfiles, IReadOnlyCollection<Guid> profileIds) =>
-        @<EntityChips Ids="profileIds" Options="_profileOptions" AppliesToAllProfiles="appliesToAllProfiles" MarkNoProfile="true" />;
+    private RenderFragment RenderProfiles(bool appliesToAllProfiles, IReadOnlyCollection<Guid> profileIds, IReadOnlyList<BrokenRuleDto> brokenRules) =>
+        @<EntityChips Ids="profileIds" Options="_profileOptions" AppliesToAllProfiles="appliesToAllProfiles" MarkNoProfile="true" BrokenRules="brokenRules" />;
 
     @* No Row and no AlignItems: MudStack defaults to a column, and leaving alignment unset lets the
        multi-select stretch to the cell width. AlignItems.Start shrank it to about 50px. *@

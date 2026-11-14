@@ -1,4 +1,5 @@
 using AHKFlowApp.UI.Blazor.Components.Common;
+using AHKFlowApp.UI.Blazor.DTOs;
 using Bunit;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
@@ -72,6 +73,32 @@ public sealed class EntityChipsTests : BunitContext, IAsyncLifetime
             .Add(p => p.AppliesToAllProfiles, appliesToAll));
 
         cut.FindAll(".no-profile-chip").Should().HaveCount(expected);
+    }
+
+    // Backlog 175: the No profile chip said the same thing whether or not the item broke rules,
+    // so the grid could not tell the two causes apart (criterion 3).
+    [Theory]
+    [InlineData(false, "No script contains this item. Open it and choose its profiles.")]
+    [InlineData(true, "No script contains this item. It breaks these rules: Value under Window context must not contain double quotes. Value under Window context must not contain backticks. Open it, fix those values, and choose its profiles.")]
+    public void NoProfileChip_HoverTextNamesTheBrokenRules(bool breaksRules, string expected)
+    {
+        IReadOnlyList<BrokenRuleDto> rules = breaksRules
+            ?
+            [
+                new("ContextValue", "Value under Window context must not contain double quotes."),
+                new("ContextValue", "Value under Window context must not contain backticks."),
+            ]
+            : [];
+
+        Render<MudBlazor.MudPopoverProvider>();
+        IRenderedComponent<EntityChips> cut = Render<EntityChips>(ps => ps
+            .Add(p => p.Ids, Array.Empty<Guid>())
+            .Add(p => p.Options, Array.Empty<EntityOption>())
+            .Add(p => p.MarkNoProfile, true)
+            .Add(p => p.AppliesToAllProfiles, false)
+            .Add(p => p.BrokenRules, rules));
+
+        cut.FindComponent<MudBlazor.MudTooltip>().Instance.Text.Should().Be(expected);
     }
 
     [Fact]
