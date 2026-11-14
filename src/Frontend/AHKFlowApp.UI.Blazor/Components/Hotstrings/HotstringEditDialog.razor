@@ -56,6 +56,7 @@
             {
                 <MudTextField T="string" Label="Trigger" @bind-Value="Item.Trigger" Immediate="true"
                               Required="true" RequiredError="Trigger is required" MaxLength="50"
+                              Validation="@(BrokenRuleCheck<string>(nameof(HotstringEditModel.Trigger)))"
                               Error="@(TriggerErrorText is not null)" ErrorText="@TriggerErrorText"
                               UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "trigger-input" })" />
             }
@@ -98,7 +99,7 @@
                               Immediate="true" Class="@(Item.Kind == HotstringKind.Raw ? "ahk-mono" : null)"
                               Lines="@(Item.Kind == HotstringKind.Raw ? 8 : 3)" Required="true" RequiredError="Replacement is required"
                               MaxLength="@Item.ReplacementMaxLength"
-                              Validation="@(new Func<string, string?>(Item.ValidateReplacement))"
+                              Validation="@(new Func<string, string?>(v => BrokenRuleCheck<string>(nameof(HotstringEditModel.Replacement))(v) ?? Item.ValidateReplacement(v)))"
                               Placeholder="@(Item.Kind == HotstringKind.Raw ? ":K1000 SE*:ftw::for the win" : null)"
                               Error="@(FieldError(nameof(HotstringEditModel.Replacement)) is not null)" ErrorText="@FieldError(nameof(HotstringEditModel.Replacement))"
                               HelperText="@ReplacementHelperText"
@@ -253,6 +254,7 @@
 
             <MudTextField T="string" Label="Description" @bind-Value="Item.Description"
                           MaxLength="200" HelperText="Emitted as ; comment lines in the generated script."
+                          Validation="@(BrokenRuleCheck<string>(nameof(HotstringEditModel.Description)))"
                           Error="@(FieldError(nameof(HotstringEditModel.Description)) is not null)" ErrorText="@FieldError(nameof(HotstringEditModel.Description))"
                           UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "description-input" })" />
 
@@ -305,6 +307,7 @@
                 <MudTextField T="string" Label="Value" @bind-Value="Item.ContextValue" Immediate="true"
                               Required="true" RequiredError="Value is required" MaxLength="200"
                               Placeholder="@ContextValuePlaceholder"
+                              Validation="@(BrokenRuleCheck<string>(nameof(HotstringEditModel.ContextValue)))"
                               Error="@(FieldError(nameof(HotstringEditModel.ContextValue)) is not null)" ErrorText="@FieldError(nameof(HotstringEditModel.ContextValue))"
                               UserAttributes="@(new Dictionary<string, object?> { ["data-test"] = "context-value-input" })" />
             }

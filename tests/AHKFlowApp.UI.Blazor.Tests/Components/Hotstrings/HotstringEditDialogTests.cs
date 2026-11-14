@@ -1782,6 +1782,29 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
             .NotContain(message, "the input shows it, so the notice does not list it again");
     }
 
+    // Backlog 175 (final review): MudBlazor validates a text field when it loses focus, and that
+    // cleared an Error set from outside. An Owner who tabs through the form must still see the marks.
+    [Theory]
+    [InlineData("trigger-input", "Trigger")]
+    [InlineData("description-input", "Description")]
+    [InlineData("context-value-input", "ContextValue")]
+    [InlineData("replacement-input", "Replacement")]
+    public async Task EditMode_BrokenRule_StaysMarkedWhenTheFieldLosesFocusUnchanged(string dataTest, string field)
+    {
+        string message = $"Broken {field}.";
+        HotstringEditModel item = HotstringEditModel.FromDto(new HotstringDto(
+            Guid.NewGuid(), [], true, "btw", "by the way", "A note", true, false,
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow,
+            ContextMatchType: WindowMatchType.TitleContains, ContextValue: "x",
+            BrokenRules: [new(field, message)])).Clone();
+        IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
+        provider.WaitForAssertion(() => provider.Markup.Should().Contain(message));
+
+        await provider.InvokeAsync(() => provider.Find($"[data-test=\"{dataTest}\"]").Blur());
+
+        provider.Markup.Should().Contain(message);
+    }
+
     private static void DisablePreviewDebounce(IRenderedComponent<MudDialogProvider> provider) =>
         provider.FindComponent<HotstringEditDialog>().Instance.PreviewDebounce = TimeSpan.Zero;
 

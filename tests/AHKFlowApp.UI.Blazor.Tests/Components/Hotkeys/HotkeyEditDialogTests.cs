@@ -1760,4 +1760,34 @@ public sealed class HotkeyEditDialogTests : BunitContext, IAsyncLifetime
         provider.Find("[data-test=\"broken-rules-notice\"]").TextContent.Should()
             .NotContain(message, "the input shows it, so the notice does not list it again");
     }
+
+    // Backlog 175 (final review): MudBlazor validates a text field when it loses focus, and that
+    // cleared an Error set from outside. An Owner who tabs through the form must still see the marks.
+    [Theory]
+    [InlineData(HotkeyActionKind.SendText, "key-picker", "Key")]
+    [InlineData(HotkeyActionKind.SendText, "description-input", "Description")]
+    [InlineData(HotkeyActionKind.SendText, "text-input", "Text")]
+    [InlineData(HotkeyActionKind.SendKeys, "send-key-picker", "SendKeysContent")]
+    [InlineData(HotkeyActionKind.Run, "run-target-input", "RunTarget")]
+    [InlineData(HotkeyActionKind.Remap, "remap-dest-picker", "RemapDest")]
+    [InlineData(HotkeyActionKind.Raw, "raw-body-input", "Body")]
+    [InlineData(HotkeyActionKind.SendText, "context-value-input", "ContextValue")]
+    public async Task EditMode_BrokenRule_StaysMarkedWhenTheFieldLosesFocusUnchanged(HotkeyActionKind kind, string dataTest, string field)
+    {
+        string message = $"Broken {field}.";
+        HotkeyEditModel item = HotkeyEditModel.FromDto(new HotkeyDto(
+            Guid.NewGuid(), [], true, "Greet", "F1", false, false, false, false,
+            kind, "t", "^a", "notepad.exe", Enum.GetValues<RunTargetKind>().First(), Enum.GetValues<WindowOp>().First(), "F2", "body",
+            WindowMatchType.TitleContains, "x",
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow,
+            BrokenRules: [new(field, message)])).Clone();
+        IRenderedComponent<MudDialogProvider> provider = await ShowDialogAsync(item);
+        provider.WaitForAssertion(() => provider.Markup.Should().Contain(message));
+
+        await provider.InvokeAsync(() => provider
+            .Find($"input[data-test=\"{dataTest}\"], textarea[data-test=\"{dataTest}\"], [data-test=\"{dataTest}\"] input")
+            .Blur());
+
+        provider.Markup.Should().Contain(message);
+    }
 }
