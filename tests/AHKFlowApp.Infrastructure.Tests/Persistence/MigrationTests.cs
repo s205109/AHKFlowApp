@@ -28,37 +28,21 @@ public sealed class MigrationTests(SharedSqlServerFixture sqlFixture)
     }
 
     [Fact]
-    public async Task Migrate_AppliesPendingMigrationsWithoutError()
+    public async Task Migrate_AppliesPendingMigrations_ThenRunsAgainWithoutError()
     {
         // Arrange
-        // Without the drop, a server an earlier run used has no pending migration left, so this
-        // fact applies nothing and passes without testing anything.
+        // Without the drop, a server an earlier run used has no pending migration left, so the
+        // first call applies nothing and the second call never proves idempotency.
         await using AppDbContext context = CreateContext("MigrationTests_Apply");
         await RunIndependentDatabase.DropAsync(context);
 
         // Act
-        Func<Task> act = () => context.Database.MigrateAsync();
+        Func<Task> applyFromEmpty = () => context.Database.MigrateAsync();
+        Func<Task> runAgain = () => context.Database.MigrateAsync();
 
         // Assert
-        await act.Should().NotThrowAsync();
-    }
-
-    [Fact]
-    public async Task Migrate_IsIdempotent_RunsTwiceWithoutError()
-    {
-        // Arrange
-        // The drop goes before the first call, not instead of it. Two migration calls are this
-        // fact's whole subject, and on a warm server without the drop neither call changes
-        // anything, so idempotency is never exercised.
-        await using AppDbContext context = CreateContext("MigrationTests_Idempotent");
-        await RunIndependentDatabase.DropAsync(context);
-        await context.Database.MigrateAsync();
-
-        // Act
-        Func<Task> act = () => context.Database.MigrateAsync();
-
-        // Assert
-        await act.Should().NotThrowAsync();
+        await applyFromEmpty.Should().NotThrowAsync();
+        await runAgain.Should().NotThrowAsync();
     }
 
     /// <summary>
