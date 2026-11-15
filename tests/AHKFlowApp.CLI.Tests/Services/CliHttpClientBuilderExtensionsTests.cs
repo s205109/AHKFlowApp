@@ -260,22 +260,26 @@ public sealed class CliHttpClientBuilderExtensionsTests
         retryStatusWriter.Delays.Should().ContainSingle().Which.Should().Be(TimeSpan.Zero);
     }
 
-    // The production default is two seconds, and this is the one test that still pays it. Without
+    // The production default is two seconds, and this is the one test that checks it. Without
     // it, a change that set the default to zero would ship a CLI that retries a cold API with no
-    // pause at all, and every other test in this file would stay green.
+    // pause at all, and every other test in this file would stay green. Polly reports the delay
+    // to OnRetry before it waits, so the writer cancels the call there, and the test does not
+    // wait out the two seconds.
     [Fact]
     public async Task AddCliApiResilience_WithNoDelayArgument_KeepsTheTwoSecondDefault()
     {
         SequenceHandler handler = new(
             CreateStoppedWebAppResponse(),
             CreateSuccessfulCreateResponse());
-        RecordingRetryStatusWriter retryStatusWriter = new();
+        using CancellationTokenSource cancelOnRetry = new();
+        RecordingRetryStatusWriter retryStatusWriter = new(cancelOnRetry);
 
         using ServiceProvider provider = CreateServices(handler, retryStatusWriter);
         IHotstringsApiClient sut = provider.GetRequiredService<IHotstringsApiClient>();
 
-        await sut.CreateAsync(CreateInput(), CancellationToken.None);
+        Func<Task> act = () => sut.CreateAsync(CreateInput(), cancelOnRetry.Token);
 
+        await act.Should().ThrowAsync<OperationCanceledException>();
         retryStatusWriter.Delays.Should().ContainSingle().Which.Should().Be(TimeSpan.FromSeconds(2));
     }
 
@@ -349,7 +353,9 @@ public sealed class CliHttpClientBuilderExtensionsTests
             Content = JsonContent.Create(new PagedList<HotstringDto>([], 1, 50, 0)),
         };
 
-    private sealed class RecordingRetryStatusWriter : IHttpRetryStatusWriter
+    // With a CancellationTokenSource, the writer cancels it once it records a retry, so a test
+    // can stop the call before Polly waits out the delay.
+    private sealed class RecordingRetryStatusWriter(CancellationTokenSource? cancelOnRetry = null) : IHttpRetryStatusWriter
     {
         public List<string> Messages { get; } = [];
 
@@ -369,6 +375,7 @@ public sealed class CliHttpClientBuilderExtensionsTests
                 retryAttempt,
                 maxRetryAttempts,
                 delay));
+            cancelOnRetry?.Cancel();
         }
     }
 
