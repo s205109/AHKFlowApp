@@ -1536,6 +1536,10 @@ before. The second try passed, and its figures follow.
 The spread of the three Gate runs is 1.3 % of the median. The .NET test time, the median of the
 coverage step, is 183.09 s.
 
+Commit `a87d06e8` came after this Gate. It moves the writing of the `X-Test-*` headers into
+`TestUserBuilder.ApplyTo`, which sends the same headers as before. It adds no test and removes
+none, so it is not timed again.
+
 ### Result
 
 | Measure | Before | After | Change |
