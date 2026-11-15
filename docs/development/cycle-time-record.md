@@ -1404,3 +1404,28 @@ because each is one change. All five rows were approved, and none was rejected.
 | 3 | SPEED UP (P5a) | test-time | `CliHttpClientBuilderExtensionsTests.AddCliApiResilience_WithNoDelayArgument_KeepsTheTwoSecondDefault` | Not refuted: a SPEED UP keeps every assertion. |
 | 4 | SPEED UP (P5b) | span | `HotstringCliIntegrationTests`, `DownloadCliIntegrationTests` | Not refuted. |
 | 5 | SPEED UP (P5c) | span | `HotstringsPageTests`, `HotkeyEditDialogTests`, `HotstringEditDialogTests`, `HotkeysPageTests` | Not refuted. |
+
+### Changes
+
+The middle sessions ran on 2026-11-15, with their defaults, on revision `fbf90f71c9586a4f3d62022cb06b2df6a0711a30`. That tree
+holds rows 1 to 3 and no span row. No run printed "Sharing the test Lane pool with:". Every
+warm-up run and every counted run passed.
+
+- Fast session: `TestResults\measure-test-modes\Fast\session-20261115-134428`. Counted runs:
+  14.02 / 14.44 / 16.47 / 15.83 / 14.80 s, median 14.80 s.
+- Integration session: `TestResults\measure-test-modes\Integration\session-20261115-135610`.
+  Counted runs: 42.90 / 42.24 / 42.68 / 44.19 / 42.52 s, median 42.68 s.
+
+Each row is timed by D9: the median, over the five counted runs, of the summed duration of its
+tests. "Before" is read in the before session, and "middle" in the middle session.
+
+| Row | Commit | Tests | Before | Middle | Saved | Result |
+|---:|---|---|---:|---:|---:|---|
+| 1 | `940c6a48` | `AppDbContextTests.EnsureCreated_AppliesSchemaWithoutError`, removed | 2.10 s | 0 s | 2.10 s | kept |
+| 2 | `d8516796` | `MigrationTests.Migrate_IsIdempotent_RunsTwiceWithoutError` and `Migrate_AppliesPendingMigrationsWithoutError`, now `Migrate_AppliesPendingMigrations_ThenRunsAgainWithoutError` | 5.17 s | 2.64 s | 2.53 s | kept |
+| 3 | `45c337c6` | `CliHttpClientBuilderExtensionsTests.AddCliApiResilience_WithNoDelayArgument_KeepsTheTwoSecondDefault` | 2.01 s | 0.00 s | 2.01 s | kept |
+
+The kept test-time rows save 6.64 s of summed test time. Every row saves 0.5 s or more, so no row
+was reverted. No revert touched UI.Blazor or the CLI integration tests. So the middle Fast
+session is the span baseline of row 5, and the middle Integration session is the span baseline of
+row 4.
