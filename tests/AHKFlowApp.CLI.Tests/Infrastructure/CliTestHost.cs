@@ -1,5 +1,6 @@
 using AHKFlowApp.API;
 using AHKFlowApp.CLI.Services;
+using AHKFlowApp.TestUtilities.Auth;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -27,11 +28,11 @@ internal static class CliTestHost
 
     public static IServiceProvider WithFactory(
         WebApplicationFactory<Program> factory,
+        TestUserBuilder user,
         string? token = "test-token",
         RequestCounter? counter = null,
         Stream? stdoutSink = null,
-        string? baseDirectory = null,
-        TestIdentity? identity = null)
+        string? baseDirectory = null)
     {
         ServiceCollection services = new();
         services.AddSingleton<IAuthTokenProvider>(new StubAuthTokenProvider(token));
@@ -41,8 +42,8 @@ internal static class CliTestHost
         {
             builder
                 .ConfigurePrimaryHttpMessageHandler(() => factory.Server.CreateHandler())
-                .AddHttpMessageHandler<BearerTokenHandler>();
-            if (identity is not null) builder.AddHttpMessageHandler(() => new TestIdentityHandler(identity));
+                .AddHttpMessageHandler<BearerTokenHandler>()
+                .AddHttpMessageHandler(() => new TestIdentityHandler(user));
             if (counter is not null) builder.AddHttpMessageHandler(() => new CountingHandler(counter));
         }
 

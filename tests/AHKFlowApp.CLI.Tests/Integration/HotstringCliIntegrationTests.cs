@@ -1,14 +1,13 @@
 using System.CommandLine;
-using AHKFlowApp.API;
 using AHKFlowApp.CLI.Commands.Hotstrings;
 using AHKFlowApp.CLI.Services;
 using AHKFlowApp.CLI.Tests.Infrastructure;
 using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Infrastructure.Persistence;
+using AHKFlowApp.TestUtilities.Auth;
 using AHKFlowApp.TestUtilities.Builders;
 using AHKFlowApp.TestUtilities.Fixtures;
 using FluentAssertions;
-using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
@@ -19,14 +18,15 @@ namespace AHKFlowApp.CLI.Tests.Integration;
 [Trait("Category", "Integration")]
 public sealed class HotstringCliIntegrationTests(ApiTestFixture api)
 {
-    private WebApplicationFactory<Program> Factory => api.Factory;
     private readonly Guid _testUserOid = Guid.NewGuid();
 
     private async Task<(int exit, string stdout, string stderr)> RunAsync(
-        string[] args, string? token = "test-token", RequestCounter? counter = null, TestIdentity? identity = null)
+        string[] args, string? token = "test-token", RequestCounter? counter = null,
+        Action<TestUserBuilder>? configureUser = null)
     {
-        IServiceProvider services = CliTestHost.WithFactory(
-            Factory, token, counter, identity: identity ?? new TestIdentity(_testUserOid, "test@example.com"));
+        TestUserBuilder user = new TestUserBuilder().WithOid(_testUserOid);
+        configureUser?.Invoke(user);
+        IServiceProvider services = CliTestHost.WithFactory(api.Factory, user, token, counter);
         StringWriter so = new(), se = new();
         RootCommand root = new() { HotstringCommand.Build(services) };
         int exit = await root.Parse(args)
@@ -36,7 +36,7 @@ public sealed class HotstringCliIntegrationTests(ApiTestFixture api)
 
     private async Task<Profile> SeedProfileAsync(string name)
     {
-        using IServiceScope scope = Factory.Services.CreateScope();
+        using IServiceScope scope = api.Factory.Services.CreateScope();
         AppDbContext db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         Profile p = new ProfileBuilder().WithOwner(_testUserOid).WithName(name).Build();
         db.Profiles.Add(p);
@@ -47,7 +47,7 @@ public sealed class HotstringCliIntegrationTests(ApiTestFixture api)
     private async Task<Hotstring> SeedHotstringAsync(
         string trigger, string replacement = "x", Guid? profileId = null, bool appliesToAllProfiles = true)
     {
-        using IServiceScope scope = Factory.Services.CreateScope();
+        using IServiceScope scope = api.Factory.Services.CreateScope();
         AppDbContext db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         HotstringBuilder b = new HotstringBuilder().WithOwner(_testUserOid).WithTrigger(trigger).WithReplacement(replacement);
         b = b.AppliesToAllProfiles(appliesToAllProfiles);
@@ -66,7 +66,7 @@ public sealed class HotstringCliIntegrationTests(ApiTestFixture api)
         exit.Should().Be(0);
         stdout.Should().StartWith("Created hotstring ");
 
-        using IServiceScope scope = Factory.Services.CreateScope();
+        using IServiceScope scope = api.Factory.Services.CreateScope();
         AppDbContext db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         Hotstring? row = await db.Hotstrings
             .FirstOrDefaultAsync(h => h.OwnerOid == _testUserOid && h.Trigger == "btw");
@@ -107,7 +107,7 @@ public sealed class HotstringCliIntegrationTests(ApiTestFixture api)
 
     private async Task<Hotstring> ReadRowAsync(string trigger)
     {
-        using IServiceScope scope = Factory.Services.CreateScope();
+        using IServiceScope scope = api.Factory.Services.CreateScope();
         AppDbContext db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         Hotstring? row = await db.Hotstrings
             .FirstOrDefaultAsync(h => h.OwnerOid == _testUserOid && h.Trigger == trigger);
@@ -153,7 +153,7 @@ public sealed class HotstringCliIntegrationTests(ApiTestFixture api)
 
         exit.Should().Be(0);
 
-        using IServiceScope scope = Factory.Services.CreateScope();
+        using IServiceScope scope = api.Factory.Services.CreateScope();
         AppDbContext db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         Hotstring? row = await db.Hotstrings.Include(h => h.Profiles)
             .FirstOrDefaultAsync(h => h.OwnerOid == _testUserOid && h.Trigger == "wq");
@@ -169,7 +169,7 @@ public sealed class HotstringCliIntegrationTests(ApiTestFixture api)
 
         exit.Should().Be(0);
 
-        using IServiceScope scope = Factory.Services.CreateScope();
+        using IServiceScope scope = api.Factory.Services.CreateScope();
         AppDbContext db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         Hotstring? row = await db.Hotstrings.Include(h => h.Profiles)
             .FirstOrDefaultAsync(h => h.OwnerOid == _testUserOid && h.Trigger == "g1");
@@ -201,7 +201,7 @@ public sealed class HotstringCliIntegrationTests(ApiTestFixture api)
 
         exit.Should().Be(0);
 
-        using IServiceScope scope = Factory.Services.CreateScope();
+        using IServiceScope scope = api.Factory.Services.CreateScope();
         AppDbContext db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         Hotstring? row = await db.Hotstrings.Include(h => h.Profiles)
             .FirstOrDefaultAsync(h => h.OwnerOid == _testUserOid && h.Trigger == "ci");
@@ -311,7 +311,7 @@ public sealed class HotstringCliIntegrationTests(ApiTestFixture api)
     {
         (int exit, string _, string? stderr) = await RunAsync(
             ["hotstring", "new", "-t", "x", "-r", "y"],
-            identity: new TestIdentity(_testUserOid, "test@example.com", WithoutScope: true));
+            configureUser: u => u.WithoutScope());
 
         exit.Should().Be(1);
         stderr.Should().NotBeEmpty();

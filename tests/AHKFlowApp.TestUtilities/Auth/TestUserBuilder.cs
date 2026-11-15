@@ -1,3 +1,5 @@
+using System.Net.Http.Headers;
+
 namespace AHKFlowApp.TestUtilities.Auth;
 
 public sealed class TestUserBuilder
@@ -42,6 +44,20 @@ public sealed class TestUserBuilder
     {
         _authenticateByDefault = true;
         return this;
+    }
+
+    // Writes this user as the X-Test-* headers that TestAuthHandler reads on each request.
+    public void ApplyTo(HttpRequestHeaders headers)
+    {
+        headers.Add("X-Test-Auth", "true");
+        headers.Add("X-Test-Oid", _oid.ToString());
+        headers.Add("X-Test-Email", _email);
+        headers.Add("X-Test-Name", _name);
+
+        if (_scope is null)
+            headers.Add("X-Test-Without-Scope", "true");
+        else
+            headers.Add("X-Test-Scope", _scope);
     }
 
     internal Guid DefaultOid => _oid;
