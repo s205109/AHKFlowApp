@@ -23,8 +23,8 @@ means my change broke something.
 
 ### The two tests
 
-**`HotkeysPageTests.Page_EditRow_WithModifiers_CallsUpdate_AndKeepsActionChipVisible`**, at
-(`tests/AHKFlowApp.UI.Blazor.Tests/Pages/HotkeysPageTests.cs:465`, "public void Page_EditRow_WithModifiers_CallsUpdate_AndKeepsActionChipVisible()").
+**`HotkeysPageInlineEditTests.Page_EditRow_WithModifiers_CallsUpdate_AndKeepsActionChipVisible`**, at
+(`tests/AHKFlowApp.UI.Blazor.Tests/Pages/HotkeysPageInlineEditTests.cs:85`, "public void Page_EditRow_WithModifiers_CallsUpdate_AndKeepsActionChipVisible()").
 
 ```
 Bunit.Extensions.WaitForHelpers.WaitForFailedException :
@@ -39,7 +39,7 @@ The assertion did not pass within the timeout period.
   backlog rename. No C#, no Razor, no `.csproj`.
 
 **`HotstringsPageTests.Page_WhileReloadIsInFlight_RendersLoadingIndicator`**, at
-(`tests/AHKFlowApp.UI.Blazor.Tests/Pages/HotstringsPageTests.cs:85`, "cut.WaitForAssertion(() =>").
+(`tests/AHKFlowApp.UI.Blazor.Tests/Pages/HotstringsPageTests.cs:41`, "cut.WaitForAssertion(() =>").
 
 Same exception, same bUnit hint text, found on 2026-08-22 during backlog 112. That run reported:
 
@@ -134,8 +134,8 @@ instrumentation inside that test, not a larger number.
 
 - [x] The repository states a wait timeout for bUnit assertions rather than relying on the
       framework default, and a reader can find both the number and the reason for it
-- [x] (`tests/AHKFlowApp.UI.Blazor.Tests/Pages/HotkeysPageTests.cs:465`, "public void Page_EditRow_WithModifiers_CallsUpdate_AndKeepsActionChipVisible()") and
-      (`tests/AHKFlowApp.UI.Blazor.Tests/Pages/HotstringsPageTests.cs:85`, "cut.WaitForAssertion(() =>") pass under
+- [x] (`tests/AHKFlowApp.UI.Blazor.Tests/Pages/HotkeysPageInlineEditTests.cs:85`, "public void Page_EditRow_WithModifiers_CallsUpdate_AndKeepsActionChipVisible()") and
+      (`tests/AHKFlowApp.UI.Blazor.Tests/Pages/HotstringsPageTests.cs:41`, "cut.WaitForAssertion(() =>") pass under
       `pwsh ./scripts/test-fast.ps1 -Mode Coverage`
 - [x] This item records how long those two tests' waits actually take under coverage, so the chosen
       number is measured rather than guessed
