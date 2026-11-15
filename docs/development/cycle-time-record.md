@@ -1506,3 +1506,51 @@ Each cell is the summed median, then the span median, in seconds. "Before" is th
 The Fast "after" column holds the split of row 5, which is now reverted. The CLI Fast Slice fell
 between before and baseline because of row 3, and the Infrastructure Slice because of rows 1
 and 2.
+
+### Gate after
+
+The command was `pwsh .\scripts\measure-test-modes.ps1 -Mode Gate -BaseRef HEAD -Change Code`, on
+2026-11-15, on a quiet machine, on this branch with main merged in. No run printed "Sharing the
+test Lane pool with:".
+
+The first try failed in its warm-up, in the coverage step. One E2E test,
+`VersionHistoryFlowTests.RestoreOfSnapshotFailingCurrentRules_WarnsThenStillSaysWhyAfterAReload`,
+waited 5 s for a tooltip that never opened. This branch changes nothing in `src` or in
+`tests/AHKFlowApp.E2E.Tests` against the before tree, and the test passed in every run of the Gate
+before. The second try passed, and its figures follow.
+
+- Revision: `7a20eee5731902754923097c2d1499cae54671d2`.
+- Session folder: `TestResults\measure-test-modes\Gate\session-20261115-161840`.
+- Preparation run: 316.37 s (build 6.73, format 44.08, powershell 265.35, coverage 0.17,
+  diff-check 0.03).
+- Warm-up, discarded: 510.63 s (build 5.62, format 47.03, powershell 271.36, coverage 186.59,
+  diff-check 0.04).
+
+| Run | Gate | Build | Format | PowerShell | Coverage | Diff check |
+|---|---|---|---|---|---|---|
+| 1 | 509.45 s | 6.48 s | 49.32 s | 270.52 s | 183.09 s | 0.05 s |
+| 2 | 510.16 s | 6.17 s | 45.50 s | 271.90 s | 186.55 s | 0.04 s |
+| 3 | 503.69 s | 6.16 s | 48.95 s | 266.92 s | 181.61 s | 0.04 s |
+| Median | 509.45 s | 6.17 s | 48.95 s | 270.52 s | 183.09 s | 0.04 s |
+
+The spread of the three Gate runs is 1.3 % of the median. The .NET test time, the median of the
+coverage step, is 183.09 s.
+
+### Result
+
+| Measure | Before | After | Change |
+|---|---:|---:|---:|
+| Gate median | 511.09 s | 509.45 s | -1.64 s |
+| .NET test time (coverage step median) | 184.52 s | 183.09 s | -1.43 s |
+
+The triage estimated 12 to 16 s for these five projects. The measured change of the .NET test time
+is 1.43 s. The spread of the Gate before was 8.7 % of its median, about 44 s. So the Gate cannot
+tell this change apart from machine noise.
+
+The two totals of this audit, kept apart:
+
+- The kept test-time rows, 1 to 3, save 6.64 s of summed test time. Tests run side by side, so
+  this is not wall time.
+- The kept span row, row 4, saves 2.86 s of wall time in the Integration Mode.
+
+No target is judged (D11).
