@@ -1,16 +1,15 @@
 using System.CommandLine;
 using System.IO.Compression;
 using System.Text;
-using AHKFlowApp.API;
 using AHKFlowApp.CLI.Commands.Downloads;
 using AHKFlowApp.CLI.Services;
 using AHKFlowApp.CLI.Tests.Infrastructure;
 using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Infrastructure.Persistence;
+using AHKFlowApp.TestUtilities.Auth;
 using AHKFlowApp.TestUtilities.Builders;
 using AHKFlowApp.TestUtilities.Fixtures;
 using FluentAssertions;
-using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
@@ -18,27 +17,12 @@ namespace AHKFlowApp.CLI.Tests.Integration;
 
 [Collection("CliWebApi")]
 [Trait("Category", "Integration")]
-public sealed class DownloadCliIntegrationTests(SqlContainerFixture sql) : IAsyncLifetime, IDisposable
+public sealed class DownloadCliIntegrationTests(ApiTestFixture api) : IDisposable
 {
-    private WebApplicationFactory<Program> _factory = null!;
-    private CustomWebApplicationFactory _baseFactory = null!;
     private readonly Guid _testUserOid = Guid.NewGuid();
-    private readonly string _baseDir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
+    private readonly string _baseDir =
+        Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString())).FullName;
     private static readonly byte[] Utf8Bom = [0xEF, 0xBB, 0xBF];
-
-    public Task InitializeAsync()
-    {
-        Directory.CreateDirectory(_baseDir);
-        _baseFactory = new CustomWebApplicationFactory(sql);
-        _factory = _baseFactory.WithTestAuth(u => u.WithOid(_testUserOid).WithEmail("test@example.com"));
-        return Task.CompletedTask;
-    }
-
-    public async Task DisposeAsync()
-    {
-        await _factory.DisposeAsync();
-        await _baseFactory.DisposeAsync();
-    }
 
     public void Dispose()
     {
@@ -50,7 +34,8 @@ public sealed class DownloadCliIntegrationTests(SqlContainerFixture sql) : IAsyn
     {
         using MemoryStream sink = new();
         IServiceProvider services = CliTestHost.WithFactory(
-            _factory, token, counter: null, stdoutSink: sink, baseDirectory: _baseDir);
+            api.Factory, new TestUserBuilder().WithOid(_testUserOid), token,
+            counter: null, stdoutSink: sink, baseDirectory: _baseDir);
         StringWriter so = new(), se = new();
         RootCommand root = new() { DownloadCommand.Build(services) };
         int exit = await root.Parse(args)
@@ -60,7 +45,7 @@ public sealed class DownloadCliIntegrationTests(SqlContainerFixture sql) : IAsyn
 
     private async Task<Profile> SeedProfileAsync(string name, bool isDefault = false, string header = "")
     {
-        using IServiceScope scope = _factory.Services.CreateScope();
+        using IServiceScope scope = api.Factory.Services.CreateScope();
         AppDbContext db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         Profile p = new ProfileBuilder()
             .WithOwner(_testUserOid)
@@ -75,7 +60,7 @@ public sealed class DownloadCliIntegrationTests(SqlContainerFixture sql) : IAsyn
 
     private async Task<Hotstring> SeedHotstringAsync(string trigger, string replacement, Guid? profileId = null)
     {
-        using IServiceScope scope = _factory.Services.CreateScope();
+        using IServiceScope scope = api.Factory.Services.CreateScope();
         AppDbContext db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         HotstringBuilder b = new HotstringBuilder()
             .WithOwner(_testUserOid)

@@ -6,7 +6,7 @@
 - **Type**: Tooling
 - **Interfaces**: none (five .NET test projects)
 - **Difficulty**: moderate
-- **Stage**: 1-pickup
+- **Stage**: 9-ship
 
 ## Summary
 
@@ -23,20 +23,20 @@ code change without catching fewer defects, so that a code change reaches a gree
 
 The rules come from the 194 spec named below. Tick a box only when its words hold literally.
 
-- [ ] The audit covers the triage candidates of the five projects and the 15 slowest tests of each
+- [x] The audit covers the triage candidates of the five projects and the 15 slowest tests of each
       of them, ranked by a fresh run at this item's pickup. It does not cover every test method.
-- [ ] One auditor takes one Candidate group, and each of the five projects is one Candidate group.
-- [ ] The audit uses the saved `test-audit` workflow in `.claude/workflows/`, in its .NET mode, in
+- [x] One auditor takes one Candidate group, and each of the five projects is one Candidate group.
+- [x] The audit uses the saved `test-audit` workflow in `.claude/workflows/`, in its .NET mode, in
       one run of five Candidate groups.
-- [ ] One refuter tries to disprove each REMOVE and MERGE claim the auditors return. A claim is
+- [x] One refuter tries to disprove each REMOVE and MERGE claim the auditors return. A claim is
       upheld only when the audited test and another test both fail on the same defect, or when
       the behaviour is gone.
-- [ ] The user approves each change on its own row before it is applied.
-- [ ] The record holds each applied change's time before and after, and no kept change saves
+- [x] The user approves each change on its own row before it is applied.
+- [x] The record holds each applied change's time before and after, and no kept change saves
       less than 0.5 s.
-- [ ] A record states the .NET test time of a Gate after a `.cs` change, before and after this
+- [x] A record states the .NET test time of a Gate after a `.cs` change, before and after this
       item, measured with `scripts/measure-test-modes.ps1 -Mode Gate -Change Code`.
-- [ ] Every proposal the item does not apply is listed in `docs/development/test-audit-deferred.md`
+- [x] Every proposal the item does not apply is listed in `docs/development/test-audit-deferred.md`
       with its reason.
 
 ## Out of scope
@@ -58,4 +58,4 @@ The rules come from the 194 spec named below. Tick a box only when its words hol
   from waiting out a real 2 s delay.
 - The triage is `docs/superpowers/specs/2026-10-18-speed-up-the-development-cycle-research-188/dotnet-tests.md`.
 - Spec: `docs/superpowers/specs/2026-11-01-net-test-audit-design-194.md`
-- Plan: none — Plan comes at pickup.
+- Plan: `docs/superpowers/plans/2026-11-15-non-e2e-net-test-audit-plan-203.md`

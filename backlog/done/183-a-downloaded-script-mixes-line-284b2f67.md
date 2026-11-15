@@ -72,8 +72,8 @@ control.
        (`tests/AHKFlowApp.API.Tests/Downloads/DownloadsEndpointsTests.cs:208`, "public async Task GET_per_profile_body_is_bom_then_the_script_with_lf_only()")
        and (`tests/AHKFlowApp.API.Tests/Downloads/DownloadsEndpointsTests.cs:228`, "public async Task GET_zip_every_entry_is_bom_then_its_own_script_with_lf_only()").
      - The CLI, for a saved file and for standard output:
-       (`tests/AHKFlowApp.CLI.Tests/Integration/DownloadCliIntegrationTests.cs:92`, "public async Task Ahk_Default_WritesFileWithSeededHotstringContent()")
-       and (`tests/AHKFlowApp.CLI.Tests/Integration/DownloadCliIntegrationTests.cs:161`, "public async Task Ahk_OutputDash_WritesBytesToInjectedStream()").
+       (`tests/AHKFlowApp.CLI.Tests/Integration/DownloadCliIntegrationTests.cs:77`, "public async Task Ahk_Default_WritesFileWithSeededHotstringContent()")
+       and (`tests/AHKFlowApp.CLI.Tests/Integration/DownloadCliIntegrationTests.cs:146`, "public async Task Ahk_OutputDash_WritesBytesToInjectedStream()").
      - The web UI, for a file the browser saves:
        (`tests/AHKFlowApp.E2E.Tests/ProfileScriptDownloadFlowTests.cs:17`, "public async Task DownloadFromProfilesPage_SavesThatProfilesScript()").
 

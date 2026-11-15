@@ -57,16 +57,7 @@ public sealed class CustomWebApplicationFactory(
         configure?.Invoke(testUser);
 
         HttpClient client = CreateClient();
-        client.DefaultRequestHeaders.Add("X-Test-Auth", "true");
-        client.DefaultRequestHeaders.Add("X-Test-Oid", testUser.DefaultOid.ToString());
-        client.DefaultRequestHeaders.Add("X-Test-Email", testUser.DefaultEmail);
-        client.DefaultRequestHeaders.Add("X-Test-Name", testUser.DefaultName);
-
-        if (testUser.DefaultScope is null)
-            client.DefaultRequestHeaders.Add("X-Test-Without-Scope", "true");
-        else
-            client.DefaultRequestHeaders.Add("X-Test-Scope", testUser.DefaultScope);
-
+        testUser.ApplyTo(client.DefaultRequestHeaders);
         return client;
     }
 

@@ -1297,3 +1297,264 @@ coverage step, is 159.51 s.
 - The Gate fell by less than the .NET test time. The PowerShell step was 10.38 s slower in its
   median than in the Gate before, and this audit did not change it.
 - No target is judged (D11).
+
+## .NET test audit, non-E2E (backlog 203)
+
+Backlog 203 audits the tests of UI.Blazor, CLI, Infrastructure, API and Application. The plan is
+`docs/superpowers/plans/2026-11-15-non-e2e-net-test-audit-plan-203.md`.
+
+### Gate before
+
+The first try failed on 2026-11-15, in `WorkflowPdfGenerator.Tests.ps1`. Edge 157 now returns
+from its first process after about 50 ms and writes the PDF from a child process.
+`scripts/update-workflow-pdf.ps1` checked for the PDF before the child wrote it. Pull request #485
+fixed that, and only that.
+
+The Gate before then ran on 2026-11-15, on a quiet machine, in a separate worktree. Its tree is
+revision B (`bd683fc5`) plus #485 and nothing else. The branch's own HEAD already held the audit's
+changes, so a run there would have measured the after state. The command was
+`pwsh .\scripts\measure-test-modes.ps1 -Mode Gate -BaseRef HEAD -Change Code`. No run printed
+"Sharing the test Lane pool with:".
+
+- Revision: `0cb0ec553cb8904f41c82fec8b596907f487ff42`.
+- Session folder: `TestResults\measure-test-modes\Gate\session-20261115-151822`, in the worktree
+  `.claude\worktrees\gate-before-net-audit`.
+- Preparation run: 363.27 s (build 20.91, format 46.42, powershell 295.72, coverage 0.17,
+  diff-check 0.04).
+- Warm-up, discarded: 554.00 s (build 7.06, format 46.00, powershell 266.73, coverage 234.17,
+  diff-check 0.04).
+
+| Run | Gate | Build | Format | PowerShell | Coverage | Diff check |
+|---|---|---|---|---|---|---|
+| 1 | 537.93 s | 7.29 s | 44.46 s | 276.57 s | 209.57 s | 0.04 s |
+| 2 | 511.09 s | 7.17 s | 47.36 s | 272.01 s | 184.52 s | 0.03 s |
+| 3 | 493.37 s | 7.16 s | 44.33 s | 261.67 s | 180.16 s | 0.04 s |
+| Median | 511.09 s | 7.17 s | 44.46 s | 272.01 s | 184.52 s | 0.04 s |
+
+The spread of the three Gate runs is 8.7 % of the median. The .NET test time, the median of the
+coverage step, is 184.52 s.
+
+The Gate after of 194 had a median of 402.19 s, and its .NET test time was 159.51 s. Between 194's
+after revision `7e71d9f0` and revision B lie 61 commits to `src` and `tests`. #485 adds one more.
+This audit's changes are not in the before tree, so the rise from 159.51 s to 184.52 s does not
+come from them.
+
+### Ranking
+
+Both before sessions ran on 2026-11-15, on a quiet machine, with their defaults. No run printed
+"Sharing the test Lane pool with:". Every warm-up run and every counted run passed.
+
+- Revision B: `bd683fc534f2b42a4ec8df87418b7e8e81a08623`.
+- Fast session: `TestResults\measure-test-modes\Fast\session-20261115-124639`. Four warm-up runs
+  were discarded. Counted runs: 16.10 / 15.78 / 16.07 / 16.02 / 16.16 s, median 16.07 s, spread
+  2.4 %.
+- Integration session: `TestResults\measure-test-modes\Integration\session-20261115-124928`. Two
+  warm-up runs were discarded. Counted runs: 43.62 / 45.55 / 53.26 / 46.03 / 45.67 s, median
+  45.67 s. Run 3 was slow, so the spread is 21.1 %. The medians below are robust to one slow run.
+
+Each figure is the median over the five counted runs. "Summed" is the sum of the test durations
+of one Slice in one run. "Span" runs from the first test start to the last test end of that
+Slice.
+
+| Mode | Slice | Results | Summed | Span |
+|---|---|---:|---:|---:|
+| Fast | UI.Blazor | 1189 | 47.62 s | 8.76 s |
+| Fast | CLI | 197 | 3.70 s | 2.21 s |
+| Fast | Application | 1817 | 3.18 s | 0.46 s |
+| Fast | Domain | 44 | 0.12 s | 0.05 s |
+| Fast | TestUtilities | 14 | 0.12 s | 0.11 s |
+| Integration | Infrastructure | 27 | 36.44 s | 11.40 s |
+| Integration | API | 258 | 12.94 s | 12.94 s |
+| Integration | Application | 399 | 21.91 s | 6.11 s |
+| Integration | CLI | 31 | 6.91 s | 6.95 s |
+
+The pickup run measured a UI.Blazor span of 14.5 s right after a build. Warm, it is 8.76 s. The
+four large bUnit classes still set it: `HotstringsPageTests` 8.07 s, `HotkeyEditDialogTests`
+7.93 s, `HotstringEditDialogTests` 7.75 s and `HotkeysPageTests` 7.17 s. The next class,
+`KnownShortcutsPageTests`, takes 2.90 s.
+
+The 15 slowest tests of each project and Mode are in the timings file that the auditors read,
+`.superpowers\203\ranking.md`, which is gitignored. The slowest of each:
+
+| Mode | Slice | Slowest test | Median |
+|---|---|---|---:|
+| Fast | UI.Blazor | `HotkeysPageTests.Page_BulkDeleteOfOneRow_ReadsAsSingular` | 1.27 s |
+| Fast | CLI | `CliHttpClientBuilderExtensionsTests.AddCliApiResilience_WithNoDelayArgument_KeepsTheTwoSecondDefault` | 2.01 s |
+| Fast | Application | `KnownShortcutCatalogTests.All_DoesPhrasesUsePlainEnglish` | 0.18 s |
+| Integration | Infrastructure | `HotkeyTypedActionsMigrationTests.Migration_BackfillsTypedColumns_MatchingConverter` | 9.68 s |
+| Integration | API | `TestAuthProviderToggleTests.WhoAmI_WithToggleOn_Returns200_WithSyntheticUser` | 1.35 s |
+| Integration | Application | `UpdateHotkeyWithCategoriesTests.Handle_WhenReplacingProfiles_ReturnsDtoWithExactProfileIds` | 0.64 s |
+| Integration | CLI | `HotstringCliIntegrationTests.List_ItemWithNoProfile_ShowsNoProfileInProfilesColumn` | 2.18 s |
+
+The five Candidate groups (P1). Each holds the classes with a triage lead, a structural lead, or
+one of the 15 slowest tests of its project:
+
+- UI.Blazor, 9 classes: `HotstringsPageTests`, `HotkeyEditDialogTests`,
+  `HotstringEditDialogTests`, `HotkeysPageTests`, `KnownShortcutsPageTests`, `KeyPickerTests`,
+  `SettingsPageTests`, `DownloadsPageTests`, `WindowOpTests`.
+- CLI, 14 classes: `CliHttpClientBuilderExtensionsTests`, `HotstringCliIntegrationTests`,
+  `DownloadCliIntegrationTests`, `ListHotstringCommandTests`, `AhkDownloadCommandTests`,
+  `MsalDeviceCodeTokenProviderTests`, `ZipDownloadCommandTests`, `LoginCommandTests`,
+  `NewHotstringCommandTests`, `BearerTokenHandlerTests`, `LogoutCommandTests`,
+  `LauncherPlanTests`, `HotstringJsonFormatterTests`, `DownloadDestinationTests`.
+- Infrastructure, 9 classes: `HotkeyTypedActionsMigrationTests`,
+  `BackfillEmptyProfileHeadersTests`, `MigrationTests`, `SchemaPolishBackfillTests`,
+  `RawHotstringKindMigrationTests`, `HotstringDeliveryMigrationTests`, `AppDbContextTests`,
+  `HotkeyPersistenceTests`, `HotstringPersistenceTests`.
+- API, 10 classes: `TestAuthProviderToggleTests`, `CategoriesEndpointsTests`,
+  `DevSeedEndpointTests`, `HotstringsEndpointsTests`, `HotstringHistoryEndpointsTests`,
+  `AuthenticationTests`, `DashboardEndpointsTests`, `HotkeysEndpointsTests`,
+  `DevSeederEndpointTests`, `HealthControllerTests`.
+- Application, 27 classes: the classes of its two lists of 15, one per Mode. No lead saves 0.5 s
+  or more.
+
+### Run 2
+
+Run 2 of the .NET mode audited the five Candidate groups on 2026-11-15, from 13:00 to 13:10 UTC,
+on revision B. This session had no workflow runtime, so the gitignored driver
+`.superpowers\203\run-audit.mjs` ran the text of `.claude/workflows/test-audit.js` (P4). Five
+auditors ran side by side, then one refuter at medium effort. The subagents used 629,096 tokens:
+520,478 for the auditors and 108,618 for the refuter.
+
+- Verdicts: 1 REMOVE, 1 MERGE and 8 SPEED UP. The SPEED UP rows are the three structural leads:
+  four for the class split, two for the shared CLI host, and one for the retry test.
+- API and Application returned no change. Each of their leads saves less than 0.5 s.
+- Refuter: one, for Infrastructure. It upheld both claims, and the audited test failed on each
+  planted defect. It reported `worktreeClean: true`, and `git status` printed nothing.
+
+The approval table has five rows. The class split and the shared CLI host are one row each,
+because each is one change. All five rows were approved, and none was rejected.
+
+| Row | Verdict | Kind | Tests | Refuter |
+|---:|---|---|---|---|
+| 1 | REMOVE | test-time | `AppDbContextTests.EnsureCreated_AppliesSchemaWithoutError` | Upheld. A bogus column type in `HotkeyConfiguration` failed it, `MigrationTests.Migrate_AppliesPendingMigrationsWithoutError` and all four `HotkeyPersistenceTests`. |
+| 2 | MERGE | test-time | `MigrationTests.Migrate_IsIdempotent_RunsTwiceWithoutError` into `MigrationTests.Migrate_AppliesPendingMigrationsWithoutError` | Upheld. A history repository that records no migration failed the absorbed test, and the merged test on the same edit. |
+| 3 | SPEED UP (P5a) | test-time | `CliHttpClientBuilderExtensionsTests.AddCliApiResilience_WithNoDelayArgument_KeepsTheTwoSecondDefault` | Not refuted: a SPEED UP keeps every assertion. |
+| 4 | SPEED UP (P5b) | span | `HotstringCliIntegrationTests`, `DownloadCliIntegrationTests` | Not refuted. |
+| 5 | SPEED UP (P5c) | span | `HotstringsPageTests`, `HotkeyEditDialogTests`, `HotstringEditDialogTests`, `HotkeysPageTests` | Not refuted. |
+
+### Changes
+
+The middle sessions ran on 2026-11-15, with their defaults, on revision `fbf90f71c9586a4f3d62022cb06b2df6a0711a30`. That tree
+holds rows 1 to 3 and no span row. No run printed "Sharing the test Lane pool with:". Every
+warm-up run and every counted run passed.
+
+- Fast session: `TestResults\measure-test-modes\Fast\session-20261115-134428`. Counted runs:
+  14.02 / 14.44 / 16.47 / 15.83 / 14.80 s, median 14.80 s.
+- Integration session: `TestResults\measure-test-modes\Integration\session-20261115-135610`.
+  Counted runs: 42.90 / 42.24 / 42.68 / 44.19 / 42.52 s, median 42.68 s.
+
+Each row is timed by D9: the median, over the five counted runs, of the summed duration of its
+tests. "Before" is read in the before session, and "middle" in the middle session.
+
+| Row | Commit | Tests | Before | Middle | Saved | Result |
+|---:|---|---|---:|---:|---:|---|
+| 1 | `940c6a48` | `AppDbContextTests.EnsureCreated_AppliesSchemaWithoutError`, removed | 2.10 s | 0 s | 2.10 s | kept |
+| 2 | `d8516796` | `MigrationTests.Migrate_IsIdempotent_RunsTwiceWithoutError` and `Migrate_AppliesPendingMigrationsWithoutError`, now `Migrate_AppliesPendingMigrations_ThenRunsAgainWithoutError` | 5.17 s | 2.64 s | 2.53 s | kept |
+| 3 | `45c337c6` | `CliHttpClientBuilderExtensionsTests.AddCliApiResilience_WithNoDelayArgument_KeepsTheTwoSecondDefault` | 2.01 s | 0.00 s | 2.01 s | kept |
+
+The kept test-time rows save 6.64 s of summed test time. Every row saves 0.5 s or more, so no row
+was reverted. No revert touched UI.Blazor or the CLI integration tests. So the middle Fast
+session is the span baseline of row 5, and the middle Integration session is the span baseline of
+row 4.
+
+### Span rows
+
+A span row is timed by D9: the median, over the five counted runs, of the time from the first test
+start to the last test end of its Slice. "Baseline" is read in the middle session of its Mode, and
+"after" in the after session.
+
+- Fast after session: `TestResults\measure-test-modes\Fast\session-20261115-142145`, median
+  14.68 s. Its tree held the split of row 5.
+- Integration after session: `TestResults\measure-test-modes\Integration\session-20261115-143354`,
+  median 41.65 s. Its tree held row 4. The session `session-20261115-143317` was stopped before
+  its first run, and no figure comes from it.
+
+| Row | Commits | Slice | Baseline | After | Saved | Result |
+|---:|---|---|---:|---:|---:|---|
+| 4 | `4a65e1eb` | `AHKFlowApp.CLI.Tests`, Integration | 6.66 s | 3.80 s | 2.86 s | kept |
+| 5 | `b3d8e245`, `b83c1a98`, `19cb3899`, `a4db283b` | `AHKFlowApp.UI.Blazor.Tests`, Fast | 9.23 s | 9.27 s | -0.04 s | reverted |
+
+Row 4 shares one API host per collection and sends the identity with each request. Without the
+`X-Test-Oid` header, 15 of its 21 changed tests failed, so each test still signs in as its own
+user.
+
+Row 5 split four bUnit classes into three classes each. The span did not fall, and the summed time
+of the Slice rose from 50.99 s to 102.43 s. So the extra classes ran side by side, but the
+processor was already busy, and each test ran slower. The reverts are `c36abc3c`, `bf27a9f5`,
+`d4110296` and `61714a49`. After them, the UI.Blazor tests equal the span baseline's tree, so no new
+session was needed.
+
+The kept span row saves 2.86 s of wall time in the Integration Mode. Keep it apart from the 6.64 s
+of the test-time rows: that figure is summed test time, and the two do not add up.
+
+### Slices
+
+Each cell is the summed median, then the span median, in seconds. "Before" is the before session,
+"baseline" the middle session, and "after" the after session of the same Mode.
+
+| Mode | Slice | Before | Baseline | After |
+|---|---|---:|---:|---:|
+| Fast | `AHKFlowApp.UI.Blazor.Tests` | 47.62 / 8.76 | 50.99 / 9.23 | 102.43 / 9.27 |
+| Fast | `AHKFlowApp.CLI.Tests` | 3.70 / 2.21 | 1.79 / 0.21 | 1.66 / 0.20 |
+| Fast | `AHKFlowApp.Application.Tests` | 3.18 / 0.46 | 3.35 / 0.47 | 3.19 / 0.45 |
+| Integration | `AHKFlowApp.API.Tests` | 12.94 / 12.94 | 12.15 / 12.16 | 13.13 / 13.12 |
+| Integration | `AHKFlowApp.Application.Tests` | 21.91 / 6.11 | 20.84 / 5.81 | 20.98 / 5.84 |
+| Integration | `AHKFlowApp.CLI.Tests` | 6.91 / 6.95 | 6.62 / 6.66 | 3.77 / 3.80 |
+| Integration | `AHKFlowApp.Infrastructure.Tests` | 36.44 / 11.40 | 30.58 / 10.53 | 31.16 / 10.68 |
+
+The Fast "after" column holds the split of row 5, which is now reverted. The CLI Fast Slice fell
+between before and baseline because of row 3, and the Infrastructure Slice because of rows 1
+and 2.
+
+### Gate after
+
+The command was `pwsh .\scripts\measure-test-modes.ps1 -Mode Gate -BaseRef HEAD -Change Code`, on
+2026-11-15, on a quiet machine, on this branch with main merged in. No run printed "Sharing the
+test Lane pool with:".
+
+The first try failed in its warm-up, in the coverage step. One E2E test,
+`VersionHistoryFlowTests.RestoreOfSnapshotFailingCurrentRules_WarnsThenStillSaysWhyAfterAReload`,
+waited 5 s for a tooltip that never opened. This branch changes nothing in `src` or in
+`tests/AHKFlowApp.E2E.Tests` against the before tree, and the test passed in every run of the Gate
+before. The second try passed, and its figures follow.
+
+- Revision: `7a20eee5731902754923097c2d1499cae54671d2`.
+- Session folder: `TestResults\measure-test-modes\Gate\session-20261115-161840`.
+- Preparation run: 316.37 s (build 6.73, format 44.08, powershell 265.35, coverage 0.17,
+  diff-check 0.03).
+- Warm-up, discarded: 510.63 s (build 5.62, format 47.03, powershell 271.36, coverage 186.59,
+  diff-check 0.04).
+
+| Run | Gate | Build | Format | PowerShell | Coverage | Diff check |
+|---|---|---|---|---|---|---|
+| 1 | 509.45 s | 6.48 s | 49.32 s | 270.52 s | 183.09 s | 0.05 s |
+| 2 | 510.16 s | 6.17 s | 45.50 s | 271.90 s | 186.55 s | 0.04 s |
+| 3 | 503.69 s | 6.16 s | 48.95 s | 266.92 s | 181.61 s | 0.04 s |
+| Median | 509.45 s | 6.17 s | 48.95 s | 270.52 s | 183.09 s | 0.04 s |
+
+The spread of the three Gate runs is 1.3 % of the median. The .NET test time, the median of the
+coverage step, is 183.09 s.
+
+Commit `a87d06e8` came after this Gate. It moves the writing of the `X-Test-*` headers into
+`TestUserBuilder.ApplyTo`, which sends the same headers as before. It adds no test and removes
+none, so it is not timed again.
+
+### Result
+
+| Measure | Before | After | Change |
+|---|---:|---:|---:|
+| Gate median | 511.09 s | 509.45 s | -1.64 s |
+| .NET test time (coverage step median) | 184.52 s | 183.09 s | -1.43 s |
+
+The triage estimated 12 to 16 s for these five projects. The measured change of the .NET test time
+is 1.43 s. The spread of the Gate before was 8.7 % of its median, about 44 s. So the Gate cannot
+tell this change apart from machine noise.
+
+The two totals of this audit, kept apart:
+
+- The kept test-time rows, 1 to 3, save 6.64 s of summed test time. Tests run side by side, so
+  this is not wall time.
+- The kept span row, row 4, saves 2.86 s of wall time in the Integration Mode.
+
+No target is judged (D11).

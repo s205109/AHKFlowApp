@@ -1,5 +1,6 @@
 using AHKFlowApp.API;
 using AHKFlowApp.CLI.Services;
+using AHKFlowApp.TestUtilities.Auth;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -27,6 +28,7 @@ internal static class CliTestHost
 
     public static IServiceProvider WithFactory(
         WebApplicationFactory<Program> factory,
+        TestUserBuilder user,
         string? token = "test-token",
         RequestCounter? counter = null,
         Stream? stdoutSink = null,
@@ -36,23 +38,21 @@ internal static class CliTestHost
         services.AddSingleton<IAuthTokenProvider>(new StubAuthTokenProvider(token));
         services.AddTransient<BearerTokenHandler>();
 
-        IHttpClientBuilder hsBuilder = services.AddHttpClient<IHotstringsApiClient, HotstringsApiClient>(c =>
-                c.BaseAddress = new Uri("http://localhost"))
-            .ConfigurePrimaryHttpMessageHandler(() => factory.Server.CreateHandler())
-            .AddHttpMessageHandler<BearerTokenHandler>();
-        if (counter is not null) hsBuilder.AddHttpMessageHandler(() => new CountingHandler(counter));
+        void Configure(IHttpClientBuilder builder)
+        {
+            builder
+                .ConfigurePrimaryHttpMessageHandler(() => factory.Server.CreateHandler())
+                .AddHttpMessageHandler<BearerTokenHandler>()
+                .AddHttpMessageHandler(() => new TestIdentityHandler(user));
+            if (counter is not null) builder.AddHttpMessageHandler(() => new CountingHandler(counter));
+        }
 
-        IHttpClientBuilder pBuilder = services.AddHttpClient<IProfilesApiClient, ProfilesApiClient>(c =>
-                c.BaseAddress = new Uri("http://localhost"))
-            .ConfigurePrimaryHttpMessageHandler(() => factory.Server.CreateHandler())
-            .AddHttpMessageHandler<BearerTokenHandler>();
-        if (counter is not null) pBuilder.AddHttpMessageHandler(() => new CountingHandler(counter));
-
-        IHttpClientBuilder dBuilder = services.AddHttpClient<IDownloadsApiClient, DownloadsApiClient>(c =>
-                c.BaseAddress = new Uri("http://localhost"))
-            .ConfigurePrimaryHttpMessageHandler(() => factory.Server.CreateHandler())
-            .AddHttpMessageHandler<BearerTokenHandler>();
-        if (counter is not null) dBuilder.AddHttpMessageHandler(() => new CountingHandler(counter));
+        Configure(services.AddHttpClient<IHotstringsApiClient, HotstringsApiClient>(c =>
+            c.BaseAddress = new Uri("http://localhost")));
+        Configure(services.AddHttpClient<IProfilesApiClient, ProfilesApiClient>(c =>
+            c.BaseAddress = new Uri("http://localhost")));
+        Configure(services.AddHttpClient<IDownloadsApiClient, DownloadsApiClient>(c =>
+            c.BaseAddress = new Uri("http://localhost")));
 
         services.AddSingleton(new BinaryStdout(stdoutSink is null ? () => new MemoryStream() : () => stdoutSink));
         services.AddSingleton(new WorkingDirectory(() => baseDirectory ?? Path.GetTempPath()));

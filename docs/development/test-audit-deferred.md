@@ -155,3 +155,67 @@ same bug.
 - `HotkeysMobileFlowTests.TabletViewport_DoesNotCreatePageHorizontalOverflow`, MERGE into `HotstringsMobileFlowTests.TabletViewport_DoesNotCreatePageHorizontalOverflow` (1.7 s): refuted, then rejected. Overflow on `/hotkeys` fails no other test.
 - `KnownShortcutsMobileFlowTests.TabletViewport_DoesNotCreatePageHorizontalOverflow`, MERGE into the same test (1.5 s): refuted, then rejected. Overflow on `/known-shortcuts` fails no other test.
 - `ShortcutWarningFlowTests.AnInlineEditableRow_CanStillOpenTheFullEditor`, REWORK into a bUnit test next to `HotkeysPageTests.EditButton_OnRawRow_OpensDialogInsteadOfInlineEdit` (3.8 s): rejected. No other test clicks `button.open-full-editor`, so the bUnit test must be written and shown to fail first.
+
+## Backlog 203, non-E2E
+
+Run 2 of the .NET mode audited the UI.Blazor, CLI, Infrastructure, API and Application tests on
+2026-11-15, on revision `bd683fc5`. The full table is in `docs/development/cycle-time-record.md`,
+under `### Run 2`.
+
+No claim was refuted or left unverified, and no row was rejected.
+
+### Reverted span row
+
+- Row 5: split `HotstringsPageTests`, `HotkeysPageTests`, `HotstringEditDialogTests` and
+  `HotkeyEditDialogTests` into three classes each. The UI.Blazor span median was 9.23 s before and
+  9.27 s after. It saved under 0.5 s when measured, so it was reverted. Splitting more classes
+  does not help while the processor is already busy.
+
+### Triage proposals with no change (P8)
+
+These are the non-E2E proposals of sections 5.1 and 5.2 of
+`docs/superpowers/specs/2026-10-18-speed-up-the-development-cycle-research-188/dotnet-tests.md`
+that no auditor returned. They were not audited again. Each figure is the summed median of the
+proposal's tests in the ranking of the before sessions.
+
+Saves under 0.5 s:
+
+- `AppDbContextTests.CanConnect_WhenDatabaseExists_ReturnsTrue`, remove: 0.08 s.
+- `AuthenticationTests.GetHealth_Anonymous_StillWorks`, remove: 0.19 s.
+- `CategoriesEndpointsTests.GET_list_second_call_does_not_reseed`, remove: 0.46 s.
+- `CategoriesEndpointsTests.GET_list_after_deleting_all_returns_zero_and_does_not_reseed`, remove:
+  0.14 s.
+- UI.Blazor `WindowOpTests.OrdinalValue_MatchesBackendMirror`, 7 rows, remove: 0.00 s.
+- `SettingsPageTests.Page_HasSaveButton`, remove: 0.29 s.
+- `HotkeysPageTests.Page_HasSearchInput`, remove: 0.05 s.
+- `DownloadsPageTests.Page_OnLoad_RendersTitleAndDownloadAllButton`, remove: 0.02 s.
+- `HealthControllerTests.GetHealth_ReturnsExpectedShape`, merge into
+  `GetHealth_WhenDatabaseReachable_Returns200WithHealthyStatus`: 0.01 s.
+- `LegacyHotkeySnapshotConverterTests`, down to a few delegation rows: 0.09 s for the class.
+- The three kind-badge colour tests of `HotstringsPageTests` (`Page_DateTimeRow_ShowsInfoColoredBadge`,
+  `Page_MacroRow_ShowsSuccessColoredBadge`, `Page_RawRow_ShowsWarningColoredBadgeWithAccessibleText`),
+  into one theory: 0.15 s.
+- The per-field-group mapping tests of `HotstringEditModelTests`, into the `*_MapsAllFields`
+  tests: 0.06 s for the class.
+- The two `HotstringImportRowStatusTests` literal tables, Application and UI.Blazor, into one
+  mirror comparison: 0.00 s.
+- `HotstringCliIntegrationTests.Create_DuplicateTrigger_Exit2`, drop: 0.12 s.
+- The presence-only tests, into behaviour tests (`HotstringsPageTests.Page_HasReloadButton` and
+  `Page_HasSearchInput`, `HotkeysPageTests.Page_HasReloadButton`,
+  `ProfilesPageTests.Page_OnLoad_ShowsTitleAndButtons` and `Page_Delete_SnackbarRepeatsTheCount`,
+  `HybridUserPreferencesServiceTests.Dispose_DoesNotThrow`): 0.22 s. The triage also names a
+  `HotkeysPageTests` snackbar test at its line 608. That line has moved, and no test there could be
+  matched by name, so it is not counted.
+
+The auditor returned no change for it:
+
+- The shared methods of the hotstring, hotkey, Profile and preview validator test classes, into
+  theories that take the validator: 0.68 s for the classes.
+- `HotstringEditDialogTests.KindToggle_LeavingRaw_KeepsTheDefinitionsOptions`, from 6 rows to 2:
+  1.10 s for the 6 rows.
+- The exact-sentence assertions in `ShortcutWarningTests`, the `TemplateNotice_` tests of
+  `HotkeyEditDialogTests`, and `HotkeysPageTests.Grid_HotkeyLimitedToOneWindow_ShowsTheContextIcon`,
+  as presence or partial checks: 0.60 s. This proposal changes assertions, not run time.
+
+The Domain proposal of section 5.2 is outside this audit, which covers UI.Blazor, CLI,
+Infrastructure, API and Application.
