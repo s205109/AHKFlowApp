@@ -56,7 +56,11 @@ $fakePs1 = Join-Path $fakeRoot 'fake-browser.ps1'
 param()
 $ErrorActionPreference = 'Stop'
 $mode = $env:AHKFLOW_FAKE_MODE
-$out = ($args | Where-Object { $_ -like '--print-to-pdf=*' }) -replace '^--print-to-pdf=', ''
+# Read the output path from the raw command line, as a native browser does. The generator
+# starts this fake through 'pwsh -File', and PowerShell splits '--print-to-pdf=C:\path' in
+# $args at the colon, because it reads the colon as a parameter value separator.
+$pdfArg = [regex]::Match([System.Environment]::CommandLine, '"--print-to-pdf=([^"]+)"|--print-to-pdf=(\S+)')
+$out = if ($pdfArg.Groups[1].Success) { $pdfArg.Groups[1].Value } else { $pdfArg.Groups[2].Value }
 $uri = @($args | Where-Object { $_ -like 'file:*' })[0]
 if ($mode -eq 'exit1') { exit 1 }
 if ($mode -eq 'nothing') { exit 0 }
