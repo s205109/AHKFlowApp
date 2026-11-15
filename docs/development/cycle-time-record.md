@@ -1429,3 +1429,52 @@ The kept test-time rows save 6.64 s of summed test time. Every row saves 0.5 s o
 was reverted. No revert touched UI.Blazor or the CLI integration tests. So the middle Fast
 session is the span baseline of row 5, and the middle Integration session is the span baseline of
 row 4.
+
+### Span rows
+
+A span row is timed by D9: the median, over the five counted runs, of the time from the first test
+start to the last test end of its Slice. "Baseline" is read in the middle session of its Mode, and
+"after" in the after session.
+
+- Fast after session: `TestResults\measure-test-modes\Fast\session-20261115-142145`, median
+  14.68 s. Its tree held the split of row 5.
+- Integration after session: `TestResults\measure-test-modes\Integration\session-20261115-143354`,
+  median 41.65 s. Its tree held row 4. The session `session-20261115-143317` was stopped before
+  its first run, and no figure comes from it.
+
+| Row | Commits | Slice | Baseline | After | Saved | Result |
+|---:|---|---|---:|---:|---:|---|
+| 4 | `4a65e1eb` | `AHKFlowApp.CLI.Tests`, Integration | 6.66 s | 3.80 s | 2.86 s | kept |
+| 5 | `b3d8e245`, `b83c1a98`, `19cb3899`, `a4db283b` | `AHKFlowApp.UI.Blazor.Tests`, Fast | 9.23 s | 9.27 s | -0.04 s | reverted |
+
+Row 4 shares one API host per collection and sends the identity with each request. Without the
+`X-Test-Oid` header, 15 of its 21 changed tests failed, so each test still signs in as its own
+user.
+
+Row 5 split four bUnit classes into three classes each. The span did not fall, and the summed time
+of the Slice rose from 50.99 s to 102.43 s. So the extra classes ran side by side, but the
+processor was already busy, and each test ran slower. The reverts are `c36abc3c`, `bf27a9f5`,
+`d4110296` and `61714a49`. After them, the UI.Blazor tests equal the span baseline's tree, so no new
+session was needed.
+
+The kept span row saves 2.86 s of wall time in the Integration Mode. Keep it apart from the 6.64 s
+of the test-time rows: that figure is summed test time, and the two do not add up.
+
+### Slices
+
+Each cell is the summed median, then the span median, in seconds. "Before" is the before session,
+"baseline" the middle session, and "after" the after session of the same Mode.
+
+| Mode | Slice | Before | Baseline | After |
+|---|---|---:|---:|---:|
+| Fast | `AHKFlowApp.UI.Blazor.Tests` | 47.62 / 8.76 | 50.99 / 9.23 | 102.43 / 9.27 |
+| Fast | `AHKFlowApp.CLI.Tests` | 3.70 / 2.21 | 1.79 / 0.21 | 1.66 / 0.20 |
+| Fast | `AHKFlowApp.Application.Tests` | 3.18 / 0.46 | 3.35 / 0.47 | 3.19 / 0.45 |
+| Integration | `AHKFlowApp.API.Tests` | 12.94 / 12.94 | 12.15 / 12.16 | 13.13 / 13.12 |
+| Integration | `AHKFlowApp.Application.Tests` | 21.91 / 6.11 | 20.84 / 5.81 | 20.98 / 5.84 |
+| Integration | `AHKFlowApp.CLI.Tests` | 6.91 / 6.95 | 6.62 / 6.66 | 3.77 / 3.80 |
+| Integration | `AHKFlowApp.Infrastructure.Tests` | 36.44 / 11.40 | 30.58 / 10.53 | 31.16 / 10.68 |
+
+The Fast "after" column holds the split of row 5, which is now reverted. The CLI Fast Slice fell
+between before and baseline because of row 3, and the Infrastructure Slice because of rows 1
+and 2.
