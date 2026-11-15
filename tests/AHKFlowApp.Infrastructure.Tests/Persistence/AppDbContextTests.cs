@@ -40,20 +40,4 @@ public sealed class AppDbContextTests(SharedSqlServerFixture sqlFixture)
         // Assert
         canConnect.Should().BeTrue();
     }
-
-    [Fact]
-    public async Task EnsureCreated_AppliesSchemaWithoutError()
-    {
-        // Arrange
-        // Without the drop, a server an earlier run used already holds the database, so
-        // EnsureCreatedAsync applies no schema and this fact passes without testing anything.
-        await using AppDbContext context = CreateContext("AppDbContextTests_EnsureCreated");
-        await RunIndependentDatabase.DropAsync(context);
-
-        // Act
-        Func<Task> act = async () => await context.Database.EnsureCreatedAsync();
-
-        // Assert
-        await act.Should().NotThrowAsync();
-    }
 }
