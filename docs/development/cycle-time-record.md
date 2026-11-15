@@ -1305,11 +1305,39 @@ Backlog 203 audits the tests of UI.Blazor, CLI, Infrastructure, API and Applicat
 
 ### Gate before
 
-The Gate before is not measured yet. On 2026-11-15 the PowerShell step failed in the preparation
-run, in `WorkflowPdfGenerator.Tests.ps1`. Edge 157 now returns from its first process after about
-50 ms and writes the PDF from a child process. `scripts/update-workflow-pdf.ps1` checks for the
-PDF before the child writes it. So every Gate on this machine fails, on every branch. The fix
-goes in its own pull request. The Gate before runs once that fix is merged into this branch.
+The first try failed on 2026-11-15, in `WorkflowPdfGenerator.Tests.ps1`. Edge 157 now returns
+from its first process after about 50 ms and writes the PDF from a child process.
+`scripts/update-workflow-pdf.ps1` checked for the PDF before the child wrote it. Pull request #485
+fixed that, and only that.
+
+The Gate before then ran on 2026-11-15, on a quiet machine, in a separate worktree. Its tree is
+revision B (`bd683fc5`) plus #485 and nothing else. The branch's own HEAD already held the audit's
+changes, so a run there would have measured the after state. The command was
+`pwsh .\scripts\measure-test-modes.ps1 -Mode Gate -BaseRef HEAD -Change Code`. No run printed
+"Sharing the test Lane pool with:".
+
+- Revision: `0cb0ec553cb8904f41c82fec8b596907f487ff42`.
+- Session folder: `TestResults\measure-test-modes\Gate\session-20261115-151822`, in the worktree
+  `.claude\worktrees\gate-before-net-audit`.
+- Preparation run: 363.27 s (build 20.91, format 46.42, powershell 295.72, coverage 0.17,
+  diff-check 0.04).
+- Warm-up, discarded: 554.00 s (build 7.06, format 46.00, powershell 266.73, coverage 234.17,
+  diff-check 0.04).
+
+| Run | Gate | Build | Format | PowerShell | Coverage | Diff check |
+|---|---|---|---|---|---|---|
+| 1 | 537.93 s | 7.29 s | 44.46 s | 276.57 s | 209.57 s | 0.04 s |
+| 2 | 511.09 s | 7.17 s | 47.36 s | 272.01 s | 184.52 s | 0.03 s |
+| 3 | 493.37 s | 7.16 s | 44.33 s | 261.67 s | 180.16 s | 0.04 s |
+| Median | 511.09 s | 7.17 s | 44.46 s | 272.01 s | 184.52 s | 0.04 s |
+
+The spread of the three Gate runs is 8.7 % of the median. The .NET test time, the median of the
+coverage step, is 184.52 s.
+
+The Gate after of 194 had a median of 402.19 s, and its .NET test time was 159.51 s. Between 194's
+after revision `7e71d9f0` and revision B lie 61 commits to `src` and `tests`. #485 adds one more.
+This audit's changes are not in the before tree, so the rise from 159.51 s to 184.52 s does not
+come from them.
 
 ### Ranking
 
