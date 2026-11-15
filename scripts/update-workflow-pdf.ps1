@@ -19,7 +19,8 @@
     It still does not prove the rendered pages show the cheatsheet's contents; extracting text
     from a compressed PDF is deliberately out of scope.
 .PARAMETER BrowserPath
-    The Chromium browser to render with. Defaults to a local Edge or Chrome install.
+    The Chromium browser to render with. Defaults to a local Edge or Chrome install. A .ps1
+    file runs in pwsh; the tests use that for a fake browser.
 .PARAMETER DocsRoot
     The folder holding the documents. Defaults to docs/development.
 #>
@@ -72,8 +73,28 @@ $tempHtml = Join-Path ([System.IO.Path]::GetTempPath()) "ahk-workflow-$([guid]::
 [System.IO.File]::WriteAllText($tempHtml, $patched)
 
 Write-Host "Rendering with: $browser"
-& $browser --headless --disable-gpu --no-pdf-header-footer "--print-to-pdf=$temp" (([uri]$tempHtml).AbsoluteUri) | Out-Null
-$browserExit = $LASTEXITCODE
+# Start-Process -Wait waits for the whole process tree, not only for the process it started.
+# The call operator waits only for that first process. Since Edge 157 that process is a
+# launcher: it exits with code 0 after about 50 ms and a child process writes the PDF a few
+# seconds later. With the call operator, the Test-Path check below ran before the file existed.
+# Start-Process joins the arguments with spaces and does not quote them, so the PDF path, which
+# can hold a space, carries its own quotes. The file URI has no spaces: AbsoluteUri encodes them.
+$browserArgs = @(
+    '--headless'
+    '--disable-gpu'
+    '--no-pdf-header-footer'
+    "`"--print-to-pdf=$temp`""
+    ([uri]$tempHtml).AbsoluteUri
+)
+# Start-Process cannot start a .ps1 file, so a script browser runs in a new pwsh with the same
+# arguments. The suite's fake browser is a .ps1 file, so the suite covers this launch path too.
+$launcher = $browser
+if ([System.IO.Path]::GetExtension($browser) -eq '.ps1') {
+    $launcher = [System.Environment]::ProcessPath
+    $browserArgs = @('-NoProfile', '-File', "`"$browser`"") + $browserArgs
+}
+$browserProcess = Start-Process -FilePath $launcher -ArgumentList $browserArgs -Wait -PassThru -NoNewWindow
+$browserExit = $browserProcess.ExitCode
 
 try {
     if ($browserExit -ne 0) { throw "The browser exited with code $browserExit and wrote nothing usable." }
