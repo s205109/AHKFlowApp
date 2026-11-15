@@ -10,3 +10,4 @@ Plan: `docs/superpowers/plans/2026-11-15-non-e2e-net-test-audit-plan-203.md` (fr
 - Task 6: done at 905921eb. Tests: middle Fast 5/5, Integration 5/5 passed; rows 1-3 save 2.10, 2.53, 2.01 s, all kept. S = fbf90f71. Deferrals: none.
 - Task 7: done at 6cae7882. Tests: row 4 CLI suite 32/32, fails 15/21 without X-Test-Oid; after Fast 5/5, Integration 5/5 passed; row 4 kept 2.86 s, row 5 reverted (-0.04 s). Deferrals: row 5 and 18 P8 proposals listed.
 - Task 2: done at db0c306a. Tests: Gate before 3/3 counted runs passed on 0cb0ec55, median 511.09 s. Deferrals: none.
+- Task 8: done at 9c1b8c8d. Tests: Gate after 3/3 counted runs passed on 7a20eee5 (second try; first failed on an E2E tooltip wait in unchanged code), median 509.45 s. Deferrals: none.
