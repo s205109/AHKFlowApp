@@ -6,7 +6,7 @@
 - **Type**: Tooling
 - **Interfaces**: none (five .NET test projects)
 - **Difficulty**: moderate
-- **Stage**: 3-plan
+- **Stage**: 4-execute
 
 ## Summary
 
