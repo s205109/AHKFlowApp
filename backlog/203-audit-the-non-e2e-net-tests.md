@@ -58,4 +58,4 @@ The rules come from the 194 spec named below. Tick a box only when its words hol
   from waiting out a real 2 s delay.
 - The triage is `docs/superpowers/specs/2026-10-18-speed-up-the-development-cycle-research-188/dotnet-tests.md`.
 - Spec: `docs/superpowers/specs/2026-11-01-net-test-audit-design-194.md`
-- Plan: none — Plan comes at pickup.
+- Plan: `docs/superpowers/plans/2026-11-15-non-e2e-net-test-audit-plan-203.md`
