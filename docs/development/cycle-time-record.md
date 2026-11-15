@@ -1379,3 +1379,28 @@ one of the 15 slowest tests of its project:
   `DevSeederEndpointTests`, `HealthControllerTests`.
 - Application, 27 classes: the classes of its two lists of 15, one per Mode. No lead saves 0.5 s
   or more.
+
+### Run 2
+
+Run 2 of the .NET mode audited the five Candidate groups on 2026-11-15, from 13:00 to 13:10 UTC,
+on revision B. This session had no workflow runtime, so the gitignored driver
+`.superpowers\203\run-audit.mjs` ran the text of `.claude/workflows/test-audit.js` (P4). Five
+auditors ran side by side, then one refuter at medium effort. The subagents used 629,096 tokens:
+520,478 for the auditors and 108,618 for the refuter.
+
+- Verdicts: 1 REMOVE, 1 MERGE and 8 SPEED UP. The SPEED UP rows are the three structural leads:
+  four for the class split, two for the shared CLI host, and one for the retry test.
+- API and Application returned no change. Each of their leads saves less than 0.5 s.
+- Refuter: one, for Infrastructure. It upheld both claims, and the audited test failed on each
+  planted defect. It reported `worktreeClean: true`, and `git status` printed nothing.
+
+The approval table has five rows. The class split and the shared CLI host are one row each,
+because each is one change. All five rows were approved, and none was rejected.
+
+| Row | Verdict | Kind | Tests | Refuter |
+|---:|---|---|---|---|
+| 1 | REMOVE | test-time | `AppDbContextTests.EnsureCreated_AppliesSchemaWithoutError` | Upheld. A bogus column type in `HotkeyConfiguration` failed it, `MigrationTests.Migrate_AppliesPendingMigrationsWithoutError` and all four `HotkeyPersistenceTests`. |
+| 2 | MERGE | test-time | `MigrationTests.Migrate_IsIdempotent_RunsTwiceWithoutError` into `MigrationTests.Migrate_AppliesPendingMigrationsWithoutError` | Upheld. A history repository that records no migration failed the absorbed test, and the merged test on the same edit. |
+| 3 | SPEED UP (P5a) | test-time | `CliHttpClientBuilderExtensionsTests.AddCliApiResilience_WithNoDelayArgument_KeepsTheTwoSecondDefault` | Not refuted: a SPEED UP keeps every assertion. |
+| 4 | SPEED UP (P5b) | span | `HotstringCliIntegrationTests`, `DownloadCliIntegrationTests` | Not refuted. |
+| 5 | SPEED UP (P5c) | span | `HotstringsPageTests`, `HotkeyEditDialogTests`, `HotstringEditDialogTests`, `HotkeysPageTests` | Not refuted. |

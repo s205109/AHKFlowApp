@@ -155,3 +155,11 @@ same bug.
 - `HotkeysMobileFlowTests.TabletViewport_DoesNotCreatePageHorizontalOverflow`, MERGE into `HotstringsMobileFlowTests.TabletViewport_DoesNotCreatePageHorizontalOverflow` (1.7 s): refuted, then rejected. Overflow on `/hotkeys` fails no other test.
 - `KnownShortcutsMobileFlowTests.TabletViewport_DoesNotCreatePageHorizontalOverflow`, MERGE into the same test (1.5 s): refuted, then rejected. Overflow on `/known-shortcuts` fails no other test.
 - `ShortcutWarningFlowTests.AnInlineEditableRow_CanStillOpenTheFullEditor`, REWORK into a bUnit test next to `HotkeysPageTests.EditButton_OnRawRow_OpensDialogInsteadOfInlineEdit` (3.8 s): rejected. No other test clicks `button.open-full-editor`, so the bUnit test must be written and shown to fail first.
+
+## Backlog 203, non-E2E
+
+Run 2 of the .NET mode audited the UI.Blazor, CLI, Infrastructure, API and Application tests on
+2026-11-15, on revision `bd683fc5`. The full table is in `docs/development/cycle-time-record.md`,
+under `### Run 2`.
+
+No claim was refuted or left unverified, and no row was rejected.
