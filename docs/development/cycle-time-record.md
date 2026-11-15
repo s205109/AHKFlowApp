@@ -1297,3 +1297,85 @@ coverage step, is 159.51 s.
 - The Gate fell by less than the .NET test time. The PowerShell step was 10.38 s slower in its
   median than in the Gate before, and this audit did not change it.
 - No target is judged (D11).
+
+## .NET test audit, non-E2E (backlog 203)
+
+Backlog 203 audits the tests of UI.Blazor, CLI, Infrastructure, API and Application. The plan is
+`docs/superpowers/plans/2026-11-15-non-e2e-net-test-audit-plan-203.md`.
+
+### Gate before
+
+The Gate before is not measured yet. On 2026-11-15 the PowerShell step failed in the preparation
+run, in `WorkflowPdfGenerator.Tests.ps1`. Edge 157 now returns from its first process after about
+50 ms and writes the PDF from a child process. `scripts/update-workflow-pdf.ps1` checks for the
+PDF before the child writes it. So every Gate on this machine fails, on every branch. The fix
+goes in its own pull request. The Gate before runs once that fix is merged into this branch.
+
+### Ranking
+
+Both before sessions ran on 2026-11-15, on a quiet machine, with their defaults. No run printed
+"Sharing the test Lane pool with:". Every warm-up run and every counted run passed.
+
+- Revision B: `bd683fc534f2b42a4ec8df87418b7e8e81a08623`.
+- Fast session: `TestResults\measure-test-modes\Fast\session-20261115-124639`. Four warm-up runs
+  were discarded. Counted runs: 16.10 / 15.78 / 16.07 / 16.02 / 16.16 s, median 16.07 s, spread
+  2.4 %.
+- Integration session: `TestResults\measure-test-modes\Integration\session-20261115-124928`. Two
+  warm-up runs were discarded. Counted runs: 43.62 / 45.55 / 53.26 / 46.03 / 45.67 s, median
+  45.67 s. Run 3 was slow, so the spread is 21.1 %. The medians below are robust to one slow run.
+
+Each figure is the median over the five counted runs. "Summed" is the sum of the test durations
+of one Slice in one run. "Span" runs from the first test start to the last test end of that
+Slice.
+
+| Mode | Slice | Results | Summed | Span |
+|---|---|---:|---:|---:|
+| Fast | UI.Blazor | 1189 | 47.62 s | 8.76 s |
+| Fast | CLI | 197 | 3.70 s | 2.21 s |
+| Fast | Application | 1817 | 3.18 s | 0.46 s |
+| Fast | Domain | 44 | 0.12 s | 0.05 s |
+| Fast | TestUtilities | 14 | 0.12 s | 0.11 s |
+| Integration | Infrastructure | 27 | 36.44 s | 11.40 s |
+| Integration | API | 258 | 12.94 s | 12.94 s |
+| Integration | Application | 399 | 21.91 s | 6.11 s |
+| Integration | CLI | 31 | 6.91 s | 6.95 s |
+
+The pickup run measured a UI.Blazor span of 14.5 s right after a build. Warm, it is 8.76 s. The
+four large bUnit classes still set it: `HotstringsPageTests` 8.07 s, `HotkeyEditDialogTests`
+7.93 s, `HotstringEditDialogTests` 7.75 s and `HotkeysPageTests` 7.17 s. The next class,
+`KnownShortcutsPageTests`, takes 2.90 s.
+
+The 15 slowest tests of each project and Mode are in the timings file that the auditors read,
+`.superpowers\203\ranking.md`, which is gitignored. The slowest of each:
+
+| Mode | Slice | Slowest test | Median |
+|---|---|---|---:|
+| Fast | UI.Blazor | `HotkeysPageTests.Page_BulkDeleteOfOneRow_ReadsAsSingular` | 1.27 s |
+| Fast | CLI | `CliHttpClientBuilderExtensionsTests.AddCliApiResilience_WithNoDelayArgument_KeepsTheTwoSecondDefault` | 2.01 s |
+| Fast | Application | `KnownShortcutCatalogTests.All_DoesPhrasesUsePlainEnglish` | 0.18 s |
+| Integration | Infrastructure | `HotkeyTypedActionsMigrationTests.Migration_BackfillsTypedColumns_MatchingConverter` | 9.68 s |
+| Integration | API | `TestAuthProviderToggleTests.WhoAmI_WithToggleOn_Returns200_WithSyntheticUser` | 1.35 s |
+| Integration | Application | `UpdateHotkeyWithCategoriesTests.Handle_WhenReplacingProfiles_ReturnsDtoWithExactProfileIds` | 0.64 s |
+| Integration | CLI | `HotstringCliIntegrationTests.List_ItemWithNoProfile_ShowsNoProfileInProfilesColumn` | 2.18 s |
+
+The five Candidate groups (P1). Each holds the classes with a triage lead, a structural lead, or
+one of the 15 slowest tests of its project:
+
+- UI.Blazor, 9 classes: `HotstringsPageTests`, `HotkeyEditDialogTests`,
+  `HotstringEditDialogTests`, `HotkeysPageTests`, `KnownShortcutsPageTests`, `KeyPickerTests`,
+  `SettingsPageTests`, `DownloadsPageTests`, `WindowOpTests`.
+- CLI, 14 classes: `CliHttpClientBuilderExtensionsTests`, `HotstringCliIntegrationTests`,
+  `DownloadCliIntegrationTests`, `ListHotstringCommandTests`, `AhkDownloadCommandTests`,
+  `MsalDeviceCodeTokenProviderTests`, `ZipDownloadCommandTests`, `LoginCommandTests`,
+  `NewHotstringCommandTests`, `BearerTokenHandlerTests`, `LogoutCommandTests`,
+  `LauncherPlanTests`, `HotstringJsonFormatterTests`, `DownloadDestinationTests`.
+- Infrastructure, 9 classes: `HotkeyTypedActionsMigrationTests`,
+  `BackfillEmptyProfileHeadersTests`, `MigrationTests`, `SchemaPolishBackfillTests`,
+  `RawHotstringKindMigrationTests`, `HotstringDeliveryMigrationTests`, `AppDbContextTests`,
+  `HotkeyPersistenceTests`, `HotstringPersistenceTests`.
+- API, 10 classes: `TestAuthProviderToggleTests`, `CategoriesEndpointsTests`,
+  `DevSeedEndpointTests`, `HotstringsEndpointsTests`, `HotstringHistoryEndpointsTests`,
+  `AuthenticationTests`, `DashboardEndpointsTests`, `HotkeysEndpointsTests`,
+  `DevSeederEndpointTests`, `HealthControllerTests`.
+- Application, 27 classes: the classes of its two lists of 15, one per Mode. No lead saves 0.5 s
+  or more.
