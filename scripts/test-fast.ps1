@@ -44,13 +44,10 @@ param(
     [string]$BaseRef,
 
     # Integration and Coverage modes only. How many Slices run at once: a whole number of at
-    # least 1, or Budget. Coverage forwards it to run-coverage.ps1. These two go last for the same
-    # reason $SuiteRoot does: an earlier place would silently rebind 'test-fast.ps1 Fast Debug'.
-    [string]$SlicesAtOnce = '1',
-
-    # Coverage mode only. Forwarded to run-coverage.ps1: run the E2E project alone, after the
-    # other Slices.
-    [switch]$E2ELast
+    # least 1, or Budget. Coverage forwards it to run-coverage.ps1. Budget is the default, as
+    # backlog 204 measured it in docs/development/cycle-time-record.md. This goes last for the
+    # same reason $SuiteRoot does: an earlier place would silently rebind 'test-fast.ps1 Fast Debug'.
+    [string]$SlicesAtOnce = 'Budget'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -434,9 +431,6 @@ $previousSharedSqlConnectionString = $env:AHKFLOW_TEST_SQL_CONNECTION_STRING
 
 Push-Location $repoRoot
 try {
-    if ($PSBoundParameters.ContainsKey('E2ELast') -and $Mode -ne 'Coverage') {
-        throw '-E2ELast works only with -Mode Coverage.'
-    }
     if ($PSBoundParameters.ContainsKey('SlicesAtOnce') -and $Mode -ne 'Coverage' -and $Mode -ne 'Integration') {
         throw '-SlicesAtOnce works only with -Mode Integration or -Mode Coverage.'
     }
@@ -461,7 +455,7 @@ try {
             }
         }
 
-        & (Join-Path $PSScriptRoot 'run-coverage.ps1') -Configuration $Configuration -SlicesAtOnce $SlicesAtOnce -E2ELast:$E2ELast
+        & (Join-Path $PSScriptRoot 'run-coverage.ps1') -Configuration $Configuration -SlicesAtOnce $SlicesAtOnce
         if ($LASTEXITCODE -ne 0) {
             throw 'Coverage mode failed.'
         }

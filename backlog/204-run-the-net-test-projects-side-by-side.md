@@ -22,13 +22,13 @@ so that a code change reaches a green Gate sooner.
 
 ## Acceptance criteria
 
-- [ ] A record states the coverage step time with the projects in sequence and side by side, each
+- [x] A record states the coverage step time with the projects in sequence and side by side, each
       the median of five counted runs.
-- [ ] A record states the soak runs and their failures for the side-by-side runs, for UI.Blazor
+- [x] A record states the soak runs and their failures for the side-by-side runs, for UI.Blazor
       and E2E at least.
-- [ ] The runner runs the projects side by side only when the record shows a saving and no new
+- [x] The runner runs the projects side by side only when the record shows a saving and no new
       failure. Otherwise the record says why the change was dropped.
-- [ ] The coverage report still holds the results of every coverage project.
+- [x] The coverage report still holds the results of every coverage project.
 
 ## Out of scope
 

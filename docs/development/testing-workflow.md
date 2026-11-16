@@ -218,7 +218,8 @@ Integration mode runs:
 The Mode builds the solution once, before any test runs, unless you pass `-NoBuild`. Each of the
 four runs is then a Slice, and every Slice runs with `--no-build`. `-SlicesAtOnce` works as it does
 in the coverage step: a whole number of at least 1, or `Budget`, and never more than the Lanes the
-run holds. Every Slice runs to the end, even after another one fails. The run then names every
+run holds. The default is `Budget`. Backlog 204 measured it: it halved the Mode's time, and it
+passed a Soak of 20 runs. Every Slice runs to the end, even after another one fails. The run then names every
 failing Slice. Each Slice writes `<project>.log` and `<project>.trx` into its own folder under
 `TestResults\test-fast\Integration`.
 
@@ -482,9 +483,10 @@ Coverage mode delegates to `scripts/run-coverage.ps1`. Run it before you mark a 
 Each test project runs as its own Slice, through `scripts/slice-runner.common.ps1` (backlog 204).
 `-SlicesAtOnce` sets how many Slices run at the same time. It takes a whole number of at least 1,
 or `Budget`, which means every Lane the run holds. The value never goes above that budget. The
-default is 1, so the projects run in sequence, until backlog 204's record decides otherwise.
-`-E2ELast` runs `AHKFlowApp.E2E.Tests` alone, after every other Slice has ended.
-`test-fast.ps1 -Mode Coverage` passes both on to `run-coverage.ps1`.
+default is `Budget`. Backlog 204 measured it in `docs/development/cycle-time-record.md`: it saved
+about a third of the coverage step's time, and it passed a Soak of 20 runs. Pass
+`-SlicesAtOnce 1` to run the projects in sequence. `test-fast.ps1 -Mode Coverage` passes the value
+on to `run-coverage.ps1`.
 
 Each Slice writes `<project>.log` and `<project>.trx` into its own folder under
 `TestResults\coverage`. The run also writes `TestResults\coverage\slices.json`, with each Slice's
@@ -628,8 +630,8 @@ pwsh .\scripts\measure-test-modes.ps1 -Soak tests/AHKFlowApp.Infrastructure.Test
 ### Measuring Slices side by side
 
 `-Mode Coverage` and `-Mode Integration` time one or more settings of the Slice runner (backlog 204).
-A setting is a whole number of at least 1, or `Budget`. Coverage also takes `+E2ELast`, as in
-`Budget+E2ELast`. Pass the settings to `-Setting` as one comma list. The default is `1`.
+A setting is a whole number of at least 1, or `Budget`. Pass the settings to `-Setting` as one
+comma list. The default is `1`.
 
 The settings take turns. Each round runs every setting once, in the order you gave. So a slow
 minute of the machine falls on every setting, not on whichever one ran then. Warm-up rounds come
@@ -645,7 +647,7 @@ Every run copies its own evidence before the next run clears it. One session loo
 ```text
 session-<utc>\
   record.json            Revision, Mode, Kind ('timing' or 'soak'), Settings, and one entry per run
-  at-<setting>\          for example at-1, at-budget, at-budget-e2e-last
+  at-<setting>\          for example at-1, at-budget
     warmup-<n>\ | run-<n>\ | soak-<n>\
       run.json           Label, Setting, ElapsedSeconds, Failed, Message, EvidenceOwned
       results\           slices.json, and each Slice folder with its .trx and .log files
@@ -662,10 +664,12 @@ leaves out the `coverage.cobertura.xml` files, because `Summary.json` holds the 
 runs and no settle clock, and it goes on after a failure. It prints `passed: <n> of <runs>`, and it
 fails at the end when any run failed.
 
-The two timing sessions of backlog 204:
+The two timing sessions of backlog 204 used these commands. Its coverage session also timed
+`Budget+E2ELast`, which ran the E2E project alone at the end. Backlog 204 removed that setting,
+because `Budget` alone was faster.
 
 ```bash
-pwsh .\scripts\measure-test-modes.ps1 -Mode Coverage -Setting 1,Budget,Budget+E2ELast
+pwsh .\scripts\measure-test-modes.ps1 -Mode Coverage -Setting 1,Budget
 pwsh .\scripts\measure-test-modes.ps1 -Mode Integration -Setting 1,Budget
 ```
 

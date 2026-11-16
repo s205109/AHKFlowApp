@@ -20,10 +20,9 @@ param(
 
     # Backlog 204. How many coverage Slices run at once: a whole number of at least 1, or Budget.
     # The value never goes above the Lanes this run holds. 1 keeps the projects in sequence.
-    [string]$SlicesAtOnce = '1',
-
-    # Backlog 204. Runs the E2E project alone, after every other Slice has ended.
-    [switch]$E2ELast
+    # Budget is the default: it saved a third of the time and passed a Soak of 20 runs, as
+    # docs/development/cycle-time-record.md records.
+    [string]$SlicesAtOnce = 'Budget'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -79,11 +78,6 @@ try {
         throw "No test project in the solution references coverlet.collector. A coverage run with nothing to measure must not look green."
     }
 
-    $e2eProjectName = 'AHKFlowApp.E2E.Tests'
-    if ($E2ELast -and @($coverageProject | Where-Object { $_.Name -eq $e2eProjectName }).Count -eq 0) {
-        throw "-E2ELast needs the $e2eProjectName project, and the solution has no such coverage project."
-    }
-
     $expectedProjectName = @($coverageProject | ForEach-Object { $_.Name })
 
     # A mixed unit list: three fixed phases, one unit per coverage project, then one fixed phase.
@@ -135,21 +129,8 @@ try {
             })
         $ordered = @(Get-AhkFlowSliceOrder -Slice $slices -History $progress.History -SlicesAtOnce $sliceCount)
 
-        # Every Slice runs to the end, whatever another one's exit code. With -E2ELast the E2E
-        # Slice runs alone, after the others.
-        $groups = @(, $ordered)
-        if ($E2ELast) {
-            $groups = @(
-                , @($ordered | Where-Object { $_.Name -ne $e2eProjectName })
-                , @($ordered | Where-Object { $_.Name -eq $e2eProjectName }))
-        }
-        $atOnce = $sliceCount
-        foreach ($group in $groups) {
-            if (@($group).Count -gt 0) {
-                $sliceResult += @(Invoke-AhkFlowSliceSet -Slice $group -SlicesAtOnce $atOnce -WorkingDirectory $repoRoot -Tracker $progress)
-            }
-            $atOnce = 1
-        }
+        # Every Slice runs to the end, whatever another one's exit code.
+        $sliceResult = @(Invoke-AhkFlowSliceSet -Slice $ordered -SlicesAtOnce $sliceCount -WorkingDirectory $repoRoot -Tracker $progress)
     }
     finally {
         # Left running on purpose, the same way scripts/test-fast.ps1 leaves it.

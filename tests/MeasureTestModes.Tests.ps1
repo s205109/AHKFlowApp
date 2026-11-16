@@ -222,12 +222,12 @@ exit 0
 
     Set-Content -LiteralPath (Join-Path $root 'scripts\test-fast.ps1') -Encoding utf8 -Value @'
 param([string]$Mode, [string]$Configuration, [switch]$NoBuild, [string]$BaseRef,
-    [switch]$Force, [string]$SlicesAtOnce, [switch]$E2ELast)
+    [switch]$Force, [string]$SlicesAtOnce)
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $stubFolder = Join-Path $repoRoot 'stub'
 $callsPath = Join-Path $stubFolder 'testfast-calls.txt'
 Add-Content -LiteralPath $callsPath -Value ("Mode=$Mode NoBuild=$NoBuild Force=$Force SlicesAtOnce=$SlicesAtOnce " +
-    "E2ELast=$E2ELast Reuse=$env:AHKFLOW_GATE_REUSE")
+    "Reuse=$env:AHKFLOW_GATE_REUSE")
 Add-Content -LiteralPath (Join-Path $stubFolder 'steps.txt') -Value "test-fast Mode=$Mode BaseRef=$BaseRef"
 
 # The Gate's PowerShell step. It records what the evidence folder held when it started and
@@ -1228,8 +1228,8 @@ function Get-TestFastCall {
     $path = Join-Path $Root 'stub\testfast-calls.txt'
     if (-not (Test-Path -LiteralPath $path)) { return @() }
     return @(Get-Content -LiteralPath $path | ForEach-Object {
-            [void]($_ -match 'Mode=(\S*) NoBuild=(\S*) Force=(\S*) SlicesAtOnce=(\S*) E2ELast=(\S*) ')
-            [pscustomobject]@{ Mode = $Matches[1]; NoBuild = $Matches[2]; Force = $Matches[3]; SlicesAtOnce = $Matches[4]; E2ELast = $Matches[5] }
+            [void]($_ -match 'Mode=(\S*) NoBuild=(\S*) Force=(\S*) SlicesAtOnce=(\S*) ')
+            [pscustomobject]@{ Mode = $Matches[1]; NoBuild = $Matches[2]; Force = $Matches[3]; SlicesAtOnce = $Matches[4] }
         })
 }
 
@@ -1250,17 +1250,15 @@ function Get-SessionRecord {
 Invoke-TestCase 'Coverage settings take turns, run by run' {
     $root = New-SettingFixture
     try {
-        $result = Invoke-Harness -Root $root -Arguments @('-Mode', 'Coverage', '-Setting', '1,Budget,Budget+E2ELast',
+        $result = Invoke-Harness -Root $root -Arguments @('-Mode', 'Coverage', '-Setting', '1,Budget,2',
             '-WarmUpRuns', '1', '-Runs', '2', '-SettleSeconds', '0')
         Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
         $calls = @(Get-TestFastCall $root)
         Assert-True ($calls.Count -eq 9) "Expected 9 calls, got $($calls.Count)."
-        $expected = @('1', 'Budget', 'Budget') * 3
+        $expected = @('1', 'Budget', '2') * 3
         Assert-True ((($calls | ForEach-Object { $_.SlicesAtOnce }) -join ',') -eq ($expected -join ',')) `
             "SlicesAtOnce order: $(($calls | ForEach-Object { $_.SlicesAtOnce }) -join ',')"
         for ($i = 0; $i -lt 9; $i++) {
-            $wantE2E = if ($i % 3 -eq 2) { 'True' } else { 'False' }
-            Assert-True ($calls[$i].E2ELast -eq $wantE2E) "Call $($i + 1): E2ELast=$($calls[$i].E2ELast)."
             Assert-True ($calls[$i].Force -eq 'True') "Call $($i + 1) has no Force."
             Assert-True ($calls[$i].NoBuild -eq 'False') "Call $($i + 1) has NoBuild."
         }
@@ -1385,7 +1383,7 @@ Invoke-TestCase 'A failed warm-up is kept and the session goes on' {
 Invoke-TestCase 'Settings are refused where they do not apply' {
     foreach ($arguments in @(
             @('-Mode', 'Fast', '-Setting', 'Budget'),
-            @('-Mode', 'Integration', '-Setting', '1+E2ELast'),
+            @('-Mode', 'Integration', '-Setting', 'Budget+E2ELast'),
             @('-Mode', 'Coverage', '-Setting', 'abc'))) {
         $root = New-SettingFixture
         try {

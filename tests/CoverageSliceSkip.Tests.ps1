@@ -943,7 +943,7 @@ function New-WrapperFixture {
 
             Set-Content -LiteralPath (Join-Path $root 'scripts/run-coverage.ps1') -Encoding utf8 -Value @'
 [CmdletBinding()]
-param([string]$Configuration = 'Release', [switch]$SkipThresholdCheck, [string]$SlicesAtOnce, [switch]$E2ELast)
+param([string]$Configuration = 'Release', [switch]$SkipThresholdCheck, [string]$SlicesAtOnce)
 Set-Content -LiteralPath (Join-Path (Split-Path -Parent $PSScriptRoot) 'coverage-ran.marker') -Value $Configuration
 Set-Content -LiteralPath (Join-Path (Split-Path -Parent $PSScriptRoot) 'coverage-holder.marker') -Value ('holder=' + $env:AHKFLOW_TEST_LANES_HOLDER)
 exit 0

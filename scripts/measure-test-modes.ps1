@@ -116,7 +116,7 @@ param(
     [string]$BaseRef,
 
     # Backlog 204. Coverage and Integration Modes only. The settings to time, in turns: each is a
-    # whole number of at least 1 or Budget, and Coverage also takes +E2ELast, as in 'Budget+E2ELast'.
+    # whole number of at least 1, or Budget.
     # A comma list in one value works, because 'pwsh -File' passes '1,Budget' as a single string.
     [string[]]$Setting = @('1'),
 
@@ -197,24 +197,17 @@ elseif ($changeNames.Count -gt 0 -or $NoEvidenceReuse -or $PSBoundParameters.Con
 function ConvertTo-MeasureSetting {
     <#
       One -Setting value as an object: its Name for the record, the SlicesAtOnce value to pass,
-      whether it adds E2ELast, and the folder its runs go in. Throws on a value that is not a
-      setting, with a message that names -Setting.
+      and the folder its runs go in. Throws on a value that is not a setting, with a message that
+      names -Setting.
     #>
     param([Parameter(Mandatory = $true)][string]$Text)
 
-    $match = [regex]::Match($Text.Trim(), '^(?i)(?:([1-9][0-9]*)|(budget))(\+e2elast)?$')
+    $match = [regex]::Match($Text.Trim(), '^(?i)(?:([1-9][0-9]*)|(budget))$')
     if (-not $match.Success) {
-        throw "-Setting value '$Text' is not a setting. Use a whole number of at least 1, or Budget. Coverage also takes +E2ELast, as in 'Budget+E2ELast'."
+        throw "-Setting value '$Text' is not a setting. Use a whole number of at least 1, or Budget."
     }
     $count = if ($match.Groups[2].Success) { 'Budget' } else { $match.Groups[1].Value }
-    $e2eLast = $match.Groups[3].Success
-    $name = $count
-    $folder = 'at-' + $count.ToLowerInvariant()
-    if ($e2eLast) {
-        $name = "$count+E2ELast"
-        $folder = "$folder-e2e-last"
-    }
-    return [pscustomobject]@{ Name = $name; SlicesAtOnce = $count; E2ELast = $e2eLast; Folder = $folder }
+    return [pscustomobject]@{ Name = $count; SlicesAtOnce = $count; Folder = 'at-' + $count.ToLowerInvariant() }
 }
 
 # Backlog 204. Refuse a wrong setting before any work starts, so a wrong call costs nothing.
@@ -230,11 +223,6 @@ if ($usesSettings) {
     $settingNames = @($Setting | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
     if ($settingNames.Count -eq 0) { throw '-Setting needs at least one value.' }
     $settings = @($settingNames | ForEach-Object { ConvertTo-MeasureSetting -Text $_ })
-    foreach ($item in $settings) {
-        if ($item.E2ELast -and $Mode -ne 'Coverage') {
-            throw "-Setting value '$($item.Name)' uses +E2ELast, which works only with -Mode Coverage."
-        }
-    }
     $duplicate = @($settings | Group-Object Name | Where-Object { $_.Count -gt 1 } | ForEach-Object { $_.Name })
     if ($duplicate.Count -gt 0) {
         throw "-Setting names $($duplicate -join ', ') more than once. Each setting is timed once per round."
@@ -370,7 +358,6 @@ function Invoke-TimedRun {
     if ($Setting) {
         $parsed = ConvertTo-MeasureSetting -Text $Setting
         $testFastArguments['SlicesAtOnce'] = $parsed.SlicesAtOnce
-        if ($parsed.E2ELast) { $testFastArguments['E2ELast'] = $true }
     }
 
     New-Item -ItemType Directory -Path $RunDirectory -Force | Out-Null

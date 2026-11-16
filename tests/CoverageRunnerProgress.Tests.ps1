@@ -727,51 +727,16 @@ Invoke-TestCase 'A failing test still builds the report when every project has c
     finally { Remove-CoverageFixture -Root $root }
 }
 
-Invoke-TestCase '-E2ELast runs the E2E project alone after the others' {
-    $root = New-CoverageFixture -ProjectName @('Alpha.Tests', 'AHKFlowApp.E2E.Tests', 'Beta.Tests')
-    try {
-        $result = Invoke-InFixture -Root $root -ScriptName 'run-coverage.ps1' -Argument @('-SlicesAtOnce', '2', '-E2ELast')
-        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
-        $e2e = Get-StubTick $root 'start-AHKFlowApp.E2E.Tests.txt'
-        foreach ($name in @('Alpha.Tests', 'Beta.Tests')) {
-            Assert-True ($e2e -gt (Get-StubTick $root "end-$name.txt")) "The E2E Slice started before $name ended."
-        }
-    }
-    finally { Remove-CoverageFixture -Root $root }
-}
-
-Invoke-TestCase '-E2ELast with no E2E project fails before it restores' {
-    $root = New-CoverageFixture
-    try {
-        $result = Invoke-InFixture -Root $root -ScriptName 'run-coverage.ps1' -Argument @('-E2ELast')
-        Assert-True ($result.ExitCode -ne 0) "Expected a failure. Output: $($result.Output)"
-        Assert-True ($result.Output -match 'needs the AHKFlowApp\.E2E\.Tests project') "Output: $($result.Output)"
-        Assert-True (@(Get-StubCall $root | Where-Object { $_ -match '^restore' }).Count -eq 0) 'The run restored before it failed.'
-    }
-    finally { Remove-CoverageFixture -Root $root }
-}
-
 Invoke-TestCase "At the value 1 the coverage step keeps today's order" {
     $root = New-CoverageFixture
     try {
         $folder = Get-ProgressHistoryFolder -Root $root
         New-Item -ItemType Directory -Path $folder -Force | Out-Null
         Set-Content -LiteralPath (Join-Path $folder 'run-coverage.json') -Value '{ "Beta.Tests": 90, "Alpha.Tests": 10 }' -Encoding utf8
-        $result = Invoke-CoverageRun -Root $root
+        $result = Invoke-InFixture -Root $root -ScriptName 'run-coverage.ps1' -Argument @('-SlicesAtOnce', '1')
         Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
         $order = (Get-StartOrder $result.Output) -join ','
         Assert-True ($order -eq 'Alpha.Tests,Beta.Tests') "Start order: $order"
-    }
-    finally { Remove-CoverageFixture -Root $root }
-}
-
-Invoke-TestCase 'test-fast refuses -E2ELast outside the Coverage Mode' {
-    $root = New-CoverageFixture
-    try {
-        $result = Invoke-InFixture -Root $root -ScriptName 'test-fast.ps1' -Argument @('-Mode', 'Fast', '-E2ELast')
-        Assert-True ($result.ExitCode -ne 0) "Expected a failure. Output: $($result.Output)"
-        Assert-True ($result.Output.Contains('-E2ELast works only with -Mode Coverage.')) "Output: $($result.Output)"
-        Assert-True (@(Get-StubCall $root).Count -eq 0) 'test-fast called dotnet before it refused.'
     }
     finally { Remove-CoverageFixture -Root $root }
 }
