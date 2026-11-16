@@ -866,7 +866,9 @@ foreach ($route in @('direct', 'delegated')) {
             $root = New-CoverageFixture
             try {
                 $name = if ($route -eq 'direct') { 'run-coverage.ps1' } else { 'test-fast.ps1' }
-                $arguments = if ($route -eq 'direct') { @{} } else { @{ Mode = 'Coverage'; Force = $true } }
+                # The route steps through each dotnet test call in turn, so it runs the Slices in
+                # sequence. Since backlog 204 the default is Budget, which starts them together.
+                $arguments = if ($route -eq 'direct') { @{ SlicesAtOnce = '1' } } else { @{ Mode = 'Coverage'; Force = $true; SlicesAtOnce = '1' } }
                 Test-DotnetLaneRoute -Root $root -ScriptName $name -Arguments $arguments -Calls 2 -Nested:$nested
             } finally { Remove-CoverageFixture $root }
         }
@@ -875,7 +877,7 @@ foreach ($route in @('direct', 'delegated')) {
 
 Invoke-TestCase 'Coverage Lane route: direct failure' {
     $root = New-CoverageFixture
-    try { Test-DotnetLaneRoute -Root $root -ScriptName 'run-coverage.ps1' -Arguments @{} -Calls 2 -Fail }
+    try { Test-DotnetLaneRoute -Root $root -ScriptName 'run-coverage.ps1' -Arguments @{ SlicesAtOnce = '1' } -Calls 2 -Fail }
     finally { Remove-CoverageFixture $root }
 }
 
