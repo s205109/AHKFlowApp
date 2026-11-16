@@ -371,8 +371,10 @@ function Get-AhkFlowSliceLauncherText {
         [Parameter(Mandatory = $true)][object] $Start,
         [Parameter(Mandatory = $true)][string] $WorkingDirectory
     )
-    # Input that closes without the start line means the runner is gone, so nothing starts.
-    return "`$ProgressPreference = 'SilentlyContinue'; if ([Console]::In.ReadLine() -ne 'start') { exit 1 }; " +
+    # Input that closes without the start line means the runner is gone, so nothing starts. The
+    # line only has to end with 'start': Windows PowerShell 5.1 puts a UTF-8 byte order mark first
+    # when the console input encoding is UTF-8, and this console reads it as extra characters.
+    return "`$ProgressPreference = 'SilentlyContinue'; `$line = [Console]::In.ReadLine(); if (`$null -eq `$line -or -not `$line.EndsWith('start')) { exit 1 }; " +
         "`$i = New-Object System.Diagnostics.ProcessStartInfo; " +
         "`$i.FileName = $(ConvertTo-AhkFlowSingleQuoted $Start.FilePath); " +
         "`$i.Arguments = $(ConvertTo-AhkFlowSingleQuoted $Start.Arguments); " +

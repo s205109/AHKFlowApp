@@ -749,6 +749,9 @@ $ErrorActionPreference = 'Stop'
 . (Join-Path $Repo 'scripts\progress.parallel.ps1')
 . (Join-Path $Repo 'scripts\slice-runner.common.ps1')
 $hostPath = [System.Diagnostics.Process]::GetCurrentProcess().Path
+# The CI runner's console reads and writes UTF-8. Then 5.1 puts a byte order mark before the line
+# the runner writes to each launcher, so this case runs the same way on every machine.
+[Console]::InputEncoding = [System.Text.Encoding]::UTF8
 function New-Fake([string] $Name, [int] $ExitCode, [int] $SleepMs, [switch] $Grandchild, [string] $WaitFor) {
     $list = @('-NoProfile', '-NonInteractive', '-File', $Fake, '-Name', $Name, '-Marker', $Folder, '-ExitCode', [string]$ExitCode, '-SleepMs', [string]$SleepMs)
     if ($Grandchild) { $list += '-Grandchild' }
@@ -759,23 +762,6 @@ $tracker = New-ProgressTracker -RunnerKey 'slice-runner-tests' -Unit @('P', 'F')
 $results = @(Invoke-AhkFlowSliceSet -Slice @((New-Fake 'P' 0 0), (New-Fake 'F' 1 0)) -SlicesAtOnce 2 -WorkingDirectory $Folder -Tracker $tracker 6>$null)
 $codes = @($results | ForEach-Object { $_.ExitCode })
 $logs = @($results | ForEach-Object { [System.IO.File]::ReadAllText($_.LogPath) })
-# The launcher on its own, outside any job: does it start a trivial program when it reads 'start'?
-$probeStart = Resolve-AhkFlowSliceStart -Command 'cmd.exe' -Argument @('/c', 'echo', 'launched')
-$probeInfo = New-Object System.Diagnostics.ProcessStartInfo
-$probeInfo.FileName = $hostPath
-$probeInfo.Arguments = '-NoProfile -NonInteractive -EncodedCommand ' + (ConvertTo-AhkFlowEncodedCommand -Text (Get-AhkFlowSliceLauncherText -Start $probeStart -WorkingDirectory $Folder))
-$probeInfo.UseShellExecute = $false
-$probeInfo.CreateNoWindow = $true
-$probeInfo.RedirectStandardInput = $true
-$probeInfo.RedirectStandardOutput = $true
-$probeInfo.RedirectStandardError = $true
-$probe = [System.Diagnostics.Process]::Start($probeInfo)
-$probe.StandardInput.WriteLine('start')
-$probe.StandardInput.Close()
-$probeOut = $probe.StandardOutput.ReadToEnd()
-$probeErr = $probe.StandardError.ReadToEnd()
-[void]$probe.WaitForExit(60000)
-$launcherProbe = "exit=$($probe.ExitCode) out=[$($probeOut.Trim())] err=[$($probeErr.Trim())] inputEncoding=$([Console]::InputEncoding.WebName)"
 $message = ''
 $survivors = @()
 $missing = @()
@@ -801,7 +787,7 @@ $logA = ''
 foreach ($path in @((Join-Path $Folder 'A\A.log'), (Join-Path $Folder 'A\A.log.stderr'))) {
     if (Test-Path -LiteralPath $path) { $logA += [System.IO.File]::ReadAllText($path) }
 }
-[Console]::Out.WriteLine((ConvertTo-Json -Compress -InputObject ([pscustomobject]@{ Codes = $codes; Logs = $logs; Message = $message; Survivors = $survivors; Missing = $missing; LogA = $logA; LauncherProbe = $launcherProbe })))
+[Console]::Out.WriteLine((ConvertTo-Json -Compress -InputObject ([pscustomobject]@{ Codes = $codes; Logs = $logs; Message = $message; Survivors = $survivors; Missing = $missing; LogA = $logA })))
 '@
             Set-Content -LiteralPath $driver -Value $driverBody -Encoding UTF8
             $text = & $script:WindowsPowerShell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $driver -Repo $repoRoot -Folder $folder -Fake $script:FakePath 2>&1 | Out-String
@@ -809,7 +795,7 @@ foreach ($path in @((Join-Path $Folder 'A\A.log'), (Join-Path $Folder 'A\A.log.s
             Assert-True ($null -ne $json) "The 5.1 driver printed no JSON: $text"
             $data = $json | ConvertFrom-Json
             Assert-True (@($data.Missing).Count -eq 0) ("These markers were never written: $(@($data.Missing) -join ', '). Message: $($data.Message) " +
-                "Log of A: $($data.LogA) P and F exit codes: $(@($data.Codes) -join ',') P and F logs: $(@($data.Logs) -join ' | ') Launcher probe: $($data.LauncherProbe)")
+                "Log of A: $($data.LogA) P and F exit codes: $(@($data.Codes) -join ',') P and F logs: $(@($data.Logs) -join ' | ')")
             Assert-True ((@($data.Codes) -join ',') -eq '0,1') "Exit codes: $(@($data.Codes) -join ',')"
             Assert-True ($data.Logs[0].Contains('out-P') -and $data.Logs[1].Contains('out-F')) "Logs: $($data.Logs -join ' | ')"
             Assert-True ($data.Message.Contains('could not start')) "Message: $($data.Message)"
@@ -853,6 +839,33 @@ if ($script:OnWindows) {
             Assert-True ($launcher.WaitForExit(60000)) 'The launcher did not exit within 60 s.'
             Assert-True ($launcher.ExitCode -ne 0) "The launcher exited with $($launcher.ExitCode)."
             Assert-True (-not (Test-Path -LiteralPath $marker)) 'The launcher started the program without the start line.'
+        }
+        finally { Remove-Item -LiteralPath $folder -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    Invoke-TestCase 'The launcher starts its program when a byte order mark comes before the start line' {
+        # Windows PowerShell 5.1 writes a UTF-8 byte order mark first when the console input
+        # encoding is UTF-8, as on the CI runner. The launcher's own console reads it as extra
+        # characters, so an exact match on 'start' started nothing.
+        $folder = New-TempFolder
+        try {
+            $marker = Join-Path $folder 'started.txt'
+            $start = Resolve-AhkFlowSliceStart -Command $hostExe -Argument @('-NoProfile', '-NonInteractive', '-Command', "Set-Content -LiteralPath '$marker' -Value started")
+            $text = Get-AhkFlowSliceLauncherText -Start $start -WorkingDirectory $folder
+            $info = New-Object System.Diagnostics.ProcessStartInfo
+            $info.FileName = $hostExe
+            $info.Arguments = '-NoProfile -NonInteractive -EncodedCommand ' + (ConvertTo-AhkFlowEncodedCommand -Text $text)
+            $info.UseShellExecute = $false
+            $info.CreateNoWindow = $true
+            $info.RedirectStandardInput = $true
+            $launcher = [System.Diagnostics.Process]::Start($info)
+            $bytes = [byte[]](0xEF, 0xBB, 0xBF) + [System.Text.Encoding]::ASCII.GetBytes("start`r`n")
+            $launcher.StandardInput.BaseStream.Write($bytes, 0, $bytes.Length)
+            $launcher.StandardInput.BaseStream.Flush()
+            $launcher.StandardInput.BaseStream.Close()
+            Assert-True ($launcher.WaitForExit(60000)) 'The launcher did not exit within 60 s.'
+            Assert-True ($launcher.ExitCode -eq 0) "The launcher exited with $($launcher.ExitCode)."
+            Assert-True (Test-Path -LiteralPath $marker) 'The launcher did not start the program.'
         }
         finally { Remove-Item -LiteralPath $folder -Recurse -Force -ErrorAction SilentlyContinue }
     }
