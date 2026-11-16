@@ -486,6 +486,21 @@ Invoke-TestCase 'A Slice that cannot start stops the run, and every started proc
     finally { Stop-MarkedProcess $folder; Remove-Item -LiteralPath $folder -Recurse -Force -ErrorAction SilentlyContinue }
 }
 
+Invoke-TestCase 'A process that a finished Slice left behind is ended when the run completes' {
+    # A process group on Linux has no limit that ends it when it closes, so the runner must stop
+    # what is left before it returns, or the process outlives the test-run lock (D7).
+    $folder = New-TempFolder
+    try {
+        $slice = New-FakeSlice -Name 'A' -Folder $folder -SleepMs 100 -Grandchild
+        $results = @(Invoke-AhkFlowSliceSet -Slice @($slice) -SlicesAtOnce 1 -WorkingDirectory $folder -Tracker (New-TestTracker @('A')) 6>$null)
+        Assert-True ($results.Count -eq 1 -and $results[0].ExitCode -eq 0) "Slice A did not pass. Results: $($results | ConvertTo-Json -Compress)"
+        $grandchild = Get-MarkerId $folder 'grandchild-A.txt'
+        Assert-True ($null -ne $grandchild) 'The grandchild of A did not start.'
+        Assert-True (Test-ProcessGone $grandchild) "The grandchild of A ($grandchild) still runs after the run completed."
+    }
+    finally { Stop-MarkedProcess $folder; Remove-Item -LiteralPath $folder -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
 Invoke-TestCase 'A process that a finished Slice left behind is ended when a later Slice cannot start' {
     $folder = New-TempFolder
     try {
@@ -604,7 +619,10 @@ Invoke-TestCase 'Stopping the run ends every Slice it started before the caller 
     $run = $null
     $unrelated = $null
     try {
-        $unrelated = Start-Process -FilePath $hostExe -ArgumentList '-NoProfile -NonInteractive -Command Start-Sleep 300' -PassThru -WindowStyle Hidden
+        # -WindowStyle exists only on Windows, and this case runs on Linux too.
+        $hidden = @{}
+        if ($script:OnWindows) { $hidden.WindowStyle = 'Hidden' }
+        $unrelated = Start-Process -FilePath $hostExe -ArgumentList '-NoProfile -NonInteractive -Command Start-Sleep 300' -PassThru @hidden
         $slices = @(
             (New-FakeSlice -Name 'A' -Folder $folder -SleepMs 100 -Grandchild),
             (New-FakeSlice -Name 'B' -Folder $folder -SleepMs 300000 -Grandchild),

@@ -78,19 +78,9 @@ function Get-AhkFlowSliceOrder {
         $keyed.Add([pscustomobject]@{ Seconds = $seconds; Position = $index; Slice = $Slice[$index] })
     }
 
-    # Insertion sort on (seconds, highest first; position, lowest first). The lists are short.
-    $sorted = New-Object System.Collections.Generic.List[object]
-    foreach ($item in $keyed) {
-        $at = $sorted.Count
-        for ($i = 0; $i -lt $sorted.Count; $i++) {
-            $other = $sorted[$i]
-            if ($item.Seconds -gt $other.Seconds -or ($item.Seconds -eq $other.Seconds -and $item.Position -lt $other.Position)) {
-                $at = $i
-                break
-            }
-        }
-        $sorted.Insert($at, $item)
-    }
+    # Seconds highest first, then position lowest first. Each position is unique, so the order
+    # never depends on whether the sort is stable.
+    $sorted = $keyed | Sort-Object -Property @{ Expression = 'Seconds'; Descending = $true }, @{ Expression = 'Position'; Ascending = $true }
     return @($sorted | ForEach-Object { $_.Slice })
 }
 
@@ -672,8 +662,10 @@ function Invoke-AhkFlowSliceSet {
         $completed = $true
     }
     finally {
+        # Every exit stops what is left, a completed run too. A process group on Linux has no limit
+        # that ends its processes when it closes, so a left-behind process would outlive the lock.
+        Stop-AhkFlowOwnedProcess -Owner $owners.ToArray() -RoundSeconds $StopRoundSeconds
         if (-not $completed) {
-            Stop-AhkFlowOwnedProcess -Owner $owners.ToArray() -RoundSeconds $StopRoundSeconds
             foreach ($entry in $running) { Close-AhkFlowSliceFile -Entry $entry }
         }
         foreach ($owner in $owners) { Close-AhkFlowSliceOwner -Owner $owner }
