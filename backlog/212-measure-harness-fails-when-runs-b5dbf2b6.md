@@ -40,6 +40,10 @@ removed" and "tests cover the new API" cannot.
   lists it as an open question. It is a separate concern. File an item for it only when a second
   Linux-only failure shows up.
 - The rounding of real measured runs. A real Mode run takes seconds, never under 5 ms.
+- A case that always reaches the session-name suffix loop:
+  (`scripts/measure-test-modes.ps1:574`, "while (Test-Path -LiteralPath $runRoot) {"). Today only
+  "Two measurements in one Mode keep both sessions" can reach it, and only when its two
+  invocations start in the same second. The plan review of `8a0cd44` found this.
 
 ## Notes / dependencies
 
