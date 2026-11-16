@@ -631,7 +631,8 @@ pwsh .\scripts\measure-test-modes.ps1 -Soak tests/AHKFlowApp.Infrastructure.Test
 
 `-Mode Coverage` and `-Mode Integration` time one or more settings of the Slice runner (backlog 204).
 A setting is a whole number of at least 1, or `Budget`. Pass the settings to `-Setting` as one
-comma list. The default is `1`.
+comma list. The default is `1`, the projects in sequence. The two Modes themselves run at `Budget`
+by default, so pass `-Setting 1,Budget` to compare the sequence with what they run.
 
 The settings take turns. Each round runs every setting once, in the order you gave. So a slow
 minute of the machine falls on every setting, not on whichever one ran then. Warm-up rounds come

@@ -1383,7 +1383,7 @@ Invoke-TestCase 'A failed warm-up is kept and the session goes on' {
 Invoke-TestCase 'Settings are refused where they do not apply' {
     foreach ($arguments in @(
             @('-Mode', 'Fast', '-Setting', 'Budget'),
-            @('-Mode', 'Integration', '-Setting', 'Budget+E2ELast'),
+            @('-Mode', 'E2E', '-Setting', '1'),
             @('-Mode', 'Coverage', '-Setting', 'abc'))) {
         $root = New-SettingFixture
         try {

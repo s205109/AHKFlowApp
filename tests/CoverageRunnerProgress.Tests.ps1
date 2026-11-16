@@ -922,6 +922,25 @@ Invoke-TestCase 'Side by side the coverage step starts the longest Slice first' 
     finally { Remove-PinnedLanePool $pool; Remove-CoverageFixture -Root $root }
 }
 
+Invoke-TestCase 'The coverage step and the Integration Mode run at Budget by default' {
+    # Backlog 204 measured Budget and made it the default. Every other case passes its own value.
+    $root = New-CoverageFixture
+    $pool = New-PinnedLanePool 4
+    try {
+        Add-IntegrationProject $root
+        foreach ($call in @(
+                @{ Script = 'run-coverage.ps1'; Argument = @() },
+                @{ Script = 'test-fast.ps1'; Argument = @('-Mode', 'Integration') })) {
+            $result = Use-LaneEnvironment -Value @{ AHKFLOW_TEST_LANES_ROOT = $pool.Root; AHKFLOW_TEST_LANES_HOLDER = '  ' } -Body {
+                Invoke-InFixture -Root $root -ScriptName $call.Script -Argument $call.Argument
+            }
+            Assert-True ($result.ExitCode -eq 0) "$($call.Script): expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
+            Assert-True ($result.Output.Contains('(asked for Budget, budget ')) "$($call.Script) did not ask for Budget. Output: $($result.Output)"
+        }
+    }
+    finally { Remove-PinnedLanePool $pool; Remove-CoverageFixture -Root $root }
+}
+
 Invoke-TestCase 'Cancellation releases Lane and checkout ownership in a surviving host' {
     $root = New-CoverageFixture
     try { Test-DotnetLaneCancellation -Root $root -ScriptName 'run-coverage.ps1' }

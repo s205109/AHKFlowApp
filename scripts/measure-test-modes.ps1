@@ -58,6 +58,13 @@
   bytes back. -NoEvidenceReuse sets AHKFLOW_GATE_REUSE=off around each run, so it measures a full
   Gate. Each session writes record.json with the revision and the median of each step.
 
+  Backlog 204. -Mode Coverage and -Mode Integration time one or more Slice settings in turns, as
+  -Setting names them: a whole number of at least 1, or Budget. The default is 1, the projects in
+  sequence, while both Modes themselves run at Budget by default. -SoakMode runs one setting 20
+  times instead, and counts the runs that passed. Each run keeps its own evidence, and
+  scripts/measure-verdict.ps1 reads it. docs/development/testing-workflow.md, section "Measuring
+  Slices side by side", has the details.
+
   tests/MeasureTestModes.Tests.ps1 covers the orchestration: argument routing, the median, the
   run lock, environment restoration, one container for the whole soak, the zero-test guard, and
   what happens when a run fails. It stubs dotnet and replaces the SQL helper, so it costs seconds
