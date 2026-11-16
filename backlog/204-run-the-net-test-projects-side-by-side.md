@@ -6,7 +6,7 @@
 - **Type**: Tooling
 - **Interfaces**: none (`scripts/run-coverage.ps1`, `scripts/test-fast.ps1`)
 - **Difficulty**: to-be-determined
-- **Stage**: 4-execute
+- **Stage**: 8-review
 
 ## Summary
 
