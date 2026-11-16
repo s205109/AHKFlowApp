@@ -41,7 +41,16 @@ param(
     # This goes last for the same reason $SuiteRoot does. An unattributed parameter takes an
     # implicit position in declaration order, so putting it any earlier would silently rebind
     # 'test-fast.ps1 Fast Debug'.
-    [string]$BaseRef
+    [string]$BaseRef,
+
+    # Coverage mode only. Forwarded to run-coverage.ps1: how many coverage Slices run at once, a
+    # whole number of at least 1, or Budget. These two go last for the same reason $SuiteRoot
+    # does: an earlier place would silently rebind 'test-fast.ps1 Fast Debug'.
+    [string]$SlicesAtOnce = '1',
+
+    # Coverage mode only. Forwarded to run-coverage.ps1: run the E2E project alone, after the
+    # other Slices.
+    [switch]$E2ELast
 )
 
 $ErrorActionPreference = 'Stop'
@@ -330,6 +339,13 @@ $previousSharedSqlConnectionString = $env:AHKFLOW_TEST_SQL_CONNECTION_STRING
 
 Push-Location $repoRoot
 try {
+    if ($PSBoundParameters.ContainsKey('E2ELast') -and $Mode -ne 'Coverage') {
+        throw '-E2ELast works only with -Mode Coverage.'
+    }
+    if ($PSBoundParameters.ContainsKey('SlicesAtOnce') -and $Mode -ne 'Coverage') {
+        throw '-SlicesAtOnce works only with -Mode Coverage.'
+    }
+
     if ($Mode -eq 'Coverage') {
         if (-not $Force) {
             # A decision that cannot be made is never a skip. Anything that goes wrong here -
@@ -350,7 +366,7 @@ try {
             }
         }
 
-        & (Join-Path $PSScriptRoot 'run-coverage.ps1') -Configuration $Configuration
+        & (Join-Path $PSScriptRoot 'run-coverage.ps1') -Configuration $Configuration -SlicesAtOnce $SlicesAtOnce -E2ELast:$E2ELast
         if ($LASTEXITCODE -ne 0) {
             throw 'Coverage mode failed.'
         }
