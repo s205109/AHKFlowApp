@@ -221,11 +221,13 @@ exit 0
 '@
 
     Set-Content -LiteralPath (Join-Path $root 'scripts\test-fast.ps1') -Encoding utf8 -Value @'
-param([string]$Mode, [string]$Configuration, [switch]$NoBuild, [string]$BaseRef)
+param([string]$Mode, [string]$Configuration, [switch]$NoBuild, [string]$BaseRef,
+    [switch]$Force, [string]$SlicesAtOnce, [switch]$E2ELast)
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $stubFolder = Join-Path $repoRoot 'stub'
 $callsPath = Join-Path $stubFolder 'testfast-calls.txt'
-Add-Content -LiteralPath $callsPath -Value "Mode=$Mode NoBuild=$NoBuild Reuse=$env:AHKFLOW_GATE_REUSE"
+Add-Content -LiteralPath $callsPath -Value ("Mode=$Mode NoBuild=$NoBuild Force=$Force SlicesAtOnce=$SlicesAtOnce " +
+    "E2ELast=$E2ELast Reuse=$env:AHKFLOW_GATE_REUSE")
 Add-Content -LiteralPath (Join-Path $stubFolder 'steps.txt') -Value "test-fast Mode=$Mode BaseRef=$BaseRef"
 
 # The Gate's PowerShell step. It records what the evidence folder held when it started and
@@ -248,6 +250,41 @@ if ($Mode -eq 'PowerShell') {
     if ((Test-Path -LiteralPath $failAt) -and ((Get-Content -LiteralPath $failAt -Raw).Trim() -eq "$powerShellRun")) {
         throw 'PowerShell suites failed.'
     }
+}
+
+# Backlog 204. Coverage and Integration leave the evidence the real scripts leave. A marker file
+# lists call numbers, one per line or comma-separated. 'early-fail-calls.txt' throws before the
+# call clears or writes anything; 'fail-calls.txt' throws after the evidence is written.
+function Test-StubCallListed {
+    param([string] $Marker, [int] $Call)
+    $path = Join-Path $stubFolder $Marker
+    if (-not (Test-Path -LiteralPath $path)) { return $false }
+    return @((Get-Content -LiteralPath $path -Raw) -split '[,\s]+' | Where-Object { $_ }) -contains "$Call"
+}
+if ($Mode -eq 'Coverage' -or $Mode -eq 'Integration') {
+    $evidenceCall = @(Get-Content -LiteralPath $callsPath).Count
+    if (Test-StubCallListed 'early-fail-calls.txt' $evidenceCall) { throw 'Another run holds the lock.' }
+    $shared = if ($Mode -eq 'Coverage') { Join-Path $repoRoot 'TestResults\coverage' } else { Join-Path $repoRoot 'TestResults\test-fast\Integration' }
+    Remove-Item -LiteralPath $shared -Recurse -Force -ErrorAction SilentlyContinue
+    New-Item -ItemType Directory -Path $shared -Force | Out-Null
+    if (-not [string]::IsNullOrWhiteSpace($env:AHKFLOW_RUN_ATTEMPT)) {
+        [IO.File]::WriteAllText((Join-Path $shared 'attempt.txt'), $env:AHKFLOW_RUN_ATTEMPT)
+    }
+    $project = Join-Path $shared 'P.Tests'
+    New-Item -ItemType Directory -Path $project -Force | Out-Null
+    Set-Content -LiteralPath (Join-Path $project 'P.Tests.trx') -Value '<TestRun><ResultSummary><Counters total="1" /></ResultSummary></TestRun>'
+    Set-Content -LiteralPath (Join-Path $project 'P.Tests.log') -Value "call $evidenceCall"
+    Set-Content -LiteralPath (Join-Path $shared 'slices.json') -Value "[ { ""Name"": ""P.Tests"", ""ExitCode"": 0, ""Seconds"": 1.0 } ]"
+    if ($Mode -eq 'Coverage') {
+        $coverageFolder = Join-Path $project 'abc'
+        New-Item -ItemType Directory -Path $coverageFolder -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $coverageFolder 'coverage.cobertura.xml') -Value '<coverage />'
+        $report = Join-Path $repoRoot 'CoverageReport'
+        Remove-Item -LiteralPath $report -Recurse -Force -ErrorAction SilentlyContinue
+        New-Item -ItemType Directory -Path $report -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $report 'Summary.json') -Value "{ ""call"": $evidenceCall }"
+    }
+    if (Test-StubCallListed 'fail-calls.txt' $evidenceCall) { throw 'Coverage mode failed.' }
 }
 
 $owner = Test-Path -LiteralPath (Join-Path $repoRoot '.test-run.lock.owner')
@@ -1170,6 +1207,225 @@ Invoke-TestCase 'Gate Mode refuses -Change with -NoEvidenceReuse, and -Change wi
         Assert-True (-not (Test-Path -LiteralPath (Join-Path $root 'stub\steps.txt'))) 'A refused session must run no step.'
     }
     finally { Remove-HarnessFixture -Root $root }
+}
+
+
+# --- Backlog 204: settings in turns, evidence per run, and the Soak of a Mode ---
+
+function New-SettingFixture {
+    $root = New-HarnessFixture
+    Set-Content -LiteralPath (Join-Path $root 'stub\sleeps.txt') -Value '0' -Encoding utf8
+    return $root
+}
+
+function Set-HarnessMarker {
+    param([string] $Root, [string] $Name, [string] $Value)
+    Set-Content -LiteralPath (Join-Path $Root "stub\$Name") -Value $Value -Encoding utf8
+}
+
+function Get-TestFastCall {
+    param([string] $Root)
+    $path = Join-Path $Root 'stub\testfast-calls.txt'
+    if (-not (Test-Path -LiteralPath $path)) { return @() }
+    return @(Get-Content -LiteralPath $path | ForEach-Object {
+            [void]($_ -match 'Mode=(\S*) NoBuild=(\S*) Force=(\S*) SlicesAtOnce=(\S*) E2ELast=(\S*) ')
+            [pscustomobject]@{ Mode = $Matches[1]; NoBuild = $Matches[2]; Force = $Matches[3]; SlicesAtOnce = $Matches[4]; E2ELast = $Matches[5] }
+        })
+}
+
+function Get-SessionRoot {
+    param([string] $Root, [string] $Mode)
+    $sessions = @(Get-ChildItem -LiteralPath (Join-Path $Root "TestResults\measure-test-modes\$Mode") -Directory)
+    Assert-True ($sessions.Count -eq 1) "Expected one $Mode session, found $($sessions.Count)."
+    return $sessions[0].FullName
+}
+
+function Get-SessionRecord {
+    param([string] $Root, [string] $Mode)
+    $path = Join-Path (Get-SessionRoot $Root $Mode) 'record.json'
+    Assert-True (Test-Path -LiteralPath $path) "No record.json in the $Mode session."
+    return Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
+}
+
+Invoke-TestCase 'Coverage settings take turns, run by run' {
+    $root = New-SettingFixture
+    try {
+        $result = Invoke-Harness -Root $root -Arguments @('-Mode', 'Coverage', '-Setting', '1,Budget,Budget+E2ELast',
+            '-WarmUpRuns', '1', '-Runs', '2', '-SettleSeconds', '0')
+        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
+        $calls = @(Get-TestFastCall $root)
+        Assert-True ($calls.Count -eq 9) "Expected 9 calls, got $($calls.Count)."
+        $expected = @('1', 'Budget', 'Budget') * 3
+        Assert-True ((($calls | ForEach-Object { $_.SlicesAtOnce }) -join ',') -eq ($expected -join ',')) `
+            "SlicesAtOnce order: $(($calls | ForEach-Object { $_.SlicesAtOnce }) -join ',')"
+        for ($i = 0; $i -lt 9; $i++) {
+            $wantE2E = if ($i % 3 -eq 2) { 'True' } else { 'False' }
+            Assert-True ($calls[$i].E2ELast -eq $wantE2E) "Call $($i + 1): E2ELast=$($calls[$i].E2ELast)."
+            Assert-True ($calls[$i].Force -eq 'True') "Call $($i + 1) has no Force."
+            Assert-True ($calls[$i].NoBuild -eq 'False') "Call $($i + 1) has NoBuild."
+        }
+    }
+    finally { Remove-HarnessFixture -Root $root }
+}
+
+Invoke-TestCase 'A comma list in one -Setting value works' {
+    $root = New-SettingFixture
+    try {
+        $result = Invoke-Harness -Root $root -Arguments @('-Mode', 'Coverage', '-Setting', '1,Budget',
+            '-WarmUpRuns', '0', '-Runs', '2', '-SettleSeconds', '0')
+        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
+        $order = (@(Get-TestFastCall $root) | ForEach-Object { $_.SlicesAtOnce }) -join ','
+        Assert-True ($order -eq '1,Budget,1,Budget') "SlicesAtOnce order: $order"
+    }
+    finally { Remove-HarnessFixture -Root $root }
+}
+
+Invoke-TestCase 'Every run keeps its own evidence before the next run starts' {
+    $root = New-SettingFixture
+    try {
+        $result = Invoke-Harness -Root $root -Arguments @('-Mode', 'Coverage', '-Setting', '1',
+            '-WarmUpRuns', '1', '-Runs', '2', '-SettleSeconds', '0')
+        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
+        $setting = Join-Path (Get-SessionRoot $root 'Coverage') 'at-1'
+        $call = 0
+        foreach ($name in @('warmup-1', 'run-1', 'run-2')) {
+            $call++
+            $folder = Join-Path $setting $name
+            foreach ($file in @('results\slices.json', 'results\coverage-files.txt', 'results\P.Tests\P.Tests.trx', 'results\P.Tests\P.Tests.log', 'report\Summary.json')) {
+                Assert-True (Test-Path -LiteralPath (Join-Path $folder $file)) "$name has no $file."
+            }
+            $summary = Get-Content -LiteralPath (Join-Path $folder 'report\Summary.json') -Raw | ConvertFrom-Json
+            Assert-True ($summary.call -eq $call) "$name holds the Summary.json of call $($summary.call), not $call."
+            $listed = (Get-Content -LiteralPath (Join-Path $folder 'results\coverage-files.txt') -Raw).Trim()
+            Assert-True ($listed -match 'P\.Tests[\\/]abc[\\/]coverage\.cobertura\.xml') "coverage-files.txt of ${name}: $listed"
+        }
+        Assert-True (@(Get-ChildItem -LiteralPath $setting -Recurse -Filter 'coverage.cobertura.xml').Count -eq 0) 'A run folder holds a coverage.cobertura.xml.'
+    }
+    finally { Remove-HarnessFixture -Root $root }
+}
+
+Invoke-TestCase 'A failed counted run is kept, marked and replaced' {
+    $root = New-SettingFixture
+    try {
+        Set-HarnessMarker $root 'fail-calls.txt' '2'
+        $result = Invoke-Harness -Root $root -Arguments @('-Mode', 'Coverage', '-Setting', '1,Budget',
+            '-WarmUpRuns', '0', '-Runs', '2', '-SettleSeconds', '0')
+        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
+        Assert-True (@(Get-TestFastCall $root).Count -eq 5) "Expected 5 calls, got $(@(Get-TestFastCall $root).Count)."
+        $failedFolder = Join-Path (Get-SessionRoot $root 'Coverage') 'at-budget\run-1'
+        Assert-True (Test-Path -LiteralPath (Join-Path $failedFolder 'results\slices.json')) 'The failed run lost its evidence.'
+        $record = Get-SessionRecord $root 'Coverage'
+        $failed = @($record.Runs | Where-Object { $_.Failed })
+        Assert-True ($failed.Count -eq 1 -and $failed[0].Setting -eq 'Budget' -and $failed[0].Kind -eq 'counted') "Failed runs: $($failed | ConvertTo-Json -Compress)"
+        Assert-True ($failed[0].Message -eq 'Coverage mode failed.') "Message: $($failed[0].Message)"
+        foreach ($setting in @('1', 'Budget')) {
+            $passed = @($record.Runs | Where-Object { $_.Setting -eq $setting -and $_.Kind -eq 'counted' -and -not $_.Failed })
+            Assert-True ($passed.Count -eq 2) "Setting $setting has $($passed.Count) passed counted runs."
+        }
+    }
+    finally { Remove-HarnessFixture -Root $root }
+}
+
+Invoke-TestCase 'A run that fails before it clears keeps no evidence from the run before' {
+    $root = New-SettingFixture
+    try {
+        # Call 1 is the warm-up and passes. Calls 2 to 4 fail before they clear anything, and the
+        # third of them stops the session, so nothing runs after them.
+        Set-HarnessMarker $root 'early-fail-calls.txt' '2,3,4'
+        $result = Invoke-Harness -Root $root -Arguments @('-Mode', 'Coverage', '-Setting', '1',
+            '-WarmUpRuns', '1', '-Runs', '1', '-SettleSeconds', '0')
+        Assert-True ($result.ExitCode -ne 0) "Expected a failure. Output: $($result.Output)"
+        $session = Get-SessionRoot $root 'Coverage'
+        $folder = Join-Path $session 'at-1\run-1'
+        Assert-True (Test-Path -LiteralPath (Join-Path $folder 'no-evidence.txt')) 'No no-evidence.txt.'
+        Assert-True (-not (Test-Path -LiteralPath (Join-Path $folder 'results'))) 'The early failure has a results folder.'
+        Assert-True (-not (Test-Path -LiteralPath (Join-Path $folder 'report'))) 'The early failure has a report folder.'
+        $run = Get-Content -LiteralPath (Join-Path $folder 'run.json') -Raw | ConvertFrom-Json
+        Assert-True ($run.Failed -and -not $run.EvidenceOwned -and $run.Message -eq 'Another run holds the lock.') "run.json: $($run | ConvertTo-Json -Compress)"
+        $entry = @((Get-SessionRecord $root 'Coverage').Runs | Where-Object { $_.Label -eq 'run 1' })[0]
+        Assert-True ($entry.Failed -and -not $entry.EvidenceOwned -and $entry.Message -eq 'Another run holds the lock.') "record entry: $($entry | ConvertTo-Json -Compress)"
+        $warm = Get-Content -LiteralPath (Join-Path $session 'at-1\warmup-1\run.json') -Raw | ConvertFrom-Json
+        Assert-True ($warm.EvidenceOwned) 'The passing warm-up does not own its evidence.'
+        $attempt = (Get-Content -LiteralPath (Join-Path $root 'TestResults\coverage\attempt.txt') -Raw).Trim()
+        Assert-True ($attempt -eq "$(Split-Path -Leaf $session)|1|warm-up 1") "The shared attempt.txt holds '$attempt'."
+    }
+    finally { Remove-HarnessFixture -Root $root }
+}
+
+Invoke-TestCase 'Three failed counted runs stop the session and say why' {
+    $root = New-SettingFixture
+    try {
+        Set-HarnessMarker $root 'fail-calls.txt' '1,2,3'
+        $result = Invoke-Harness -Root $root -Arguments @('-Mode', 'Coverage', '-Setting', '1',
+            '-WarmUpRuns', '0', '-Runs', '2', '-SettleSeconds', '0')
+        Assert-True ($result.ExitCode -ne 0) "Expected a failure. Output: $($result.Output)"
+        Assert-True ($result.Output.Contains('Stopped after 3 failed counted runs.')) "Output: $($result.Output)"
+        Assert-True (@(Get-TestFastCall $root).Count -eq 3) "Expected 3 calls, got $(@(Get-TestFastCall $root).Count)."
+        [void](Get-SessionRecord $root 'Coverage')
+    }
+    finally { Remove-HarnessFixture -Root $root }
+}
+
+Invoke-TestCase 'A failed warm-up is kept and the session goes on' {
+    $root = New-SettingFixture
+    try {
+        Set-HarnessMarker $root 'fail-calls.txt' '1'
+        $result = Invoke-Harness -Root $root -Arguments @('-Mode', 'Coverage', '-Setting', '1',
+            '-WarmUpRuns', '2', '-Runs', '1', '-SettleSeconds', '0')
+        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
+        Assert-True (@(Get-TestFastCall $root).Count -eq 3) "Expected 3 calls, got $(@(Get-TestFastCall $root).Count)."
+        $record = Get-SessionRecord $root 'Coverage'
+        $warm = @($record.Runs | Where-Object { $_.Kind -eq 'warm-up' })
+        Assert-True ($warm.Count -eq 2 -and $warm[0].Failed) "Warm-ups: $($warm | ConvertTo-Json -Compress)"
+        Assert-True (@($record.Runs | Where-Object { $_.Kind -eq 'counted' }).Count -eq 1) 'The failed warm-up changed the counted runs.'
+    }
+    finally { Remove-HarnessFixture -Root $root }
+}
+
+Invoke-TestCase 'Settings are refused where they do not apply' {
+    foreach ($arguments in @(
+            @('-Mode', 'Fast', '-Setting', 'Budget'),
+            @('-Mode', 'Integration', '-Setting', '1+E2ELast'),
+            @('-Mode', 'Coverage', '-Setting', 'abc'))) {
+        $root = New-SettingFixture
+        try {
+            $result = Invoke-Harness -Root $root -Arguments ($arguments + @('-SettleSeconds', '0'))
+            Assert-True ($result.ExitCode -ne 0) "$($arguments -join ' '): expected a failure."
+            Assert-True ($result.Output.Contains('-Setting')) "$($arguments -join ' '): the message does not name -Setting. Output: $($result.Output)"
+            Assert-True (@(Get-TestFastCall $root).Count -eq 0) "$($arguments -join ' '): test-fast was called."
+            Assert-True (-not (Test-Path -LiteralPath (Join-Path $root 'stub\calls.txt'))) "$($arguments -join ' '): dotnet was called."
+        }
+        finally { Remove-HarnessFixture -Root $root }
+    }
+}
+
+Invoke-TestCase 'A Soak of a Mode runs one setting many times and goes on after a failure' {
+    $root = New-SettingFixture
+    try {
+        Set-HarnessMarker $root 'fail-calls.txt' '2'
+        $result = Invoke-Harness -Root $root -Arguments @('-Mode', 'Integration', '-SoakMode', '-Setting', 'Budget', '-Runs', '3')
+        Assert-True ($result.ExitCode -ne 0) "Expected a failure at the end. Output: $($result.Output)"
+        Assert-True (@(Get-TestFastCall $root).Count -eq 3) "Expected 3 calls, got $(@(Get-TestFastCall $root).Count)."
+        $setting = Join-Path (Get-SessionRoot $root 'Integration') 'at-budget'
+        foreach ($n in 1..3) { Assert-True (Test-Path -LiteralPath (Join-Path $setting "soak-$n")) "No soak-$n folder." }
+        Assert-True ((Get-SessionRecord $root 'Integration').Kind -eq 'soak') 'record.json Kind is not soak.'
+        Assert-True ($result.Output.Contains('passed: 2 of 3')) "Output: $($result.Output)"
+    }
+    finally { Remove-HarnessFixture -Root $root }
+}
+
+Invoke-TestCase 'A Soak of a Mode takes exactly one setting and no warm-ups' {
+    foreach ($arguments in @(
+            @('-Mode', 'Integration', '-SoakMode', '-Setting', '1,Budget'),
+            @('-Mode', 'Integration', '-SoakMode', '-WarmUpRuns', '1'))) {
+        $root = New-SettingFixture
+        try {
+            $result = Invoke-Harness -Root $root -Arguments $arguments
+            Assert-True ($result.ExitCode -ne 0) "$($arguments -join ' '): expected a failure."
+            Assert-True (@(Get-TestFastCall $root).Count -eq 0) "$($arguments -join ' '): test-fast was called."
+        }
+        finally { Remove-HarnessFixture -Root $root }
+    }
 }
 
 if ($script:Failures.Count -gt 0) {

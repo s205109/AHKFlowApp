@@ -66,7 +66,7 @@
 #>
 [CmdletBinding()]
 param(
-    [ValidateSet('Fast', 'Integration', 'E2E', 'Gate')]
+    [ValidateSet('Fast', 'Integration', 'E2E', 'Gate', 'Coverage')]
     [string]$Mode = 'Fast',
 
     [ValidateRange(1, 100)]
@@ -113,7 +113,16 @@ param(
 
     # Gate Mode only. The base for the coverage step and for git diff --check. Empty means the
     # Gate's own base, as Resolve-AhkFlowGateBaseRef finds it.
-    [string]$BaseRef
+    [string]$BaseRef,
+
+    # Backlog 204. Coverage and Integration Modes only. The settings to time, in turns: each is a
+    # whole number of at least 1 or Budget, and Coverage also takes +E2ELast, as in 'Budget+E2ELast'.
+    # A comma list in one value works, because 'pwsh -File' passes '1,Budget' as a single string.
+    [string[]]$Setting = @('1'),
+
+    # Backlog 204. Coverage and Integration Modes only. Runs one -Setting -Runs times (20 when
+    # -Runs is not given), goes on after a failure, and counts the runs that passed.
+    [switch]$SoakMode
 )
 
 $ErrorActionPreference = 'Stop'
@@ -185,6 +194,132 @@ elseif ($changeNames.Count -gt 0 -or $NoEvidenceReuse -or $PSBoundParameters.Con
     throw '-Change, -NoEvidenceReuse and -BaseRef work only with -Mode Gate.'
 }
 
+function ConvertTo-MeasureSetting {
+    <#
+      One -Setting value as an object: its Name for the record, the SlicesAtOnce value to pass,
+      whether it adds E2ELast, and the folder its runs go in. Throws on a value that is not a
+      setting, with a message that names -Setting.
+    #>
+    param([Parameter(Mandatory = $true)][string]$Text)
+
+    $match = [regex]::Match($Text.Trim(), '^(?i)(?:([1-9][0-9]*)|(budget))(\+e2elast)?$')
+    if (-not $match.Success) {
+        throw "-Setting value '$Text' is not a setting. Use a whole number of at least 1, or Budget. Coverage also takes +E2ELast, as in 'Budget+E2ELast'."
+    }
+    $count = if ($match.Groups[2].Success) { 'Budget' } else { $match.Groups[1].Value }
+    $e2eLast = $match.Groups[3].Success
+    $name = $count
+    $folder = 'at-' + $count.ToLowerInvariant()
+    if ($e2eLast) {
+        $name = "$count+E2ELast"
+        $folder = "$folder-e2e-last"
+    }
+    return [pscustomobject]@{ Name = $name; SlicesAtOnce = $count; E2ELast = $e2eLast; Folder = $folder }
+}
+
+# Backlog 204. Refuse a wrong setting before any work starts, so a wrong call costs nothing.
+$usesSettings = ($Mode -eq 'Coverage' -or $Mode -eq 'Integration') -and -not $isSoak
+if ($PSBoundParameters.ContainsKey('Setting') -and -not $usesSettings) {
+    throw '-Setting works only with -Mode Coverage or -Mode Integration, and not with -Soak.'
+}
+if ($SoakMode -and -not $usesSettings) {
+    throw '-SoakMode works only with -Mode Coverage or -Mode Integration, and not with -Soak.'
+}
+$settings = @()
+if ($usesSettings) {
+    $settingNames = @($Setting | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+    if ($settingNames.Count -eq 0) { throw '-Setting needs at least one value.' }
+    $settings = @($settingNames | ForEach-Object { ConvertTo-MeasureSetting -Text $_ })
+    foreach ($item in $settings) {
+        if ($item.E2ELast -and $Mode -ne 'Coverage') {
+            throw "-Setting value '$($item.Name)' uses +E2ELast, which works only with -Mode Coverage."
+        }
+    }
+    $duplicate = @($settings | Group-Object Name | Where-Object { $_.Count -gt 1 } | ForEach-Object { $_.Name })
+    if ($duplicate.Count -gt 0) {
+        throw "-Setting names $($duplicate -join ', ') more than once. Each setting is timed once per round."
+    }
+}
+if ($SoakMode) {
+    $refused = @()
+    if ($settings.Count -ne 1) { $refused += 'more than one -Setting' }
+    if ($PSBoundParameters.ContainsKey('WarmUpRuns')) { $refused += '-WarmUpRuns' }
+    if ($PSBoundParameters.ContainsKey('SettleSeconds')) { $refused += '-SettleSeconds' }
+    if ($refused.Count -gt 0) {
+        throw "-SoakMode runs one -Setting, with no warm-up runs and no settle clock. Do not combine it with $($refused -join ', ')."
+    }
+    if (-not $PSBoundParameters.ContainsKey('Runs')) { $Runs = 20 }
+}
+
+function Copy-RunEvidence {
+    <#
+      Copies the evidence of one run into its own folder and answers whether the run owned it.
+
+      Coverage and Integration write into one shared folder and clear it at the start of every
+      run. A run owns what that folder holds only when attempt.txt there holds this run's value.
+      A run that failed before it cleared the folder left the evidence of the run before, and a
+      copy of that would be filed under the wrong run. This function never deletes the shared
+      folders: only run-coverage.ps1 and test-fast.ps1 clear them, inside the test-run lock.
+
+      The coverage.cobertura.xml files and the merged Cobertura.xml are left out on purpose.
+      Summary.json holds the class figures backlog 204 needs, and the XML would add hundreds of
+      megabytes over a Soak. coverage-files.txt lists where each one was.
+    #>
+    param(
+        [Parameter(Mandatory = $true)][string]$Mode,
+        [Parameter(Mandatory = $true)][string]$RepoRoot,
+        [Parameter(Mandatory = $true)][string]$RunDirectory,
+        [string]$Attempt
+    )
+
+    if ($Mode -ne 'Coverage' -and $Mode -ne 'Integration') {
+        # test-fast.ps1 writes into one fixed folder and clears it at the start of every run, so the
+        # TRX has to be copied out here or run five overwrites run four.
+        $sharedResults = Join-Path $RepoRoot "TestResults\test-fast\$Mode"
+        foreach ($trx in @(Get-ChildItem -LiteralPath $sharedResults -Recurse -Filter '*.trx' -ErrorAction SilentlyContinue)) {
+            Copy-Item -LiteralPath $trx.FullName -Destination (Join-Path $RunDirectory $trx.Name) -Force
+        }
+        return $null
+    }
+
+    $shared = if ($Mode -eq 'Coverage') { Join-Path $RepoRoot 'TestResults\coverage' } else { Join-Path $RepoRoot 'TestResults\test-fast\Integration' }
+    $attemptPath = Join-Path $shared 'attempt.txt'
+    $held = $null
+    if (Test-Path -LiteralPath $attemptPath -PathType Leaf) {
+        $held = ([System.IO.File]::ReadAllText($attemptPath)).Trim()
+    }
+    if ($held -ne $Attempt) {
+        Set-Content -LiteralPath (Join-Path $RunDirectory 'no-evidence.txt') -Encoding utf8 `
+            -Value 'No results of this attempt. The run failed before it cleared the results of the run before.'
+        return $false
+    }
+
+    $sharedFull = (Resolve-Path -LiteralPath $shared).ProviderPath.TrimEnd('\', '/')
+    $results = Join-Path $RunDirectory 'results'
+    New-Item -ItemType Directory -Path $results -Force | Out-Null
+    $files = @(Get-ChildItem -LiteralPath $shared -Recurse -File | Where-Object {
+            $_.Extension -eq '.trx' -or $_.Extension -eq '.log' -or $_.Name -eq 'slices.json'
+        })
+    foreach ($file in $files) {
+        $target = Join-Path $results $file.FullName.Substring($sharedFull.Length + 1)
+        New-Item -ItemType Directory -Path (Split-Path -Parent $target) -Force | Out-Null
+        Copy-Item -LiteralPath $file.FullName -Destination $target -Force
+    }
+
+    if ($Mode -eq 'Coverage') {
+        $listed = @(Get-ChildItem -LiteralPath $shared -Recurse -File -Filter 'coverage.cobertura.xml' |
+                ForEach-Object { $_.FullName.Substring($sharedFull.Length + 1) })
+        Set-Content -LiteralPath (Join-Path $results 'coverage-files.txt') -Value ($listed -join [Environment]::NewLine) -Encoding utf8
+        $summary = Join-Path $RepoRoot 'CoverageReport\Summary.json'
+        if (Test-Path -LiteralPath $summary -PathType Leaf) {
+            $report = Join-Path $RunDirectory 'report'
+            New-Item -ItemType Directory -Path $report -Force | Out-Null
+            Copy-Item -LiteralPath $summary -Destination (Join-Path $report 'Summary.json') -Force
+        }
+    }
+    return $true
+}
+
 function Invoke-TimedRun {
     <#
       One timed run of a Mode, printed and returned in seconds.
@@ -200,18 +335,45 @@ function Invoke-TimedRun {
         [Parameter(Mandatory = $true)][string]$ScriptRoot,
         [Parameter(Mandatory = $true)][string]$RepoRoot,
         [Parameter(Mandatory = $true)][string]$RunDirectory,
-        [switch]$KeepBuildInRun
+        [switch]$KeepBuildInRun,
+
+        # Backlog 204. One -Setting name, as ConvertTo-MeasureSetting gives it. Empty for the
+        # Modes that take no setting.
+        [string]$Setting,
+
+        # Backlog 204. The leaf of the session folder, for the attempt value.
+        [string]$SessionName,
+
+        # Backlog 204. Return a failed run instead of throwing, so a session can keep it and go on.
+        [switch]$ContinueOnFailure
     )
 
     Write-Host ''
-    Write-Host "=== $Mode $Label ===" -ForegroundColor Cyan
+    if ($Setting) {
+        Write-Host "=== $Mode at $Setting, $Label ===" -ForegroundColor Cyan
+    }
+    else {
+        Write-Host "=== $Mode $Label ===" -ForegroundColor Cyan
+    }
 
     # A hashtable, not an array. Splatting an array binds its elements by position, so '-Mode'
     # would arrive as the value of the first positional parameter rather than as a name.
     $testFastArguments = @{ Mode = $Mode; Configuration = $Configuration }
-    if (-not $KeepBuildInRun) {
+    if ($Mode -eq 'Coverage') {
+        # The coverage step builds inside every run, and -Force runs it even on a branch that
+        # changed no compiled file.
+        $testFastArguments['Force'] = $true
+    }
+    elseif (-not $KeepBuildInRun) {
         $testFastArguments['NoBuild'] = $true
     }
+    if ($Setting) {
+        $parsed = ConvertTo-MeasureSetting -Text $Setting
+        $testFastArguments['SlicesAtOnce'] = $parsed.SlicesAtOnce
+        if ($parsed.E2ELast) { $testFastArguments['E2ELast'] = $true }
+    }
+
+    New-Item -ItemType Directory -Path $RunDirectory -Force | Out-Null
 
     # Backlog 140. The recorder reads these two at the moment a step runs, so they are set around
     # the call and restored after it. Each run writes its own timing files, beside its own TRX.
@@ -219,40 +381,234 @@ function Invoke-TimedRun {
     New-Item -ItemType Directory -Path $timingDirectory -Force | Out-Null
     $previousTiming = $env:AHKFLOW_TEST_TIMING
     $previousTimingDirectory = $env:AHKFLOW_TEST_TIMING_DIR
+    $previousAttempt = $env:AHKFLOW_RUN_ATTEMPT
     $env:AHKFLOW_TEST_TIMING = '1'
     $env:AHKFLOW_TEST_TIMING_DIR = $timingDirectory
 
+    # Backlog 204. A value no other run of the session uses. The script under test writes it into
+    # its results folder after it cleared that folder, so the copy below can tell its own results.
+    $attempt = $null
+    if ($Mode -eq 'Coverage' -or $Mode -eq 'Integration') {
+        $attempt = '{0}|{1}|{2}' -f $SessionName, $Setting, $Label
+        $env:AHKFLOW_RUN_ATTEMPT = $attempt
+    }
+
+    $failed = $false
+    $message = $null
+    $failure = $null
+    $elapsed = 0
+    $owned = $null
+    $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
     try {
-        $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
-        # test-fast.ps1 throws on a failing slice, and $ErrorActionPreference is 'Stop' here, so a
-        # failure ends this script. Checking $LASTEXITCODE as well would read a stale value from the
-        # build above. $PSNativeCommandUseErrorActionPreference does not weaken this: it governs
-        # native commands, and test-fast.ps1 is a PowerShell script whose throw propagates either way.
-        & (Join-Path $ScriptRoot 'test-fast.ps1') @testFastArguments | Out-Host
-        $stopwatch.Stop()
+        try {
+            # test-fast.ps1 throws on a failing slice, and $ErrorActionPreference is 'Stop' here.
+            # $PSNativeCommandUseErrorActionPreference does not weaken this: it governs native
+            # commands, and test-fast.ps1 is a PowerShell script whose throw propagates either way.
+            & (Join-Path $ScriptRoot 'test-fast.ps1') @testFastArguments | Out-Host
+        }
+        catch {
+            $failed = $true
+            $message = $_.Exception.Message
+            $failure = $_
+        }
     }
     finally {
+        $stopwatch.Stop()
         $env:AHKFLOW_TEST_TIMING = $previousTiming
         $env:AHKFLOW_TEST_TIMING_DIR = $previousTimingDirectory
+        $env:AHKFLOW_RUN_ATTEMPT = $previousAttempt
+        $elapsed = [Math]::Round($stopwatch.Elapsed.TotalSeconds, 2)
+
+        # The evidence is copied for a failed run too, and before the next run clears it.
+        $owned = Copy-RunEvidence -Mode $Mode -RepoRoot $RepoRoot -RunDirectory $RunDirectory -Attempt $attempt
+
+        # The command boundary, written beside the run's own artifacts. Only this function knows
+        # it, and the report must not need a human to retype a number the driver already measured.
+        [pscustomobject][ordered]@{
+            Label = $Label
+            Setting = $Setting
+            ElapsedSeconds = $elapsed
+            Failed = $failed
+            Message = $message
+            EvidenceOwned = $owned
+        } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $RunDirectory 'run.json') -Encoding utf8
     }
 
-    $elapsed = [Math]::Round($stopwatch.Elapsed.TotalSeconds, 2)
-
-    # test-fast.ps1 writes into one fixed folder and clears it at the start of every run, so the
-    # TRX has to be copied out here or run five overwrites run four.
-    $sharedResults = Join-Path $RepoRoot "TestResults\test-fast\$Mode"
-    foreach ($trx in @(Get-ChildItem -LiteralPath $sharedResults -Recurse -Filter '*.trx' -ErrorAction SilentlyContinue)) {
-        Copy-Item -LiteralPath $trx.FullName -Destination (Join-Path $RunDirectory $trx.Name) -Force
+    if ($failed) {
+        Write-Host ("{0}: failed after {1:N2} s: {2}" -f $Label, $elapsed, $message) -ForegroundColor Red
+        if (-not $ContinueOnFailure) { throw $failure }
+    }
+    else {
+        Write-Host ("{0}: {1:N2} s" -f $Label, $elapsed) -ForegroundColor Green
     }
 
-    # The command boundary, written beside the run's own artifacts. Only this function knows it,
-    # and the report must not need a human to retype a number the driver already measured.
-    [pscustomobject]@{ Label = $Label; ElapsedSeconds = $elapsed } |
-        ConvertTo-Json |
-        Set-Content -LiteralPath (Join-Path $RunDirectory 'run.json') -Encoding utf8
+    return [pscustomobject]@{
+        Label = $Label
+        Setting = $Setting
+        ElapsedSeconds = $elapsed
+        Failed = $failed
+        Message = $message
+        EvidenceOwned = $owned
+    }
+}
 
-    Write-Host ("{0}: {1:N2} s" -f $Label, $elapsed) -ForegroundColor Green
-    return $elapsed
+function Invoke-SettingSession {
+    <#
+      Backlog 204. Times the settings of Coverage or Integration in turns, or soaks one setting.
+
+      Turns, not blocks: every round runs each setting once, so a slow hour of the machine falls
+      on every setting alike instead of on whichever one ran then. A failed counted run is kept,
+      marked and replaced. The third one stops the session, because a run that fails that often
+      cannot be timed.
+    #>
+    param(
+        [Parameter(Mandatory = $true)][object[]]$Settings,
+        [Parameter(Mandatory = $true)][string]$SessionRoot,
+        [object]$BuildCompletedAtUtc
+    )
+
+    $sessionName = Split-Path -Leaf $SessionRoot
+    $sessionRuns = New-Object System.Collections.Generic.List[object]
+    $nextNumber = @{}
+    $runArguments = @{
+        Mode = $Mode
+        Configuration = $Configuration
+        ScriptRoot = $PSScriptRoot
+        RepoRoot = $repoRoot
+        KeepBuildInRun = [bool]$KeepBuildInRun
+        SessionName = $sessionName
+        ContinueOnFailure = $true
+    }
+
+    function Invoke-SessionRun {
+        param([object]$Item, [string]$Kind)
+        $key = "$($Item.Folder)|$Kind"
+        $number = 1 + [int]$nextNumber[$key]
+        $nextNumber[$key] = $number
+        $label, $leaf = switch ($Kind) {
+            'warm-up' { "warm-up $number", "warmup-$number" }
+            'counted' { "run $number", "run-$number" }
+            default { "soak $number", "soak-$number" }
+        }
+        $relative = Join-Path $Item.Folder $leaf
+        $result = Invoke-TimedRun -Label $label -Setting $Item.Name -RunDirectory (Join-Path $SessionRoot $relative) @runArguments
+        $entry = [pscustomobject][ordered]@{
+            Setting = $Item.Name
+            Label = $label
+            Kind = $Kind
+            Folder = $relative
+            ElapsedSeconds = $result.ElapsedSeconds
+            Failed = $result.Failed
+            Message = $result.Message
+            EvidenceOwned = $result.EvidenceOwned
+        }
+        $sessionRuns.Add($entry)
+        return $entry
+    }
+
+    function Save-SessionRecord {
+        param([string]$Kind)
+        [pscustomobject][ordered]@{
+            Revision = "$(& git rev-parse HEAD)".Trim()
+            Mode = $Mode
+            Kind = $Kind
+            Settings = @($Settings | ForEach-Object { $_.Name })
+            Runs = $sessionRuns.ToArray()
+        } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $SessionRoot 'record.json') -Encoding utf8
+    }
+
+    if ($SoakMode) {
+        $item = $Settings[0]
+        for ($run = 1; $run -le $Runs; $run++) {
+            [void](Invoke-SessionRun -Item $item -Kind 'soak')
+        }
+        Save-SessionRecord -Kind 'soak'
+
+        $failedRuns = @($sessionRuns | Where-Object { $_.Failed })
+        Write-Host ''
+        Write-Host "Soak of $Mode at $($item.Name)" -ForegroundColor Cyan
+        Write-Host ("  passed: {0} of {1}" -f ($Runs - $failedRuns.Count), $Runs)
+        if ($failedRuns.Count -gt 0) {
+            Write-Host ("  failed runs : {0}" -f (($failedRuns | ForEach-Object { $_.Label }) -join ', ')) -ForegroundColor Red
+            throw "The Soak failed $($failedRuns.Count) of $Runs runs. Read the failures with scripts/measure-verdict.ps1."
+        }
+        return
+    }
+
+    # Warm-up rounds, with the count, the settle clock, the ceiling and the wait of the loop that
+    # Fast and E2E use. A failed warm-up still warms the tree, so it counts as a warm-up round.
+    $secondsSinceBuild = 0
+    $warmUpRounds = 0
+    while ($true) {
+        if ($null -ne $BuildCompletedAtUtc) {
+            $secondsSinceBuild = ([DateTime]::UtcNow - $BuildCompletedAtUtc).TotalSeconds
+        }
+        $enoughRuns = $warmUpRounds -ge $WarmUpRuns
+        $settled = ($SettleSeconds -le 0) -or ($null -eq $BuildCompletedAtUtc) -or ($secondsSinceBuild -ge $SettleSeconds)
+        if ($enoughRuns -and $settled) { break }
+        if ($warmUpRounds -ge $MaxWarmUpRuns) {
+            if (-not $settled) {
+                $remaining = [Math]::Ceiling($SettleSeconds - $secondsSinceBuild)
+                Write-Host ("Reached the warm-up ceiling of {0} rounds. Waiting {1:N0} s more for the tree to settle." -f `
+                    $MaxWarmUpRuns, $remaining) -ForegroundColor Yellow
+                Start-Sleep -Seconds $remaining
+            }
+            break
+        }
+        foreach ($item in $Settings) { [void](Invoke-SessionRun -Item $item -Kind 'warm-up') }
+        $warmUpRounds++
+    }
+    if ($null -ne $BuildCompletedAtUtc) {
+        $secondsSinceBuild = ([DateTime]::UtcNow - $BuildCompletedAtUtc).TotalSeconds
+    }
+
+    # Counted rounds. Each runs every setting that still has fewer than -Runs passed runs.
+    $failedCounted = 0
+    while ($true) {
+        $pending = @($Settings | Where-Object {
+                $name = $_.Name
+                @($sessionRuns | Where-Object { $_.Setting -eq $name -and $_.Kind -eq 'counted' -and -not $_.Failed }).Count -lt $Runs
+            })
+        if ($pending.Count -eq 0) { break }
+        foreach ($item in $pending) {
+            $entry = Invoke-SessionRun -Item $item -Kind 'counted'
+            if ($entry.Failed) {
+                $failedCounted++
+                if ($failedCounted -ge 3) {
+                    Save-SessionRecord -Kind 'timing'
+                    throw "Stopped after 3 failed counted runs. A run that fails this often cannot be timed. See $SessionRoot."
+                }
+            }
+        }
+    }
+    Save-SessionRecord -Kind 'timing'
+
+    Write-Host ''
+    Write-Host "$Mode over $Runs counted runs per setting" -ForegroundColor Cyan
+    foreach ($item in $Settings) {
+        $name = $item.Name
+        $mine = @($sessionRuns | Where-Object { $_.Setting -eq $name })
+        $warm = @($mine | Where-Object { $_.Kind -eq 'warm-up' })
+        $failedRuns = @($mine | Where-Object { $_.Kind -eq 'counted' -and $_.Failed })
+        $seconds = @($mine | Where-Object { $_.Kind -eq 'counted' -and -not $_.Failed } | ForEach-Object { $_.ElapsedSeconds })
+        Write-Host "  at $name" -ForegroundColor Cyan
+        if ($warm.Count -gt 0) {
+            Write-Host ("    warm-up: {0} (discarded, {1})" -f `
+                (($warm | ForEach-Object { '{0:N2}' -f $_.ElapsedSeconds }) -join ' / '), $warm.Count)
+        }
+        if ($failedRuns.Count -gt 0) {
+            Write-Host ("    failed : {0} (kept, not counted)" -f (($failedRuns | ForEach-Object { $_.Label }) -join ', ')) -ForegroundColor Red
+        }
+        Write-Host ("    runs   : {0}" -f (($seconds | ForEach-Object { '{0:N2}' -f $_ }) -join ' / '))
+        Write-Host ("    median : {0:N2} s" -f (Get-AhkFlowMedian -Values $seconds))
+        Write-Host ("    spread : {0:N1} % of the median" -f (Get-AhkFlowRelativeSpread -Values $seconds))
+    }
+    if ($null -eq $BuildCompletedAtUtc) {
+        Write-Host '  built  : unknown, found no build output'
+    }
+    else {
+        Write-Host ("  built  : {0:N0} s before the first counted run" -f $secondsSinceBuild)
+    }
 }
 
 function Invoke-GateRun {
@@ -656,6 +1012,12 @@ try {
         Write-Host 'Found no build output, so the settle clock is off for this run.' -ForegroundColor Yellow
     }
 
+    # Backlog 204. Coverage and Integration time their settings in turns, or soak one of them.
+    if ($usesSettings) {
+        Invoke-SettingSession -Settings $settings -SessionRoot $runRoot -BuildCompletedAtUtc $buildCompletedAtUtc
+        return
+    }
+
     $secondsSinceBuild = 0
     $warmUpSeconds = @()
     while ($true) {
@@ -691,10 +1053,10 @@ try {
             break
         }
 
-        $warmUpSeconds += Invoke-TimedRun -Label ("warm-up " + ($warmUpSeconds.Count + 1)) `
+        $warmUpSeconds += (Invoke-TimedRun -Label ("warm-up " + ($warmUpSeconds.Count + 1)) `
             -Mode $Mode -Configuration $Configuration -ScriptRoot $PSScriptRoot `
             -RepoRoot $repoRoot -RunDirectory (Join-Path $runRoot ("warmup-" + ($warmUpSeconds.Count + 1))) `
-            -KeepBuildInRun:$KeepBuildInRun
+            -KeepBuildInRun:$KeepBuildInRun).ElapsedSeconds
     }
 
     # Read the clock once more, after the warm-up loop and any wait. The report calls this figure
@@ -706,10 +1068,10 @@ try {
 
     $seconds = @()
     for ($run = 1; $run -le $Runs; $run++) {
-        $seconds += Invoke-TimedRun -Label "run $run of $Runs" `
+        $seconds += (Invoke-TimedRun -Label "run $run of $Runs" `
             -Mode $Mode -Configuration $Configuration -ScriptRoot $PSScriptRoot `
             -RepoRoot $repoRoot -RunDirectory (Join-Path $runRoot "run-$run") `
-            -KeepBuildInRun:$KeepBuildInRun
+            -KeepBuildInRun:$KeepBuildInRun).ElapsedSeconds
     }
 
     $median = Get-AhkFlowMedian -Values $seconds

@@ -625,6 +625,50 @@ measurement of the three looked like the tightest. Read the `built` line for col
 pwsh .\scripts\measure-test-modes.ps1 -Soak tests/AHKFlowApp.Infrastructure.Tests -Runs 30
 ```
 
+### Measuring Slices side by side
+
+`-Mode Coverage` and `-Mode Integration` time one or more settings of the Slice runner (backlog 204).
+A setting is a whole number of at least 1, or `Budget`. Coverage also takes `+E2ELast`, as in
+`Budget+E2ELast`. Pass the settings to `-Setting` as one comma list. The default is `1`.
+
+The settings take turns. Each round runs every setting once, in the order you gave. So a slow
+minute of the machine falls on every setting, not on whichever one ran then. Warm-up rounds come
+first, with the same count, settle clock and ceiling as the other Modes. Each counted round then
+runs every setting that still has fewer than `-Runs` passed runs.
+
+A failed counted run is kept and marked, and it does not count. The setting runs again in the next
+round. The third failed counted run of a session stops the session, because a run that fails that
+often cannot be timed. A failed warm-up is kept, and the session goes on.
+
+Every run copies its own evidence before the next run clears it. One session looks like this:
+
+```text
+session-<utc>\
+  record.json            Revision, Mode, Kind ('timing' or 'soak'), Settings, and one entry per run
+  at-<setting>\          for example at-1, at-budget, at-budget-e2e-last
+    warmup-<n>\ | run-<n>\ | soak-<n>\
+      run.json           Label, Setting, ElapsedSeconds, Failed, Message, EvidenceOwned
+      results\           slices.json, and each Slice folder with its .trx and .log files
+                         Coverage also: coverage-files.txt, where each coverage file was
+      report\            Coverage only: Summary.json
+      no-evidence.txt    only when the run left no results of its own
+```
+
+A run owns the results only when `attempt.txt` in the shared results folder holds the value this
+run set. A run that failed before it cleared that folder gets `no-evidence.txt` instead. The copy
+leaves out the `coverage.cobertura.xml` files, because `Summary.json` holds the class figures.
+
+`-SoakMode` runs one setting `-Runs` times, 20 when you do not give `-Runs`. It takes no warm-up
+runs and no settle clock, and it goes on after a failure. It prints `passed: <n> of <runs>`, and it
+fails at the end when any run failed.
+
+The two timing sessions of backlog 204:
+
+```bash
+pwsh .\scripts\measure-test-modes.ps1 -Mode Coverage -Setting 1,Budget,Budget+E2ELast
+pwsh .\scripts\measure-test-modes.ps1 -Mode Integration -Setting 1,Budget
+```
+
 ### Measuring the Gate
 
 `-Mode Gate` times the five steps of the [Gate](#canonical-pre-pr-gate) instead of one test Mode.
