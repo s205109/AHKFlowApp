@@ -759,6 +759,23 @@ $tracker = New-ProgressTracker -RunnerKey 'slice-runner-tests' -Unit @('P', 'F')
 $results = @(Invoke-AhkFlowSliceSet -Slice @((New-Fake 'P' 0 0), (New-Fake 'F' 1 0)) -SlicesAtOnce 2 -WorkingDirectory $Folder -Tracker $tracker 6>$null)
 $codes = @($results | ForEach-Object { $_.ExitCode })
 $logs = @($results | ForEach-Object { [System.IO.File]::ReadAllText($_.LogPath) })
+# The launcher on its own, outside any job: does it start a trivial program when it reads 'start'?
+$probeStart = Resolve-AhkFlowSliceStart -Command 'cmd.exe' -Argument @('/c', 'echo', 'launched')
+$probeInfo = New-Object System.Diagnostics.ProcessStartInfo
+$probeInfo.FileName = $hostPath
+$probeInfo.Arguments = '-NoProfile -NonInteractive -EncodedCommand ' + (ConvertTo-AhkFlowEncodedCommand -Text (Get-AhkFlowSliceLauncherText -Start $probeStart -WorkingDirectory $Folder))
+$probeInfo.UseShellExecute = $false
+$probeInfo.CreateNoWindow = $true
+$probeInfo.RedirectStandardInput = $true
+$probeInfo.RedirectStandardOutput = $true
+$probeInfo.RedirectStandardError = $true
+$probe = [System.Diagnostics.Process]::Start($probeInfo)
+$probe.StandardInput.WriteLine('start')
+$probe.StandardInput.Close()
+$probeOut = $probe.StandardOutput.ReadToEnd()
+$probeErr = $probe.StandardError.ReadToEnd()
+[void]$probe.WaitForExit(60000)
+$launcherProbe = "exit=$($probe.ExitCode) out=[$($probeOut.Trim())] err=[$($probeErr.Trim())] inputEncoding=$([Console]::InputEncoding.WebName)"
 $message = ''
 $survivors = @()
 $missing = @()
@@ -784,14 +801,15 @@ $logA = ''
 foreach ($path in @((Join-Path $Folder 'A\A.log'), (Join-Path $Folder 'A\A.log.stderr'))) {
     if (Test-Path -LiteralPath $path) { $logA += [System.IO.File]::ReadAllText($path) }
 }
-[Console]::Out.WriteLine((ConvertTo-Json -Compress -InputObject ([pscustomobject]@{ Codes = $codes; Logs = $logs; Message = $message; Survivors = $survivors; Missing = $missing; LogA = $logA })))
+[Console]::Out.WriteLine((ConvertTo-Json -Compress -InputObject ([pscustomobject]@{ Codes = $codes; Logs = $logs; Message = $message; Survivors = $survivors; Missing = $missing; LogA = $logA; LauncherProbe = $launcherProbe })))
 '@
             Set-Content -LiteralPath $driver -Value $driverBody -Encoding UTF8
             $text = & $script:WindowsPowerShell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $driver -Repo $repoRoot -Folder $folder -Fake $script:FakePath 2>&1 | Out-String
             $json = @($text -split '\r?\n' | Where-Object { $_.StartsWith('{') }) | Select-Object -Last 1
             Assert-True ($null -ne $json) "The 5.1 driver printed no JSON: $text"
             $data = $json | ConvertFrom-Json
-            Assert-True (@($data.Missing).Count -eq 0) "These markers were never written: $(@($data.Missing) -join ', '). Message: $($data.Message) Log of A: $($data.LogA)"
+            Assert-True (@($data.Missing).Count -eq 0) ("These markers were never written: $(@($data.Missing) -join ', '). Message: $($data.Message) " +
+                "Log of A: $($data.LogA) P and F exit codes: $(@($data.Codes) -join ',') P and F logs: $(@($data.Logs) -join ' | ') Launcher probe: $($data.LauncherProbe)")
             Assert-True ((@($data.Codes) -join ',') -eq '0,1') "Exit codes: $(@($data.Codes) -join ',')"
             Assert-True ($data.Logs[0].Contains('out-P') -and $data.Logs[1].Contains('out-F')) "Logs: $($data.Logs -join ' | ')"
             Assert-True ($data.Message.Contains('could not start')) "Message: $($data.Message)"
