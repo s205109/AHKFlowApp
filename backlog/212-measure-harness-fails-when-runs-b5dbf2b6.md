@@ -71,4 +71,4 @@ removed" and "tests cover the new API" cannot.
   `.github/code-paths-filter.yml`. A branch that changes it makes the pre-push hook build the
   solution and run the fast test slice.
 - Spec: none — moderate bug with a known root cause
-- Plan: docs/superpowers/plans/2026-11-16-measure-harness-zero-runs-plan-212.md
+- Plan: `docs/superpowers/plans/2026-11-16-measure-harness-zero-runs-plan-212.md`
