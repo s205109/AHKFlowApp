@@ -44,5 +44,5 @@ so that a code change reaches a green Gate sooner.
   another. It did not try any switch for parallel runs.
 - Two risks to test first: CPU contention, which made backlog 114 raise the bUnit wait timeout,
   and file locks on the coverage output, which the test-run lock exists to prevent.
-- Spec: none — Design writes it.
+- Spec: `docs/superpowers/specs/2026-11-16-run-the-net-test-projects-side-by-side-design-204.md`
 - Plan: none — Plan comes after Design.
