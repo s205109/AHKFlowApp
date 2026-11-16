@@ -6,7 +6,7 @@
 - **Type**: Tooling
 - **Interfaces**: none (`scripts/run-coverage.ps1`, `scripts/test-fast.ps1`)
 - **Difficulty**: to-be-determined
-- **Stage**: 1-pickup
+- **Stage**: 2-design
 
 ## Summary
 
