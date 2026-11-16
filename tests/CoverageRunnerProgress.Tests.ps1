@@ -376,7 +376,10 @@ function Invoke-InFixture {
 
 function Invoke-CoverageRun {
     param([Parameter(Mandatory)][string] $Root)
-    return Invoke-InFixture -Root $Root -ScriptName 'run-coverage.ps1'
+    # The cases that use this helper check the progress lines of a run in sequence. Since
+    # backlog 204 the default is Budget, and side by side the Slices end in any order, so the
+    # helper asks for 1. The side-by-side cases pass their own -SlicesAtOnce.
+    return Invoke-InFixture -Root $Root -ScriptName 'run-coverage.ps1' -Argument @('-SlicesAtOnce', '1')
 }
 
 function Get-ProgressHistoryFolder {
