@@ -183,6 +183,10 @@ if ($args[0] -eq 'test') {
     Write-Output 'stub dotnet test'
     Set-Content -LiteralPath (Join-Path $stubFolder "end-$project.txt") -Value ([DateTime]::UtcNow.Ticks)
     if (Test-NamedBy 'fail-after-coverage.txt') { exit 1 }
+
+    # fail-projects.txt lists, one per line, the projects whose test call exits 1.
+    $failList = Join-Path $stubFolder 'fail-projects.txt'
+    if ((Test-Path -LiteralPath $failList) -and @(Get-Content -LiteralPath $failList | ForEach-Object { $_.Trim() }) -contains $project) { exit 1 }
     exit 0
 }
 
@@ -772,13 +776,116 @@ Invoke-TestCase 'test-fast refuses -E2ELast outside the Coverage Mode' {
     finally { Remove-CoverageFixture -Root $root }
 }
 
-Invoke-TestCase 'test-fast refuses -SlicesAtOnce outside the Coverage Mode' {
+Invoke-TestCase 'test-fast refuses -SlicesAtOnce outside Integration and Coverage' {
     $root = New-CoverageFixture
     try {
         $result = Invoke-InFixture -Root $root -ScriptName 'test-fast.ps1' -Argument @('-Mode', 'Fast', '-SlicesAtOnce', '2')
         Assert-True ($result.ExitCode -ne 0) "Expected a failure. Output: $($result.Output)"
-        Assert-True ($result.Output.Contains('-SlicesAtOnce works only with -Mode Coverage.')) "Output: $($result.Output)"
+        Assert-True ($result.Output.Contains('-SlicesAtOnce works only with -Mode Integration or -Mode Coverage.')) "Output: $($result.Output)"
         Assert-True (@(Get-StubCall $root).Count -eq 0) 'test-fast called dotnet before it refused.'
+    }
+    finally { Remove-CoverageFixture -Root $root }
+}
+
+
+# --- test-fast.ps1 Integration Mode ---
+
+$script:IntegrationProject = @(
+    'AHKFlowApp.Application.Tests'
+    'AHKFlowApp.CLI.Tests'
+    'AHKFlowApp.API.Tests'
+    'AHKFlowApp.Infrastructure.Tests'
+)
+
+# Each Slice checks that its project file exists, so the fixture writes the four that the
+# Integration Mode names.
+function Add-IntegrationProject {
+    param([string] $Root)
+    foreach ($name in $script:IntegrationProject) {
+        $folder = Join-Path (Join-Path $Root 'tests') $name
+        New-Item -ItemType Directory -Path $folder -Force | Out-Null
+        Set-Content -LiteralPath (Join-Path $folder "$name.csproj") -Value '<Project />' -Encoding utf8
+    }
+}
+
+function Invoke-IntegrationRun {
+    param([string] $Root, [string[]] $Argument = @())
+    return Invoke-InFixture -Root $Root -ScriptName 'test-fast.ps1' -Argument (@('-Mode', 'Integration') + $Argument)
+}
+
+Invoke-TestCase 'Integration without -NoBuild builds once, before any Slice' {
+    $root = New-CoverageFixture
+    try {
+        Add-IntegrationProject $root
+        $result = Invoke-IntegrationRun $root
+        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
+        $calls = @(Get-StubCall $root)
+        Assert-True ($calls.Count -gt 0 -and $calls[0].StartsWith('build ')) "The first call is not the build: $($calls -join ' | ')"
+        Assert-True (@($calls | Where-Object { $_.StartsWith('build ') }).Count -eq 1) "Expected one build: $($calls -join ' | ')"
+    }
+    finally { Remove-CoverageFixture -Root $root }
+}
+
+Invoke-TestCase 'Every Integration Slice runs with --no-build' {
+    foreach ($noBuild in @($false, $true)) {
+        $root = New-CoverageFixture
+        try {
+            Add-IntegrationProject $root
+            $argument = @()
+            if ($noBuild) { $argument = @('-NoBuild') }
+            $result = Invoke-IntegrationRun $root $argument
+            Assert-True ($result.ExitCode -eq 0) "NoBuild=${noBuild}: expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
+            $calls = @(Get-StubCall $root)
+            $tests = @($calls | Where-Object { $_.StartsWith('test ') })
+            Assert-True ($tests.Count -eq 4) "NoBuild=${noBuild}: expected 4 test calls, got $($tests.Count)."
+            foreach ($line in $tests) { Assert-True ($line.Contains('--no-build')) "NoBuild=${noBuild}: a test call has no --no-build: $line" }
+            if ($noBuild) {
+                Assert-True (@($calls | Where-Object { $_.StartsWith('build ') }).Count -eq 0) 'A -NoBuild run built the solution.'
+            }
+        }
+        finally { Remove-CoverageFixture -Root $root }
+    }
+}
+
+Invoke-TestCase 'A failing Integration Slice does not stop the others, and the run names every failure' {
+    $root = New-CoverageFixture
+    try {
+        Add-IntegrationProject $root
+        Set-StubMarker $root 'fail-projects.txt' "AHKFlowApp.API.Tests`nAHKFlowApp.Infrastructure.Tests"
+        $result = Invoke-IntegrationRun $root
+        Assert-True ($result.ExitCode -ne 0) "Expected a failure. Output: $($result.Output)"
+        Assert-True (@(Get-StubCall $root | Where-Object { $_.StartsWith('test ') }).Count -eq 4) 'Not every Slice ran.'
+        Assert-True ($result.Output.Contains('dotnet test failed for: AHKFlowApp.API.Tests, AHKFlowApp.Infrastructure.Tests.')) "Output: $($result.Output)"
+    }
+    finally { Remove-CoverageFixture -Root $root }
+}
+
+Invoke-TestCase 'Each Integration Slice keeps its own results folder and log' {
+    $root = New-CoverageFixture
+    try {
+        Add-IntegrationProject $root
+        $result = Invoke-IntegrationRun $root
+        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
+        foreach ($name in $script:IntegrationProject) {
+            $folder = Join-Path $root "TestResults/test-fast/Integration/$name"
+            Assert-True (Test-Path -LiteralPath (Join-Path $folder "$name.trx")) "No $name.trx in $folder."
+            Assert-True (Test-Path -LiteralPath (Join-Path $folder "$name.log")) "No $name.log in $folder."
+        }
+    }
+    finally { Remove-CoverageFixture -Root $root }
+}
+
+Invoke-TestCase 'The Integration Mode marks its results with the attempt it belongs to' {
+    $root = New-CoverageFixture
+    try {
+        Add-IntegrationProject $root
+        $attemptPath = Join-Path $root 'TestResults/test-fast/Integration/attempt.txt'
+        $with = Use-RunAttempt 'attempt-204' { Invoke-IntegrationRun $root }
+        Assert-True ($with.ExitCode -eq 0) "Expected exit code 0, got $($with.ExitCode). Output: $($with.Output)"
+        Assert-True ((Get-Content -LiteralPath $attemptPath -Raw).Trim() -eq 'attempt-204') 'attempt.txt does not hold attempt-204.'
+        $without = Use-RunAttempt $null { Invoke-IntegrationRun $root }
+        Assert-True ($without.ExitCode -eq 0) "Expected exit code 0, got $($without.ExitCode). Output: $($without.Output)"
+        Assert-True (-not (Test-Path -LiteralPath $attemptPath)) 'A run with no attempt left an attempt.txt.'
     }
     finally { Remove-CoverageFixture -Root $root }
 }

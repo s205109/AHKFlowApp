@@ -77,6 +77,8 @@ function New-WrapperFixture {
             'suite-worker-count.common.ps1'
             'code-change-filter.common.ps1'
             'progress.common.ps1'
+            'progress.parallel.ps1'
+            'slice-runner.common.ps1'
             'test-results.common.ps1'
         )) {
         Copy-Item -LiteralPath (Join-Path $repoRoot "scripts\$name") -Destination (Join-Path $root "scripts\$name")

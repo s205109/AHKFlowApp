@@ -215,6 +215,13 @@ Integration mode runs:
 - `AHKFlowApp.API.Tests`
 - `AHKFlowApp.Infrastructure.Tests`
 
+The Mode builds the solution once, before any test runs, unless you pass `-NoBuild`. Each of the
+four runs is then a Slice, and every Slice runs with `--no-build`. `-SlicesAtOnce` works as it does
+in the coverage step: a whole number of at least 1, or `Budget`, and never more than the Lanes the
+run holds. Every Slice runs to the end, even after another one fails. The run then names every
+failing Slice. Each Slice writes `<project>.log` and `<project>.trx` into its own folder under
+`TestResults\test-fast\Integration`.
+
 Use this for EF Core, migrations, use case handlers that touch `AppDbContext`, API behavior, CLI integration flows, SQL query behavior, and anything that changes persistence wiring.
 
 The script prepares one SQL Server container for the selected SQL-backed projects and passes the
