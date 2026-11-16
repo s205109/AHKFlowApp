@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: none (measurement script and its test suite)
 - **Difficulty**: moderate
-- **Stage**: 3-plan
+- **Stage**: 4-execute
 
 ## Summary
 
