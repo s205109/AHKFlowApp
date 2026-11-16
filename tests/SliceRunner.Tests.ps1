@@ -776,6 +776,82 @@ else {
     Write-Host '  SKIP  Windows PowerShell 5.1 runs the Slice runner (no powershell.exe on this machine)' -ForegroundColor Yellow
 }
 
+Invoke-TestCase 'A typographic single quote survives the quoting' {
+    # PowerShell reads U+2018 to U+201B as single quotes too, so a path that holds one must not
+    # end the quoted string in the launcher or the stub.
+    foreach ($code in @(0x27, 0x2018, 0x2019, 0x201A, 0x201B)) {
+        $mark = [string][char]$code
+        $value = "a${mark}b${mark}"
+        $quoted = ConvertTo-AhkFlowSingleQuoted $value
+        $back = $null
+        try { $back = & ([scriptblock]::Create("return $quoted")) } catch { }
+        Assert-True ($back -ceq $value) ("U+{0:X4}: got '{1}'." -f $code, $back)
+    }
+}
+
+if ($script:OnWindows) {
+    Invoke-TestCase 'The launcher starts nothing when its input closes without the start line' {
+        $folder = New-TempFolder
+        try {
+            $marker = Join-Path $folder 'started.txt'
+            $start = Resolve-AhkFlowSliceStart -Command $hostExe -Argument @('-NoProfile', '-NonInteractive', '-Command', "Set-Content -LiteralPath '$marker' -Value started")
+            $text = Get-AhkFlowSliceLauncherText -Start $start -WorkingDirectory $folder
+            $info = New-Object System.Diagnostics.ProcessStartInfo
+            $info.FileName = $hostExe
+            $info.Arguments = '-NoProfile -NonInteractive -EncodedCommand ' + (ConvertTo-AhkFlowEncodedCommand -Text $text)
+            $info.UseShellExecute = $false
+            $info.CreateNoWindow = $true
+            $info.RedirectStandardInput = $true
+            $launcher = [System.Diagnostics.Process]::Start($info)
+            $launcher.StandardInput.Close()
+            Assert-True ($launcher.WaitForExit(60000)) 'The launcher did not exit within 60 s.'
+            Assert-True ($launcher.ExitCode -ne 0) "The launcher exited with $($launcher.ExitCode)."
+            Assert-True (-not (Test-Path -LiteralPath $marker)) 'The launcher started the program without the start line.'
+        }
+        finally { Remove-Item -LiteralPath $folder -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+
+    Invoke-TestCase 'Killing the runner host ends every process of its Slices' {
+        # A closed terminal or a killed host runs no 'finally'. The job must still end the Slice,
+        # or a test host outlives the test-run lock (D7).
+        $folder = New-TempFolder
+        $runner = $null
+        try {
+            $slice = New-FakeSlice -Name 'A' -Folder $folder -SleepMs 120000 -Grandchild
+            [ordered]@{ Command = $slice.Command; Argument = @($slice.Argument); LogPath = $slice.LogPath } |
+                ConvertTo-Json | Set-Content -LiteralPath (Join-Path $folder 'slice.json') -Encoding UTF8
+            $driver = Join-Path $folder 'driver.ps1'
+            Set-Content -LiteralPath $driver -Encoding UTF8 -Value @'
+param([string] $Repo, [string] $Folder)
+$ErrorActionPreference = 'Stop'
+. (Join-Path $Repo 'scripts\test-lanes.common.ps1')
+. (Join-Path $Repo 'scripts\progress.common.ps1')
+. (Join-Path $Repo 'scripts\progress.parallel.ps1')
+. (Join-Path $Repo 'scripts\slice-runner.common.ps1')
+$s = Get-Content -LiteralPath (Join-Path $Folder 'slice.json') -Raw | ConvertFrom-Json
+$slice = New-AhkFlowSlice -Name 'A' -Command $s.Command -Argument @($s.Argument) -LogPath $s.LogPath
+$tracker = New-ProgressTracker -RunnerKey 'slice-runner-tests' -Unit @('A') -NoStore
+Invoke-AhkFlowSliceSet -Slice @($slice) -SlicesAtOnce 1 -WorkingDirectory $Folder -Tracker $tracker | Out-Null
+'@
+            $runner = Start-Process -FilePath $hostExe -WindowStyle Hidden -PassThru -ArgumentList @(
+                '-NoProfile', '-NonInteractive', '-File', "`"$driver`"", '-Repo', "`"$repoRoot`"", '-Folder', "`"$folder`"")
+            $deadline = [DateTime]::UtcNow.AddSeconds(60)
+            while (-not (Test-Path -LiteralPath (Join-Path $folder 'grandchild-A.txt')) -and [DateTime]::UtcNow -lt $deadline) { Start-Sleep -Milliseconds 100 }
+            $fake = Get-MarkerId $folder 'start-A.txt'
+            $grandchild = Get-MarkerId $folder 'grandchild-A.txt'
+            Assert-True ($null -ne $fake -and $null -ne $grandchild) 'The Slice did not start its processes within 60 s.'
+            Stop-Process -Id $runner.Id -Force
+            Assert-True (Test-ProcessGone $fake -Seconds 10) "The fake A ($fake) still runs after its host was killed."
+            Assert-True (Test-ProcessGone $grandchild -Seconds 10) "The grandchild of A ($grandchild) still runs after its host was killed."
+        }
+        finally {
+            if ($null -ne $runner) { Stop-Process -Id $runner.Id -Force -ErrorAction SilentlyContinue }
+            Stop-MarkedProcess $folder
+            Remove-Item -LiteralPath $folder -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
 Remove-Item -LiteralPath $script:FakeFolder -Recurse -Force -ErrorAction SilentlyContinue
 
 Write-Host ''

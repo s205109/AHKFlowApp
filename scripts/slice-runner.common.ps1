@@ -139,7 +139,8 @@ function Get-AhkFlowCurrentHostPath {
 function ConvertTo-AhkFlowSingleQuoted {
     param([AllowEmptyString()][string] $Value)
     if ($null -eq $Value) { $Value = '' }
-    return "'" + $Value.Replace("'", "''") + "'"
+    # PowerShell reads U+2018 to U+201B as single quotes as well, so each one is doubled too.
+    return "'" + ($Value -replace "['\u2018-\u201B]", '$0$0') + "'"
 }
 
 function ConvertTo-AhkFlowEncodedCommand {
@@ -205,6 +206,54 @@ namespace AhkFlow
             public uint TotalProcesses;
             public uint ActiveProcesses;
             public uint TotalTerminatedProcesses;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct BasicLimit
+        {
+            public long PerProcessUserTimeLimit;
+            public long PerJobUserTimeLimit;
+            public uint LimitFlags;
+            public UIntPtr MinimumWorkingSetSize;
+            public UIntPtr MaximumWorkingSetSize;
+            public uint ActiveProcessLimit;
+            public UIntPtr Affinity;
+            public uint PriorityClass;
+            public uint SchedulingClass;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct IoCounters
+        {
+            public ulong ReadOperationCount;
+            public ulong WriteOperationCount;
+            public ulong OtherOperationCount;
+            public ulong ReadTransferCount;
+            public ulong WriteTransferCount;
+            public ulong OtherTransferCount;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct ExtendedLimit
+        {
+            public BasicLimit Basic;
+            public IoCounters Io;
+            public UIntPtr ProcessMemoryLimit;
+            public UIntPtr JobMemoryLimit;
+            public UIntPtr PeakProcessMemoryUsed;
+            public UIntPtr PeakJobMemoryUsed;
+        }
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        public static extern bool SetInformationJobObject(IntPtr job, int infoClass, ref ExtendedLimit info, uint length);
+
+        // JobObjectExtendedLimitInformation is class 9, and JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE is
+        // 0x2000: the job ends its processes when its last handle closes.
+        public static bool SetKillOnClose(IntPtr job)
+        {
+            ExtendedLimit info = new ExtendedLimit();
+            info.Basic.LimitFlags = 0x2000;
+            return SetInformationJobObject(job, 9, ref info, (uint)Marshal.SizeOf(typeof(ExtendedLimit)));
         }
 
         [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
@@ -299,6 +348,13 @@ function New-AhkFlowSliceOwner {
             $code = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
             throw "Could not create a job for a Slice: $(Get-AhkFlowWin32Message $code)"
         }
+        # A closed terminal or a killed host runs no 'finally'. The operating system then closes
+        # the job handle, and this limit ends the Slice's processes, so none outlives the lock (D7).
+        if (-not [AhkFlow.SliceJob]::SetKillOnClose($job)) {
+            $code = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
+            [void][AhkFlow.SliceJob]::CloseHandle($job)
+            throw "Could not set the job of a Slice to end its processes when it closes: $(Get-AhkFlowWin32Message $code)"
+        }
         return [pscustomobject]@{ Kind = 'job'; Job = $job; GroupId = $null }
     }
     return [pscustomobject]@{ Kind = 'group'; Job = $null; GroupId = $null }
@@ -318,6 +374,22 @@ function New-AhkFlowRedirectedStart {
     return $info
 }
 
+# The script the Windows launcher runs. It waits for one line on standard input, then starts the
+# real program and passes its exit code through.
+function Get-AhkFlowSliceLauncherText {
+    param(
+        [Parameter(Mandatory = $true)][object] $Start,
+        [Parameter(Mandatory = $true)][string] $WorkingDirectory
+    )
+    # Input that closes without the start line means the runner is gone, so nothing starts.
+    return "`$ProgressPreference = 'SilentlyContinue'; if ([Console]::In.ReadLine() -ne 'start') { exit 1 }; " +
+        "`$i = New-Object System.Diagnostics.ProcessStartInfo; " +
+        "`$i.FileName = $(ConvertTo-AhkFlowSingleQuoted $Start.FilePath); " +
+        "`$i.Arguments = $(ConvertTo-AhkFlowSingleQuoted $Start.Arguments); " +
+        "`$i.WorkingDirectory = $(ConvertTo-AhkFlowSingleQuoted $WorkingDirectory); " +
+        "`$i.UseShellExecute = `$false; `$p = [System.Diagnostics.Process]::Start(`$i); `$p.WaitForExit(); exit `$p.ExitCode"
+}
+
 # Starts the root process of a Slice inside its owner and returns it, with standard output and
 # standard error redirected.
 #
@@ -333,12 +405,7 @@ function Start-AhkFlowOwnedProcess {
         [string] $Name = 'the Slice'
     )
     if ($Owner.Kind -eq 'job') {
-        $text = "`$ProgressPreference = 'SilentlyContinue'; `$null = [Console]::In.ReadLine(); " +
-            "`$i = New-Object System.Diagnostics.ProcessStartInfo; " +
-            "`$i.FileName = $(ConvertTo-AhkFlowSingleQuoted $Start.FilePath); " +
-            "`$i.Arguments = $(ConvertTo-AhkFlowSingleQuoted $Start.Arguments); " +
-            "`$i.WorkingDirectory = $(ConvertTo-AhkFlowSingleQuoted $WorkingDirectory); " +
-            "`$i.UseShellExecute = `$false; `$p = [System.Diagnostics.Process]::Start(`$i); `$p.WaitForExit(); exit `$p.ExitCode"
+        $text = Get-AhkFlowSliceLauncherText -Start $Start -WorkingDirectory $WorkingDirectory
         $arguments = '-NoProfile -NonInteractive -EncodedCommand ' + (ConvertTo-AhkFlowEncodedCommand -Text $text)
         $process = [System.Diagnostics.Process]::Start((New-AhkFlowRedirectedStart -FilePath (Get-AhkFlowCurrentHostPath) -Arguments $arguments -WorkingDirectory $WorkingDirectory))
         if (-not [AhkFlow.SliceJob]::AssignProcessToJobObject($Owner.Job, $process.Handle)) {
@@ -433,8 +500,8 @@ function Stop-AhkFlowOwnedProcess {
     }
 }
 
-# Closes a job handle. The job sets no limit that ends its processes when the handle closes, so a
-# process a finished Slice left behind keeps running after a normal run.
+# Closes a job handle. The job ends its processes when its last handle closes, so a process that a
+# finished Slice left behind ends here too.
 function Close-AhkFlowSliceOwner {
     param([Parameter(Mandatory = $true)][object] $Owner)
     if ($Owner.Kind -eq 'job' -and $null -ne $Owner.Job -and $Owner.Job -ne [IntPtr]::Zero) {
