@@ -26,11 +26,13 @@ Write each criterion as state a reader can observe in the repository, not as a c
 "The handler returns `Result.NotFound()` for a missing id" can be checked. "The old check is
 removed" and "tests cover the new API" cannot.
 
-- [ ] Every case in `tests/MeasureTestModes.Tests.ps1` passes when each stubbed counted run
-      finishes in under 5 ms, so that the harness rounds it to 0.00 s.
+- [ ] The test-fast stub in `tests/MeasureTestModes.Tests.ps1` sleeps at least 20 ms on every run,
+      whatever value a case writes into `stub\sleeps.txt`.
+- [ ] `tests/MeasureTestModes.Tests.ps1` passes three times in a row in the
+      `mcr.microsoft.com/dotnet/sdk:10.0` container that GitHub issue 468 used.
 - [ ] The case "A slow head is discarded and the median is the flat tail" still fails against a
       harness that counts the warm-up runs in the median.
-- [ ] `Get-AhkFlowRelativeSpread` still throws for an empty set of values.
+- [ ] `Get-AhkFlowRelativeSpread` still throws for an empty set of values, and for a median of zero.
 
 ## Out of scope
 
@@ -56,11 +58,12 @@ removed" and "tests cover the new API" cannot.
   the Fast Mode cases at lines 373, 391 and 807, and every Gate Mode case that uses
   `New-GateFixture` at line 357.
 - The Gate path has the same exposure: (`scripts/measure-test-modes.ps1:408`, "SpreadPercent = [Math]::Round((Get-AhkFlowRelativeSpread -Values $runSeconds), 1)").
-- Two fixes are open, and the plan decides between them. The harness can print the report without a
-  spread when the median is zero. Or the stub can give every run a small, non-zero time. The
-  slow-head case allows 0.30 s of margin, so a small sleep keeps its point.
+- Two fixes were open. The harness could print the report without a spread when the median is
+  zero, or the stub could give every run a small, non-zero time. The plan picks the stub: a real
+  Mode run takes seconds, so only a stub can produce a zero median. The slow-head case allows
+  0.30 s of margin, so a 20 ms floor keeps its point.
 - `scripts/test-results.common.ps1` is on the coverage-tooling list in
   `.github/code-paths-filter.yml`. A branch that changes it makes the pre-push hook build the
   solution and run the fast test slice.
 - Spec: none — moderate bug with a known root cause
-- Plan: <path, or "none — reason">
+- Plan: docs/superpowers/plans/2026-11-16-measure-harness-zero-runs-plan-212.md
