@@ -293,7 +293,7 @@ function Get-JoinPathAssignedName {
     return $found
 }
 
-Invoke-TestCase 'The coverage tooling list is exactly the thirteen files the slice runs' {
+Invoke-TestCase 'The coverage tooling list is exactly the fifteen files the slice runs' {
     # The exact set, not a couple of spot checks. Asserting only that two entries are present,
     # and that whatever entries remain exist on disk, lets any of the other eleven be deleted
     # from the YAML with the suite still green - and a deleted entry silently stops protecting
@@ -306,7 +306,9 @@ Invoke-TestCase 'The coverage tooling list is exactly the thirteen files the sli
         'scripts/code-change-filter.common.ps1'
         'scripts/coverage-inputs.common.ps1'
         'scripts/progress.common.ps1'
+        'scripts/progress.parallel.ps1'
         'scripts/run-coverage.ps1'
+        'scripts/slice-runner.common.ps1'
         'scripts/test-fast.ps1'
         'scripts/test-results.common.ps1'
         'scripts/test-run-lock.common.ps1'
@@ -317,7 +319,7 @@ Invoke-TestCase 'The coverage tooling list is exactly the thirteen files the sli
         'scripts/worktree-git.common.ps1'
     ) | Sort-Object
 
-    Assert-True ($tooling.Count -eq 13) "Expected 13 coverage-tooling entries, got $($tooling.Count): $($tooling -join ', ')"
+    Assert-True ($tooling.Count -eq 15) "Expected 15 coverage-tooling entries, got $($tooling.Count): $($tooling -join ', ')"
     Assert-True (($tooling -join '|') -ceq ($expected -join '|')) `
         "Coverage tooling list does not match. Got: $($tooling -join ', ')"
 
@@ -932,6 +934,8 @@ function New-WrapperFixture {
                     'coverage-inputs.common.ps1'
                     'code-change-filter.common.ps1'
                     'progress.common.ps1'
+                    'progress.parallel.ps1'
+                    'slice-runner.common.ps1'
                     'test-results.common.ps1'
                 )) {
                 Copy-Item -LiteralPath (Join-Path $repoRoot "scripts/$name") -Destination (Join-Path $root "scripts/$name")
@@ -939,7 +943,7 @@ function New-WrapperFixture {
 
             Set-Content -LiteralPath (Join-Path $root 'scripts/run-coverage.ps1') -Encoding utf8 -Value @'
 [CmdletBinding()]
-param([string]$Configuration = 'Release', [switch]$SkipThresholdCheck)
+param([string]$Configuration = 'Release', [switch]$SkipThresholdCheck, [string]$SlicesAtOnce)
 Set-Content -LiteralPath (Join-Path (Split-Path -Parent $PSScriptRoot) 'coverage-ran.marker') -Value $Configuration
 Set-Content -LiteralPath (Join-Path (Split-Path -Parent $PSScriptRoot) 'coverage-holder.marker') -Value ('holder=' + $env:AHKFLOW_TEST_LANES_HOLDER)
 exit 0

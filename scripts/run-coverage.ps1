@@ -16,7 +16,13 @@
 [CmdletBinding()]
 param(
     [string]$Configuration = 'Release',
-    [switch]$SkipThresholdCheck
+    [switch]$SkipThresholdCheck,
+
+    # Backlog 204. How many coverage Slices run at once: a whole number of at least 1, or Budget.
+    # The value never goes above the Lanes this run holds. 1 keeps the projects in sequence.
+    # Budget is the default: it saved a third of the time and passed a Soak of 20 runs, as
+    # docs/development/cycle-time-record.md records.
+    [string]$SlicesAtOnce = 'Budget'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -33,12 +39,16 @@ $sharedSqlScript = Join-Path $PSScriptRoot 'test-sql-container.common.ps1'
 . "$PSScriptRoot\test-lanes.common.ps1"
 . "$PSScriptRoot\coverage-inputs.common.ps1"
 . "$PSScriptRoot\progress.common.ps1"
+. "$PSScriptRoot\test-results.common.ps1"
+. "$PSScriptRoot\progress.parallel.ps1"
+. "$PSScriptRoot\slice-runner.common.ps1"
 
 $laneRun = $null
 $testRunLock = Enter-AhkFlowTestRunLock -RepoRoot $repoRoot -Mode 'Coverage'
 Push-Location $repoRoot
 try {
     $laneRun = Enter-AhkFlowLaneRun -Mode 'Coverage' -Checkout $repoRoot -Share Half
+    $sliceCount = Resolve-AhkFlowSlicesAtOnce -Requested $SlicesAtOnce -Budget (Get-AhkFlowSliceBudget -LaneRun $laneRun)
     if (-not (Get-Command reportgenerator -ErrorAction SilentlyContinue)) {
         throw "reportgenerator command not found. Install it with: dotnet tool install -g dotnet-reportgenerator-globaltool"
     }
@@ -51,6 +61,13 @@ try {
     Remove-AhkFlowCoverageArtifacts `
         -CoverageResultsRoot $coverageResultsRoot `
         -CoverageReportDirectory $coverageReportDirectory
+
+    # The old results are gone, and this run holds the lock. So a measured run can tell that the
+    # results it finds afterwards are its own (backlog 204).
+    New-Item -ItemType Directory -Path $coverageResultsRoot -Force | Out-Null
+    if (-not [string]::IsNullOrWhiteSpace($env:AHKFLOW_RUN_ATTEMPT)) {
+        [System.IO.File]::WriteAllText((Join-Path $coverageResultsRoot 'attempt.txt'), $env:AHKFLOW_RUN_ATTEMPT)
+    }
 
     # Read before any work starts, because the progress tracker below needs the whole unit list
     # up front. The read runs 'dotnet sln list' and reads each .csproj as text, so it needs
@@ -90,35 +107,52 @@ try {
     Stop-ProgressUnit -Tracker $progress
 
     $previousSharedSqlConnectionString = $env:AHKFLOW_TEST_SQL_CONNECTION_STRING
-    $testExitCode = 0
+    $sliceResult = @()
     try {
         $env:AHKFLOW_TEST_SQL_CONNECTION_STRING = $sharedSqlContainer.ConnectionString
         Write-Success ("Shared SQL test container ready in {0} ms." -f $sharedSqlContainer.ElapsedMilliseconds)
 
-        foreach ($project in $coverageProject) {
-            $projectName = $project.Name
-            $projectResultsDirectory = Join-Path $coverageResultsRoot $projectName
+        # One Slice per project. The working directory is the repository root, because
+        # coverlet.runsettings is a relative path and a child process does not follow Push-Location.
+        $slices = @(foreach ($project in $coverageProject) {
+                $projectResultsDirectory = Join-Path $coverageResultsRoot $project.Name
+                New-AhkFlowSlice -Name $project.Name -Command 'dotnet' -LogPath (Join-Path $projectResultsDirectory "$($project.Name).log") -Argument @(
+                    'test', $project.Path,
+                    '--configuration', $Configuration,
+                    '--disable-build-servers',
+                    '--no-build',
+                    '--no-restore',
+                    '--collect:XPlat Code Coverage',
+                    '--results-directory', $projectResultsDirectory,
+                    '--settings', 'coverlet.runsettings',
+                    '--logger', "trx;LogFileName=$($project.Name).trx")
+            })
+        $ordered = @(Get-AhkFlowSliceOrder -Slice $slices -History $progress.History -SlicesAtOnce $sliceCount)
 
-            Start-ProgressUnit -Tracker $progress -Name $projectName
-            dotnet test $project.Path --configuration $Configuration `
-                --disable-build-servers `
-                --no-build `
-                --no-restore `
-                --collect:"XPlat Code Coverage" `
-                --results-directory $projectResultsDirectory `
-                --settings coverlet.runsettings
-            if ($LASTEXITCODE -ne 0) { $testExitCode = $LASTEXITCODE }
-            # Stopped whether the project passed or failed. The loop keeps going after a failure,
-            # and a failed project still took the time it took. That is a real measurement.
-            Stop-ProgressUnit -Tracker $progress
-        }
+        # Every Slice runs to the end, whatever another one's exit code.
+        $sliceResult = @(Invoke-AhkFlowSliceSet -Slice $ordered -SlicesAtOnce $sliceCount -WorkingDirectory $repoRoot -Tracker $progress)
     }
     finally {
         # Left running on purpose, the same way scripts/test-fast.ps1 leaves it.
         $env:AHKFLOW_TEST_SQL_CONNECTION_STRING = $previousSharedSqlConnectionString
     }
 
-    if ($testExitCode -ne 0) { throw "dotnet test failed" }
+    # Saved before any check below can throw, so a measured run can read every Slice's result.
+    Save-AhkFlowSliceResult -Result $sliceResult -Path (Join-Path $coverageResultsRoot 'slices.json')
+
+    # Every problem is collected first, in this order, and thrown together (D16). A failing test
+    # still gets the missing-input check and, when every input is there, the report.
+    $problem = New-Object System.Collections.Generic.List[string]
+    $failingSlice = @($sliceResult | Where-Object { $_.ExitCode -ne 0 })
+    if ($failingSlice.Count -gt 0) {
+        $problem.Add("dotnet test failed for: $(($failingSlice | ForEach-Object { $_.Name }) -join ', ').")
+    }
+    $emptySlice = @($sliceResult | Where-Object {
+            $_.ExitCode -eq 0 -and (Get-AhkFlowTestCountFromResults -ResultsDirectory (Split-Path -Parent $_.LogPath)) -lt 1
+        })
+    foreach ($slice in $emptySlice) {
+        $problem.Add("$($slice.Name) discovered zero tests. Either no test ran, or its TRX file could not be read.")
+    }
 
     $missingCoverageInput = Get-AhkFlowMissingCoverageInput `
         -ResultsRoot $coverageResultsRoot `
@@ -126,7 +160,7 @@ try {
     if ($missingCoverageInput.Count -gt 0) {
         Write-Fail 'Coverage input is incomplete. This run measured nothing for these test projects:'
         foreach ($name in $missingCoverageInput) { Write-Host "  - $name" -ForegroundColor Red }
-        throw @"
+        $problem.Add(@"
 $($missingCoverageInput.Count) test project(s) produced no coverage.cobertura.xml.
 This is missing input, not a coverage regression. Do not read the numbers from this run.
 
@@ -135,16 +169,24 @@ assembly in a test project's output folder, so another run holding one of those 
 instrumentation fail while dotnet test still exits 0.
 
 Make sure no other test run is active, then run this script again.
-"@
+"@)
+    }
+    else {
+        Start-ProgressUnit -Tracker $progress -Name 'report'
+        reportgenerator `
+            -reports:"$coverageResultsRoot/**/coverage.cobertura.xml" `
+            -targetdir:"CoverageReport" `
+            -reporttypes:"Html;MarkdownSummaryGithub;JsonSummary;Cobertura"
+        if ($LASTEXITCODE -ne 0) { $problem.Add('reportgenerator failed') }
+        Stop-ProgressUnit -Tracker $progress
     }
 
-    Start-ProgressUnit -Tracker $progress -Name 'report'
-    reportgenerator `
-        -reports:"$coverageResultsRoot/**/coverage.cobertura.xml" `
-        -targetdir:"CoverageReport" `
-        -reporttypes:"Html;MarkdownSummaryGithub;JsonSummary;Cobertura"
-    if ($LASTEXITCODE -ne 0) { throw "reportgenerator failed" }
-    Stop-ProgressUnit -Tracker $progress
+    # The logs of the failing and empty Slices are printed, then every problem is thrown. The
+    # timing save, the summary footer and the threshold check do not run (D16).
+    if ($problem.Count -gt 0) {
+        Write-AhkFlowSliceLog -Result @($failingSlice + $emptySlice)
+        throw ($problem.ToArray() -join [Environment]::NewLine)
+    }
 
     # Saved here, not at the very end. The threshold gate below can fail the run, and the seconds
     # this run measured are still true when it does. -KnownUnit drops a stored project that the

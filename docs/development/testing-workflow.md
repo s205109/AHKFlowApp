@@ -70,7 +70,7 @@ Renames count as two paths. Moving `src/Foo.cs` to `docs/Foo.md` still runs the 
 build lost a file. Matching is case-sensitive: `scripts/Thing.PS1` is not `scripts/Thing.ps1`, and
 `README.MD` is not `README.md`. Only lowercase `.md` is excluded.
 
-The same file lists thirteen scripts under `coverage-tooling`. Changing one of those runs the slice
+The same file lists fifteen scripts under `coverage-tooling`. Changing one of those runs the slice
 even though the patterns above exclude it, because the coverage step is the only local check that
 runs `run-coverage.ps1` and what it loads.
 
@@ -80,7 +80,7 @@ check itself cannot decide, it says so and runs the slice.
 
 `ci.yml` reads the `code` patterns from that same file, so the two cannot drift apart. CI ignores
 `coverage-tooling`, and that is correct rather than a gap: CI never runs `run-coverage.ps1`. Its
-coverage steps are plain `dotnet test` calls. So on those thirteen paths this Gate is stricter than
+coverage steps are plain `dotnet test` calls. So on those fifteen paths this Gate is stricter than
 CI, and never looser.
 
 Then verify the change actually works — see **Verification After Implementation** in [`AGENTS.md`](../../AGENTS.md). A green gate proves nothing regressed; it does not prove the new behavior happened.
@@ -104,7 +104,7 @@ On a branch with no Code change the hook skips both and prints the same report t
 prints. The record checks always run.
 
 The hook reads the same decision the coverage slice reads, so the `coverage-tooling` exception
-applies to it too. A branch that changed only one of those thirteen scripts still builds and runs
+applies to it too. A branch that changed only one of those fifteen scripts still builds and runs
 the fast slice locally, while CI skips its .NET steps. That is the intended direction: the hook is
 stricter than CI on those paths, and never looser.
 
@@ -214,6 +214,14 @@ Integration mode runs:
 - `AHKFlowApp.CLI.Tests` filtered to `Category=Integration`
 - `AHKFlowApp.API.Tests`
 - `AHKFlowApp.Infrastructure.Tests`
+
+The Mode builds the solution once, before any test runs, unless you pass `-NoBuild`. Each of the
+four runs is then a Slice, and every Slice runs with `--no-build`. `-SlicesAtOnce` works as it does
+in the coverage step: a whole number of at least 1, or `Budget`, and never more than the Lanes the
+run holds. The default is `Budget`. Backlog 204 measured it: it halved the Mode's time, and it
+passed a Soak of 20 runs. Every Slice runs to the end, even after another one fails. The run then names every
+failing Slice. Each Slice writes `<project>.log` and `<project>.trx` into its own folder under
+`TestResults\test-fast\Integration`.
 
 Use this for EF Core, migrations, use case handlers that touch `AppDbContext`, API behavior, CLI integration flows, SQL query behavior, and anything that changes persistence wiring.
 
@@ -470,7 +478,22 @@ request.
 pwsh .\scripts\test-fast.ps1 -Mode Coverage
 ```
 
-Coverage mode delegates to `scripts/run-coverage.ps1`. Run it before you mark a PR ready; CI enforces the same coverage + threshold gate on every pull request with at least one changed path that `.github/code-paths-filter.yml` does not exclude. The pre-push hook itself only runs quick checks (an incremental build + the fast slice, and only when the branch changed a path `.github/code-paths-filter.yml` does not exclude, or one of the thirteen scripts under its `coverage-tooling` key — see `scripts/pre-push-quick-checks.ps1`), not this full coverage path. The local coverage script prepares the same shared SQL container Integration mode uses, and leaves it running when the run ends, for the SQL-backed suites. `-FreshSql` is not available in Coverage mode. Coverage mode skips itself when the branch changed no compiled file — see the Gate section above for the condition and the `-Force` switch. `run-coverage.ps1` makes no such check: calling it directly always runs the full slice.
+Coverage mode delegates to `scripts/run-coverage.ps1`. Run it before you mark a PR ready; CI enforces the same coverage + threshold gate on every pull request with at least one changed path that `.github/code-paths-filter.yml` does not exclude. The pre-push hook itself only runs quick checks (an incremental build + the fast slice, and only when the branch changed a path `.github/code-paths-filter.yml` does not exclude, or one of the fifteen scripts under its `coverage-tooling` key — see `scripts/pre-push-quick-checks.ps1`), not this full coverage path. The local coverage script prepares the same shared SQL container Integration mode uses, and leaves it running when the run ends, for the SQL-backed suites. `-FreshSql` is not available in Coverage mode. Coverage mode skips itself when the branch changed no compiled file — see the Gate section above for the condition and the `-Force` switch. `run-coverage.ps1` makes no such check: calling it directly always runs the full slice.
+
+Each test project runs as its own Slice, through `scripts/slice-runner.common.ps1` (backlog 204).
+`-SlicesAtOnce` sets how many Slices run at the same time. It takes a whole number of at least 1,
+or `Budget`, which means every Lane the run holds. The value never goes above that budget. The
+default is `Budget`. Backlog 204 measured it in `docs/development/cycle-time-record.md`: it saved
+about a third of the coverage step's time, and it passed a Soak of 20 runs. Pass
+`-SlicesAtOnce 1` to run the projects in sequence. `test-fast.ps1 -Mode Coverage` passes the value
+on to `run-coverage.ps1`.
+
+Each Slice writes `<project>.log` and `<project>.trx` into its own folder under
+`TestResults\coverage`. The run also writes `TestResults\coverage\slices.json`, with each Slice's
+exit code and seconds. Every Slice runs to the end, even after another one fails. A failing test
+still gets the missing-input check, and the report when every project wrote its coverage file.
+The run then prints the logs of the failing Slices and fails. A Slice that exits 0 with no TRX
+file, or with zero tests, fails the run too.
 
 ### One test run at a time
 
@@ -602,6 +625,56 @@ measurement of the three looked like the tightest. Read the `built` line for col
 
 ```bash
 pwsh .\scripts\measure-test-modes.ps1 -Soak tests/AHKFlowApp.Infrastructure.Tests -Runs 30
+```
+
+### Measuring Slices side by side
+
+`-Mode Coverage` and `-Mode Integration` time one or more settings of the Slice runner (backlog 204).
+A setting is a whole number of at least 1, or `Budget`. Pass the settings to `-Setting` as one
+comma list. The default is `1`, the projects in sequence. The two Modes themselves run at `Budget`
+by default, so pass `-Setting 1,Budget` to compare the sequence with what they run.
+
+The settings take turns. Each round runs every setting once, in the order you gave. So a slow
+minute of the machine falls on every setting, not on whichever one ran then. Warm-up rounds come
+first, with the same count, settle clock and ceiling as the other Modes. Each counted round then
+runs every setting that still has fewer than `-Runs` passed runs.
+
+A failed counted run is kept and marked, and it does not count. The setting runs again in the next
+round. The third failed counted run of a session stops the session, because a run that fails that
+often cannot be timed. A failed warm-up is kept, and the session goes on.
+
+Every run copies its own evidence before the next run clears it. One session looks like this:
+
+```text
+session-<utc>\
+  record.json            Revision, Mode, Kind ('timing' or 'soak'), Settings, and one entry per run
+  at-<setting>\          for example at-1, at-budget
+    warmup-<n>\ | run-<n>\ | soak-<n>\
+      run.json           Label, Setting, ElapsedSeconds, Failed, Message, EvidenceOwned
+      results\           slices.json, and each Slice folder with its .trx and .log files
+                         Coverage also: coverage-files.txt, where each coverage file was
+      report\            Coverage only: Summary.json
+      no-evidence.txt    only when the run left no results of its own
+```
+
+The script saves `record.json` again after every run. A session that stops part way still keeps
+the runs it finished, and `scripts/measure-verdict.ps1` can read them.
+
+A run owns the results only when `attempt.txt` in the shared results folder holds the value this
+run set. A run that failed before it cleared that folder gets `no-evidence.txt` instead. The copy
+leaves out the `coverage.cobertura.xml` files, because `Summary.json` holds the class figures.
+
+`-SoakMode` runs one setting `-Runs` times, 20 when you do not give `-Runs`. It takes no warm-up
+runs and no settle clock, and it goes on after a failure. It prints `passed: <n> of <runs>`, and it
+fails at the end when any run failed.
+
+The two timing sessions of backlog 204 used these commands. Its coverage session also timed
+`Budget+E2ELast`, which ran the E2E project alone at the end. Backlog 204 removed that setting,
+because `Budget` alone was faster.
+
+```bash
+pwsh .\scripts\measure-test-modes.ps1 -Mode Coverage -Setting 1,Budget
+pwsh .\scripts\measure-test-modes.ps1 -Mode Integration -Setting 1,Budget
 ```
 
 ### Measuring the Gate

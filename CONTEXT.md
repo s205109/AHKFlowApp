@@ -387,6 +387,16 @@ installed browser. A cold run pays for all three, so a warm figure and a cold fi
 compared with each other.
 _Avoid_: hot run, cached run, second run
 
+**Counted run**:
+A timed run whose seconds go into a measurement's median. The warm-up runs before it are timed the
+same way, and then thrown away.
+_Avoid_: sample, measured run, timed run
+
+**Soak**:
+One piece of test work run many times in a row, to count how many of the runs pass. A run passes
+only when it exits without a failure and its results count at least one test.
+_Avoid_: stress test, burn-in, flake hunt, loop
+
 **Harness overhead**:
 The part of a Mode's wall clock that no test duration and no named setup step accounts for. It is
 what is left after subtraction, so it only shrinks when a step is named, never on its own.

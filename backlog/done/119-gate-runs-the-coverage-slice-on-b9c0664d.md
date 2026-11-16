@@ -41,7 +41,7 @@ The Gate is defined at (`docs/development/testing-workflow.md:24`, "dotnet build
 
 Coverage mode hands off to `run-coverage.ps1` (`scripts/test-fast.ps1:353`, "& (Join-Path $PSScriptRoot 'run-coverage.ps1') -Configuration $Configuration").
 That script starts a real SQL Server container, then runs `dotnet test` per project with coverlet
-instrumentation (`scripts/run-coverage.ps1:103`, "dotnet test $project.Path --configuration $Configuration").
+instrumentation (`scripts/run-coverage.ps1:103`, "dotnet test $project.Path --configuration $Configuration"). <!-- citation-check:ignore: backlog 204 replaced the per-project dotnet test loop with Slices; the citation records the tree at shipping. -->
 
 The PowerShell slice is a separate cost and is not in scope here. Four suites are 59% of its 611
 seconds: `WorktreeMergedCleanup` 118.6 s, `AgentWorktreeGuard` 111.7 s, `CitationFreshness` 93 s,

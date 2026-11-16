@@ -6,7 +6,7 @@
 - **Type**: Tooling
 - **Interfaces**: none (`scripts/run-coverage.ps1`, `scripts/test-fast.ps1`)
 - **Difficulty**: to-be-determined
-- **Stage**: 1-pickup
+- **Stage**: 9-ship
 
 ## Summary
 
@@ -22,13 +22,13 @@ so that a code change reaches a green Gate sooner.
 
 ## Acceptance criteria
 
-- [ ] A record states the coverage step time with the projects in sequence and side by side, each
+- [x] A record states the coverage step time with the projects in sequence and side by side, each
       the median of five counted runs.
-- [ ] A record states the soak runs and their failures for the side-by-side runs, for UI.Blazor
+- [x] A record states the soak runs and their failures for the side-by-side runs, for UI.Blazor
       and E2E at least.
-- [ ] The runner runs the projects side by side only when the record shows a saving and no new
+- [x] The runner runs the projects side by side only when the record shows a saving and no new
       failure. Otherwise the record says why the change was dropped.
-- [ ] The coverage report still holds the results of every coverage project.
+- [x] The coverage report still holds the results of every coverage project.
 
 ## Out of scope
 
@@ -44,5 +44,5 @@ so that a code change reaches a green Gate sooner.
   another. It did not try any switch for parallel runs.
 - Two risks to test first: CPU contention, which made backlog 114 raise the bUnit wait timeout,
   and file locks on the coverage output, which the test-run lock exists to prevent.
-- Spec: none — Design writes it.
-- Plan: none — Plan comes after Design.
+- Spec: `docs/superpowers/specs/2026-11-16-run-the-net-test-projects-side-by-side-design-204.md`
+- Plan: `docs/superpowers/plans/2026-11-16-run-the-net-test-projects-side-by-side-plan-204.md`

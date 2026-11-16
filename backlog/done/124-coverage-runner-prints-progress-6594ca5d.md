@@ -37,7 +37,7 @@ shared module could prove itself against two shapes before it took on a third.
       (`scripts/run-coverage.ps1:71`, "Start-ProgressUnit -Tracker $progress -Name 'restore'");
       (`scripts/run-coverage.ps1:76`, "Start-ProgressUnit -Tracker $progress -Name 'build'");
       (`scripts/run-coverage.ps1:88`, "Start-ProgressUnit -Tracker $progress -Name 'sql container'");
-      (`scripts/run-coverage.ps1:102`, "Start-ProgressUnit -Tracker $progress -Name $projectName");
+      (`scripts/run-coverage.ps1:102`, "Start-ProgressUnit -Tracker $progress -Name $projectName"); <!-- citation-check:ignore: backlog 204 replaced the per-project dotnet test loop with Slices; the citation records the tree at shipping. -->
       (`scripts/run-coverage.ps1:141`, "Start-ProgressUnit -Tracker $progress -Name 'report'")
 - [x] Its unit list names the restore, the build, each coverage project, and the report step.
       (`scripts/run-coverage.ps1:68`, "$progressUnit = @('restore', 'build', 'sql container') + $expectedProjectName + @('report')").

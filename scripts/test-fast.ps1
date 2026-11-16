@@ -41,7 +41,13 @@ param(
     # This goes last for the same reason $SuiteRoot does. An unattributed parameter takes an
     # implicit position in declaration order, so putting it any earlier would silently rebind
     # 'test-fast.ps1 Fast Debug'.
-    [string]$BaseRef
+    [string]$BaseRef,
+
+    # Integration and Coverage modes only. How many Slices run at once: a whole number of at
+    # least 1, or Budget. Coverage forwards it to run-coverage.ps1. Budget is the default, as
+    # backlog 204 measured it in docs/development/cycle-time-record.md. This goes last for the
+    # same reason $SuiteRoot does: an earlier place would silently rebind 'test-fast.ps1 Fast Debug'.
+    [string]$SlicesAtOnce = 'Budget'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -55,6 +61,8 @@ $sharedSqlScript = Join-Path $PSScriptRoot 'test-sql-container.common.ps1'
 . "$PSScriptRoot\test-lanes.common.ps1"
 . "$PSScriptRoot\code-change-filter.common.ps1"
 . "$PSScriptRoot\progress.common.ps1"
+. "$PSScriptRoot\progress.parallel.ps1"
+. "$PSScriptRoot\slice-runner.common.ps1"
 . "$PSScriptRoot\test-results.common.ps1"
 
 function Get-ProgressUnitLabel {
@@ -270,6 +278,99 @@ function Invoke-CombinedTestRun {
     return $summaries
 }
 
+function Invoke-SolutionBuild {
+    Write-Step "Building solution ($Configuration)"
+    & dotnet build AHKFlowApp.slnx --configuration $Configuration 2>&1 |
+        ForEach-Object { Write-Host $_ }
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Build failed.'
+    }
+}
+
+# Backlog 204. The Integration Mode runs each test run as a Slice through the Slice runner. The
+# solution is built once before, so every Slice runs with --no-build, and every Slice runs to the
+# end, even after another one fails.
+function Invoke-IntegrationSlice {
+    param(
+        [Parameter(Mandatory = $true)][object[]] $TestRun,
+        [Parameter(Mandatory = $true)][object] $Progress,
+        [Parameter(Mandatory = $true)][int] $SliceCount
+    )
+
+    foreach ($run in $TestRun) {
+        if (-not (Test-Path -LiteralPath $run.Project -PathType Leaf)) {
+            throw "Test project not found: $($run.Project)"
+        }
+    }
+
+    $byLabel = @{}
+    $slices = @(foreach ($run in $TestRun) {
+            $projectName = [System.IO.Path]::GetFileNameWithoutExtension($run.Project)
+            $projectResultsDirectory = Join-Path $resultsRoot $projectName
+            $arguments = @(
+                'test',
+                $run.Project,
+                '--configuration',
+                $Configuration,
+                '--logger',
+                "trx;LogFileName=$projectName.trx",
+                '--results-directory',
+                $projectResultsDirectory
+            )
+            if (-not [string]::IsNullOrWhiteSpace($run.Filter)) {
+                $arguments += @('--filter', $run.Filter)
+            }
+            $arguments += '--no-build'
+            $label = Get-ProgressUnitLabel -TestRun $run
+            $byLabel[$label] = $run
+            New-AhkFlowSlice -Name $label -Command 'dotnet' -Argument $arguments -LogPath (Join-Path $projectResultsDirectory "$projectName.log")
+        })
+
+    $ordered = @(Get-AhkFlowSliceOrder -Slice $slices -History $Progress.History -SlicesAtOnce $SliceCount)
+    $sliceResult = @(Invoke-AhkFlowSliceSet -Slice $ordered -SlicesAtOnce $SliceCount -WorkingDirectory $repoRoot -Tracker $Progress)
+    Save-AhkFlowSliceResult -Result $sliceResult -Path (Join-Path $resultsRoot 'slices.json')
+
+    # Every problem is collected first, and thrown together.
+    $problem = New-Object System.Collections.Generic.List[string]
+    $failingSlice = @($sliceResult | Where-Object { $_.ExitCode -ne 0 })
+    if ($failingSlice.Count -gt 0) {
+        $problem.Add("dotnet test failed for: $(($failingSlice | ForEach-Object { $_.Name }) -join ', ').")
+    }
+
+    $badSlice = New-Object System.Collections.Generic.List[object]
+    $summaryByLabel = @{}
+    foreach ($result in @($sliceResult | Where-Object { $_.ExitCode -eq 0 })) {
+        $run = $byLabel[$result.Name]
+        $projectName = [System.IO.Path]::GetFileNameWithoutExtension($run.Project)
+        $trxPath = Get-AhkFlowLatestTrxPath -ResultsDirectory (Split-Path -Parent $result.LogPath)
+        if (-not $trxPath) {
+            $problem.Add("No TRX file was produced for $projectName.")
+            $badSlice.Add($result)
+            continue
+        }
+        $filterText = if ([string]::IsNullOrWhiteSpace($run.Filter)) { 'all tests' } else { $run.Filter }
+        try {
+            $summaryByLabel[$result.Name] = New-AhkFlowTestSummary `
+                -Project $projectName `
+                -Filter $filterText `
+                -Tests (Get-AhkFlowTestCount -TrxPath $trxPath) `
+                -TrxPath $trxPath
+        }
+        catch {
+            $problem.Add($_.Exception.Message)
+            $badSlice.Add($result)
+        }
+    }
+
+    if ($problem.Count -gt 0) {
+        Write-AhkFlowSliceLog -Result @($failingSlice + $badSlice.ToArray())
+        throw ($problem.ToArray() -join [Environment]::NewLine)
+    }
+
+    # The table keeps the order of the Mode's list, not the order the Slices started in.
+    return @(foreach ($run in $TestRun) { $summaryByLabel[(Get-ProgressUnitLabel -TestRun $run)] })
+}
+
 function Invoke-TestRun {
     param(
         [Parameter(Mandatory = $true)]
@@ -330,6 +431,10 @@ $previousSharedSqlConnectionString = $env:AHKFLOW_TEST_SQL_CONNECTION_STRING
 
 Push-Location $repoRoot
 try {
+    if ($PSBoundParameters.ContainsKey('SlicesAtOnce') -and $Mode -ne 'Coverage' -and $Mode -ne 'Integration') {
+        throw '-SlicesAtOnce works only with -Mode Integration or -Mode Coverage.'
+    }
+
     if ($Mode -eq 'Coverage') {
         if (-not $Force) {
             # A decision that cannot be made is never a skip. Anything that goes wrong here -
@@ -350,7 +455,7 @@ try {
             }
         }
 
-        & (Join-Path $PSScriptRoot 'run-coverage.ps1') -Configuration $Configuration
+        & (Join-Path $PSScriptRoot 'run-coverage.ps1') -Configuration $Configuration -SlicesAtOnce $SlicesAtOnce
         if ($LASTEXITCODE -ne 0) {
             throw 'Coverage mode failed.'
         }
@@ -397,6 +502,10 @@ try {
 
     $testRunLock = Enter-AhkFlowTestRunLock -RepoRoot $repoRoot -Mode $Mode
     $laneRun = Enter-AhkFlowLaneRun -Mode $Mode -Checkout $repoRoot -Share Half
+    $sliceCount = 1
+    if ($Mode -eq 'Integration') {
+        $sliceCount = Resolve-AhkFlowSlicesAtOnce -Requested $SlicesAtOnce -Budget (Get-AhkFlowSliceBudget -LaneRun $laneRun)
+    }
 
     if ($Mode -eq 'Integration' -or $Mode -eq 'E2E') {
         Write-Step 'Preparing shared SQL test container'
@@ -418,6 +527,12 @@ try {
 
     New-Item -ItemType Directory -Path $resultsRoot -Force | Out-Null
 
+    # The folder was cleared just above, inside the lock. So a measured run can tell that the
+    # results it finds afterwards are its own (backlog 204).
+    if (-not [string]::IsNullOrWhiteSpace($env:AHKFLOW_RUN_ATTEMPT)) {
+        [System.IO.File]::WriteAllText((Join-Path $resultsRoot 'attempt.txt'), $env:AHKFLOW_RUN_ATTEMPT)
+    }
+
     if ($Mode -eq 'Fast') {
         # Assembly paths mean dotnet builds nothing, so this script has to build. -NoBuild keeps
         # its meaning: the caller already built, as the pre-push hook does.
@@ -427,12 +542,7 @@ try {
         # so the eleven extra projects cost about 2.2 s. Building the five separately would be
         # five MSBuild evaluations, roughly 22 s, which is the cost this change exists to remove.
         if (-not $NoBuild) {
-            Write-Step "Building solution ($Configuration)"
-            & dotnet build AHKFlowApp.slnx --configuration $Configuration 2>&1 |
-                ForEach-Object { Write-Host $_ }
-            if ($LASTEXITCODE -ne 0) {
-                throw 'Build failed.'
-            }
+            Invoke-SolutionBuild
         }
 
         $fast = Get-FastAssembly
@@ -444,6 +554,19 @@ try {
             -Filter $fast.Filter `
             -Label $label)
         Stop-ProgressUnit -Tracker $progress
+        Save-ProgressTimings -Tracker $progress
+    }
+    elseif ($Mode -eq 'Integration') {
+        # One build before any Slice, so the Slices never build the same projects at once (D4).
+        if (-not $NoBuild) {
+            Invoke-SolutionBuild
+        }
+
+        $testRuns = @(Get-TestRuns)
+        $progress = New-ProgressTracker -RunnerKey "test-fast.$Mode" -RepoRoot $repoRoot -Unit @(
+            $testRuns | ForEach-Object { Get-ProgressUnitLabel -TestRun $_ }
+        )
+        $summaries = @(Invoke-IntegrationSlice -TestRun $testRuns -Progress $progress -SliceCount $sliceCount)
         Save-ProgressTimings -Tracker $progress
     }
     else {

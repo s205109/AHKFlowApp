@@ -1558,3 +1558,188 @@ The two totals of this audit, kept apart:
 - The kept span row, row 4, saves 2.86 s of wall time in the Integration Mode.
 
 No target is judged (D11).
+
+## Run the .NET test projects side by side (backlog 204)
+
+Backlog 204 runs each .NET test project as its own Slice, and runs several Slices at once. The plan
+is `docs/superpowers/plans/2026-11-16-run-the-net-test-projects-side-by-side-plan-204.md`.
+
+### Timing sessions
+
+Both sessions ran on 2026-11-16, in the worktree `wt-run-the-net-test-projects-side-by-side`, with
+the laptop on mains power. A check every minute found it on mains power for the whole time. Docker
+ran, no API or UI of the worktree ran, and no run printed "Sharing the test Lane pool with:". Every
+run at Budget printed `Slices at once: 3 (asked for Budget, budget 3)`.
+
+- Revision: `1ec6a4c34c4d8b62b3a7c8eb881bcac55303d6f3`. It differs from the code under test at
+  `c02f751e` only in this record and the progress file.
+- Coverage session: `TestResults\measure-test-modes\Coverage\session-20261116-174045`.
+- Integration session: `TestResults\measure-test-modes\Integration\session-20261116-183641`.
+- The verdict tables come from `pwsh .\scripts\measure-verdict.ps1 -Timing <session folder>`.
+
+#### Sessions on battery, discarded
+
+Two earlier sessions at `c02f751e` ran while the laptop was on battery for part of the time:
+`Coverage\session-20261116-153924` and `Integration\session-20261116-164415`. Their run times grew
+during each session, up to 437 s for one coverage run, and their spreads were 26 to 96 %. Six of
+the 21 coverage runs failed in the E2E Slice, at every setting, the sequence included. The coverage
+session stopped early with "Stopped after 3 failed counted runs". Neither session counts here.
+
+On mains power, one of 22 coverage runs failed. The E2E tests wait 5 s for a locator, and a slow
+CPU on battery can miss that limit. This record does not prove that cause.
+
+### Coverage step
+
+The command was
+`pwsh .\scripts\measure-test-modes.ps1 -Mode Coverage -Setting 1,Budget,Budget+E2ELast`.
+
+| Setting | Run | Seconds | Result |
+|---|---|---|---|
+| 1 | warm-up 1 | 197.43 | passed |
+| 1 | warm-up 2 | 206.56 | passed |
+| 1 | run 1 | 178.92 | passed |
+| 1 | run 2 | 182.33 | passed |
+| 1 | run 3 | 179.11 | passed |
+| 1 | run 4 | 180.73 | passed |
+| 1 | run 5 | 177.19 | passed |
+| Budget | warm-up 1 | 133.79 | passed |
+| Budget | warm-up 2 | 128.19 | passed |
+| Budget | run 1 | 123.13 | passed |
+| Budget | run 2 | 121.88 | passed |
+| Budget | run 3 | 119.08 | passed |
+| Budget | run 4 | 123.73 | passed |
+| Budget | run 5 | 120.48 | passed |
+| Budget+E2ELast | warm-up 1 | 159.03 | passed |
+| Budget+E2ELast | warm-up 2 | 151.46 | passed |
+| Budget+E2ELast | run 1 | 144.71 | passed |
+| Budget+E2ELast | run 2 | 145.41 | passed |
+| Budget+E2ELast | run 3 | 141.37 | passed |
+| Budget+E2ELast | run 4 | 139.09 | passed |
+| Budget+E2ELast | run 5 | 139.04 | failed |
+| Budget+E2ELast | run 6 | 138.13 | passed |
+
+Run 6 of Budget+E2ELast replaces its failed run 5, so each setting has five passed counted runs.
+
+| Setting | Median | Spread | Saves time (D10) |
+|---|---|---|---|
+| 1 | 179.11 s | 2.9 % | (the sequence) |
+| Budget | 121.88 s | 3.8 % | yes |
+| Budget+E2ELast | 141.37 s | 5.1 % | yes |
+
+Budget saves time: its slowest run, 123.73 s, is faster than the fastest sequence run, 177.19 s.
+Its median is 57.23 s, or 32 %, below the sequence. Budget+E2ELast saves time too: its slowest
+passed run, 145.41 s, is faster than 177.19 s. Its median is 19.49 s above Budget.
+
+One counted run failed, in the E2E Slice. A test failure does not block a setting. The Soak judges
+it (D11).
+
+| Setting | Run | Test | Cause |
+|---|---|---|---|
+| Budget+E2ELast | run 5 | `VersionHistoryFlowTests.RestoreOfSnapshotFailingCurrentRules_WarnsThenStillSaysWhyAfterAReload` | `Locator expected to contain text` |
+
+### Coverage figures (D12)
+
+Completeness found 0 differences in 22 runs, so every run reported the same assemblies, classes,
+coverable lines and branches. Outcome found 0 differences in 11 counted runs of Budget and
+Budget+E2ELast. No setting is blocked.
+
+The reference is the five counted runs of setting 1. Covered lines and covered branches were the
+same in all five.
+
+| Assembly | Classes | Coverable lines | Branches | Covered lines | Covered branches |
+|---|---|---|---|---|---|
+| ahkflow | 34 | 726 | 182 | 716 | 160 |
+| AHKFlowApp.API | 27 | 371 | 65 | 310 | 39 |
+| AHKFlowApp.Application | 182 | 3139 | 1106 | 3084 | 988 |
+| AHKFlowApp.Domain | 15 | 263 | 6 | 263 | 6 |
+| AHKFlowApp.Infrastructure | 16 | 241 | 20 | 241 | 12 |
+| AHKFlowApp.Launcher | 4 | 85 | 30 | 61 | 22 |
+| AHKFlowApp.TestUtilities | 27 | 565 | 82 | 508 | 62 |
+| AHKFlowApp.UI.Blazor | 146 | 2683 | 1417 | 2471 | 1098 |
+
+### Integration Mode
+
+The command was `pwsh .\scripts\measure-test-modes.ps1 -Mode Integration -Setting 1,Budget`.
+Every run passed.
+
+| Setting | Run | Seconds |
+|---|---|---|
+| 1 | warm-up 1 | 53.41 |
+| 1 | warm-up 2 | 51.59 |
+| 1 | run 1 | 50.49 |
+| 1 | run 2 | 51.96 |
+| 1 | run 3 | 47.54 |
+| 1 | run 4 | 44.17 |
+| 1 | run 5 | 44.34 |
+| Budget | warm-up 1 | 24.69 |
+| Budget | warm-up 2 | 24.79 |
+| Budget | run 1 | 24.15 |
+| Budget | run 2 | 24.32 |
+| Budget | run 3 | 23.49 |
+| Budget | run 4 | 22.68 |
+| Budget | run 5 | 22.64 |
+
+| Setting | Median | Spread | Saves time (D10) |
+|---|---|---|---|
+| 1 | 47.54 s | 16.4 % | (the sequence) |
+| Budget | 23.49 s | 7.2 % | yes |
+
+Budget saves time: its slowest run, 24.32 s, is faster than the fastest sequence run, 44.17 s. Its
+median is 24.05 s, or 51 %, below the sequence.
+
+### Soaks
+
+Each Soak ran 20 runs at one setting, on mains power, at revision `1ec6a4c3`. No run printed
+"Sharing the test Lane pool with:". The verdicts come from
+`pwsh .\scripts\measure-verdict.ps1 -Timing <timing session> -Soak <soak session>`.
+
+A candidate passes its Soak when no run fails and no completeness difference shows. Both first
+candidates passed. So no sequence Soak ran, the coverage candidate Budget+E2ELast had no Soak, and
+no fallback applied (D11).
+
+#### Coverage at Budget
+
+Session: `TestResults\measure-test-modes\Coverage\session-20261116-170109`. Passed 20 of 20 runs,
+from 112.20 s to 131.87 s each. Completeness against the five counted runs of setting 1 found 0
+differences in 20 runs.
+
+| Slice | Passed | Failed |
+|---|---|---|
+| AHKFlowApp.E2E.Tests | 20 | 0 |
+| AHKFlowApp.API.Tests | 20 | 0 |
+| AHKFlowApp.UI.Blazor.Tests | 20 | 0 |
+| AHKFlowApp.Application.Tests | 20 | 0 |
+| AHKFlowApp.Infrastructure.Tests | 20 | 0 |
+| AHKFlowApp.CLI.Tests | 20 | 0 |
+| AHKFlowApp.TestUtilities.Tests | 20 | 0 |
+| AHKFlowApp.Domain.Tests | 20 | 0 |
+
+No failure, so no failure has a kind, a cause or a verdict.
+
+#### Integration at Budget
+
+Session: `TestResults\measure-test-modes\Integration\session-20261116-184532`. Passed 20 of 20 runs.
+
+| Slice | Passed | Failed |
+|---|---|---|
+| AHKFlowApp.API.Tests | 20 | 0 |
+| AHKFlowApp.Infrastructure.Tests | 20 | 0 |
+| AHKFlowApp.Application.Tests[Category=Integration] | 20 | 0 |
+| AHKFlowApp.CLI.Tests[Category=Integration] | 20 | 0 |
+
+No failure, so no failure has a kind, a cause or a verdict.
+
+### Decisions
+
+- Coverage step: Budget. It saves 57.23 s per run, or 32 % of the median. It passed its Soak and
+  changed no coverage figure.
+- Integration Mode: Budget. It saves 24.05 s per run, or 51 % of the median. It passed its Soak.
+- D13: no coverage Soak shows a UI.Blazor failure that was not cleared. UI.Blazor passed all 20 runs.
+
+### Follow-ups
+
+- GitHub issue #488: `run-coverage.ps1` fails in Windows PowerShell 5.1. Two of its `Join-Path`
+  calls pass three path arguments, which 5.1 refuses. Backlog 204 left them unchanged.
+- GitHub issue #489: run the Fast Mode test assemblies side by side. D13 asked for it, because the
+  coverage Soak showed no UI.Blazor failure.
+- No Soak failure was left uncleared, so no other item was filed.

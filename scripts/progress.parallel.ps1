@@ -1,4 +1,4 @@
-#Requires -Version 7.0
+#Requires -Version 5.1
 # Progress lines for a parallel run. Backlog 126.
 #
 # scripts/progress.common.ps1 walks a list one unit at a time and prints a line before each unit.
@@ -17,9 +17,10 @@
 #   Complete-ParallelProgressUnit  record one finished suite
 #   Get-ParallelProgressLine       build the line for one finished suite
 #
-# This file is 7.0, and progress.common.ps1 is 5.1. That split is deliberate. scripts/test-fast.ps1
-# dot-sources the common module and declares 5.1, and a '#Requires' inside a dot-sourced file is
-# enforced, so a 7.0 line in that file would break the wrapper.
+# This file is 5.1, like progress.common.ps1. Backlog 204 lowered it from 7.0. scripts/test-fast.ps1
+# declares 5.1 and now loads this file through scripts/slice-runner.common.ps1. A '#Requires' inside
+# a dot-sourced file is enforced, so a 7.0 line here would break that wrapper. The code already ran
+# in 5.1, so only this header changed.
 #
 # It does not call Set-StrictMode. That call leaks from a dot-sourced file into the caller's scope.
 
