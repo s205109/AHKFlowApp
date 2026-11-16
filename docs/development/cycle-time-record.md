@@ -1686,3 +1686,52 @@ Every run passed.
 
 Budget saves time: its slowest run, 24.32 s, is faster than the fastest sequence run, 44.17 s. Its
 median is 24.05 s, or 51 %, below the sequence.
+
+### Soaks
+
+Each Soak ran 20 runs at one setting, on mains power, at revision `1ec6a4c3`. No run printed
+"Sharing the test Lane pool with:". The verdicts come from
+`pwsh .\scripts\measure-verdict.ps1 -Timing <timing session> -Soak <soak session>`.
+
+A candidate passes its Soak when no run fails and no completeness difference shows. Both first
+candidates passed. So no sequence Soak ran, the coverage candidate Budget+E2ELast had no Soak, and
+no fallback applied (D11).
+
+#### Coverage at Budget
+
+Session: `TestResults\measure-test-modes\Coverage\session-20261116-170109`. Passed 20 of 20 runs,
+from 112.20 s to 131.87 s each. Completeness against the five counted runs of setting 1 found 0
+differences in 20 runs.
+
+| Slice | Passed | Failed |
+|---|---|---|
+| AHKFlowApp.E2E.Tests | 20 | 0 |
+| AHKFlowApp.API.Tests | 20 | 0 |
+| AHKFlowApp.UI.Blazor.Tests | 20 | 0 |
+| AHKFlowApp.Application.Tests | 20 | 0 |
+| AHKFlowApp.Infrastructure.Tests | 20 | 0 |
+| AHKFlowApp.CLI.Tests | 20 | 0 |
+| AHKFlowApp.TestUtilities.Tests | 20 | 0 |
+| AHKFlowApp.Domain.Tests | 20 | 0 |
+
+No failure, so no failure has a kind, a cause or a verdict.
+
+#### Integration at Budget
+
+Session: `TestResults\measure-test-modes\Integration\session-20261116-184532`. Passed 20 of 20 runs.
+
+| Slice | Passed | Failed |
+|---|---|---|
+| AHKFlowApp.API.Tests | 20 | 0 |
+| AHKFlowApp.Infrastructure.Tests | 20 | 0 |
+| AHKFlowApp.Application.Tests[Category=Integration] | 20 | 0 |
+| AHKFlowApp.CLI.Tests[Category=Integration] | 20 | 0 |
+
+No failure, so no failure has a kind, a cause or a verdict.
+
+### Decisions
+
+- Coverage step: Budget. It saves 57.23 s per run, or 32 % of the median. It passed its Soak and
+  changed no coverage figure.
+- Integration Mode: Budget. It saves 24.05 s per run, or 51 % of the median. It passed its Soak.
+- D13: no coverage Soak shows a UI.Blazor failure that was not cleared. UI.Blazor passed all 20 runs.
