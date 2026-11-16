@@ -26,3 +26,8 @@ build-test E2E: FAIL AHKFlowApp.E2E.Tests.VersionHistoryFlowTests.RestoreOfSnaps
 
 **Recovery task:** R-CI-1: make the 5.1 driver report the runner's message when Slice A never starts, read it on CI, state the root cause, then fix it test-first. R-CI-2: find out whether the E2E VersionHistoryFlowTests failure also happens on main; the CI E2E step runs plain dotnet test, not the Slice runner.
 
+- R-CI-1: done at cc7346ef. Root cause: on CI the console input is UTF-8, so Windows PowerShell 5.1 writes a byte order mark before 'start', and the launcher's exact match refused it (CI probe at 4c473d79: launcher exit=1, inputEncoding=utf-8). Tests: SliceRunner.Tests.ps1, BOM case RED then GREEN; the 5.1 case now fails locally with the old line.
+- R-CI-2: done. The E2E test came from main (backlog 175, a31279f8). It failed in 2 of 5 CI runs on this branch, and the branch changes no file the E2E step uses. Recorded as a flake from main. Deferrals: an issue for it waits for the human.
+- Simplify: the temporary launcher probe was removed; nothing else to simplify.
+- Verify: SliceRunner.Tests.ps1 covers the fix; the Gate covers the rest.
+- Document: nothing to document; the boxes stay as ticked.
