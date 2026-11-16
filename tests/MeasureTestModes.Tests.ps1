@@ -310,8 +310,8 @@ $run = @(Get-Content -LiteralPath $callsPath).Count
 if (Test-Path (Join-Path $stubFolder 'fail-fast')) { throw 'Forced timed invocation failure.' }
 
 # The sleeps this fixture uses, in milliseconds, one per run. A case writes 'sleeps.txt' to
-# choose them, which is how the warm-up cases get a slow head and a flat tail. The fallback is
-# the original cycle.
+# request them, which is how the warm-up cases get a slow head and a flat tail. The floor below
+# still applies to every requested value. The fallback is the original cycle.
 $sleepsPath = Join-Path $stubFolder 'sleeps.txt'
 if (Test-Path -LiteralPath $sleepsPath) {
     $sleeps = @((Get-Content -LiteralPath $sleepsPath -Raw).Trim() -split ',' | ForEach-Object { [int]$_.Trim() })
@@ -319,7 +319,12 @@ if (Test-Path -LiteralPath $sleepsPath) {
 else {
     $sleeps = @(900, 100, 300)
 }
-$sleep = $sleeps[($run - 1) % $sleeps.Count]
+# Backlog 212: the stub never sleeps less than 20 ms. The harness rounds each run to 0.01 s,
+# so a run under 5 ms prints as 0.00 s. The spread line then refuses a median of zero, with
+# 'Get-AhkFlowRelativeSpread needs a median above zero.' A fast Linux container did exactly
+# that with a sleep of 0 (GitHub issue 468). 20 ms is four times the 5 ms limit.
+$minimumSleepMilliseconds = 20
+$sleep = [Math]::Max($sleeps[($run - 1) % $sleeps.Count], $minimumSleepMilliseconds)
 Start-Sleep -Milliseconds $sleep
 } finally {
     if ($null -ne $delegateLock) { Exit-AhkFlowTestRunLock -Handle $delegateLock }
@@ -389,7 +394,8 @@ function Invoke-Harness {
 }
 
 function New-GateFixture {
-    # A harness fixture whose test-fast stub does not sleep. Gate Mode calls it twice a run.
+    # A harness fixture that asks its test-fast stub for no sleep of its own. Gate Mode calls
+    # the stub twice a run.
     $root = New-HarnessFixture
     Set-Content -LiteralPath (Join-Path $root 'stub\sleeps.txt') -Value '0' -Encoding utf8
     return $root
@@ -406,7 +412,8 @@ Write-Host "Testing $(Join-Path $repoRoot 'scripts\measure-test-modes.ps1')"
 Invoke-TestCase 'KeepBuildInRun leaves -NoBuild off the test-fast call' {
     $root = New-HarnessFixture
     try {
-        # The case checks calls and signals, never run times, so the stub does not sleep.
+        # The case checks calls and signals, never run times, so the case asks the stub for no
+        # sleep of its own.
         Set-Content -LiteralPath (Join-Path $root 'stub\sleeps.txt') -Value '0' -Encoding utf8
         # -NoBuild here is the harness's own one-build-up-front switch. -KeepBuildInRun governs
         # what each run is asked to do, and the two are deliberately independent.
@@ -424,12 +431,12 @@ Invoke-TestCase 'KeepBuildInRun leaves -NoBuild off the test-fast call' {
 Invoke-TestCase 'Two measurements in one Mode keep both sessions' {
     $root = New-HarnessFixture
     try {
-        # The case checks calls and signals, never run times, so the stub does not sleep.
+        # The case checks calls and signals, never run times, so the case asks the stub for no
+        # sleep of its own.
         Set-Content -LiteralPath (Join-Path $root 'stub\sleeps.txt') -Value '0' -Encoding utf8
         # Backlog 140 took two sessions back to back in one Mode, and the second invocation deleted
         # the first one's artifacts. Each invocation writes its own session folder now, and never
-        # removes an earlier one. The stub runs finish within a second, so the two sessions also
-        # prove that two invocations in the same second do not collide.
+        # removes an earlier one.
         $first = Invoke-Harness -Root $root -Arguments @('-Mode', 'Fast', '-Runs', '2', '-WarmUpRuns', '0', '-SettleSeconds', '0', '-NoBuild')
         Assert-True ($first.ExitCode -eq 0) "Expected exit code 0 from the first session, got $($first.ExitCode). Output: $($first.Output)"
         $second = Invoke-Harness -Root $root -Arguments @('-Mode', 'Fast', '-Runs', '1', '-WarmUpRuns', '0', '-SettleSeconds', '0', '-NoBuild')
@@ -491,6 +498,13 @@ Invoke-TestCase 'Get-AhkFlowRelativeSpread is the range as a share of the median
     $threw = $false
     try { Get-AhkFlowRelativeSpread -Values @() } catch { $threw = $true }
     Assert-True $threw 'An empty set has no spread, and returning zero would read as a perfect measurement.'
+
+    # Backlog 212: the stub floor keeps every harness case away from a zero median, so this is
+    # the one place that pins the guard. The message check stops a throw from elsewhere passing.
+    $zeroMessage = $null
+    try { Get-AhkFlowRelativeSpread -Values @(0, 0, 0) } catch { $zeroMessage = $_.Exception.Message }
+    Assert-True ($null -ne $zeroMessage -and $zeroMessage -like '*needs a median above zero*') `
+        "A zero median has no relative spread, and must throw the zero-median message. Got: $zeroMessage"
 }
 
 Invoke-TestCase 'Get-AhkFlowTestCount returns zero for every shape of TRX nobody can read' {
@@ -560,8 +574,8 @@ Invoke-TestCase 'A slow head is discarded and the median is the flat tail' {
     $root = New-HarnessFixture
     try {
         # Three slow runs then two flat ones. The median of all five is 0.60 s. The median of the
-        # counted tail is near 0 s. A harness that forgot to discard cannot land near 0 s by
-        # accident, and 0.30 s of margin on each side survives machine load.
+        # counted tail is near 0.02 s, the stub's floor. A harness that forgot to discard cannot
+        # land near 0.02 s by accident, and 0.30 s of margin on each side survives machine load.
         Set-Content -LiteralPath (Join-Path $root 'stub\sleeps.txt') -Value '600,600,600,0,0' -Encoding utf8
 
         $result = Invoke-Harness -Root $root -Arguments @(
@@ -575,7 +589,7 @@ Invoke-TestCase 'A slow head is discarded and the median is the flat tail' {
         Assert-True ($text -match 'median\s+:\s+([\d.,]+)') "No median line. Output: $text"
         $median = [double]($Matches[1] -replace ',', '.')
         Assert-True ($median -lt 0.3) `
-            "The median must come from the flat tail near 0 s, not the whole list near 0.60 s. Got $median."
+            "The median must come from the flat tail near 0.02 s, not the whole list near 0.60 s. Got $median."
     }
     finally { Remove-HarnessFixture -Root $root }
 }
@@ -840,7 +854,8 @@ Invoke-TestCase 'The connection-string variable is restored in the process that 
 Invoke-TestCase 'The build runs inside the lock, and timing mode releases it before the first run' {
     $root = New-HarnessFixture
     try {
-        # The case checks calls and signals, never run times, so the stub does not sleep.
+        # The case checks calls and signals, never run times, so the case asks the stub for no
+        # sleep of its own.
         Set-Content -LiteralPath (Join-Path $root 'stub\sleeps.txt') -Value '0' -Encoding utf8
         # Note the absent -NoBuild: this case is about the build.
         # -WarmUpRuns 0 because this case counts calls. The default of 2 would add two more.
