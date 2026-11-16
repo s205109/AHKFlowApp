@@ -10,3 +10,4 @@ Plan: `docs/superpowers/plans/2026-11-16-run-the-net-test-projects-side-by-side-
 - Task 6: done at d8566fd3. Tests: pass (MeasureEvidence.Tests.ps1; PowerShell Mode 74 of 75, then CitationFreshness after the citation fix). Deferrals: none.
 - Task 7: done at 7e72ce88. Tests: n/a (measurement; CitationFreshness passed on the record). Deferrals: none.
 - Task 8: done at e63fb45c. Tests: n/a (measurement; CitationFreshness passed on the record). Deferrals: none.
+- Task 9: done at f7ef6762. Tests: Gate passed (PowerShell 75/75, Coverage at Budget). Deferrals: Fast Mode item and 5.1 issue wait for the human.
