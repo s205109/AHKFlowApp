@@ -41,7 +41,7 @@ removed" and "tests cover the new API" cannot.
   Linux-only failure shows up.
 - The rounding of real measured runs. A real Mode run takes seconds, never under 5 ms.
 - A case that always reaches the session-name suffix loop:
-  (`scripts/measure-test-modes.ps1:574`, "while (Test-Path -LiteralPath $runRoot) {"). Today only
+  (`scripts/measure-test-modes.ps1:927`, "while (Test-Path -LiteralPath $runRoot) {"). Today only
   "Two measurements in one Mode keep both sessions" can reach it, and only when its two
   invocations start in the same second. The plan review of `8a0cd44` found this.
 
@@ -52,8 +52,8 @@ removed" and "tests cover the new API" cannot.
   `mcr.microsoft.com/dotnet/sdk:10.0` container with PowerShell 7.6.6. On Windows CI the suite
   passes, because each stubbed run takes at least 0.01 s there.
 - Root cause, with evidence from the issue and from `main` at `fcf2c959`:
-  1. The harness rounds each run's time to two decimals: (`scripts/measure-test-modes.ps1:239`, "$elapsed = [Math]::Round($stopwatch.Elapsed.TotalSeconds, 2)").
-  2. The report computes the spread of the counted runs: (`scripts/measure-test-modes.ps1:731`, "(Get-AhkFlowRelativeSpread -Values $seconds))").
+  1. The harness rounds each run's time to two decimals: (`scripts/measure-test-modes.ps1:414`, "$elapsed = [Math]::Round($stopwatch.Elapsed.TotalSeconds, 2)").
+  2. The report computes the spread of the counted runs: (`scripts/measure-test-modes.ps1:1090`, "(Get-AhkFlowRelativeSpread -Values $seconds))").
   3. The spread refuses a median of zero: (`scripts/test-results.common.ps1:167`, "throw 'Get-AhkFlowRelativeSpread needs a median above zero.'").
   4. The failing run logged "run 1 of 2: 0.00 s" and "run 2 of 2: 0.00 s". The harness exited 1,
      and the case failed on its first assertion.
@@ -62,7 +62,7 @@ removed" and "tests cover the new API" cannot.
   there were", at line 549. More cases stub every run at 0 ms, so they can fail the same way:
   the Fast Mode cases at lines 373, 391 and 807, and every Gate Mode case that uses
   `New-GateFixture` at line 357.
-- The Gate path has the same exposure: (`scripts/measure-test-modes.ps1:408`, "SpreadPercent = [Math]::Round((Get-AhkFlowRelativeSpread -Values $runSeconds), 1)").
+- The Gate path has the same exposure: (`scripts/measure-test-modes.ps1:761`, "SpreadPercent = [Math]::Round((Get-AhkFlowRelativeSpread -Values $runSeconds), 1)").
 - Two fixes were open. The harness could print the report without a spread when the median is
   zero, or the stub could give every run a small, non-zero time. The plan picks the stub: a real
   Mode run takes seconds, so only a stub can produce a zero median. The slow-head case allows
