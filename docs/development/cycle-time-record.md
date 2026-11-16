@@ -1735,3 +1735,11 @@ No failure, so no failure has a kind, a cause or a verdict.
   changed no coverage figure.
 - Integration Mode: Budget. It saves 24.05 s per run, or 51 % of the median. It passed its Soak.
 - D13: no coverage Soak shows a UI.Blazor failure that was not cleared. UI.Blazor passed all 20 runs.
+
+### Follow-ups
+
+- GitHub issue #488: `run-coverage.ps1` fails in Windows PowerShell 5.1. Two of its `Join-Path`
+  calls pass three path arguments, which 5.1 refuses. Backlog 204 left them unchanged.
+- GitHub issue #489: run the Fast Mode test assemblies side by side. D13 asked for it, because the
+  coverage Soak showed no UI.Blazor failure.
+- No Soak failure was left uncleared, so no other item was filed.
