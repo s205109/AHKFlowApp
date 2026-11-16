@@ -761,6 +761,7 @@ $codes = @($results | ForEach-Object { $_.ExitCode })
 $logs = @($results | ForEach-Object { [System.IO.File]::ReadAllText($_.LogPath) })
 $message = ''
 $survivors = @()
+$missing = @()
 $slices = @(
     (New-Fake 'A' 0 60000 -Grandchild),
     (New-Fake 'Q' 0 100 -WaitFor (Join-Path $Folder 'grandchild-A.txt')),
@@ -769,19 +770,28 @@ try { [void](Invoke-AhkFlowSliceSet -Slice $slices -SlicesAtOnce 2 -WorkingDirec
 catch {
     $message = $_.Exception.Message
     foreach ($file in @('start-A.txt', 'grandchild-A.txt')) {
-        $id = [int](([System.IO.File]::ReadAllText((Join-Path $Folder $file)).Trim() -split '\s+')[0])
+        # A missing marker means the process never started. That is a finding, not a reason to
+        # throw away the runner's message.
+        $markerPath = Join-Path $Folder $file
+        if (-not (Test-Path -LiteralPath $markerPath)) { $missing += $file; continue }
+        $id = [int](([System.IO.File]::ReadAllText($markerPath).Trim() -split '\s+')[0])
         $deadline = [DateTime]::UtcNow.AddSeconds(2)
         while ($null -ne (Get-Process -Id $id -ErrorAction SilentlyContinue) -and [DateTime]::UtcNow -lt $deadline) { Start-Sleep -Milliseconds 100 }
         if ($null -ne (Get-Process -Id $id -ErrorAction SilentlyContinue)) { $survivors += $id }
     }
 }
-[Console]::Out.WriteLine((ConvertTo-Json -Compress -InputObject ([pscustomobject]@{ Codes = $codes; Logs = $logs; Message = $message; Survivors = $survivors })))
+$logA = ''
+foreach ($path in @((Join-Path $Folder 'A\A.log'), (Join-Path $Folder 'A\A.log.stderr'))) {
+    if (Test-Path -LiteralPath $path) { $logA += [System.IO.File]::ReadAllText($path) }
+}
+[Console]::Out.WriteLine((ConvertTo-Json -Compress -InputObject ([pscustomobject]@{ Codes = $codes; Logs = $logs; Message = $message; Survivors = $survivors; Missing = $missing; LogA = $logA })))
 '@
             Set-Content -LiteralPath $driver -Value $driverBody -Encoding UTF8
             $text = & $script:WindowsPowerShell -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $driver -Repo $repoRoot -Folder $folder -Fake $script:FakePath 2>&1 | Out-String
             $json = @($text -split '\r?\n' | Where-Object { $_.StartsWith('{') }) | Select-Object -Last 1
             Assert-True ($null -ne $json) "The 5.1 driver printed no JSON: $text"
             $data = $json | ConvertFrom-Json
+            Assert-True (@($data.Missing).Count -eq 0) "These markers were never written: $(@($data.Missing) -join ', '). Message: $($data.Message) Log of A: $($data.LogA)"
             Assert-True ((@($data.Codes) -join ',') -eq '0,1') "Exit codes: $(@($data.Codes) -join ',')"
             Assert-True ($data.Logs[0].Contains('out-P') -and $data.Logs[1].Contains('out-F')) "Logs: $($data.Logs -join ' | ')"
             Assert-True ($data.Message.Contains('could not start')) "Message: $($data.Message)"
