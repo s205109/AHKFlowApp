@@ -1566,81 +1566,85 @@ is `docs/superpowers/plans/2026-11-16-run-the-net-test-projects-side-by-side-pla
 
 ### Timing sessions
 
-Both sessions ran on 2026-11-16, in the worktree `wt-run-the-net-test-projects-side-by-side`.
-Docker ran, no API or UI of the worktree ran, and no run printed "Sharing the test Lane pool with:".
-Every run at Budget printed `Slices at once: 3 (asked for Budget, budget 3)`.
+Both sessions ran on 2026-11-16, in the worktree `wt-run-the-net-test-projects-side-by-side`, with
+the laptop on mains power. A check every minute found it on mains power for the whole time. Docker
+ran, no API or UI of the worktree ran, and no run printed "Sharing the test Lane pool with:". Every
+run at Budget printed `Slices at once: 3 (asked for Budget, budget 3)`.
 
-- Revision: `c02f751e1e3dc4f35cc2ed3f76c766f4e1222405`.
-- Coverage session: `TestResults\measure-test-modes\Coverage\session-20261116-153924`.
-- Integration session: `TestResults\measure-test-modes\Integration\session-20261116-164415`.
+- Revision: `1ec6a4c34c4d8b62b3a7c8eb881bcac55303d6f3`. It differs from the code under test at
+  `c02f751e` only in this record and the progress file.
+- Coverage session: `TestResults\measure-test-modes\Coverage\session-20261116-174045`.
+- Integration session: `TestResults\measure-test-modes\Integration\session-20261116-183641`.
 - The verdict tables come from `pwsh .\scripts\measure-verdict.ps1 -Timing <session folder>`.
 
-Other work ran on the machine during both sessions. After the Coverage session the CPU load was 26 %
-with no test process left over. Rounds 4 and 5 were slower than rounds 1 to 3 at every setting, in
-both sessions. The medians and the spreads carry that noise. The verdict below does not depend on it,
-because it compares the slowest run of a setting with the fastest sequence run.
+#### Sessions on battery, discarded
+
+Two earlier sessions at `c02f751e` ran while the laptop was on battery for part of the time:
+`Coverage\session-20261116-153924` and `Integration\session-20261116-164415`. Their run times grew
+during each session, up to 437 s for one coverage run, and their spreads were 26 to 96 %. Six of
+the 21 coverage runs failed in the E2E Slice, at every setting, the sequence included. The coverage
+session stopped early with "Stopped after 3 failed counted runs". Neither session counts here.
+
+On mains power, one of 22 coverage runs failed. The E2E tests wait 5 s for a locator, and a slow
+CPU on battery can miss that limit. This record does not prove that cause.
 
 ### Coverage step
 
 The command was
 `pwsh .\scripts\measure-test-modes.ps1 -Mode Coverage -Setting 1,Budget,Budget+E2ELast`.
 
-The session stopped early with "Stopped after 3 failed counted runs". The three failed counted runs
-were run 3 and run 4 of Budget+E2ELast, and run 5 of setting 1. So setting 1 kept 4 passed counted
-runs, Budget kept 4, and Budget+E2ELast kept 2. The session was not run again. Six of its 21 runs
-failed, so a second session would most likely stop early too.
-
 | Setting | Run | Seconds | Result |
 |---|---|---|---|
-| 1 | warm-up 1 | 273.01 | failed |
-| 1 | warm-up 2 | 191.87 | passed |
-| 1 | run 1 | 177.23 | passed |
-| 1 | run 2 | 178.17 | passed |
-| 1 | run 3 | 219.59 | passed |
-| 1 | run 4 | 230.00 | passed |
-| 1 | run 5 | 437.10 | failed |
-| Budget | warm-up 1 | 170.78 | failed |
-| Budget | warm-up 2 | 121.38 | passed |
-| Budget | run 1 | 118.21 | passed |
-| Budget | run 2 | 129.37 | passed |
-| Budget | run 3 | 143.92 | passed |
-| Budget | run 4 | 156.63 | passed |
-| Budget+E2ELast | warm-up 1 | 187.31 | passed |
-| Budget+E2ELast | warm-up 2 | 141.00 | passed |
-| Budget+E2ELast | run 1 | 135.91 | passed |
-| Budget+E2ELast | run 2 | 149.03 | passed |
-| Budget+E2ELast | run 3 | 179.21 | failed |
-| Budget+E2ELast | run 4 | 323.28 | failed |
+| 1 | warm-up 1 | 197.43 | passed |
+| 1 | warm-up 2 | 206.56 | passed |
+| 1 | run 1 | 178.92 | passed |
+| 1 | run 2 | 182.33 | passed |
+| 1 | run 3 | 179.11 | passed |
+| 1 | run 4 | 180.73 | passed |
+| 1 | run 5 | 177.19 | passed |
+| Budget | warm-up 1 | 133.79 | passed |
+| Budget | warm-up 2 | 128.19 | passed |
+| Budget | run 1 | 123.13 | passed |
+| Budget | run 2 | 121.88 | passed |
+| Budget | run 3 | 119.08 | passed |
+| Budget | run 4 | 123.73 | passed |
+| Budget | run 5 | 120.48 | passed |
+| Budget+E2ELast | warm-up 1 | 159.03 | passed |
+| Budget+E2ELast | warm-up 2 | 151.46 | passed |
+| Budget+E2ELast | run 1 | 144.71 | passed |
+| Budget+E2ELast | run 2 | 145.41 | passed |
+| Budget+E2ELast | run 3 | 141.37 | passed |
+| Budget+E2ELast | run 4 | 139.09 | passed |
+| Budget+E2ELast | run 5 | 139.04 | failed |
+| Budget+E2ELast | run 6 | 138.13 | passed |
 
-| Setting | Passed counted runs | Median | Spread | Saves time (D10) |
-|---|---|---|---|---|
-| 1 | 4 | 198.88 s | 26.5 % | (the sequence) |
-| Budget | 4 | 136.64 s | 28.1 % | yes |
-| Budget+E2ELast | 2 | 142.47 s | 9.2 % | yes |
+Run 6 of Budget+E2ELast replaces its failed run 5, so each setting has five passed counted runs.
 
-Budget saves time: its slowest run, 156.63 s, is faster than the fastest sequence run, 177.23 s.
-Budget+E2ELast saves time on its two passed runs too, but two runs are thin evidence.
+| Setting | Median | Spread | Saves time (D10) |
+|---|---|---|---|
+| 1 | 179.11 s | 2.9 % | (the sequence) |
+| Budget | 121.88 s | 3.8 % | yes |
+| Budget+E2ELast | 141.37 s | 5.1 % | yes |
 
-Every failure was a test failure in the E2E Slice, and it came at every setting, the sequence
-included. A test failure does not block a setting. The Soak judges it (D11).
+Budget saves time: its slowest run, 123.73 s, is faster than the fastest sequence run, 177.19 s.
+Its median is 57.23 s, or 32 %, below the sequence. Budget+E2ELast saves time too: its slowest
+passed run, 145.41 s, is faster than 177.19 s. Its median is 19.49 s above Budget.
+
+One counted run failed, in the E2E Slice. A test failure does not block a setting. The Soak judges
+it (D11).
 
 | Setting | Run | Test | Cause |
 |---|---|---|---|
-| 1 | warm-up 1 | `ProfileDeleteFlowTests.DeleteProfile_NamesTheCost_ThenMarksTheItemAfterAReload` | `Locator expected to have text` |
-| Budget | warm-up 1 | `ProfileDeleteFlowTests.DeleteProfile_NamesTheCost_ThenMarksTheItemAfterAReload` | `Locator expected to have text` |
-| Budget+E2ELast | run 3 | `ProfileDeleteFlowTests.DeleteProfile_NamesTheCost_ThenMarksTheItemAfterAReload` | `Locator expected to have text` |
-| Budget+E2ELast | run 4 | `VersionHistoryFlowTests.RestoreOfSnapshotFailingCurrentRules_WarnsThenStillSaysWhyAfterAReload` | `Locator expected to contain text` |
-| Budget+E2ELast | run 4 | `ProfileDeleteFlowTests.DeleteProfile_NamesTheCost_ThenMarksTheItemAfterAReload` | `Locator expected to have text` |
-| 1 | run 5 | `ProfileDeleteFlowTests.DeleteProfile_NamesTheCost_ThenMarksTheItemAfterAReload` | `Locator expected to have text` |
+| Budget+E2ELast | run 5 | `VersionHistoryFlowTests.RestoreOfSnapshotFailingCurrentRules_WarnsThenStillSaysWhyAfterAReload` | `Locator expected to contain text` |
 
 ### Coverage figures (D12)
 
-Completeness found 0 differences in 19 runs, so every run reported the same assemblies, classes,
-coverable lines and branches. Outcome found 0 differences in 8 counted runs of Budget and
+Completeness found 0 differences in 22 runs, so every run reported the same assemblies, classes,
+coverable lines and branches. Outcome found 0 differences in 11 counted runs of Budget and
 Budget+E2ELast. No setting is blocked.
 
-The reference is the five counted runs of setting 1, run 5 included, because it kept its merged
-report. Covered lines and covered branches were the same in all five.
+The reference is the five counted runs of setting 1. Covered lines and covered branches were the
+same in all five.
 
 | Assembly | Classes | Coverable lines | Branches | Covered lines | Covered branches |
 |---|---|---|---|---|---|
@@ -1660,24 +1664,25 @@ Every run passed.
 
 | Setting | Run | Seconds |
 |---|---|---|
-| 1 | warm-up 1 | 79.08 |
-| 1 | warm-up 2 | 60.52 |
-| 1 | run 1 | 57.65 |
-| 1 | run 2 | 55.70 |
-| 1 | run 3 | 56.41 |
-| 1 | run 4 | 79.94 |
-| 1 | run 5 | 103.78 |
-| Budget | warm-up 1 | 35.97 |
-| Budget | warm-up 2 | 23.90 |
-| Budget | run 1 | 24.40 |
-| Budget | run 2 | 23.95 |
-| Budget | run 3 | 23.51 |
-| Budget | run 4 | 46.23 |
-| Budget | run 5 | 46.93 |
+| 1 | warm-up 1 | 53.41 |
+| 1 | warm-up 2 | 51.59 |
+| 1 | run 1 | 50.49 |
+| 1 | run 2 | 51.96 |
+| 1 | run 3 | 47.54 |
+| 1 | run 4 | 44.17 |
+| 1 | run 5 | 44.34 |
+| Budget | warm-up 1 | 24.69 |
+| Budget | warm-up 2 | 24.79 |
+| Budget | run 1 | 24.15 |
+| Budget | run 2 | 24.32 |
+| Budget | run 3 | 23.49 |
+| Budget | run 4 | 22.68 |
+| Budget | run 5 | 22.64 |
 
-| Setting | Counted runs | Median | Spread | Saves time (D10) |
-|---|---|---|---|---|
-| 1 | 5 | 57.65 s | 83.4 % | (the sequence) |
-| Budget | 5 | 24.40 s | 96.0 % | yes |
+| Setting | Median | Spread | Saves time (D10) |
+|---|---|---|---|
+| 1 | 47.54 s | 16.4 % | (the sequence) |
+| Budget | 23.49 s | 7.2 % | yes |
 
-Budget saves time: its slowest run, 46.93 s, is faster than the fastest sequence run, 55.70 s.
+Budget saves time: its slowest run, 24.32 s, is faster than the fastest sequence run, 44.17 s. Its
+median is 24.05 s, or 51 %, below the sequence.
