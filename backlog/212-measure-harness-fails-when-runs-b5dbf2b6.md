@@ -37,7 +37,8 @@ removed" and "tests cover the new API" cannot.
 ## Out of scope
 
 - Running the Linux-capable entries of `tests/powershell-suites.json` on Linux in CI. Issue 468
-  lists it as an open question. It is a separate concern and gets its own item if anyone wants it.
+  lists it as an open question. It is a separate concern. File an item for it only when a second
+  Linux-only failure shows up.
 - The rounding of real measured runs. A real Mode run takes seconds, never under 5 ms.
 
 ## Notes / dependencies
