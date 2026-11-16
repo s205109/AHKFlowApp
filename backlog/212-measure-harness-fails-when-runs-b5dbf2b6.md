@@ -26,13 +26,13 @@ Write each criterion as state a reader can observe in the repository, not as a c
 "The handler returns `Result.NotFound()` for a missing id" can be checked. "The old check is
 removed" and "tests cover the new API" cannot.
 
-- [ ] The test-fast stub in `tests/MeasureTestModes.Tests.ps1` sleeps at least 20 ms on every run,
+- [x] The test-fast stub in `tests/MeasureTestModes.Tests.ps1` sleeps at least 20 ms on every run,
       whatever value a case writes into `stub\sleeps.txt`.
-- [ ] `tests/MeasureTestModes.Tests.ps1` passes three times in a row in the
+- [x] `tests/MeasureTestModes.Tests.ps1` passes three times in a row in the
       `mcr.microsoft.com/dotnet/sdk:10.0` container that GitHub issue 468 used.
-- [ ] The case "A slow head is discarded and the median is the flat tail" still fails against a
+- [x] The case "A slow head is discarded and the median is the flat tail" still fails against a
       harness that counts the warm-up runs in the median.
-- [ ] `Get-AhkFlowRelativeSpread` still throws for an empty set of values, and for a median of zero.
+- [x] `Get-AhkFlowRelativeSpread` still throws for an empty set of values, and for a median of zero.
 
 ## Out of scope
 
