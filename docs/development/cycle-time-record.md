@@ -1558,3 +1558,126 @@ The two totals of this audit, kept apart:
 - The kept span row, row 4, saves 2.86 s of wall time in the Integration Mode.
 
 No target is judged (D11).
+
+## Run the .NET test projects side by side (backlog 204)
+
+Backlog 204 runs each .NET test project as its own Slice, and runs several Slices at once. The plan
+is `docs/superpowers/plans/2026-11-16-run-the-net-test-projects-side-by-side-plan-204.md`.
+
+### Timing sessions
+
+Both sessions ran on 2026-11-16, in the worktree `wt-run-the-net-test-projects-side-by-side`.
+Docker ran, no API or UI of the worktree ran, and no run printed "Sharing the test Lane pool with:".
+Every run at Budget printed `Slices at once: 3 (asked for Budget, budget 3)`.
+
+- Revision: `c02f751e1e3dc4f35cc2ed3f76c766f4e1222405`.
+- Coverage session: `TestResults\measure-test-modes\Coverage\session-20261116-153924`.
+- Integration session: `TestResults\measure-test-modes\Integration\session-20261116-164415`.
+- The verdict tables come from `pwsh .\scripts\measure-verdict.ps1 -Timing <session folder>`.
+
+Other work ran on the machine during both sessions. After the Coverage session the CPU load was 26 %
+with no test process left over. Rounds 4 and 5 were slower than rounds 1 to 3 at every setting, in
+both sessions. The medians and the spreads carry that noise. The verdict below does not depend on it,
+because it compares the slowest run of a setting with the fastest sequence run.
+
+### Coverage step
+
+The command was
+`pwsh .\scripts\measure-test-modes.ps1 -Mode Coverage -Setting 1,Budget,Budget+E2ELast`.
+
+The session stopped early with "Stopped after 3 failed counted runs". The three failed counted runs
+were run 3 and run 4 of Budget+E2ELast, and run 5 of setting 1. So setting 1 kept 4 passed counted
+runs, Budget kept 4, and Budget+E2ELast kept 2. The session was not run again. Six of its 21 runs
+failed, so a second session would most likely stop early too.
+
+| Setting | Run | Seconds | Result |
+|---|---|---|---|
+| 1 | warm-up 1 | 273.01 | failed |
+| 1 | warm-up 2 | 191.87 | passed |
+| 1 | run 1 | 177.23 | passed |
+| 1 | run 2 | 178.17 | passed |
+| 1 | run 3 | 219.59 | passed |
+| 1 | run 4 | 230.00 | passed |
+| 1 | run 5 | 437.10 | failed |
+| Budget | warm-up 1 | 170.78 | failed |
+| Budget | warm-up 2 | 121.38 | passed |
+| Budget | run 1 | 118.21 | passed |
+| Budget | run 2 | 129.37 | passed |
+| Budget | run 3 | 143.92 | passed |
+| Budget | run 4 | 156.63 | passed |
+| Budget+E2ELast | warm-up 1 | 187.31 | passed |
+| Budget+E2ELast | warm-up 2 | 141.00 | passed |
+| Budget+E2ELast | run 1 | 135.91 | passed |
+| Budget+E2ELast | run 2 | 149.03 | passed |
+| Budget+E2ELast | run 3 | 179.21 | failed |
+| Budget+E2ELast | run 4 | 323.28 | failed |
+
+| Setting | Passed counted runs | Median | Spread | Saves time (D10) |
+|---|---|---|---|---|
+| 1 | 4 | 198.88 s | 26.5 % | (the sequence) |
+| Budget | 4 | 136.64 s | 28.1 % | yes |
+| Budget+E2ELast | 2 | 142.47 s | 9.2 % | yes |
+
+Budget saves time: its slowest run, 156.63 s, is faster than the fastest sequence run, 177.23 s.
+Budget+E2ELast saves time on its two passed runs too, but two runs are thin evidence.
+
+Every failure was a test failure in the E2E Slice, and it came at every setting, the sequence
+included. A test failure does not block a setting. The Soak judges it (D11).
+
+| Setting | Run | Test | Cause |
+|---|---|---|---|
+| 1 | warm-up 1 | `ProfileDeleteFlowTests.DeleteProfile_NamesTheCost_ThenMarksTheItemAfterAReload` | `Locator expected to have text` |
+| Budget | warm-up 1 | `ProfileDeleteFlowTests.DeleteProfile_NamesTheCost_ThenMarksTheItemAfterAReload` | `Locator expected to have text` |
+| Budget+E2ELast | run 3 | `ProfileDeleteFlowTests.DeleteProfile_NamesTheCost_ThenMarksTheItemAfterAReload` | `Locator expected to have text` |
+| Budget+E2ELast | run 4 | `VersionHistoryFlowTests.RestoreOfSnapshotFailingCurrentRules_WarnsThenStillSaysWhyAfterAReload` | `Locator expected to contain text` |
+| Budget+E2ELast | run 4 | `ProfileDeleteFlowTests.DeleteProfile_NamesTheCost_ThenMarksTheItemAfterAReload` | `Locator expected to have text` |
+| 1 | run 5 | `ProfileDeleteFlowTests.DeleteProfile_NamesTheCost_ThenMarksTheItemAfterAReload` | `Locator expected to have text` |
+
+### Coverage figures (D12)
+
+Completeness found 0 differences in 19 runs, so every run reported the same assemblies, classes,
+coverable lines and branches. Outcome found 0 differences in 8 counted runs of Budget and
+Budget+E2ELast. No setting is blocked.
+
+The reference is the five counted runs of setting 1, run 5 included, because it kept its merged
+report. Covered lines and covered branches were the same in all five.
+
+| Assembly | Classes | Coverable lines | Branches | Covered lines | Covered branches |
+|---|---|---|---|---|---|
+| ahkflow | 34 | 726 | 182 | 716 | 160 |
+| AHKFlowApp.API | 27 | 371 | 65 | 310 | 39 |
+| AHKFlowApp.Application | 182 | 3139 | 1106 | 3084 | 988 |
+| AHKFlowApp.Domain | 15 | 263 | 6 | 263 | 6 |
+| AHKFlowApp.Infrastructure | 16 | 241 | 20 | 241 | 12 |
+| AHKFlowApp.Launcher | 4 | 85 | 30 | 61 | 22 |
+| AHKFlowApp.TestUtilities | 27 | 565 | 82 | 508 | 62 |
+| AHKFlowApp.UI.Blazor | 146 | 2683 | 1417 | 2471 | 1098 |
+
+### Integration Mode
+
+The command was `pwsh .\scripts\measure-test-modes.ps1 -Mode Integration -Setting 1,Budget`.
+Every run passed.
+
+| Setting | Run | Seconds |
+|---|---|---|
+| 1 | warm-up 1 | 79.08 |
+| 1 | warm-up 2 | 60.52 |
+| 1 | run 1 | 57.65 |
+| 1 | run 2 | 55.70 |
+| 1 | run 3 | 56.41 |
+| 1 | run 4 | 79.94 |
+| 1 | run 5 | 103.78 |
+| Budget | warm-up 1 | 35.97 |
+| Budget | warm-up 2 | 23.90 |
+| Budget | run 1 | 24.40 |
+| Budget | run 2 | 23.95 |
+| Budget | run 3 | 23.51 |
+| Budget | run 4 | 46.23 |
+| Budget | run 5 | 46.93 |
+
+| Setting | Counted runs | Median | Spread | Saves time (D10) |
+|---|---|---|---|---|
+| 1 | 5 | 57.65 s | 83.4 % | (the sequence) |
+| Budget | 5 | 24.40 s | 96.0 % | yes |
+
+Budget saves time: its slowest run, 46.93 s, is faster than the fastest sequence run, 55.70 s.
