@@ -172,7 +172,22 @@ if ($mode -eq 'Coverage') {
     }
 }
 
+# A failure is 'existing' only when the sequence shows it at the same code, so any other session
+# is refused rather than read.
+function Assert-SequenceSoak {
+    param([object] $Sequence, [object] $Judged, [string] $JudgedSession)
+    $problems = New-Object System.Collections.Generic.List[string]
+    if ($Sequence.Kind -ne 'soak') { $problems.Add("its Kind is '$($Sequence.Kind)', not 'soak'") }
+    if (($Sequence.Settings -join ',') -ne '1') { $problems.Add("its setting is '$($Sequence.Settings -join ',')', not '1'") }
+    if ($Sequence.Mode -ne $Judged.Mode) { $problems.Add("its Mode is $($Sequence.Mode), not $($Judged.Mode)") }
+    if ($Sequence.Revision -ne $Judged.Revision) { $problems.Add("its revision is $($Sequence.Revision), not $($Judged.Revision)") }
+    if ($problems.Count -gt 0) {
+        throw "$SequenceSoak is not a sequence Soak for $JudgedSession`: $($problems -join '; ')."
+    }
+}
+
 $sequenceFailures = @()
+$sequenceRecord = $null
 if (-not [string]::IsNullOrWhiteSpace($SequenceSoak)) {
     $sequenceRecord = Read-SessionRecord -Session $SequenceSoak
     $sequenceFailures = @(foreach ($run in $sequenceRecord.Runs) {
@@ -182,6 +197,7 @@ if (-not [string]::IsNullOrWhiteSpace($SequenceSoak)) {
 
 foreach ($session in @($Soak | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim() } | Where-Object { $_ })) {
     $record = Read-SessionRecord -Session $session
+    if ($null -ne $sequenceRecord) { Assert-SequenceSoak -Sequence $sequenceRecord -Judged $record -JudgedSession $session }
     $passed = @($record.Runs | Where-Object { -not $_.Failed }).Count
     Write-Output "## Soak session $(Split-Path -Leaf $session)"
     Write-Output ''

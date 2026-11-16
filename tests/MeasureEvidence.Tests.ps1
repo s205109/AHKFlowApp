@@ -318,7 +318,7 @@ Invoke-TestCase 'A Soak failure is existing only when the sequence Soak shows it
 # A timing session as Task 5 writes it. Each run is @{ Setting; Folder; Label; Kind; Seconds;
 # Failed; Message; Slice }.
 function New-SessionFolder {
-    param([string] $Mode, [string] $Kind, [string[]] $Settings, [object[]] $Run)
+    param([string] $Mode, [string] $Kind, [string[]] $Settings, [object[]] $Run, [string] $Revision = 'abc123')
     $session = Join-Path (New-CaseFolder) 'session-20261116-100000'
     $entries = @()
     foreach ($r in $Run) {
@@ -328,7 +328,7 @@ function New-SessionFolder {
                 -Summary $(if ($Mode -eq 'Coverage') { $script:CleanSummary } else { $null }) -Seconds $r.Seconds -Setting $r.Setting -Label $r.Label)
         $entries += [ordered]@{ Setting = $r.Setting; Label = $r.Label; Kind = $r.Kind; Folder = $r.Folder; ElapsedSeconds = $r.Seconds; Failed = $failed; Message = $message; EvidenceOwned = $true }
     }
-    $record = [ordered]@{ Revision = 'abc123'; Mode = $Mode; Kind = $Kind; Settings = $Settings; Runs = $entries }
+    $record = [ordered]@{ Revision = $Revision; Mode = $Mode; Kind = $Kind; Settings = $Settings; Runs = $entries }
     Write-Utf8 (Join-Path $session 'record.json') ($record | ConvertTo-Json -Depth 6)
     return $session
 }
@@ -372,6 +372,31 @@ Invoke-TestCase 'An unexplained failure in a timing session blocks that setting'
     $result = Invoke-Verdict @('-Timing', $timing)
     Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
     Assert-True ($result.Output.Contains('Budget blocked: a run failed with no failing Slice or test.')) "Output: $($result.Output)"
+}
+
+Invoke-TestCase 'The verdict script refuses a sequence Soak that does not match the Soak it judges' {
+    # A failure is 'existing' only against the sequence at the same code. Any other session would
+    # clear a failure by chance.
+    $timing = New-SessionFolder -Mode 'Integration' -Kind 'timing' -Settings @('1', 'Budget') -Run @(
+        (New-CleanRun '1' 'at-1\run-1' 'run 1' 'counted' 10),
+        (New-CleanRun 'Budget' 'at-budget\run-1' 'run 1' 'counted' 8))
+    $soak = New-SessionFolder -Mode 'Integration' -Kind 'soak' -Settings @('Budget') -Run @(
+        (New-CleanRun 'Budget' 'at-budget\soak-1' 'soak 1' 'soak' 8))
+    foreach ($case in @(
+            @{ Why = 'a timing session'; Mode = 'Integration'; Kind = 'timing'; Setting = '1'; Revision = 'abc123' },
+            @{ Why = 'another setting'; Mode = 'Integration'; Kind = 'soak'; Setting = 'Budget'; Revision = 'abc123' },
+            @{ Why = 'another Mode'; Mode = 'Coverage'; Kind = 'soak'; Setting = '1'; Revision = 'abc123' },
+            @{ Why = 'another revision'; Mode = 'Integration'; Kind = 'soak'; Setting = '1'; Revision = 'def456' })) {
+        $sequence = New-SessionFolder -Mode $case.Mode -Kind $case.Kind -Settings @($case.Setting) -Revision $case.Revision -Run @(
+            (New-CleanRun $case.Setting "at-$($case.Setting.ToLowerInvariant())\soak-1" 'soak 1' 'soak' 10))
+        $result = Invoke-Verdict @('-Timing', $timing, '-Soak', $soak, '-SequenceSoak', $sequence)
+        Assert-True ($result.ExitCode -ne 0) "$($case.Why): expected a refusal. Output: $($result.Output)"
+        Assert-True ($result.Output.Contains('is not a sequence Soak for')) "$($case.Why): Output: $($result.Output)"
+    }
+    $match = New-SessionFolder -Mode 'Integration' -Kind 'soak' -Settings @('1') -Run @(
+        (New-CleanRun '1' 'at-1\soak-1' 'soak 1' 'soak' 10))
+    $result = Invoke-Verdict @('-Timing', $timing, '-Soak', $soak, '-SequenceSoak', $match)
+    Assert-True ($result.ExitCode -eq 0) "A matching sequence Soak was refused. Output: $($result.Output)"
 }
 
 Remove-Item -LiteralPath $script:Root -Recurse -Force -ErrorAction SilentlyContinue

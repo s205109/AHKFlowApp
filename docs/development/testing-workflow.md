@@ -657,6 +657,9 @@ session-<utc>\
       no-evidence.txt    only when the run left no results of its own
 ```
 
+The script saves `record.json` again after every run. A session that stops part way still keeps
+the runs it finished, and `scripts/measure-verdict.ps1` can read them.
+
 A run owns the results only when `attempt.txt` in the shared results folder holds the value this
 run set. A run that failed before it cleared that folder gets `no-evidence.txt` instead. The copy
 leaves out the `coverage.cobertura.xml` files, because `Summary.json` holds the class figures.

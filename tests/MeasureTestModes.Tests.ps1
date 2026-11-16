@@ -263,6 +263,10 @@ function Test-StubCallListed {
 }
 if ($Mode -eq 'Coverage' -or $Mode -eq 'Integration') {
     $evidenceCall = @(Get-Content -LiteralPath $callsPath).Count
+    # How many runs the session record holds when this call starts.
+    $recordFile = Get-ChildItem -LiteralPath (Join-Path $repoRoot 'TestResults\measure-test-modes') -Recurse -Filter 'record.json' -ErrorAction SilentlyContinue | Select-Object -First 1
+    $recordRuns = if ($null -eq $recordFile) { 'none' } else { @((Get-Content -LiteralPath $recordFile.FullName -Raw | ConvertFrom-Json).Runs).Count }
+    Add-Content -LiteralPath (Join-Path $stubFolder 'record-seen.txt') -Value "call=$evidenceCall runs=$recordRuns"
     if (Test-StubCallListed 'early-fail-calls.txt' $evidenceCall) { throw 'Another run holds the lock.' }
     $shared = if ($Mode -eq 'Coverage') { Join-Path $repoRoot 'TestResults\coverage' } else { Join-Path $repoRoot 'TestResults\test-fast\Integration' }
     Remove-Item -LiteralPath $shared -Recurse -Force -ErrorAction SilentlyContinue
@@ -1423,6 +1427,20 @@ Invoke-TestCase 'A Soak of a Mode runs one setting many times and goes on after 
         foreach ($n in 1..3) { Assert-True (Test-Path -LiteralPath (Join-Path $setting "soak-$n")) "No soak-$n folder." }
         Assert-True ((Get-SessionRecord $root 'Integration').Kind -eq 'soak') 'record.json Kind is not soak.'
         Assert-True ($result.Output.Contains('passed: 2 of 3')) "Output: $($result.Output)"
+    }
+    finally { Remove-HarnessFixture -Root $root }
+}
+
+Invoke-TestCase 'The session record holds every finished run before the next run starts' {
+    # A session stopped part way keeps the runs it finished, because scripts/measure-verdict.ps1
+    # finds them only through record.json.
+    $root = New-SettingFixture
+    try {
+        $result = Invoke-Harness -Root $root -Arguments @('-Mode', 'Integration', '-SoakMode', '-Setting', 'Budget', '-Runs', '3')
+        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
+        $seen = @(Get-Content -LiteralPath (Join-Path $root 'stub\record-seen.txt')) -join ', '
+        Assert-True ($seen -eq 'call=1 runs=none, call=2 runs=1, call=3 runs=2') "Seen: $seen"
+        Assert-True (@((Get-SessionRecord $root 'Integration').Runs).Count -eq 3) 'record.json does not hold the 3 runs.'
     }
     finally { Remove-HarnessFixture -Root $root }
 }

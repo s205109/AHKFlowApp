@@ -497,18 +497,24 @@ function Invoke-SettingSession {
             EvidenceOwned = $result.EvidenceOwned
         }
         $sessionRuns.Add($entry)
+        Save-SessionRecord
         return $entry
     }
 
+    # Saved after every run, so a session stopped part way keeps the runs it finished. The record
+    # goes to a new file first, and that file then replaces the old one, so a stop during the
+    # write never leaves half a record.
+    $revision = "$(& git rev-parse HEAD)".Trim()
     function Save-SessionRecord {
-        param([string]$Kind)
+        $path = Join-Path $SessionRoot 'record.json'
         [pscustomobject][ordered]@{
-            Revision = "$(& git rev-parse HEAD)".Trim()
+            Revision = $revision
             Mode = $Mode
-            Kind = $Kind
+            Kind = $(if ($SoakMode) { 'soak' } else { 'timing' })
             Settings = @($Settings | ForEach-Object { $_.Name })
             Runs = $sessionRuns.ToArray()
-        } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $SessionRoot 'record.json') -Encoding utf8
+        } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath "$path.new" -Encoding utf8
+        Move-Item -LiteralPath "$path.new" -Destination $path -Force
     }
 
     if ($SoakMode) {
@@ -516,7 +522,6 @@ function Invoke-SettingSession {
         for ($run = 1; $run -le $Runs; $run++) {
             [void](Invoke-SessionRun -Item $item -Kind 'soak')
         }
-        Save-SessionRecord -Kind 'soak'
 
         $failedRuns = @($sessionRuns | Where-Object { $_.Failed })
         Write-Host ''
@@ -569,13 +574,11 @@ function Invoke-SettingSession {
             if ($entry.Failed) {
                 $failedCounted++
                 if ($failedCounted -ge 3) {
-                    Save-SessionRecord -Kind 'timing'
                     throw "Stopped after 3 failed counted runs. A run that fails this often cannot be timed. See $SessionRoot."
                 }
             }
         }
     }
-    Save-SessionRecord -Kind 'timing'
 
     Write-Host ''
     Write-Host "$Mode over $Runs counted runs per setting" -ForegroundColor Cyan
