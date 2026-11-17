@@ -24,19 +24,20 @@ invalid, so that I know what to fix without first typing a valid body.
 The evidence for the bug gate at Design entry.
 
 1. The dialog keeps a field's preview error until the next preview response replaces it.
-   `ApplyPreviewResult` clears `_previewFieldErrors` only when a response arrives
-   (`src/Frontend/AHKFlowApp.UI.Blazor/Components/Hotkeys/HotkeyEditDialog.razor:704`,
-   "_previewFieldErrors.Clear();"). So while the owner edits the Body field, the dialog keeps
-   sending `Error="true"` to it.
+   `ApplyPreviewResult` clears `_previewFieldErrors` only when a response arrives:
+   (`src/Frontend/AHKFlowApp.UI.Blazor/Components/Hotkeys/HotkeyEditDialog.razor:704`, "_previewFieldErrors.Clear();").
+   So while the owner edits the Body field, the dialog keeps sending `Error="true"` to it.
 2. MudBlazor 9.3.0 validates a field when its value changes, and writes the result into the
    field's own error state. `MudFormComponent.ValidateValue` calls
-   `ErrorState.SetValueAsync(errors.Count > 0)` (`src/MudBlazor/Base/MudFormComponent.cs:425` at tag
-   `v9.3.0`). The Body field has no client rule for these errors, so its state becomes `false`.
+   `ErrorState.SetValueAsync(errors.Count > 0)`:
+   [`MudFormComponent.cs` line 425 at v9.3.0](https://github.com/MudBlazor/MudBlazor/blob/v9.3.0/src/MudBlazor/Base/MudFormComponent.cs#L425).
+   The Body field has no client rule for these errors, so its state becomes `false`.
 3. MudBlazor takes a new value from the parent only when it differs from the last value the parent
    sent. `ParameterStateInternal<T>.OnParametersSet` compares against `_lastValue`, not against the
-   current state (`src/MudBlazor/State/ParameterStateInternalOfT.cs:166` at tag `v9.3.0`). The
-   dialog sends `true` again, so the field keeps `false`. It takes the new `ErrorText`, but shows
-   the helper text, because it is not in error.
+   current state:
+   [`ParameterStateInternalOfT.cs` line 166 at v9.3.0](https://github.com/MudBlazor/MudBlazor/blob/v9.3.0/src/MudBlazor/State/ParameterStateInternalOfT.cs#L166).
+   The dialog sends `true` again, so the field keeps `false`. It takes the new `ErrorText`, but
+   shows the helper text, because it is not in error.
 4. A valid body in between hides the bug. The dialog then sends `false` and later `true`, which is a
    change.
 
@@ -54,8 +55,8 @@ The same probe passed after one added line removed the Body field's preview erro
 request. It failed again when that line was taken out.
 
 The hotstring edit dialog does not have this bug. It clears its preview errors before every new
-request (`src/Frontend/AHKFlowApp.UI.Blazor/Components/Hotstrings/HotstringEditDialog.razor:863`,
-"_previewFieldErrors.Clear();").
+request:
+(`src/Frontend/AHKFlowApp.UI.Blazor/Components/Hotstrings/HotstringEditDialog.razor:877`, "_previewFieldErrors.Clear();").
 
 ## Acceptance criteria
 
@@ -65,7 +66,8 @@ request (`src/Frontend/AHKFlowApp.UI.Blazor/Components/Hotstrings/HotstringEditD
       another. The test fails when the fix is taken out.
 - [ ] `RawBodyInjectingAnotherHotkey_BlocksPreviewGeneration` goes straight from the injected body to
       the unbalanced-braces body, with no valid body in between.
-- [ ] No comment in the repository says that a bUnit test cannot pin the Body field's inline error.
+- [ ] No comment under `src/` or `tests/` says that a bUnit test cannot pin the Body field's inline
+      error.
 
 ## Out of scope
 
@@ -75,7 +77,8 @@ request (`src/Frontend/AHKFlowApp.UI.Blazor/Components/Hotstrings/HotstringEditD
 ## Notes / dependencies
 
 - GitHub issue #472. Found in PR #471, review finding 4.
-- This explains the symptom that backlog 051 reported and then could not reproduce. The first
-  report moved between two invalid bodies. The later check typed one invalid body only.
-- Spec: none — a moderate bug with a known root cause and no design choice.
-- Plan: <path, or "none — reason">
+- Backlog 051 reported the same missing error and then could not reproduce it. Its later bUnit
+  probe typed one invalid body only, so the dialog's `Error` went from `false` to `true`, which
+  MudBlazor detects. The steps of 051's first report are not recorded.
+- Spec: none — a moderate bug with a known root cause. The plan records its one design choice.
+- Plan: `docs/superpowers/plans/2026-11-17-raw-hotkey-body-error-plan-213.md`
