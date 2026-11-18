@@ -668,8 +668,17 @@
 
     private void RefreshPreview()
     {
-        if (_previewExpanded)
-            _preview.Schedule(Item.ToPreviewRequest(), TimeSpan.Zero);
+        if (!_previewExpanded)
+            return;
+
+        // Backlog 213: every field error from the last preview judged the old values, so drop them
+        // all before the next request. A field also drops its own error state when its value
+        // changes. MudBlazor then takes a new Error value only when it differs from the last one
+        // sent. Clearing here sends false in the render before the response, and true after it,
+        // so the field shows the new error. That order is an assumption about real HTTP, and
+        // HotkeysCrudFlowTests checks it in a browser. The hotstring dialog clears the same way.
+        _previewFieldErrors.Clear();
+        _preview.Schedule(Item.ToPreviewRequest(), TimeSpan.Zero);
     }
 
     private void OnPreviewExpandedChanged(bool expanded)

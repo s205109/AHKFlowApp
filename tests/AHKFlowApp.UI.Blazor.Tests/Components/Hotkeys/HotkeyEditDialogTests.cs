@@ -741,6 +741,55 @@ public sealed class HotkeyEditDialogTests : BunitContext, IAsyncLifetime
         });
     }
 
+    // Backlog 213: a field that already shows a preview error must show the next one too. MudBlazor
+    // takes a new Error value only when it differs from the last one the dialog sent. Typing makes
+    // the field drop its own error state, so a second "true" in a row is never shown. The other
+    // preview-error tests start with no error on the field, so they cannot catch this.
+    //
+    // The second response is held until the dialog has rendered. That is the order the fix assumes
+    // for real HTTP, and the browser flow in HotkeysCrudFlowTests checks it. A stub that answers at
+    // once would land before that render.
+    [Fact]
+    public async Task PreviewPanel_SecondValidationFailureOnTheSameField_StillShowsOnTheField()
+    {
+        _api.PreviewAsync(Arg.Is<HotkeyPreviewRequestDto>(r => r.Body == "first"), Arg.Any<CancellationToken>())
+            .Returns(ApiResult<HotkeyPreviewDto>.Failure(
+                ApiResultStatus.Validation,
+                new ApiProblemDetails(null, "Validation failed", 400, null, null,
+                    new Dictionary<string, string[]> { ["Input.Body"] = ["First error."] })));
+        TaskCompletionSource<ApiResult<HotkeyPreviewDto>> second = new();
+        _api.PreviewAsync(Arg.Is<HotkeyPreviewRequestDto>(r => r.Body == "second"), Arg.Any<CancellationToken>())
+            .Returns(second.Task);
+
+        IRenderedComponent<MudDialogProvider> provider =
+            await ShowDialogAsync(new HotkeyEditModel { Key = "k", ActionKind = HotkeyActionKind.Raw, Body = "first" });
+
+        provider.Find("[data-test=\"ahk-preview\"] .mud-expand-panel-header").Click();
+
+        provider.WaitForAssertion(() =>
+        {
+            provider.Find(".raw-body-wrap .mud-input-helper-text").TextContent.Should().Contain("First error.");
+            provider.Find("textarea[data-test=\"raw-body-input\"]").GetAttribute("aria-invalid").Should().Be("true");
+        });
+
+        provider.Find("textarea[data-test=\"raw-body-input\"]").Input("second");
+
+        provider.WaitForAssertion(() => _api.Received(1).PreviewAsync(
+            Arg.Is<HotkeyPreviewRequestDto>(r => r.Body == "second"), Arg.Any<CancellationToken>()));
+        Task secondRun = PreviewRun(provider);
+        await provider.InvokeAsync(() => second.SetResult(ApiResult<HotkeyPreviewDto>.Failure(
+            ApiResultStatus.Validation,
+            new ApiProblemDetails(null, "Validation failed", 400, null, null,
+                new Dictionary<string, string[]> { ["Input.Body"] = ["Second error."] }))));
+        await secondRun;
+
+        provider.WaitForAssertion(() =>
+        {
+            provider.Find(".raw-body-wrap .mud-input-helper-text").TextContent.Should().Contain("Second error.");
+            provider.Find("textarea[data-test=\"raw-body-input\"]").GetAttribute("aria-invalid").Should().Be("true");
+        });
+    }
+
     [Fact]
     public async Task PreviewPanel_ValidationKeyInADifferentCase_StillLandsOnItsField()
     {
