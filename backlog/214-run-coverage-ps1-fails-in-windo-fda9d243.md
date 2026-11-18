@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: none (`scripts/run-coverage.ps1`, `scripts/test-sql-container.common.ps1`)
 - **Difficulty**: moderate
-- **Stage**: 3-plan
+- **Stage**: 4-execute
 
 ## Summary
 
