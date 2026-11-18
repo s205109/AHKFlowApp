@@ -106,9 +106,10 @@ public sealed class HotkeysCrudFlowTests(StackFixtureB fixture) : IAsyncLifetime
     // on screen — the body field debounces for 300 ms (HotkeyEditDialog.razor:175). Proving the
     // snippet rendered first means the blocked message can only come from the injected definition.
     //
-    // The end of the flow covers backlog 051: the Body field's own inline error, on the preview
-    // path. A bUnit test cannot pin this — it renders the field correctly whether or not the
-    // browser does — so the guard has to run in a real browser against the real validation rule.
+    // The end of the flow covers backlogs 051 and 213: the Body field's own inline error on the
+    // preview path, after the field already showed a different error. The bUnit test
+    // PreviewPanel_SecondValidationFailureOnTheSameField_StillShowsOnTheField pins the same rule.
+    // This flow checks it against the real API, real HTTP and the real validation rule.
     [Fact]
     public async Task RawBodyInjectingAnotherHotkey_BlocksPreviewGeneration()
     {
@@ -143,13 +144,9 @@ public sealed class HotkeysCrudFlowTests(StackFixtureB fixture) : IAsyncLifetime
         await Assertions.Expect(page.Locator(".hotkey-edit-dialog [data-test=\"preview-snippet\"]"))
             .ToHaveCountAsync(0);
 
-        // Back to a valid body, then one with unbalanced braces: the Body field itself shows the
-        // error. Going straight from the injected body to this one does not show it, so the flow
-        // starts from a generated snippet, as a person editing a working body would.
-        await page.FillAsync(".hotkey-edit-dialog textarea[data-test=\"raw-body-input\"]", "return");
-        await Assertions.Expect(page.Locator(".hotkey-edit-dialog [data-test=\"preview-snippet\"]"))
-            .ToContainTextAsync("j::return");
-
+        // Straight from the injected body to one with unbalanced braces: the Body field itself
+        // shows the new error. Before backlog 213 the field kept its helper text here. It was in
+        // error before the edit, and MudBlazor ignored the dialog's repeated Error value.
         await page.FillAsync(".hotkey-edit-dialog textarea[data-test=\"raw-body-input\"]", "if (1) {");
 
         await Assertions.Expect(page.Locator(".hotkey-edit-dialog .raw-body-wrap .mud-input-helper-text"))
