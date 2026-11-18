@@ -68,4 +68,7 @@ removed" and "tests cover the new API" cannot.
   the suite, and that suite declares `#Requires -Version 7.0`. So no existing test runs the script
   in 5.1.
 - Spec: none — `moderate` item. The root cause is known, and there is no design question.
-- Plan: to be written in Stage 3.
+- Plan: `docs/superpowers/plans/2026-11-18-run-coverage-in-windows-powershell-5-1-plan-214.md`
+- A third 5.1 cause turned up while the plan was written. `ConvertFrom-Json` in 5.1 returns the
+  `docker inspect` array as one object, so `Get-AhkFlowTestSqlContainerState` reads every field as
+  empty. The ownership check then refuses the checkout's own container. Plan Task 2 fixes it.
