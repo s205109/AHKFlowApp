@@ -86,7 +86,8 @@ function New-SqlContainerFixture {
     # cannot carry these arguments. cmd.exe reads the '^' in 'name=^ahkflow-testsql-' as its own
     # escape character, which unbalances the quoting around the next argument and turns the '|' in
     # the --format string into a pipe. The guarantee is covered instead by the scope case and the
-    # source rule at the end of this file.
+    # source rule at the end of this file, and by the two Windows PowerShell 5.1 cases, which
+    # use a .cmd stub that takes no arguments into account.
     Set-Content -LiteralPath (Join-Path $stubFolder 'git.ps1') -Encoding utf8 -Value @'
 $stubFolder = Split-Path -Parent $PSCommandPath
 Add-Content -LiteralPath (Join-Path $stubFolder 'git-calls.txt') -Value ($args -join ' ')
@@ -584,6 +585,68 @@ Invoke-TestCase 'Every function that runs docker scopes that preference itself' 
     }
 }
 
+Invoke-TestCase 'Windows PowerShell 5.1 reads docker stderr as data, not as an error' {
+    # Backlog 214. Under 'Stop', 5.1 turned each stderr line of a redirected native command into a
+    # terminating error, so a missing container stopped the first run. A .cmd stub is a native
+    # command, which the .ps1 stub is not. It ignores its arguments, writes to stderr and fails.
+    Assert-True (Test-Path -LiteralPath $windowsPowerShell) "Windows PowerShell 5.1 was not found at $windowsPowerShell, so the 5.1 cases cannot run."
+    $root = New-SqlContainerFixture
+    try {
+        $stub = Join-Path $root 'stub'
+        Remove-Item -LiteralPath (Join-Path $stub 'docker.ps1')
+        Set-Content -LiteralPath (Join-Path $stub 'docker.cmd') -Encoding ascii -Value @('@echo off', '>&2 echo stub docker: refused', 'exit /b 1')
+
+        $out = Invoke-InFixture -Root $root -HostExe $windowsPowerShell -Expression (
+            '$s = Get-AhkFlowTestSqlContainerState -ContainerName probe; "state-null=$($null -eq $s)"; ' +
+            '$stopped = [pscustomobject]@{ Image = $script:AhkFlowTestSqlImage; Running = $false; HostPort = ''1'' }; ' +
+            '"start=$(Test-AhkFlowTestSqlContainer -ContainerName probe -State $stopped)"; ' +
+            'try { $null = New-AhkFlowTestSqlContainer -ContainerName probe } catch { "run=$($_.Exception.Message)" }; ' +
+            'try { Wait-AhkFlowTestSqlReady -ContainerName probe -Password p -TimeoutSeconds 1 } catch { "wait=$($_.Exception.Message)" }; ' +
+            '"after=$ErrorActionPreference"')
+
+        Assert-True ($out -notmatch 'THREW') "No call may stop the run. Got: $out"
+        Assert-True ($out -match 'state-null=True') "A container docker cannot inspect must read as missing. Got: $out"
+        Assert-True ($out -match 'start=it was stopped and docker start failed: stub docker: refused') "A failed start must be the function's own answer. Got: $out"
+        Assert-True ($out -match "run=docker run failed for test SQL container 'probe'") "A failed build must give the script's own message. Got: $out"
+        Assert-True ($out -match "wait=Shared SQL test container 'probe' did not become ready within 1 seconds") "The poll must reach its timeout. Got: $out"
+        Assert-True ($out -match 'Docker logs:\s+stub docker: refused') "The timeout message must carry the docker logs. Got: $out"
+        Assert-True ($out -match 'after=Stop') "The caller's preference must still be Stop. Got: $out"
+    } finally { Remove-SqlContainerFixture -Root $root }
+}
+
+Invoke-TestCase "Every function that redirects native stderr in the container script sets ErrorActionPreference to Continue" {
+    # Backlog 214. The behaviour case above drives five functions through one stub. This case reads
+    # the source, so a function added later without the line is caught too. It reads the syntax
+    # tree, not the text, so a comment that names the assignment cannot satisfy it.
+    $source = Join-Path (Join-Path $repoRoot 'scripts') 'test-sql-container.common.ps1'
+    $errors = $null
+    $ast = [System.Management.Automation.Language.Parser]::ParseFile($source, [ref] $null, [ref] $errors)
+    Assert-True (-not $errors) 'test-sql-container.common.ps1 must parse cleanly.'
+
+    $functions = @($ast.FindAll({ $args[0] -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $true))
+    $redirecting = @()
+    foreach ($function in $functions) {
+        $redirects = @($function.Body.FindAll({
+                    param($node)
+                    $node -is [System.Management.Automation.Language.CommandAst] -and
+                    @($node.Redirections | Where-Object { $_.FromStream -eq [System.Management.Automation.Language.RedirectionStream]::Error }).Count -gt 0
+                }, $true)).Count -gt 0
+        if (-not $redirects) { continue }
+        $redirecting += $function.Name
+
+        $complies = @($function.Body.FindAll({
+                    param($node)
+                    $node -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+                    $node.Left -is [System.Management.Automation.Language.VariableExpressionAst] -and
+                    $node.Left.VariablePath.UserPath -eq 'ErrorActionPreference' -and
+                    $node.Right.Extent.Text -eq "'Continue'"
+                }, $true)).Count -gt 0
+        Assert-True $complies ("$($function.Name) redirects native stderr and does not set " +
+            '$ErrorActionPreference to ''Continue'', so Windows PowerShell 5.1 stops on the first stderr line.')
+    }
+    Assert-True ($redirecting.Count -gt 0) 'No function redirecting native stderr was found, so the match is broken.'
+}
+
 Invoke-TestCase 'The readiness poll keeps polling after a failing query' {
     # The first two queries fail, the way they do while SQL Server is still starting, and the third
     # succeeds. A poll that gave up on the first failure would report a healthy container as
@@ -1050,4 +1113,4 @@ if ($failures.Count -gt 0) {
     throw "Test SQL container lifecycle rules failed with $($failures.Count) problem(s). See the detail above."
 }
 
-Write-Host 'Test SQL container lifecycle rules passed. 39 cases.'
+Write-Host 'Test SQL container lifecycle rules passed. 41 cases.'
