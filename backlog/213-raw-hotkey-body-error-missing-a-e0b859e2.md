@@ -60,13 +60,13 @@ request:
 
 ## Acceptance criteria
 
-- [ ] With the preview panel expanded, a hotkey field that shows a preview error, and is then edited
+- [x] With the preview panel expanded, a hotkey field that shows a preview error, and is then edited
       into another invalid value, shows the new error on the field with `aria-invalid="true"`.
-- [ ] `HotkeyEditDialogTests` holds a bUnit test that moves the Body field from one preview error to
+- [x] `HotkeyEditDialogTests` holds a bUnit test that moves the Body field from one preview error to
       another. The test fails when the fix is taken out.
-- [ ] `RawBodyInjectingAnotherHotkey_BlocksPreviewGeneration` goes straight from the injected body to
+- [x] `RawBodyInjectingAnotherHotkey_BlocksPreviewGeneration` goes straight from the injected body to
       the unbalanced-braces body, with no valid body in between.
-- [ ] No comment under `src/` or `tests/` says that a bUnit test cannot pin the Body field's inline
+- [x] No comment under `src/` or `tests/` says that a bUnit test cannot pin the Body field's inline
       error.
 
 ## Out of scope
