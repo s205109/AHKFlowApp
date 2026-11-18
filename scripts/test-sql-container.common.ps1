@@ -118,7 +118,10 @@ function Get-AhkFlowTestSqlContainerState {
     $output = & docker inspect $ContainerName 2>&1
     if ($LASTEXITCODE -ne 0) { return $null }
 
-    try { $inspect = @($output | ConvertFrom-Json) } catch { return $null }
+    # Two steps, for Windows PowerShell 5.1. Its ConvertFrom-Json returns a JSON array as one
+    # object, so @() around the pipeline wrapped the whole array as a single element, and every
+    # field below read empty. Assigning first and wrapping the variable works on both hosts.
+    try { $parsed = $output | ConvertFrom-Json; $inspect = @($parsed) } catch { return $null }
     if ($inspect.Count -lt 1 -or $null -eq $inspect[0]) { return $null }
 
     $entry = $inspect[0]

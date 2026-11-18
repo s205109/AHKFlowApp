@@ -16,6 +16,7 @@ $PSNativeCommandUseErrorActionPreference = $false
 
 $repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 $failures = @()
+$windowsPowerShell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
 
 function Assert-True {
     param([bool] $Condition, [string] $Message)
@@ -305,7 +306,8 @@ function Invoke-InFixture {
     param(
         [Parameter(Mandatory = $true)][string] $Root,
         [Parameter(Mandatory = $true)][string] $Expression,
-        [switch] $NativeErrorsOn
+        [switch] $NativeErrorsOn,
+        [string] $HostExe = 'pwsh'
     )
 
     $prelude = if ($NativeErrorsOn) {
@@ -321,7 +323,12 @@ function Invoke-InFixture {
         ". '$(Join-Path (Join-Path $Root 'scripts') 'test-sql-container.common.ps1')'; " +
         "try { $body } catch { Write-Output (""THREW: "" + `$_.Exception.Message) }"
 
-    $output = & pwsh -NoProfile -Command $command 2>&1
+    # -ExecutionPolicy Bypass lets Windows PowerShell 5.1 run the .ps1 stubs on PATH.
+    $output = if ($HostExe -eq 'pwsh') {
+        & pwsh -NoProfile -Command $command 2>&1
+    } else {
+        & $HostExe -NoProfile -ExecutionPolicy Bypass -Command $command 2>&1
+    }
     return ($output | Out-String)
 }
 
@@ -359,6 +366,22 @@ Invoke-TestCase 'A healthy container is reused and nothing is built' {
         Assert-True ($out -match 'reused=True') "Expected reuse. Got: $out"
         Assert-True ((Get-DockerCallCount -Root $root -Verb 'run') -eq 0) 'Reuse must not call docker run.'
         Assert-True ((Get-DockerCallCount -Root $root -Verb 'rm') -eq 0) 'Reuse must not remove anything.'
+    } finally { Remove-SqlContainerFixture -Root $root }
+}
+
+Invoke-TestCase 'Windows PowerShell 5.1 reads a healthy container and reuses it' {
+    # Backlog 214. 5.1's ConvertFrom-Json returns a JSON array as one object, so the inspect
+    # result arrived as one Object[] and every field read empty. The ownership check then refused
+    # the checkout's own container. The .ps1 stub is enough here: the defect is in the JSON
+    # reading, not in how docker is started.
+    Assert-True (Test-Path -LiteralPath $windowsPowerShell) "Windows PowerShell 5.1 was not found at $windowsPowerShell, so the 5.1 cases cannot run."
+    $root = New-SqlContainerFixture -InspectPlan @('healthy')
+    try {
+        $out = Invoke-InFixture -Root $root -HostExe $windowsPowerShell -Expression '$r = Start-AhkFlowTestSqlContainer -RepoRoot <ROOT>; "reused=$($r.Reused) id=$($r.ContainerId) $($r.ConnectionString)"'
+        Assert-True ($out -match 'reused=True') "Windows PowerShell 5.1 must reuse the healthy container. Got: $out"
+        Assert-True ($out -match ('id=' + ('a' * 64))) "The container id must come from the inspect JSON. Got: $out"
+        Assert-True ($out -match 'Server=127\.0\.0\.1,14399;') "The host port must come from the inspect JSON. Got: $out"
+        Assert-True ((Get-DockerCallCount -Root $root -Verb 'run') -eq 0) 'A healthy container must not be rebuilt.'
     } finally { Remove-SqlContainerFixture -Root $root }
 }
 
@@ -1027,4 +1050,4 @@ if ($failures.Count -gt 0) {
     throw "Test SQL container lifecycle rules failed with $($failures.Count) problem(s). See the detail above."
 }
 
-Write-Host 'Test SQL container lifecycle rules passed. 38 cases.'
+Write-Host 'Test SQL container lifecycle rules passed. 39 cases.'
