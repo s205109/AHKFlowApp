@@ -25,7 +25,7 @@ The evidence for the bug gate at Design entry.
 
 1. The dialog keeps a field's preview error until the next preview response replaces it.
    `ApplyPreviewResult` clears `_previewFieldErrors` only when a response arrives:
-   (`src/Frontend/AHKFlowApp.UI.Blazor/Components/Hotkeys/HotkeyEditDialog.razor:704`, "_previewFieldErrors.Clear();").
+   (`src/Frontend/AHKFlowApp.UI.Blazor/Components/Hotkeys/HotkeyEditDialog.razor:713`, "_previewFieldErrors.Clear();").
    So while the owner edits the Body field, the dialog keeps sending `Error="true"` to it.
 2. MudBlazor 9.3.0 validates a field when its value changes, and writes the result into the
    field's own error state. `MudFormComponent.ValidateValue` calls
