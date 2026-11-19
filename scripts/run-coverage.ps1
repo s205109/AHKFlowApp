@@ -30,8 +30,9 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $coverageReportDirectory = Join-Path $repoRoot 'CoverageReport'
 $summaryJsonPath = Join-Path $coverageReportDirectory 'Summary.json'
 $summaryGithubPath = Join-Path $coverageReportDirectory 'SummaryGithub.md'
-$thresholdScriptPath = Join-Path $repoRoot 'scripts' 'ci' 'check-coverage-thresholds.py'
-$coverageResultsRoot = Join-Path $repoRoot 'TestResults' 'coverage'
+# Nested two-argument Join-Path calls: Windows PowerShell 5.1 refuses a third path argument.
+$thresholdScriptPath = Join-Path (Join-Path (Join-Path $repoRoot 'scripts') 'ci') 'check-coverage-thresholds.py'
+$coverageResultsRoot = Join-Path (Join-Path $repoRoot 'TestResults') 'coverage'
 $sharedSqlScript = Join-Path $PSScriptRoot 'test-sql-container.common.ps1'
 . $sharedSqlScript
 . "$PSScriptRoot\Common.ps1"

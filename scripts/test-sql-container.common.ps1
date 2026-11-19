@@ -89,6 +89,10 @@ function Get-AhkFlowTestSqlComposeProject {
     # name the branch raises a terminating error under $ErrorActionPreference = 'Stop'. The throw
     # below explains what to repair, and it would never run.
     $PSNativeCommandUseErrorActionPreference = $false
+    # Windows PowerShell 5.1 has no such variable. Under 'Stop' it turns each stderr line of a
+    # redirected native command into a terminating error instead, so the preference below is
+    # scoped here as well. The exit code then decides, on both hosts.
+    $ErrorActionPreference = 'Continue'
 
     $branch = (& git -C $RepoRoot rev-parse --abbrev-ref HEAD 2>$null)
     if ($branch) { $branch = ([string]$branch).Trim() }
@@ -111,14 +115,20 @@ function Get-AhkFlowTestSqlContainerState {
     # $ErrorActionPreference is Stop and $PSNativeCommandUseErrorActionPreference is true, and
     # scripts/test-fast.ps1 only sets that preference inside its PowerShell mode branch. Setting it
     # here creates a copy scoped to this function, so the exit code stays data rather than an error
-    # and the caller's own value is untouched when this returns. The variable does not exist in
-    # 5.1, where setting it is harmless.
+    # and the caller's own value is untouched when this returns.
     $PSNativeCommandUseErrorActionPreference = $false
+    # Windows PowerShell 5.1 has no such variable. Under 'Stop' it turns each stderr line of a
+    # redirected native command into a terminating error instead, so the preference below is
+    # scoped here as well. The exit code then decides, on both hosts.
+    $ErrorActionPreference = 'Continue'
 
     $output = & docker inspect $ContainerName 2>&1
     if ($LASTEXITCODE -ne 0) { return $null }
 
-    try { $inspect = @($output | ConvertFrom-Json) } catch { return $null }
+    # Two steps, for Windows PowerShell 5.1. Its ConvertFrom-Json returns a JSON array as one
+    # object, so @() around the pipeline wrapped the whole array as a single element, and every
+    # field below read empty. Assigning first and wrapping the variable works on both hosts.
+    try { $parsed = $output | ConvertFrom-Json; $inspect = @($parsed) } catch { return $null }
     if ($inspect.Count -lt 1 -or $null -eq $inspect[0]) { return $null }
 
     $entry = $inspect[0]
@@ -228,6 +238,10 @@ function Test-AhkFlowTestSqlContainer {
     # Scoped the same way Get-AhkFlowTestSqlContainerState scopes it: a failed 'docker start' is an
     # answer this function reports, not an error that ends the run.
     $PSNativeCommandUseErrorActionPreference = $false
+    # Windows PowerShell 5.1 has no such variable. Under 'Stop' it turns each stderr line of a
+    # redirected native command into a terminating error instead, so the preference below is
+    # scoped here as well. The exit code then decides, on both hosts.
+    $ErrorActionPreference = 'Continue'
 
     if (-not $State.Running) {
         $output = & docker start $ContainerName 2>&1
@@ -277,6 +291,11 @@ function New-AhkFlowTestSqlContainer {
     # 'docker run' while $ErrorActionPreference is Stop, and the message below — the one that names
     # the container and the image — never reaches the reader.
     $PSNativeCommandUseErrorActionPreference = $false
+    # Windows PowerShell 5.1 has no such variable. Under 'Stop' it turns each stderr line of a
+    # redirected native command into a terminating error instead, so the preference below is
+    # scoped here as well. The exit code then decides, on both hosts. A first run on a machine
+    # without the image makes 'docker run' write its pull progress to stderr and still exit 0.
+    $ErrorActionPreference = 'Continue'
 
     $arguments = @('run', '--detach', '--name', $ContainerName)
 
@@ -478,13 +497,16 @@ function Wait-AhkFlowTestSqlReady {
     # terminating error while $ErrorActionPreference is Stop and
     # $PSNativeCommandUseErrorActionPreference is true, so the first poll would throw and the
     # timeout would never be reached. Setting the preference here creates a copy scoped to this
-    # function, so the caller's value is untouched when it returns, and the variable does not exist
-    # in 5.1, where setting it is harmless.
+    # function, so the caller's value is untouched when it returns.
     #
     # Test-AhkFlowTestSqlContainer catches whatever escapes this function and calls the container
     # unverifiable, so without this line a healthy container that needed three seconds to boot
     # would be replaced instead of waited for.
     $PSNativeCommandUseErrorActionPreference = $false
+    # Windows PowerShell 5.1 has no such variable. Under 'Stop' it turns each stderr line of a
+    # redirected native command into a terminating error instead, so the preference below is
+    # scoped here as well. The exit code then decides, on both hosts.
+    $ErrorActionPreference = 'Continue'
 
     $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
     $lastOutput = ''

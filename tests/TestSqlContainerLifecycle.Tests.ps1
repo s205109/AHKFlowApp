@@ -16,6 +16,7 @@ $PSNativeCommandUseErrorActionPreference = $false
 
 $repoRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 $failures = @()
+$windowsPowerShell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
 
 function Assert-True {
     param([bool] $Condition, [string] $Message)
@@ -85,7 +86,8 @@ function New-SqlContainerFixture {
     # cannot carry these arguments. cmd.exe reads the '^' in 'name=^ahkflow-testsql-' as its own
     # escape character, which unbalances the quoting around the next argument and turns the '|' in
     # the --format string into a pipe. The guarantee is covered instead by the scope case and the
-    # source rule at the end of this file.
+    # source rule at the end of this file, and by the two Windows PowerShell 5.1 cases, which
+    # use a .cmd stub that takes no arguments into account.
     Set-Content -LiteralPath (Join-Path $stubFolder 'git.ps1') -Encoding utf8 -Value @'
 $stubFolder = Split-Path -Parent $PSCommandPath
 Add-Content -LiteralPath (Join-Path $stubFolder 'git-calls.txt') -Value ($args -join ' ')
@@ -305,7 +307,8 @@ function Invoke-InFixture {
     param(
         [Parameter(Mandatory = $true)][string] $Root,
         [Parameter(Mandatory = $true)][string] $Expression,
-        [switch] $NativeErrorsOn
+        [switch] $NativeErrorsOn,
+        [string] $HostExe = 'pwsh'
     )
 
     $prelude = if ($NativeErrorsOn) {
@@ -321,7 +324,12 @@ function Invoke-InFixture {
         ". '$(Join-Path (Join-Path $Root 'scripts') 'test-sql-container.common.ps1')'; " +
         "try { $body } catch { Write-Output (""THREW: "" + `$_.Exception.Message) }"
 
-    $output = & pwsh -NoProfile -Command $command 2>&1
+    # -ExecutionPolicy Bypass lets Windows PowerShell 5.1 run the .ps1 stubs on PATH.
+    $output = if ($HostExe -eq 'pwsh') {
+        & pwsh -NoProfile -Command $command 2>&1
+    } else {
+        & $HostExe -NoProfile -ExecutionPolicy Bypass -Command $command 2>&1
+    }
     return ($output | Out-String)
 }
 
@@ -359,6 +367,22 @@ Invoke-TestCase 'A healthy container is reused and nothing is built' {
         Assert-True ($out -match 'reused=True') "Expected reuse. Got: $out"
         Assert-True ((Get-DockerCallCount -Root $root -Verb 'run') -eq 0) 'Reuse must not call docker run.'
         Assert-True ((Get-DockerCallCount -Root $root -Verb 'rm') -eq 0) 'Reuse must not remove anything.'
+    } finally { Remove-SqlContainerFixture -Root $root }
+}
+
+Invoke-TestCase 'Windows PowerShell 5.1 reads a healthy container and reuses it' {
+    # Backlog 214. 5.1's ConvertFrom-Json returns a JSON array as one object, so the inspect
+    # result arrived as one Object[] and every field read empty. The ownership check then refused
+    # the checkout's own container. The .ps1 stub is enough here: the defect is in the JSON
+    # reading, not in how docker is started.
+    Assert-True (Test-Path -LiteralPath $windowsPowerShell) "Windows PowerShell 5.1 was not found at $windowsPowerShell, so the 5.1 cases cannot run."
+    $root = New-SqlContainerFixture -InspectPlan @('healthy')
+    try {
+        $out = Invoke-InFixture -Root $root -HostExe $windowsPowerShell -Expression '$r = Start-AhkFlowTestSqlContainer -RepoRoot <ROOT>; "reused=$($r.Reused) id=$($r.ContainerId) $($r.ConnectionString)"'
+        Assert-True ($out -match 'reused=True') "Windows PowerShell 5.1 must reuse the healthy container. Got: $out"
+        Assert-True ($out -match ('id=' + ('a' * 64))) "The container id must come from the inspect JSON. Got: $out"
+        Assert-True ($out -match 'Server=127\.0\.0\.1,14399;') "The host port must come from the inspect JSON. Got: $out"
+        Assert-True ((Get-DockerCallCount -Root $root -Verb 'run') -eq 0) 'A healthy container must not be rebuilt.'
     } finally { Remove-SqlContainerFixture -Root $root }
 }
 
@@ -559,6 +583,68 @@ Invoke-TestCase 'Every function that runs docker scopes that preference itself' 
                  'terminating error under $ErrorActionPreference = Stop.')
         }
     }
+}
+
+Invoke-TestCase 'Windows PowerShell 5.1 reads docker stderr as data, not as an error' {
+    # Backlog 214. Under 'Stop', 5.1 turned each stderr line of a redirected native command into a
+    # terminating error, so a missing container stopped the first run. A .cmd stub is a native
+    # command, which the .ps1 stub is not. It ignores its arguments, writes to stderr and fails.
+    Assert-True (Test-Path -LiteralPath $windowsPowerShell) "Windows PowerShell 5.1 was not found at $windowsPowerShell, so the 5.1 cases cannot run."
+    $root = New-SqlContainerFixture
+    try {
+        $stub = Join-Path $root 'stub'
+        Remove-Item -LiteralPath (Join-Path $stub 'docker.ps1')
+        Set-Content -LiteralPath (Join-Path $stub 'docker.cmd') -Encoding ascii -Value @('@echo off', '>&2 echo stub docker: refused', 'exit /b 1')
+
+        $out = Invoke-InFixture -Root $root -HostExe $windowsPowerShell -Expression (
+            '$s = Get-AhkFlowTestSqlContainerState -ContainerName probe; "state-null=$($null -eq $s)"; ' +
+            '$stopped = [pscustomobject]@{ Image = $script:AhkFlowTestSqlImage; Running = $false; HostPort = ''1'' }; ' +
+            '"start=$(Test-AhkFlowTestSqlContainer -ContainerName probe -State $stopped)"; ' +
+            'try { $null = New-AhkFlowTestSqlContainer -ContainerName probe } catch { "run=$($_.Exception.Message)" }; ' +
+            'try { Wait-AhkFlowTestSqlReady -ContainerName probe -Password p -TimeoutSeconds 1 } catch { "wait=$($_.Exception.Message)" }; ' +
+            '"after=$ErrorActionPreference"')
+
+        Assert-True ($out -notmatch 'THREW') "No call may stop the run. Got: $out"
+        Assert-True ($out -match 'state-null=True') "A container docker cannot inspect must read as missing. Got: $out"
+        Assert-True ($out -match 'start=it was stopped and docker start failed: stub docker: refused') "A failed start must be the function's own answer. Got: $out"
+        Assert-True ($out -match "run=docker run failed for test SQL container 'probe'") "A failed build must give the script's own message. Got: $out"
+        Assert-True ($out -match "wait=Shared SQL test container 'probe' did not become ready within 1 seconds") "The poll must reach its timeout. Got: $out"
+        Assert-True ($out -match 'Docker logs:\s+stub docker: refused') "The timeout message must carry the docker logs. Got: $out"
+        Assert-True ($out -match 'after=Stop') "The caller's preference must still be Stop. Got: $out"
+    } finally { Remove-SqlContainerFixture -Root $root }
+}
+
+Invoke-TestCase "Every function that redirects native stderr in the container script sets ErrorActionPreference to Continue" {
+    # Backlog 214. The behaviour case above drives five functions through one stub. This case reads
+    # the source, so a function added later without the line is caught too. It reads the syntax
+    # tree, not the text, so a comment that names the assignment cannot satisfy it.
+    $source = Join-Path (Join-Path $repoRoot 'scripts') 'test-sql-container.common.ps1'
+    $errors = $null
+    $ast = [System.Management.Automation.Language.Parser]::ParseFile($source, [ref] $null, [ref] $errors)
+    Assert-True (-not $errors) 'test-sql-container.common.ps1 must parse cleanly.'
+
+    $functions = @($ast.FindAll({ $args[0] -is [System.Management.Automation.Language.FunctionDefinitionAst] }, $true))
+    $redirecting = @()
+    foreach ($function in $functions) {
+        $redirects = @($function.Body.FindAll({
+                    param($node)
+                    $node -is [System.Management.Automation.Language.CommandAst] -and
+                    @($node.Redirections | Where-Object { $_.FromStream -eq [System.Management.Automation.Language.RedirectionStream]::Error }).Count -gt 0
+                }, $true)).Count -gt 0
+        if (-not $redirects) { continue }
+        $redirecting += $function.Name
+
+        $complies = @($function.Body.FindAll({
+                    param($node)
+                    $node -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+                    $node.Left -is [System.Management.Automation.Language.VariableExpressionAst] -and
+                    $node.Left.VariablePath.UserPath -eq 'ErrorActionPreference' -and
+                    $node.Right.Extent.Text -eq "'Continue'"
+                }, $true)).Count -gt 0
+        Assert-True $complies ("$($function.Name) redirects native stderr and does not set " +
+            '$ErrorActionPreference to ''Continue'', so Windows PowerShell 5.1 stops on the first stderr line.')
+    }
+    Assert-True ($redirecting.Count -gt 0) 'No function redirecting native stderr was found, so the match is broken.'
 }
 
 Invoke-TestCase 'The readiness poll keeps polling after a failing query' {
@@ -1027,4 +1113,4 @@ if ($failures.Count -gt 0) {
     throw "Test SQL container lifecycle rules failed with $($failures.Count) problem(s). See the detail above."
 }
 
-Write-Host 'Test SQL container lifecycle rules passed. 38 cases.'
+Write-Host 'Test SQL container lifecycle rules passed. 41 cases.'
