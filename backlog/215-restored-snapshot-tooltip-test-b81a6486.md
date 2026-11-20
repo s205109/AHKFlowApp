@@ -57,5 +57,5 @@ run means a real problem.
 
 - GitHub issue #490 holds the triage comment and the first guess at the cause.
 - The failing assertion is at (`tests/AHKFlowApp.E2E.Tests/VersionHistoryFlowTests.cs:317`, "await Assertions.Expect(page.Locator(").
-- Spec: <path, or "none — reason">
-- Plan: <path, or "none — reason">
+- Spec: none — moderate item, the root cause above is the design input.
+- Plan: docs/superpowers/plans/2026-11-20-restored-snapshot-tooltip-test-plan-215.md
