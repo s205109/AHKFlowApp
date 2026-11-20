@@ -25,7 +25,7 @@ and the tooltip closes before the assertion sees it open.
 - That component renders nothing until the list has items (`src/Frontend/AHKFlowApp.UI.Blazor/Components/Common/CategoryFilterChips.razor:3`, "@if (Categories.Count > 0)").
 - `OnInitializedAsync` fills that list only after three calls in a row: preferences, profiles, then categories (`src/Frontend/AHKFlowApp.UI.Blazor/Pages/Hotstrings.razor:351`, "await CategoriesApi.ListAsync("). The grid loads its rows on its own, with one call. So the rows often appear first.
 - The test user always has categories. The first category list call seeds the defaults (`src/Backend/AHKFlowApp.Application/Queries/Categories/ListCategoriesQuery.cs:38`, "await EnsureSeededOnceAsync(ownerOid, ct);").
-- The test hovers as soon as the row shows (`tests/AHKFlowApp.E2E.Tests/VersionHistoryFlowTests.cs:316`, "HoverAsync();").
+- The test hovers as soon as the row shows (`tests/AHKFlowApp.E2E.Tests/VersionHistoryFlowTests.cs:322`, "HoverAsync();").
 
 **Reproduced on 2026-11-20.** A temporary probe held the `/api/v1/categories` response until
 the hover was done, then released it. The chip moved from y=278.875 to y=326.875, and the test
@@ -57,6 +57,6 @@ run means a real problem.
 ## Notes / dependencies
 
 - GitHub issue #490 holds the triage comment and the first guess at the cause.
-- The failing assertion is at (`tests/AHKFlowApp.E2E.Tests/VersionHistoryFlowTests.cs:317`, "await Assertions.Expect(page.Locator(").
+- The failing assertion is at (`tests/AHKFlowApp.E2E.Tests/VersionHistoryFlowTests.cs:323`, "mud-popover-open.no-profile-tooltip-text").
 - Spec: none — moderate item, the root cause above is the design input.
-- Plan: docs/superpowers/plans/2026-11-20-restored-snapshot-tooltip-test-plan-215.md
+- Plan: `docs/superpowers/plans/2026-11-20-restored-snapshot-tooltip-test-plan-215.md`
