@@ -46,9 +46,9 @@ run means a real problem.
 
 ## Acceptance criteria
 
-- [ ] The item states the root cause, with `file:line` evidence or a log line.
-- [ ] `RestoreOfSnapshotFailingCurrentRules_WarnsThenStillSaysWhyAfterAReload` passes in 30 repeated local runs in a row.
-- [ ] The test still checks that the "No profile" tooltip names the broken rule after a reload.
+- [x] The item states the root cause, with `file:line` evidence or a log line.
+- [x] `RestoreOfSnapshotFailingCurrentRules_WarnsThenStillSaysWhyAfterAReload` passes in 30 repeated local runs in a row.
+- [x] The test still checks that the "No profile" tooltip names the broken rule after a reload.
 
 ## Out of scope
 
