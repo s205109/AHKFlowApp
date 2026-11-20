@@ -35,8 +35,9 @@ passed. With a 2 second fixed delay instead, the test passed: the tooltip opened
 assertion passed before the chips arrived. So the test fails only when the chips arrive in the
 short window after the hover and before the assertion's first check.
 
-A person sees the same jump of the grid for a moment after the page opens. That is a minor
-layout shift, not the defect this item fixes.
+A person sees the same jump of the grid for a moment after the page opens. It can move the
+chip out from under their pointer and close their tooltip in the same way. This item fixes only
+the flaky test. A page fix belongs in a separate item.
 
 ## User story
 
