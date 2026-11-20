@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using AHKFlowApp.Application.DTOs;
+using AHKFlowApp.Domain.Constants;
 using AHKFlowApp.Domain.Entities;
 using AHKFlowApp.Domain.Enums;
 using AHKFlowApp.E2E.Tests.Fixtures;
@@ -312,6 +313,11 @@ public sealed class VersionHistoryFlowTests(StackFixtureD fixture) : IAsyncLifet
         await page.GotoAsync($"{fixture.Spa.BaseUrl}/hotstrings");
 
         ILocator row = page.Locator(".desktop-branch tbody tr", new() { HasTextString = "rb-bad" });
+        // The category filter chips sit above the grid and arrive after the rows. When they arrive
+        // they push the row down, the pointer leaves the chip, and the tooltip closes before the
+        // assertion below sees it. Backlog 215.
+        await Assertions.Expect(page.Locator(".desktop-branch .mud-chip", new() { HasTextString = DefaultCategories.Names[0] }))
+            .ToBeVisibleAsync();
         await page.Mouse.MoveAsync(0, 0);
         await row.Locator(".no-profile-chip").HoverAsync();
         await Assertions.Expect(page.Locator(".mud-popover-open.no-profile-tooltip-text"))
