@@ -103,4 +103,4 @@ still writes. The plan decides which ones need the same fix.
 - The suite runs on Windows only, in the `suites` job (`tests/powershell-suites.json:69`, "WorktreeRemoveHook.Tests.ps1").
 - Backlog 118 and GitHub issue #339 added the locked-helper case.
 - Spec: none — moderate item, the root cause above is the design input.
-- Plan: <path, or "none — reason">
+- Plan: `docs/superpowers/plans/2026-11-22-worktree-remove-hook-growing-log-plan-216.md`
