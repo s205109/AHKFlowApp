@@ -49,10 +49,10 @@ Exception: D:\a\AHKFlowApp\AHKFlowApp\tests\WorktreeRemoveHook.Tests.ps1:34
 The test reads the diagnostics log while the watcher still appends to it. `Get-Content -Raw`
 then returns more than one string, so `-match` returns an array instead of a boolean.
 
-1. The test waits until the worktree folder is gone (`tests/WorktreeRemoveHook.Tests.ps1:673`, "$removed = Wait-ForCondition { -not (Test-Path -LiteralPath $wtPath) }").
+1. The test waits until the worktree folder is gone (`tests/WorktreeRemoveHook.Tests.ps1:673`, "$removed = Wait-ForCondition { -not (Test-Path -LiteralPath $wtPath) }"). <!-- citation-check:ignore: Task 1 of the plan moved this line, and the text is on several lines now. The line records the code when CI failed. -->
 2. The folder disappears when the watcher renames it with `git worktree move` (`scripts/remove-worktree-local-dev.ps1:1255`, "'worktree', 'move', $worktreeFull, $tempName").
 3. The watcher keeps logging after that rename. The next line is (`scripts/remove-worktree-local-dev.ps1:1258`, "git worktree move succeeded"). The delete, the branch cleanup and "Watcher done" follow.
-4. So the test reads the log while it grows (`tests/WorktreeRemoveHook.Tests.ps1:676`, "$diagnostics = Get-Content -Raw -LiteralPath (Get-RemovalDiagnosticsPath $repo)").
+4. So the test reads the log while it grows (`tests/WorktreeRemoveHook.Tests.ps1:676`, "$diagnostics = Get-Content -Raw -LiteralPath (Get-RemovalDiagnosticsPath $repo)"). <!-- citation-check:ignore: Task 1 Step 5 of the plan replaced this read with Read-LogText. The line records the code when CI failed. -->
 5. While another process appends to a file, `Get-Content -Raw` on it can return more than one string. The repro below shows this. So `$diagnostics` becomes an array. The repro proves the behaviour only. Nobody has read the `Get-Content` source to name the exact step.
 6. `-match` on an array returns the matching elements, not `$true` (`tests/WorktreeRemoveHook.Tests.ps1:680`, "Assert-True ($diagnostics -match 'Watcher spawned')").
 7. `Assert-True` refuses any value that is not a boolean (`tests/WorktreeRemoveHook.Tests.ps1:31`, "if ($Condition -isnot [bool]) {").
