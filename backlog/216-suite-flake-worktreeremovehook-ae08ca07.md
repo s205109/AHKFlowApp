@@ -86,7 +86,7 @@ still writes. The plan decides which ones need the same fix.
 - [ ] No `-match` in `tests/WorktreeRemoveHook.Tests.ps1` runs on a log value that can be an array.
 - [ ] The locked-helper case still fails when the diagnostics log has no "Watcher spawned" line.
 - [ ] A test reads a file that another process appends to, and the suite's log read returns one string every time.
-- [ ] Backlog 068 is in `backlog/done/`, and its two open boxes are ticked or carry a reason.
+- [ ] Backlog 068 records the 2026-11-16 recurrence and its fix, and its two open boxes are ticked or carry a reason.
 
 ## Out of scope
 
@@ -99,6 +99,13 @@ still writes. The plan decides which ones need the same fix.
   waits for exactly this failure. Its flake A ruled the array out because `Get-Content -Raw`
   "returns one string for one file". The repro above shows that this is false while the file
   grows. This item does the work 068 asks for, and closes 068 in the same pull request.
+- At Ship, the closure commit also moves 068 to `backlog/done/` and sets its Stage to `9-ship`.
+  The step-outside cycle that freezes this item's plan also freezes 068's plan and spec. 068
+  stays in `backlog/blocked/` until then, so Review reads its records next to the diff.
+- Follow-ups, one item per suite, not filed yet. Two other suites read the same diagnostics log
+  with `Get-Content -Raw`: (`tests/WorktreeMergedCleanupSweep.Tests.ps1:428`, "Assert-True ((Get-Content -Raw -LiteralPath $diagnosticsLog) -match"),
+  (`tests/WorktreeMergedCleanupSweep.Tests.ps1:576`, "$diagnostics = Get-Content -Raw -LiteralPath (Join-Path $repo"),
+  and (`tests/WorktreeSweepRemoteBase.Tests.ps1:282`, "return (Get-Content -Raw -LiteralPath $logPath)").
 - GitHub issue #491 holds the first report. Its cause line is wrong, as the Detail section says.
 - The suite runs on Windows only, in the `suites` job (`tests/powershell-suites.json:69`, "WorktreeRemoveHook.Tests.ps1").
 - Backlog 118 and GitHub issue #339 added the locked-helper case.
