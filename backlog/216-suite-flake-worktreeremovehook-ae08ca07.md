@@ -102,7 +102,8 @@ still writes. The plan decides which ones need the same fix.
 - At Ship, 068 needs its own steps before the Ship transition runs, because the transition closes
   this item only. Follow **At Ship** in the plan. Freeze 068's plan and spec in their own
   plans-repository commit. Then move 068 to `backlog/done/` at Stage `9-ship` in its own commit,
-  and check both. If Ship returns to Execute, revert both commits. 068 stays in
+  and check both. If Ship takes the failure edge or nobody finishes it, follow the plan's
+  "If Ship does not finish" steps, which revert both commits. 068 stays in
   `backlog/blocked/` until then, so Review reads its records next to the diff.
 - Follow-ups, one item per suite: backlog 217 and backlog 218, filed on 2026-11-22 in their own
   worktrees. Two other suites read the same diagnostics log with `Get-Content -Raw`: (`tests/WorktreeMergedCleanupSweep.Tests.ps1:428`, "Assert-True ((Get-Content -Raw -LiteralPath $diagnosticsLog) -match"),
