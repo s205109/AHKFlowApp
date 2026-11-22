@@ -99,9 +99,11 @@ still writes. The plan decides which ones need the same fix.
   waits for exactly this failure. Its flake A ruled the array out because `Get-Content -Raw`
   "returns one string for one file". The repro above shows that this is false while the file
   grows. This item does the work 068 asks for, and closes 068 in the same pull request.
-- At Ship, the closure commit also moves 068 to `backlog/done/` and sets its Stage to `9-ship`.
-  The step-outside cycle that freezes this item's plan also freezes 068's plan and spec. 068
-  stays in `backlog/blocked/` until then, so Review reads its records next to the diff.
+- At Ship, 068 needs its own steps before the Ship transition runs, because the transition closes
+  this item only. Follow **At Ship** in the plan. Freeze 068's plan and spec in their own
+  plans-repository commit. Then move 068 to `backlog/done/` at Stage `9-ship` in its own commit,
+  and check both. If Ship returns to Execute, revert both commits. 068 stays in
+  `backlog/blocked/` until then, so Review reads its records next to the diff.
 - Follow-ups, one item per suite: backlog 217 and backlog 218, filed on 2026-11-22 in their own
   worktrees. Two other suites read the same diagnostics log with `Get-Content -Raw`: (`tests/WorktreeMergedCleanupSweep.Tests.ps1:428`, "Assert-True ((Get-Content -Raw -LiteralPath $diagnosticsLog) -match"),
   (`tests/WorktreeMergedCleanupSweep.Tests.ps1:576`, "$diagnostics = Get-Content -Raw -LiteralPath (Join-Path $repo"),
