@@ -91,7 +91,7 @@ still writes. The plan decides which ones need the same fix.
 ## Out of scope
 
 - The watcher itself. It logs correctly; only the test reads too early.
-- Other suites that read a growing file. File each one as its own item.
+- Other suites that read a growing file. Backlog 217 and backlog 218 cover the two known ones.
 
 ## Notes / dependencies
 
@@ -102,8 +102,8 @@ still writes. The plan decides which ones need the same fix.
 - At Ship, the closure commit also moves 068 to `backlog/done/` and sets its Stage to `9-ship`.
   The step-outside cycle that freezes this item's plan also freezes 068's plan and spec. 068
   stays in `backlog/blocked/` until then, so Review reads its records next to the diff.
-- Follow-ups, one item per suite, not filed yet. Two other suites read the same diagnostics log
-  with `Get-Content -Raw`: (`tests/WorktreeMergedCleanupSweep.Tests.ps1:428`, "Assert-True ((Get-Content -Raw -LiteralPath $diagnosticsLog) -match"),
+- Follow-ups, one item per suite: backlog 217 and backlog 218, filed on 2026-11-22 in their own
+  worktrees. Two other suites read the same diagnostics log with `Get-Content -Raw`: (`tests/WorktreeMergedCleanupSweep.Tests.ps1:428`, "Assert-True ((Get-Content -Raw -LiteralPath $diagnosticsLog) -match"),
   (`tests/WorktreeMergedCleanupSweep.Tests.ps1:576`, "$diagnostics = Get-Content -Raw -LiteralPath (Join-Path $repo"),
   and (`tests/WorktreeSweepRemoteBase.Tests.ps1:282`, "return (Get-Content -Raw -LiteralPath $logPath)").
 - GitHub issue #491 holds the first report. Its cause line is wrong, as the Detail section says.
