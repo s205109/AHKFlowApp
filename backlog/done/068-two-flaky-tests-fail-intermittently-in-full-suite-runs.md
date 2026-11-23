@@ -5,8 +5,8 @@
 - **Epic**: Test reliability
 - **Type**: Bug
 - **Interfaces**: UI | API | CLI (none — test code only)
-- **Status**: Fixed by backlog 216. It closes when pull request #495 ships.
-- **Stage**: 4-execute
+- **Status**: Closed by backlog 216
+- **Stage**: 9-ship
 
 ## Fixed by backlog 216
 
