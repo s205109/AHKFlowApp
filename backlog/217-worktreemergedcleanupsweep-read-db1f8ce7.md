@@ -52,9 +52,9 @@ watcher that is still writing.
 
 ## Acceptance criteria
 
-- [ ] No `-match` in `tests/WorktreeMergedCleanupSweep.Tests.ps1` runs on a diagnostics log value that can be an array.
-- [ ] The suite reads the diagnostics log with a read that returns one string while another process appends to the file.
-- [ ] Each changed assertion still fails when the diagnostics line it expects is missing.
+- [x] No `-match` in `tests/WorktreeMergedCleanupSweep.Tests.ps1` runs on a diagnostics log value that can be an array.
+- [x] The suite reads the diagnostics log with a read that returns one string while another process appends to the file.
+- [x] Each changed assertion still fails when the diagnostics line it expects is missing.
 
 ## Out of scope
 

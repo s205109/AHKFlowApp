@@ -436,6 +436,15 @@ place of the exclusion list the runner used to carry.
 CI runs the same script in the `powershell-suites` job, and that job has no docs-only filter, so it
 runs on every PR.
 
+A suite that reads a log while another process may still write to it loads
+`tests/LogText.Common.ps1` and reads the log with `Read-LogText`. Never use `Get-Content -Raw` for
+that. While a writer appends, `Get-Content -Raw` can return an array, and `-match` on an array
+returns the matching items, not `$true` or `$false`. Add this line near the top of the suite:
+
+```powershell
+. (Join-Path $PSScriptRoot 'LogText.Common.ps1')
+```
+
 ### Which platform a suite runs on
 
 `tests/powershell-suites.json` is the record. Every entry carries a `platform` array, and the only
