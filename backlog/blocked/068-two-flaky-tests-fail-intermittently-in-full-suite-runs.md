@@ -191,6 +191,12 @@ path made one function answer the same script block two different ways. It was r
         an array in 27 of 200 reads. After the fix, the full `suites` job ran 8 times in a row on
         revision d2adff12 (runs 11 to 18). `WorktreeRemoveHook.Tests.ps1` passed each time, all
         75 suites passed, and the job exit code was 0. No other suite failed.
+      - Four of those runs (12, 13, 15 and 17) were first refused, because they printed a
+        "Sharing the test Lane pool" line. The plan's rule refused any run with that line. Every
+        such line named only dead run records, written 2026-09-17 to 2026-11-16, whose locks
+        were not held. So no other run overlapped. The four runs were judged again under that
+        narrower rule, which the plan did not have. Under the plan's own rule, no three runs in a
+        row counted.
       - Flake B: see the 50 confidence runs in the Findings section.
 
 Backlog 216 meets criterion 3 for the 2026-11-16 recurrence, and names line 680. The 2026-08-08
