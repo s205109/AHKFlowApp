@@ -73,5 +73,5 @@ The mechanism is proven. Whether this suite's reads race with a watcher is not c
 - Reuse `Read-LogText`. Backlog 217 moved it into `tests/LogText.Common.ps1`, and pull request
   #496 merged that on 2026-11-23. Do not write another copy.
 - The suite runs on Windows only, in the `suites` job, and it runs Windows PowerShell 5.1 (`tests/powershell-suites.json:71`, "WorktreeSweepRemoteBase.Tests.ps1").
-- Spec: <path, or "none — reason">
-- Plan: <path, or "none — reason">
+- Spec: none — moderate item, the root cause above is the design input.
+- Plan: `docs/superpowers/plans/2026-11-23-sweep-remote-base-diagnostics-read-plan-218.md`
