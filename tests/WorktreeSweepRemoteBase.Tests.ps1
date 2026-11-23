@@ -19,6 +19,7 @@ $cleanupScript = Join-Path $scriptsDir 'cleanup-merged-worktrees.ps1'
 $removeScript = Join-Path $scriptsDir 'remove-worktree-local-dev.ps1'
 
 . (Join-Path $scriptsDir 'worktree-git.common.ps1')
+. (Join-Path $PSScriptRoot 'LogText.Common.ps1')
 
 function Assert-True {
     param([bool] $Condition, [string] $Message)
@@ -266,12 +267,16 @@ function Invoke-RemoveHook {
     }
 }
 
+# Both log helpers below read with Read-LogText from tests/LogText.Common.ps1. A watcher can still
+# append to either log when a case reads it, and Get-Content -Raw can then return an array. The
+# [string] parameters of Assert-Contains and Assert-NotContains join an array with spaces, so the
+# text no longer matches the file where the pieces split. Backlog 218.
 # The outcome log. From backlog 073 it carries one line per removal attempt and nothing else.
 function Get-RemovalLog {
     param([string] $RepoDir)
     $logPath = Join-Path $RepoDir '.claude\worktrees\worktree-removal.log'
     if (-not (Test-Path -LiteralPath $logPath)) { return '' }
-    return (Get-Content -Raw -LiteralPath $logPath)
+    return (Read-LogText -Path $logPath)
 }
 
 # The diagnostics log beside it. Every reason, base decision, and git result lands here.
@@ -279,7 +284,7 @@ function Get-RemovalDiagnostics {
     param([string] $RepoDir)
     $logPath = Join-Path $RepoDir '.claude\worktrees\worktree-removal-diagnostics.log'
     if (-not (Test-Path -LiteralPath $logPath)) { return '' }
-    return (Get-Content -Raw -LiteralPath $logPath)
+    return (Read-LogText -Path $logPath)
 }
 
 function Wait-ForWorktreeGone {

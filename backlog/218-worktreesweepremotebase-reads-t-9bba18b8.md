@@ -29,32 +29,36 @@ The mechanism is proven. Whether this suite's reads race with a watcher is not c
    reads on pwsh 7.6.10, and in 1565 reads on Windows PowerShell 5.1. Pull request #495 merged
    backlog 216 on 2026-11-23.
 2. This suite reads the diagnostics log that way in one helper
-   (`tests/WorktreeSweepRemoteBase.Tests.ps1:282`, "return (Get-Content -Raw -LiteralPath $logPath)").
+   (`tests/WorktreeSweepRemoteBase.Tests.ps1:282`, "return (Get-Content -Raw -LiteralPath $logPath)"). <!-- citation-check:ignore: backlog 218 replaced this read with Read-LogText. The line records the code when the item was filed. -->
 3. Its callers pass the value to `Assert-Contains` and `Assert-NotContains`, which take a
    `[string]` parameter
-   (`tests/WorktreeSweepRemoteBase.Tests.ps1:29`, "param([string] $Haystack, [string] $Needle, [string] $Message)").
+   (`tests/WorktreeSweepRemoteBase.Tests.ps1:30`, "param([string] $Haystack, [string] $Needle, [string] $Message)").
 4. A `[string]` parameter joins an array into one string, with one space between the pieces. A
    probe on 2026-11-22 showed this on pwsh 7.6.10 and on Windows PowerShell 5.1.26100.9818. So
    this suite does not fail on the type, unlike backlog 216 and backlog 217.
 5. The joined text differs from the file wherever the pieces split. An `Assert-Contains` whose
    text spans that point fails. An `Assert-NotContains` whose text spans it passes wrongly.
 6. The outcome log helper just above uses the same call
-   (`tests/WorktreeSweepRemoteBase.Tests.ps1:274`, "return (Get-Content -Raw -LiteralPath $logPath)").
+   (`tests/WorktreeSweepRemoteBase.Tests.ps1:274`, "return (Get-Content -Raw -LiteralPath $logPath)"). <!-- citation-check:ignore: backlog 218 replaced this read with Read-LogText. The line records the code when the item was filed. -->
 7. Pickup checked on 2026-11-23 which reads can run while a watcher still writes. One read can.
    That case runs the hook on a merged branch
-   (`tests/WorktreeSweepRemoteBase.Tests.ps1:513`, "$resolved = Invoke-RemoveHook -WorktreePath $fixture.Worktree").
+   (`tests/WorktreeSweepRemoteBase.Tests.ps1:518`, "$resolved = Invoke-RemoveHook -WorktreePath $fixture.Worktree").
    So the hook starts a watcher
    (`scripts/remove-worktree-local-dev.ps1:1107`, "Watcher spawned via WMI.").
    The case then reads the diagnostics log before it waits for the worktree to go
-   (`tests/WorktreeSweepRemoteBase.Tests.ps1:515`, "The hook must resolve and report its own base when none is passed.").
+   (`tests/WorktreeSweepRemoteBase.Tests.ps1:520`, "The hook must resolve and report its own base when none is passed.").
    The watcher appends to that log meanwhile. It also writes the outcome line at its end
    (`scripts/remove-worktree-local-dev.ps1:1438`, "Write-Outcome 'Removed.'").
 8. The other log reads run after every writer has exited. Each one follows a sweep or a hook
    that keeps the worktree, and the hook keeps a worktree before it starts a watcher
    (`scripts/remove-worktree-local-dev.ps1:953`, "-Reason 'the base branch could not be refreshed'")
    (`scripts/remove-worktree-local-dev.ps1:960`, "-Reason 'the branch is not merged'").
-   These are the reads at lines 433, 444, 445, 509 and 510 of the suite. No case reads the
-   outcome log while a watcher runs.
+   These are the five other log reads. Three are in the case with an unreachable remote: the
+   `Merged-cleanup requested removal`, `may be behind the remote` and
+   `Kept: the base branch could not be refreshed.` checks. The other two come just before the
+   merged-hook read, in the same case: the `is not merged into main` and
+   `Kept: the branch is not merged.` checks.
+   No case reads the outcome log while a watcher runs.
 9. Not checked yet: where the pieces split.
 
 ## Acceptance criteria
