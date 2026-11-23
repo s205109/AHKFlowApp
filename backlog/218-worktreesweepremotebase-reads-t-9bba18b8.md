@@ -26,8 +26,8 @@ The mechanism is proven. Whether this suite's reads race with a watcher is not c
 
 1. Backlog 216 reproduced it on 2026-11-22. One process appended to a file in a tight loop. A
    second process ran `Get-Content -Raw` on it 2000 times. The result was not a `[string]` in 1076
-   reads on pwsh 7.6.10, and in 1565 reads on Windows PowerShell 5.1. Backlog 216 is on pull
-   request #495 and is not on `main` yet.
+   reads on pwsh 7.6.10, and in 1565 reads on Windows PowerShell 5.1. Pull request #495 merged
+   backlog 216 on 2026-11-23.
 2. This suite reads the diagnostics log that way in one helper
    (`tests/WorktreeSweepRemoteBase.Tests.ps1:282`, "return (Get-Content -Raw -LiteralPath $logPath)").
 3. Its callers pass the value to `Assert-Contains` and `Assert-NotContains`, which take a
@@ -38,10 +38,24 @@ The mechanism is proven. Whether this suite's reads race with a watcher is not c
    this suite does not fail on the type, unlike backlog 216 and backlog 217.
 5. The joined text differs from the file wherever the pieces split. An `Assert-Contains` whose
    text spans that point fails. An `Assert-NotContains` whose text spans it passes wrongly.
-6. Not checked yet: whether the reads run while a watcher still writes, and where the pieces
-   split. The outcome log helper just above uses the same call
-   (`tests/WorktreeSweepRemoteBase.Tests.ps1:274`, "return (Get-Content -Raw -LiteralPath $logPath)"),
-   so Pickup checks it too.
+6. The outcome log helper just above uses the same call
+   (`tests/WorktreeSweepRemoteBase.Tests.ps1:274`, "return (Get-Content -Raw -LiteralPath $logPath)").
+7. Pickup checked on 2026-11-23 which reads can run while a watcher still writes. One read can.
+   That case runs the hook on a merged branch
+   (`tests/WorktreeSweepRemoteBase.Tests.ps1:513`, "$resolved = Invoke-RemoveHook -WorktreePath $fixture.Worktree").
+   So the hook starts a watcher
+   (`scripts/remove-worktree-local-dev.ps1:1107`, "Watcher spawned via WMI.").
+   The case then reads the diagnostics log before it waits for the worktree to go
+   (`tests/WorktreeSweepRemoteBase.Tests.ps1:515`, "The hook must resolve and report its own base when none is passed.").
+   The watcher appends to that log meanwhile. It also writes the outcome line at its end
+   (`scripts/remove-worktree-local-dev.ps1:1438`, "Write-Outcome 'Removed.'").
+8. The other log reads run after every writer has exited. Each one follows a sweep or a hook
+   that keeps the worktree, and the hook keeps a worktree before it starts a watcher
+   (`scripts/remove-worktree-local-dev.ps1:953`, "-Reason 'the base branch could not be refreshed'")
+   (`scripts/remove-worktree-local-dev.ps1:960`, "-Reason 'the branch is not merged'").
+   These are the reads at lines 433, 444, 445, 509 and 510 of the suite. No case reads the
+   outcome log while a watcher runs.
+9. Not checked yet: where the pieces split.
 
 ## Acceptance criteria
 
@@ -56,9 +70,8 @@ The mechanism is proven. Whether this suite's reads race with a watcher is not c
 
 ## Notes / dependencies
 
-- Pick this up after pull request #495 merges. Backlog 216 adds the helper `Read-LogText` to
-  `tests/WorktreeRemoveHook.Tests.ps1`. Backlog 217 may move it into a shared test file. Whichever
-  item starts second reuses that file instead of writing another copy.
+- Reuse `Read-LogText`. Backlog 217 moved it into `tests/LogText.Common.ps1`, and pull request
+  #496 merged that on 2026-11-23. Do not write another copy.
 - The suite runs on Windows only, in the `suites` job, and it runs Windows PowerShell 5.1 (`tests/powershell-suites.json:71`, "WorktreeSweepRemoteBase.Tests.ps1").
 - Spec: <path, or "none — reason">
 - Plan: <path, or "none — reason">
