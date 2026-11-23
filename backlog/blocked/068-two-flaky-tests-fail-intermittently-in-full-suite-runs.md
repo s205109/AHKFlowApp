@@ -185,23 +185,22 @@ path made one function answer the same script block two different ways. It was r
       - The 2026-11-16 failure named line 680, the `Watcher spawned` check of the locked-helper
         case. Backlog 216 switched every diagnostics read that feeds a `-match` to `Read-LogText`,
         which returns one string. The 2026-08-08 line is still not known.
-- [x] Both are exercised repeatedly enough to give confidence - run each in its normal full-suite
+- [ ] Both are exercised repeatedly enough to give confidence - run each in its normal full-suite
       context several times in a row and record the results
-      - Flake A: backlog 216's new case failed first against `Get-Content -Raw`, which returned
-        an array in 27 of 200 reads. After the fix, the full `suites` job ran 8 times in a row on
-        revision d2adff12 (runs 11 to 18). `WorktreeRemoveHook.Tests.ps1` passed each time, all
-        75 suites passed, and the job exit code was 0. No other suite failed.
-      - Four of those runs (12, 13, 15 and 17) were first refused, because they printed a
-        "Sharing the test Lane pool" line. The plan's rule refused any run with that line. Every
-        such line named only dead run records, written 2026-09-17 to 2026-11-16, whose locks
-        were not held. So no other run overlapped. The four runs were judged again under that
-        narrower rule, which the plan did not have. Under the plan's own rule, no three runs in a
-        row counted.
+      - Not met yet for flake A. Backlog 216 needs three counted full runs in a row, and it does
+        not have them yet.
+      - Backlog 216's new case failed first against `Get-Content -Raw`, which returned an array
+        in 27 of 200 reads.
+      - After the fix, the full `suites` job ran 8 times on revision d2adff12 (runs 11 to 18).
+        All 75 suites passed each time, and the job exit code was 0.
+      - Only runs 11, 14, 16 and 18 count. Runs 12, 13, 15 and 17 printed a "Sharing the test
+        Lane pool" line, and the plan refuses any run with that line. A later check found the
+        named records stale, but that check cannot show the lock was free during the run.
       - Flake B: see the 50 confidence runs in the Findings section.
 
 Backlog 216 meets criterion 3 for the 2026-11-16 recurrence, and names line 680. The 2026-08-08
-line stays unknown. Criterion 4 is met for flake B by the 50 runs above. It is met for flake A by
-the mechanism test and the counted full runs that backlog 216 records.
+line stays unknown. Criterion 4 is met for flake B by the 50 runs above. It is not met yet for
+flake A, because backlog 216 has no three counted full runs in a row.
 
 ## Out of scope
 
