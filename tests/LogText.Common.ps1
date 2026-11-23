@@ -7,7 +7,8 @@
 # A suite loads this file with:
 #     . (Join-Path $PSScriptRoot 'LogText.Common.ps1')
 #
-# The file needs Windows PowerShell 5.1, not 7.0, because suites on both hosts load it.
+# The file requires only version 5.1, so suites on Windows PowerShell 5.1 and on pwsh 7 can both
+# load it.
 # The .Common.ps1 name keeps the runner from running this file as a suite. The runner looks only
 # for *.Tests.ps1.
 # The file does not call Set-StrictMode, because that call leaks into the scope of the caller.
