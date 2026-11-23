@@ -167,10 +167,12 @@ function Read-LogText {
     # The share must include Write: the writer holds the log open for writing, and Windows refuses
     # a reader that does not share Write with it. Delete lets the writer rotate the log meanwhile.
     $stream = [System.IO.File]::Open($Path, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]'ReadWrite, Delete')
+    $reader = $null
     try {
         $reader = New-Object System.IO.StreamReader($stream, (New-Object System.Text.UTF8Encoding($false)), $true)
         return $reader.ReadToEnd()
     } finally {
+        if ($null -ne $reader) { $reader.Dispose() }
         $stream.Dispose()
     }
 }
@@ -308,11 +310,12 @@ Assert-True ($diagnosticMessage -match "from line ${expectedLine}:") `
 # Assert-True through -match and ends the suite. Part 1 holds the writer's own handle open, so it
 # does not depend on timing. Part 2 reads while a second process appends, as the watcher does.
 $readTestRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('readlog-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
-New-Item -ItemType Directory -Path $readTestRoot -Force | Out-Null
 $readTestLog = Join-Path $readTestRoot 'growing.log'
-[System.IO.File]::WriteAllText($readTestLog, "first line`r`n", (New-Object System.Text.UTF8Encoding($false)))
 $appenderExited = $true
 try {
+    New-Item -ItemType Directory -Path $readTestRoot -Force | Out-Null
+    [System.IO.File]::WriteAllText($readTestLog, "first line`r`n", (New-Object System.Text.UTF8Encoding($false)))
+
     # Part 1: read while the writer's own handle is open and holds a flushed line.
     $heldRead = $null
     $heldError = $null
