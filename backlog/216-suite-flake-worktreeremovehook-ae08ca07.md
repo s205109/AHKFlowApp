@@ -83,10 +83,18 @@ still writes. The plan decides which ones need the same fix.
 
 ## Acceptance criteria
 
-- [ ] No `-match` in `tests/WorktreeRemoveHook.Tests.ps1` runs on a log value that can be an array.
-- [ ] The locked-helper case still fails when the diagnostics log has no "Watcher spawned" line.
-- [ ] A test reads a file that another process appends to, and the suite's log read returns one string every time.
-- [ ] Backlog 068 records the 2026-11-16 recurrence and its fix, and its two open boxes are ticked or carry a reason.
+- [x] No `-match` in `tests/WorktreeRemoveHook.Tests.ps1` runs on a log value that can be an array.
+      - All ten diagnostics reads use `Read-LogText`. The four `Get-Content -Raw` reads left in the
+        file feed no `-match`.
+- [x] The locked-helper case still fails when the diagnostics log has no "Watcher spawned" line.
+      - A temporary change to the expected line made the case stop with "Expected the hook to
+        reach the spawn.", not with the boolean error.
+- [x] A test reads a file that another process appends to, and the suite's log read returns one string every time.
+      - The case "Read-LogText returns one string while the log is written" failed first against
+        `Get-Content -Raw` in 27 of 200 reads, and passes with `Read-LogText`.
+- [x] Backlog 068 records the 2026-11-16 recurrence and its fix, and its two open boxes are ticked or carry a reason.
+      - Both boxes are ticked. Box 4's note says the plan's rule of three counted runs in a row
+        was not reached, and that the user accepted six counted runs on 2026-11-23.
 
 ## Out of scope
 
