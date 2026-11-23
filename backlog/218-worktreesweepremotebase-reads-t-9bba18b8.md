@@ -59,13 +59,13 @@ The mechanism is proven. Whether this suite's reads race with a watcher is not c
    merged-hook read, in the same case: the `is not merged into main` and
    `Kept: the branch is not merged.` checks.
    No case reads the outcome log while a watcher runs.
-9. Not checked yet: where the pieces split.
+9. Not checked: where the pieces split. Read-LogText reads the whole file in one call, so the split point no longer matters.
 
 ## Acceptance criteria
 
-- [ ] `Get-RemovalDiagnostics` in `tests/WorktreeSweepRemoteBase.Tests.ps1` returns one string while another process appends to the log.
-- [ ] Each changed `Assert-Contains` still fails when the text it expects is missing.
-- [ ] Each changed `Assert-NotContains` still fails when the text it forbids is present.
+- [x] `Get-RemovalDiagnostics` in `tests/WorktreeSweepRemoteBase.Tests.ps1` returns one string while another process appends to the log.
+- [x] Each changed `Assert-Contains` still fails when the text it expects is missing.
+- [x] Each changed `Assert-NotContains` still fails when the text it forbids is present.
 
 ## Out of scope
 
