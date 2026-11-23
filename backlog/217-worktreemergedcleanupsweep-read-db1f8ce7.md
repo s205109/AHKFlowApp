@@ -67,5 +67,5 @@ watcher that is still writing.
   `tests/WorktreeRemoveHook.Tests.ps1`. This item can move it into a shared test file, so the
   suites do not keep two copies.
 - The suite runs on Windows only, in the `suites` job (`tests/powershell-suites.json:64`, "WorktreeMergedCleanupSweep.Tests.ps1").
-- Spec: <path, or "none — reason">
-- Plan: <path, or "none — reason">
+- Spec: none — moderate item, the root cause above is the design input.
+- Plan: `docs/superpowers/plans/2026-11-23-sweep-suite-diagnostics-read-plan-217.md`
