@@ -439,7 +439,9 @@ runs on every PR.
 A suite that reads a log while another process may still write to it loads
 `tests/LogText.Common.ps1` and reads the log with `Read-LogText`. Never use `Get-Content -Raw` for
 that. While a writer appends, `Get-Content -Raw` can return an array, and `-match` on an array
-returns the matching items, not `$true` or `$false`. Add this line near the top of the suite:
+returns the matching items, not `$true` or `$false`. A `[string]` parameter does not make the read
+safe either. It joins the array with spaces, so the text no longer matches the file. Add this
+line near the top of the suite:
 
 ```powershell
 . (Join-Path $PSScriptRoot 'LogText.Common.ps1')

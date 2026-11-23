@@ -116,7 +116,7 @@ still writes. The plan decides which ones need the same fix.
 - Follow-ups, one item per suite: backlog 217 and backlog 218, filed on 2026-11-22 in their own
   worktrees. Two other suites read the same diagnostics log with `Get-Content -Raw`: (`tests/WorktreeMergedCleanupSweep.Tests.ps1:428`, "Assert-True ((Get-Content -Raw -LiteralPath $diagnosticsLog) -match"), <!-- citation-check:ignore: backlog 217 replaced this read with Read-LogText. The line records the code when the item was filed. -->
   (`tests/WorktreeMergedCleanupSweep.Tests.ps1:576`, "$diagnostics = Get-Content -Raw -LiteralPath (Join-Path $repo"), <!-- citation-check:ignore: backlog 217 replaced this read with Read-LogText. The line records the code when the item was filed. -->
-  and (`tests/WorktreeSweepRemoteBase.Tests.ps1:282`, "return (Get-Content -Raw -LiteralPath $logPath)").
+  and (`tests/WorktreeSweepRemoteBase.Tests.ps1:282`, "return (Get-Content -Raw -LiteralPath $logPath)"). <!-- citation-check:ignore: backlog 218 replaced this read with Read-LogText. The line records the code when the item was filed. -->
 - GitHub issue #491 holds the first report. Its cause line is wrong, as the Detail section says.
 - The suite runs on Windows only, in the `suites` job (`tests/powershell-suites.json:69`, "WorktreeRemoveHook.Tests.ps1").
 - Backlog 118 and GitHub issue #339 added the locked-helper case.
