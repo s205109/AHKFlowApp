@@ -30,8 +30,8 @@ watcher that is still writing.
    reads on pwsh 7.6.10, and in 1565 reads on Windows PowerShell 5.1. Backlog 216 merged on
    2026-11-23 in pull request #495.
 2. This suite reads the diagnostics log twice that way:
-   (`tests/WorktreeMergedCleanupSweep.Tests.ps1:428`, "Assert-True ((Get-Content -Raw -LiteralPath $diagnosticsLog) -match")
-   and (`tests/WorktreeMergedCleanupSweep.Tests.ps1:576`, "$diagnostics = Get-Content -Raw -LiteralPath (Join-Path $repo").
+   (`tests/WorktreeMergedCleanupSweep.Tests.ps1:428`, "Assert-True ((Get-Content -Raw -LiteralPath $diagnosticsLog) -match") <!-- citation-check:ignore: backlog 217 replaced this read with Read-LogText. The line records the code when the item was filed. -->
+   and (`tests/WorktreeMergedCleanupSweep.Tests.ps1:576`, "$diagnostics = Get-Content -Raw -LiteralPath (Join-Path $repo"). <!-- citation-check:ignore: backlog 217 replaced this read with Read-LogText. The line records the code when the item was filed. -->
 3. `-match` on an array returns the matching elements, not a boolean.
 4. The suite's `Assert-True` takes a `[bool]` parameter
    (`tests/WorktreeMergedCleanup.Common.ps1:26`, "param([bool] $Condition, [string] $Message)").

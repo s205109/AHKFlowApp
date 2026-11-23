@@ -16,6 +16,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 . (Join-Path $PSScriptRoot 'WorktreeMergedCleanup.Common.ps1')
+. (Join-Path $PSScriptRoot 'LogText.Common.ps1')
 
 # A failed run must not leave the seed repositories in the temp folder. Backlog 201.
 trap { Remove-TempGitRepoSeeds -NoCheck; break }
@@ -425,7 +426,10 @@ try {
     # And the diagnostics really did land somewhere, so the split is not just an empty promise.
     $diagnosticsLog = Join-Path $repo '.claude\worktrees\worktree-removal-diagnostics.log'
     Assert-True (Test-Path -LiteralPath $diagnosticsLog) 'The diagnostics log must sit beside the outcome log.'
-    Assert-True ((Get-Content -Raw -LiteralPath $diagnosticsLog) -match 'Merged-cleanup requested removal') `
+    # Write-Outcome writes the outcome line before it copies that line into diagnostics, so the
+    # watcher can still be appending here. Get-Content -Raw can then return an array, and -match
+    # on an array filters it. Read-LogText returns one string. Backlog 217.
+    Assert-True ((Read-LogText -Path $diagnosticsLog) -match 'Merged-cleanup requested removal') `
         'The hand-over line belongs in diagnostics, not in the outcome log.'
 } finally {
     Remove-TempTree $repo
@@ -573,7 +577,8 @@ try {
 
     # The disagreement is a diagnostic, never an outcome. A human who wonders why 118 was in the
     # manifest can find both numbers there.
-    $diagnostics = Get-Content -Raw -LiteralPath (Join-Path $repo '.claude\worktrees\worktree-removal-diagnostics.log')
+    # Read-LogText, for the reason given at the first diagnostics read above. Backlog 217.
+    $diagnostics = Read-LogText -Path (Join-Path $repo '.claude\worktrees\worktree-removal-diagnostics.log')
     Assert-True ($diagnostics -match 'Plan guard judged backlog item 120') `
         "The diagnostics must name the item that was judged. Log: $diagnostics"
     Assert-True ($diagnostics -match 'records item 118') `
