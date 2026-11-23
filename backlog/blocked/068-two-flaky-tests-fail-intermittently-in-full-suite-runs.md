@@ -14,8 +14,8 @@ Flake A failed again in CI run 43973543752 on 2026-11-16. The diagnostic fired, 
 line 680 of `tests/WorktreeRemoveHook.Tests.ps1`. The cause and the fix are in
 `backlog/216-suite-flake-worktreeremovehook-ae08ca07.md`. In short: the watcher still writes the
 diagnostics log after the folder is gone, and `Get-Content -Raw` can return an array while another
-process appends to the file. Backlog 216 reads every diagnostics log with one `ReadToEnd()` call
-instead.
+process appends to the file. Backlog 216 makes `tests/WorktreeRemoveHook.Tests.ps1` read every
+diagnostics log with one `ReadToEnd()` call instead. Backlog 217 and 218 cover two other suites.
 
 The failure on 2026-08-08 came before the diagnostic existed, so its line is still not known. The
 same mechanism fits it, but no evidence names its line.
@@ -202,7 +202,7 @@ path made one function answer the same script block two different ways. It was r
 
 Backlog 216 meets criterion 3 for the 2026-11-16 recurrence, and names line 680. The 2026-08-08
 line stays unknown. Criterion 4 is met for flake B by the 50 runs above. It is met for flake A by
-the mechanism test and the 20 passing full runs that backlog 216 records, six of them
+the mechanism test and the 20 passing full runs recorded under box 4 above, six of them
 counted.
 
 ## Out of scope
