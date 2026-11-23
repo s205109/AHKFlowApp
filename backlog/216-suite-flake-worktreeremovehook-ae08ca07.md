@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: none (`tests/WorktreeRemoveHook.Tests.ps1`)
 - **Difficulty**: moderate
-- **Stage**: 4-execute
+- **Stage**: 8-review
 - **Issue**: #491
 
 ## Summary
