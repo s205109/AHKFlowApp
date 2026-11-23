@@ -6,7 +6,7 @@
 - **Type**: Bug
 - **Interfaces**: none (`tests/WorktreeSweepRemoteBase.Tests.ps1`)
 - **Difficulty**: moderate
-- **Stage**: 1-pickup
+- **Stage**: 3-plan
 
 ## Summary
 
