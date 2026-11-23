@@ -267,10 +267,11 @@ function Invoke-RemoveHook {
     }
 }
 
-# Both log helpers below read with Read-LogText from tests/LogText.Common.ps1. A watcher can still
-# append to either log when a case reads it, and Get-Content -Raw can then return an array. The
-# [string] parameters of Assert-Contains and Assert-NotContains join an array with spaces, so the
-# text no longer matches the file where the pieces split. Backlog 218.
+# Both log helpers below read with Read-LogText from tests/LogText.Common.ps1. A watcher writes
+# both logs. Today only the merged-hook case reads one, the diagnostics log, while a watcher may
+# still append. Get-Content -Raw can then return an array. The [string] parameters of
+# Assert-Contains and Assert-NotContains join an array with spaces, so the text no longer matches
+# the file where the pieces split. Backlog 218.
 # The outcome log. From backlog 073 it carries one line per removal attempt and nothing else.
 function Get-RemovalLog {
     param([string] $RepoDir)

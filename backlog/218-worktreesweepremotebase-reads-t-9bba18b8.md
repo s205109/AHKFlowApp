@@ -22,7 +22,8 @@ green run means what it says.
 
 ## Root cause
 
-The mechanism is proven. Whether this suite's reads race with a watcher is not checked yet.
+The mechanism is proven. Pickup checked which of this suite's reads can race with a watcher, and
+one can (point 7).
 
 1. Backlog 216 reproduced it on 2026-11-22. One process appended to a file in a tight loop. A
    second process ran `Get-Content -Raw` on it 2000 times. The result was not a `[string]` in 1076
@@ -42,11 +43,11 @@ The mechanism is proven. Whether this suite's reads race with a watcher is not c
    (`tests/WorktreeSweepRemoteBase.Tests.ps1:274`, "return (Get-Content -Raw -LiteralPath $logPath)"). <!-- citation-check:ignore: backlog 218 replaced this read with Read-LogText. The line records the code when the item was filed. -->
 7. Pickup checked on 2026-11-23 which reads can run while a watcher still writes. One read can.
    That case runs the hook on a merged branch
-   (`tests/WorktreeSweepRemoteBase.Tests.ps1:518`, "$resolved = Invoke-RemoveHook -WorktreePath $fixture.Worktree").
+   (`tests/WorktreeSweepRemoteBase.Tests.ps1:519`, "$resolved = Invoke-RemoveHook -WorktreePath $fixture.Worktree").
    So the hook starts a watcher
    (`scripts/remove-worktree-local-dev.ps1:1107`, "Watcher spawned via WMI.").
    The case then reads the diagnostics log before it waits for the worktree to go
-   (`tests/WorktreeSweepRemoteBase.Tests.ps1:520`, "The hook must resolve and report its own base when none is passed.").
+   (`tests/WorktreeSweepRemoteBase.Tests.ps1:521`, "The hook must resolve and report its own base when none is passed.").
    The watcher appends to that log meanwhile. It also writes the outcome line at its end
    (`scripts/remove-worktree-local-dev.ps1:1438`, "Write-Outcome 'Removed.'").
 8. The other log reads run after every writer has exited. Each one follows a sweep or a hook
@@ -76,6 +77,12 @@ The mechanism is proven. Whether this suite's reads race with a watcher is not c
 
 - Reuse `Read-LogText`. Backlog 217 moved it into `tests/LogText.Common.ps1`, and pull request
   #496 merged that on 2026-11-23. Do not write another copy.
-- The suite runs on Windows only, in the `suites` job, and it runs Windows PowerShell 5.1 (`tests/powershell-suites.json:71`, "WorktreeSweepRemoteBase.Tests.ps1").
+- The suite runs on Windows only, in the `suites` job (`tests/powershell-suites.json:71`, "WorktreeSweepRemoteBase.Tests.ps1").
+  The runner starts the suite under pwsh 7
+  (`scripts/run-powershell-suites.ps1:225`, "$hostExe = [System.Diagnostics.Process]::GetCurrentProcess().Path").
+  The suite itself starts Windows PowerShell 5.1 only for one check, that the base resolver
+  answers the same on both hosts
+  (`tests/WorktreeSweepRemoteBase.Tests.ps1:313`, "$windowsPowerShell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'").
+  The suite still declares 5.1, so plan 218 also ran it whole under 5.1.
 - Spec: none — moderate item, the root cause above is the design input.
 - Plan: `docs/superpowers/plans/2026-11-23-sweep-remote-base-diagnostics-read-plan-218.md`
