@@ -1,5 +1,9 @@
 # 137 - PowerShell worktree suites fail intermittently in CI
 
+<!-- citation-check:ignore-file -->
+<!-- This item shipped, so its code citations are a record of the tree as it was, not a claim
+     about the tree as it is. Backlog 216 moved the lines it cites in WorktreeRemoveHook.Tests.ps1. -->
+
 ## Metadata
 
 - **Epic**: Testing infrastructure

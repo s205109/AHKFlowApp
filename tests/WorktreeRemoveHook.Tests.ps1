@@ -158,6 +158,25 @@ function Get-RemovalDiagnosticsPath {
     return Join-Path $RepoDir '.claude\worktrees\worktree-removal-diagnostics.log'
 }
 
+# Reads a whole log file as one string, even while another process appends to it.
+function Read-LogText {
+    param([Parameter(Mandatory = $true)] [string] $Path)
+
+    # Not Get-Content -Raw. Backlog 216 saw it return an array while the watcher appended to the
+    # log, and an array turns -match into a filter. One ReadToEnd() call returns one string.
+    # The share must include Write: the writer holds the log open for writing, and Windows refuses
+    # a reader that does not share Write with it. Delete lets the writer rotate the log meanwhile.
+    $stream = [System.IO.File]::Open($Path, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]'ReadWrite, Delete')
+    $reader = $null
+    try {
+        $reader = New-Object System.IO.StreamReader($stream, (New-Object System.Text.UTF8Encoding($false)), $true)
+        return $reader.ReadToEnd()
+    } finally {
+        if ($null -ne $reader) { $reader.Dispose() }
+        $stream.Dispose()
+    }
+}
+
 # Invokes the hook by piping {"worktree_path":"<path>"} JSON to remove-worktree-local-dev.ps1,
 # exactly as Claude's WorktreeRemove hook does. Returns the process exit code; log content is
 # read separately by the caller once the process has exited.
@@ -285,6 +304,97 @@ Assert-True ($null -ne $expectedLine) 'Could not find the tagged call site in th
 Assert-True ($diagnosticMessage -match "from line ${expectedLine}:") `
     "Expected the message to name line $expectedLine. Got: $diagnosticMessage"
 
+# --- Test: Read-LogText returns one string while the log is written ---
+# Backlog 216 and issue #491. The watcher still writes the diagnostics log after the folder is
+# gone, so the suite reads that log while it grows. A read that returns an array there reaches
+# Assert-True through -match and ends the suite. Part 1 holds the writer's own handle open, so it
+# does not depend on timing. Part 2 reads while a second process appends, as the watcher does.
+$readTestRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('readlog-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+$readTestLog = Join-Path $readTestRoot 'growing.log'
+$appenderExited = $true
+try {
+    New-Item -ItemType Directory -Path $readTestRoot -Force | Out-Null
+    [System.IO.File]::WriteAllText($readTestLog, "first line`r`n", (New-Object System.Text.UTF8Encoding($false)))
+
+    # Part 1: read while the writer's own handle is open and holds a flushed line.
+    $heldRead = $null
+    $heldError = $null
+    $heldStream = [System.IO.File]::Open($readTestLog, 'Append', 'Write', 'Read')
+    try {
+        $heldBytes = [System.Text.Encoding]::UTF8.GetBytes("held-handle-216`r`n")
+        $heldStream.Write($heldBytes, 0, $heldBytes.Length)
+        $heldStream.Flush()
+        try {
+            $heldRead = Read-LogText -Path $readTestLog
+        } catch {
+            $heldError = '0x{0:X8}' -f $_.Exception.GetBaseException().HResult
+        }
+    } finally {
+        $heldStream.Dispose()
+    }
+
+    Assert-True ($null -eq $heldError) "Read-LogText could not open the log while the writer held it. HResult $heldError."
+    Assert-True ($heldRead -is [string]) 'Read-LogText must return one string while the writer holds the log open.'
+    Assert-True ($heldRead -match 'held-handle-216') "The read must see the flushed line. Got: $heldRead"
+
+    # Part 2: read while another process appends with the writer's own call.
+    $stopFile = Join-Path $readTestRoot 'stop'
+    $appenderScript = Join-Path $readTestRoot 'appender.ps1'
+    $appenderText = @'
+param([string] $LogPath, [string] $StopPath)
+# The 120 second limit is a safety net only. The suite writes the stop file.
+$deadline = (Get-Date).AddSeconds(120)
+$bytes = [System.Text.Encoding]::UTF8.GetBytes("appended line for backlog 216`r`n")
+while (-not (Test-Path -LiteralPath $StopPath) -and (Get-Date) -lt $deadline) {
+    try {
+        $stream = [System.IO.File]::Open($LogPath, 'Append', 'Write', 'Read')
+        try { $stream.Write($bytes, 0, $bytes.Length) } finally { $stream.Dispose() }
+    } catch { }
+}
+'@
+    [System.IO.File]::WriteAllText($appenderScript, $appenderText, (New-Object System.Text.UTF8Encoding($false)))
+
+    $initialLength = (Get-Item -LiteralPath $readTestLog).Length
+    $appenderHost = [System.Diagnostics.Process]::GetCurrentProcess().Path
+    $appender = Start-Process -FilePath $appenderHost `
+        -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$appenderScript`"", '-LogPath', "`"$readTestLog`"", '-StopPath', "`"$stopFile`"") `
+        -WindowStyle Hidden -PassThru
+    try {
+        $grewBeforeReads = Wait-ForCondition { (Get-Item -LiteralPath $readTestLog).Length -gt $initialLength }
+        Assert-True $grewBeforeReads 'The appender never wrote, so the reads below prove nothing.'
+
+        $readCount = 0
+        $nonStringReads = 0
+        $lengthAtFirstRead = (Get-Item -LiteralPath $readTestLog).Length
+        $grewDuringReads = $false
+        $readDeadline = (Get-Date).AddSeconds(20)
+        while ((Get-Date) -lt $readDeadline) {
+            $text = Read-LogText -Path $readTestLog
+            $readCount++
+            if ($text -isnot [string]) { $nonStringReads++ }
+            if (-not $grewDuringReads) {
+                $grewDuringReads = (Get-Item -LiteralPath $readTestLog).Length -gt $lengthAtFirstRead
+            }
+            if ($readCount -ge 200 -and $grewDuringReads) { break }
+        }
+        Assert-True ($readCount -ge 200) "Only $readCount reads ran in 20 seconds. The case needs 200."
+        Assert-True $grewDuringReads "The log must grow during the reads. It stayed at $lengthAtFirstRead bytes."
+        Assert-Equal 0 $nonStringReads "Read-LogText returned something other than one string in $nonStringReads of $readCount reads."
+    } finally {
+        [System.IO.File]::WriteAllText($stopFile, 'stop')
+        if (-not $appender.WaitForExit(10000)) {
+            Stop-Process -Id $appender.Id -Force -ErrorAction SilentlyContinue
+            $null = $appender.WaitForExit(5000)
+        }
+        $appenderExited = $appender.HasExited
+    }
+} finally {
+    if ($appenderExited) {
+        Remove-Item -LiteralPath $readTestRoot -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+Assert-True $appenderExited 'The appender did not exit, so the case left its folder behind.'
+
 # --- Test: merged + clean -> folder removed (unchanged behavior) ---------------
 $repo = New-TempGitRepo
 try {
@@ -411,7 +521,7 @@ try {
     Assert-True (Test-Path -LiteralPath $wtPath) 'Unmerged worktree must be preserved (no watcher removal).'
 
     # The reason and the guidance are diagnostics now.
-    $diagnostics = Get-Content -Raw -LiteralPath (Get-RemovalDiagnosticsPath $repo)
+    $diagnostics = Read-LogText -Path (Get-RemovalDiagnosticsPath $repo)
     Assert-True ($diagnostics -match '(?i)not merged') "Expected the diagnostics to name the unmerged reason. Log: $diagnostics"
     Assert-True ($diagnostics -match 'AHKFLOW_WORKTREE_FORCE_REMOVE') "Expected the diagnostics to mention the force override opt-out. Log: $diagnostics"
 
@@ -468,7 +578,7 @@ foreach ($case in @(
         Assert-True (-not ($outcomeLines[0] -match 'Kept: the plan was never implemented\.')) `
             "The old fixed sentence must be gone, got '$($outcomeLines[0])'"
 
-        $diagnostics = Get-Content -Raw -LiteralPath (Get-RemovalDiagnosticsPath $repo)
+        $diagnostics = Read-LogText -Path (Get-RemovalDiagnosticsPath $repo)
         Assert-True ($diagnostics -match "plan gate: ") "Expected the plan-gate reason in diagnostics. Log: $diagnostics"
     } finally {
         Remove-TempTree $repo
@@ -514,7 +624,7 @@ try {
     Assert-True ($outcomeLines[0] -match 'Removed\.$') "Expected the normal removal line, got '$($outcomeLines[0])'"
 
     # The disagreement is a diagnostic, never an outcome.
-    $diagnostics = Get-Content -Raw -LiteralPath (Get-RemovalDiagnosticsPath $repo)
+    $diagnostics = Read-LogText -Path (Get-RemovalDiagnosticsPath $repo)
     Assert-True ($diagnostics -match 'Plan guard judged backlog item 120') `
         "The diagnostics must name the item that was judged. Log: $diagnostics"
     Assert-True ($diagnostics -match 'records item 118') `
@@ -533,7 +643,7 @@ try {
 
     Assert-True (Test-Path -LiteralPath $wtPath) 'Merged but dirty worktree must be preserved.'
 
-    $diagnostics = Get-Content -Raw -LiteralPath (Get-RemovalDiagnosticsPath $repo)
+    $diagnostics = Read-LogText -Path (Get-RemovalDiagnosticsPath $repo)
     Assert-True ($diagnostics -match '(?i)uncommitted') "Expected the diagnostics to name the dirty-tree reason. Log: $diagnostics"
 
     $outcomeLines = @(Get-Content -LiteralPath (Get-RemovalLogPath $repo))
@@ -553,7 +663,7 @@ try {
 
     Assert-True (Test-Path -LiteralPath $wtPath) 'Detached HEAD worktree must be preserved even though it is clean and an ancestor of main.'
 
-    $diagnostics = Get-Content -Raw -LiteralPath (Get-RemovalDiagnosticsPath $repo)
+    $diagnostics = Read-LogText -Path (Get-RemovalDiagnosticsPath $repo)
     Assert-True ($diagnostics -match '(?i)detached') "Expected the diagnostics to name the detached-HEAD reason. Log: $diagnostics"
 
     $outcomeLines = @(Get-Content -LiteralPath (Get-RemovalLogPath $repo))
@@ -582,7 +692,7 @@ try {
     # The watcher writes this diagnostic before it writes the outcome line.
     # The genuine proof this test exercises the gate: without it, an unmerged worktree would
     # also be removed on today's script (that assertion alone is green on old and new code).
-    $diagnostics = Get-Content -Raw -LiteralPath (Get-RemovalDiagnosticsPath $repo)
+    $diagnostics = Read-LogText -Path (Get-RemovalDiagnosticsPath $repo)
     Assert-True ($diagnostics -match '(?i)force override.*bypassing merge/clean gate') "Expected a force-override diagnostic proving the gate was consulted and bypassed. Log: $diagnostics"
 } finally {
     Remove-TempTree $repo
@@ -627,7 +737,7 @@ try {
 
     Assert-True (Test-Path -LiteralPath $wtPath) 'A worktree whose branch holds no commit of its own must be preserved.'
 
-    $diagnostics = Get-Content -Raw -LiteralPath (Get-RemovalDiagnosticsPath $repo)
+    $diagnostics = Read-LogText -Path (Get-RemovalDiagnosticsPath $repo)
     Assert-True ($diagnostics -match '(?i)not merged') "Expected the diagnostics to name the reason. Log: $diagnostics"
 
     $outcomeLines = @(Get-Content -LiteralPath (Get-RemovalLogPath $repo))
@@ -673,7 +783,7 @@ try {
     $removed = Wait-ForCondition { -not (Test-Path -LiteralPath $wtPath) }
     Assert-True $removed 'The watcher should still remove the worktree while the old shared helper path is locked.'
 
-    $diagnostics = Get-Content -Raw -LiteralPath (Get-RemovalDiagnosticsPath $repo)
+    $diagnostics = Read-LogText -Path (Get-RemovalDiagnosticsPath $repo)
 
     # Without this the test passes when the hook fails before it ever reaches the copy, which is a
     # false green.
@@ -702,7 +812,7 @@ try {
     $removed = Wait-ForCondition { -not (Test-Path -LiteralPath $wtPath) }
     Assert-True $removed 'Merged + clean worktree should be removed by the watcher.'
 
-    $diagnostics = Get-Content -Raw -LiteralPath (Get-RemovalDiagnosticsPath $repo)
+    $diagnostics = Read-LogText -Path (Get-RemovalDiagnosticsPath $repo)
     $spawned = [regex]::Match($diagnostics, 'ParamFile=(?<path>.+?)\s*$', 'Multiline')
     Assert-True $spawned.Success "Expected a 'Watcher spawned' line naming the param file. Log: $diagnostics"
 
@@ -794,7 +904,7 @@ try {
     $result = Invoke-RemoveHook -WorktreePath $wtPath -EnvOverrides @{ TEMP = $deniedRoot; TMP = $deniedRoot }
     Assert-Equal 0 $result.ExitCode "Hook should exit 0. Stderr: $($result.Stderr)"
 
-    $diagnostics = Get-Content -Raw -LiteralPath (Get-RemovalDiagnosticsPath $repo)
+    $diagnostics = Read-LogText -Path (Get-RemovalDiagnosticsPath $repo)
 
     # Without this the test passes when the hook failed earlier than the snapshot, which is a
     # false green: no run directory would exist to leak.

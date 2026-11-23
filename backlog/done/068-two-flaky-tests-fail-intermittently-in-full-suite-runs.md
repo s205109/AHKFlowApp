@@ -5,29 +5,22 @@
 - **Epic**: Test reliability
 - **Type**: Bug
 - **Interfaces**: UI | API | CLI (none — test code only)
-- **Status**: Blocked since 2026-08-10 — see the section below
-- **Stage**: 4-execute
+- **Status**: Closed by backlog 216
+- **Stage**: 9-ship
 
-## Blocked — waiting for flake A to fail again
+## Fixed by backlog 216
 
-Flake B is fixed and merged. Flake A has one open acceptance box, and no work in this repository
-can tick it. The box asks which call site passed an array to `Assert-True`. Reading the code says
-no call site can do that, and the failure still happened once on 2026-08-08. The only honest way
-to name the line is to see the failure again.
+Flake A failed again in CI run 43973543752 on 2026-11-16. The diagnostic fired, and it named
+line 680 of `tests/WorktreeRemoveHook.Tests.ps1`. The cause and the fix are in
+`backlog/216-suite-flake-worktreeremovehook-ae08ca07.md`. In short: the watcher still writes the
+diagnostics log after the folder is gone, and `Get-Content -Raw` can return an array while another
+process appends to the file. Backlog 216 makes `tests/WorktreeRemoveHook.Tests.ps1` read every
+diagnostics log with one `ReadToEnd()` call instead. Backlog 217 and 218 cover two other suites.
 
-The diagnostic that will name it is already merged, at `tests/WorktreeRemoveHook.Tests.ps1:13-27`.
-It replaces the `[bool]` parameter type with an explicit check. A recurrence now reports the
-runtime type, the values, and the caller's line number.
+The failure on 2026-08-08 came before the diagnostic existed, so its line is still not known. The
+same mechanism fits it, but no evidence names its line.
 
-Do not pick this up as available work. Adding more green runs proves nothing: a diagnostic that
-never fires says nothing about a fault seen once.
-
-**What would unblock it:**
-
-- The suite fails again, in CI or locally. The new message names the call site. Then fix that call
-  site, tick the last two boxes, and move the file to `backlog/done/`.
-- Or a decision that one unexplained failure, now made locatable, is enough. Then close the item
-  with that reason written down.
+Flake B is fixed and merged.
 
 ## Summary
 
@@ -159,6 +152,7 @@ No path variable in this suite can become one:
   with `(Resolve-Path -LiteralPath ...).Path`, which is one string.
 - All four `$log` reads use `Get-Content -Raw`, which returns one string for one file. So
   `$log -match ...` returns a `System.Boolean`, not an array of matches.
+  Backlog 216 showed this is false while another process appends to the file.
 
 So reading the code says the failure is impossible, and it still happened once. The call site is
 **not identified**. Rather than guess, the fix removes the reason the call site stayed hidden. The
@@ -186,18 +180,30 @@ path made one function answer the same script block two different ways. It was r
       ruled out and why it could not be reproduced
 - [x] `KnownShortcutsPageTests.IgnoredUse_OffersRestore_AndCallsIt` no longer races - the fix makes
       the assertion wait for the click handler rather than assuming it finished
-- [ ] `WorktreeRemoveHook.Tests.ps1` cannot pass an array to `Assert-True`, and the fix names which
+- [x] `WorktreeRemoveHook.Tests.ps1` cannot pass an array to `Assert-True`, and the fix names which
       call site did it
-- [ ] Both are exercised repeatedly enough to give confidence - run each in its normal full-suite
+      - The 2026-11-16 failure named line 680, the `Watcher spawned` check of the locked-helper
+        case. Backlog 216 switched every diagnostics read that feeds a `-match` to `Read-LogText`,
+        which returns one string. The 2026-08-08 line is still not known.
+- [x] Both are exercised repeatedly enough to give confidence - run each in its normal full-suite
       context several times in a row and record the results
+      - Flake A: backlog 216's new case failed first against `Get-Content -Raw`, which returned
+        an array in 27 of 200 reads. With `Read-LogText`, it passes.
+      - After the fix, the full `suites` job ran 20 times in a row on revision 2239070f (runs 20
+        to 39). All 75 suites passed each time, `WorktreeRemoveHook.Tests.ps1` passed each time,
+        and the job exit code was 0. Eight earlier runs on d2adff12 (runs 11 to 18) passed too.
+      - Six of the 20 runs count under the plan's rule: 30, 32, 34, 35, 37 and 38. The other 14
+        printed a "Sharing the test Lane pool" line, and the plan refuses any run with that line.
+      - So the plan's three counted runs in a row were not reached. The box is ticked by a
+        decision made on 2026-11-23: the refusals are about a possibly shared machine, not about
+        a failure, and every run between the counted ones passed. The sharing lines named only
+        test runs that were not running when checked afterwards.
+      - Flake B: see the 50 confidence runs in the Findings section.
 
-**This item is blocked, not open.** Criterion 3 is not met and is not being claimed. Nothing stops an array
-from reaching `Assert-True`; the change only makes such a call fail with a location instead of
-failing during parameter binding with none. The call site that failed on 2026-08-08 is still
-unknown, and the only honest way to name it is to see it happen again.
-
-Criterion 4 is met for flake B and not for flake A. Flake A cannot be closed by green runs: a
-diagnostic that never fires proves nothing about a fault that appeared once.
+Backlog 216 meets criterion 3 for the 2026-11-16 recurrence, and names line 680. The 2026-08-08
+line stays unknown. Criterion 4 is met for flake B by the 50 runs above. It is met for flake A by
+the mechanism test and the 20 passing full runs recorded under box 4 above, six of them
+counted.
 
 ## Out of scope
 
