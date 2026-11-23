@@ -21,6 +21,8 @@ $suiteRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 $scriptsDir = Join-Path $suiteRoot 'scripts'
 $removeScript = Join-Path $scriptsDir 'remove-worktree-local-dev.ps1'
 
+. (Join-Path $PSScriptRoot 'LogText.Common.ps1')
+
 function Assert-True {
     param($Condition, [string] $Message)
 
@@ -156,25 +158,6 @@ function Get-RemovalLogPath {
 function Get-RemovalDiagnosticsPath {
     param([string] $RepoDir)
     return Join-Path $RepoDir '.claude\worktrees\worktree-removal-diagnostics.log'
-}
-
-# Reads a whole log file as one string, even while another process appends to it.
-function Read-LogText {
-    param([Parameter(Mandatory = $true)] [string] $Path)
-
-    # Not Get-Content -Raw. Backlog 216 saw it return an array while the watcher appended to the
-    # log, and an array turns -match into a filter. One ReadToEnd() call returns one string.
-    # The share must include Write: the writer holds the log open for writing, and Windows refuses
-    # a reader that does not share Write with it. Delete lets the writer rotate the log meanwhile.
-    $stream = [System.IO.File]::Open($Path, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]'ReadWrite, Delete')
-    $reader = $null
-    try {
-        $reader = New-Object System.IO.StreamReader($stream, (New-Object System.Text.UTF8Encoding($false)), $true)
-        return $reader.ReadToEnd()
-    } finally {
-        if ($null -ne $reader) { $reader.Dispose() }
-        $stream.Dispose()
-    }
 }
 
 # Invokes the hook by piping {"worktree_path":"<path>"} JSON to remove-worktree-local-dev.ps1,
