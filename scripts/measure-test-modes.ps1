@@ -65,6 +65,10 @@
   scripts/measure-verdict.ps1 reads it. docs/development/testing-workflow.md, section "Measuring
   Slices side by side", has the details.
 
+  Backlog 219. -Mode Fast takes the same settings, but only when the caller names -Setting or
+  -SoakMode. A plain -Mode Fast keeps its old path and passes no Slice count, so it still measures
+  the Fast Mode at its own default.
+
   tests/MeasureTestModes.Tests.ps1 covers the orchestration: argument routing, the median, the
   run lock, environment restoration, one container for the whole soak, the zero-test guard, and
   what happens when a run fails. It stubs dotnet and replaces the SQL helper, so it costs seconds
@@ -122,13 +126,14 @@ param(
     # Gate's own base, as Resolve-AhkFlowGateBaseRef finds it.
     [string]$BaseRef,
 
-    # Backlog 204. Coverage and Integration Modes only. The settings to time, in turns: each is a
-    # whole number of at least 1, or Budget.
+    # Backlog 204. Coverage and Integration Modes, and Fast since backlog 219. The settings to time,
+    # in turns: each is a whole number of at least 1, or Budget.
     # A comma list in one value works, because 'pwsh -File' passes '1,Budget' as a single string.
     [string[]]$Setting = @('1'),
 
-    # Backlog 204. Coverage and Integration Modes only. Runs one -Setting -Runs times (20 when
-    # -Runs is not given), goes on after a failure, and counts the runs that passed.
+    # Backlog 204. Coverage and Integration Modes, and Fast since backlog 219. Runs one -Setting
+    # -Runs times (20 when -Runs is not given), goes on after a failure, and counts the runs that
+    # passed.
     [switch]$SoakMode
 )
 
@@ -218,12 +223,15 @@ function ConvertTo-MeasureSetting {
 }
 
 # Backlog 204. Refuse a wrong setting before any work starts, so a wrong call costs nothing.
-$usesSettings = ($Mode -eq 'Coverage' -or $Mode -eq 'Integration') -and -not $isSoak
+# Backlog 219. Fast takes settings only when the caller names -Setting or -SoakMode. A plain
+# -Mode Fast keeps its old path, so it measures the Mode at its own default.
+$fastWithSettings = $Mode -eq 'Fast' -and ($PSBoundParameters.ContainsKey('Setting') -or $SoakMode)
+$usesSettings = ($Mode -eq 'Coverage' -or $Mode -eq 'Integration' -or $fastWithSettings) -and -not $isSoak
 if ($PSBoundParameters.ContainsKey('Setting') -and -not $usesSettings) {
-    throw '-Setting works only with -Mode Coverage or -Mode Integration, and not with -Soak.'
+    throw '-Setting works only with -Mode Fast, -Mode Coverage or -Mode Integration, and not with -Soak.'
 }
 if ($SoakMode -and -not $usesSettings) {
-    throw '-SoakMode works only with -Mode Coverage or -Mode Integration, and not with -Soak.'
+    throw '-SoakMode works only with -Mode Fast, -Mode Coverage or -Mode Integration, and not with -Soak.'
 }
 $settings = @()
 if ($usesSettings) {
@@ -250,8 +258,9 @@ function Copy-RunEvidence {
     <#
       Copies the evidence of one run into its own folder and answers whether the run owned it.
 
-      Coverage and Integration write into one shared folder and clear it at the start of every
-      run. A run owns what that folder holds only when attempt.txt there holds this run's value.
+      A run with a setting writes into one shared folder, which the script under test clears at
+      the start of every run. A run owns what that folder holds only when attempt.txt there holds
+      this run's value.
       A run that failed before it cleared the folder left the evidence of the run before, and a
       copy of that would be filed under the wrong run. This function never deletes the shared
       folders: only run-coverage.ps1 and test-fast.ps1 clear them, inside the test-run lock.
@@ -267,9 +276,10 @@ function Copy-RunEvidence {
         [string]$Attempt
     )
 
-    if ($Mode -ne 'Coverage' -and $Mode -ne 'Integration') {
-        # test-fast.ps1 writes into one fixed folder and clears it at the start of every run, so the
-        # TRX has to be copied out here or run five overwrites run four.
+    if ([string]::IsNullOrEmpty($Attempt)) {
+        # A run with no setting has no attempt value. test-fast.ps1 writes into one fixed folder and
+        # clears it at the start of every run, so the TRX has to be copied out here or run five
+        # overwrites run four.
         $sharedResults = Join-Path $RepoRoot "TestResults\test-fast\$Mode"
         foreach ($trx in @(Get-ChildItem -LiteralPath $sharedResults -Recurse -Filter '*.trx' -ErrorAction SilentlyContinue)) {
             Copy-Item -LiteralPath $trx.FullName -Destination (Join-Path $RunDirectory $trx.Name) -Force
@@ -277,7 +287,7 @@ function Copy-RunEvidence {
         return $null
     }
 
-    $shared = if ($Mode -eq 'Coverage') { Join-Path $RepoRoot 'TestResults\coverage' } else { Join-Path $RepoRoot 'TestResults\test-fast\Integration' }
+    $shared = if ($Mode -eq 'Coverage') { Join-Path $RepoRoot 'TestResults\coverage' } else { Join-Path $RepoRoot "TestResults\test-fast\$Mode" }
     $attemptPath = Join-Path $shared 'attempt.txt'
     $held = $null
     if (Test-Path -LiteralPath $attemptPath -PathType Leaf) {
@@ -382,7 +392,7 @@ function Invoke-TimedRun {
     # Backlog 204. A value no other run of the session uses. The script under test writes it into
     # its results folder after it cleared that folder, so the copy below can tell its own results.
     $attempt = $null
-    if ($Mode -eq 'Coverage' -or $Mode -eq 'Integration') {
+    if ($Setting) {
         $attempt = '{0}|{1}|{2}' -f $SessionName, $Setting, $Label
         $env:AHKFLOW_RUN_ATTEMPT = $attempt
     }
