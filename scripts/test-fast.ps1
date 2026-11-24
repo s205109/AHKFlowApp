@@ -43,10 +43,12 @@ param(
     # 'test-fast.ps1 Fast Debug'.
     [string]$BaseRef,
 
-    # Integration and Coverage modes only. How many Slices run at once: a whole number of at
-    # least 1, or Budget. Coverage forwards it to run-coverage.ps1. Budget is the default, as
-    # backlog 204 measured it in docs/development/cycle-time-record.md. This goes last for the
-    # same reason $SuiteRoot does: an earlier place would silently rebind 'test-fast.ps1 Fast Debug'.
+    # Fast, Integration and Coverage modes only. How many Slices run at once: a whole number of
+    # at least 1, or Budget. Coverage forwards it to run-coverage.ps1. Budget is the default, as
+    # backlog 204 measured it in docs/development/cycle-time-record.md. Fast passes the value to
+    # VSTest as MaxCpuCount, the number of test assemblies that run at once. Fast asks for 1 when
+    # the caller gives no value (backlog 219). This goes last for the same reason $SuiteRoot
+    # does: an earlier place would silently rebind 'test-fast.ps1 Fast Debug'.
     [string]$SlicesAtOnce = 'Budget'
 )
 
@@ -219,6 +221,11 @@ function Invoke-CombinedTestRun {
 
       One call instead of five removes four MSBuild evaluations of the whole project graph. The
       caller must have built already: passing assembly paths means dotnet builds nothing.
+
+      Backlog 219. The call ends with '-- RunConfiguration.MaxCpuCount=<n>'. VSTest then runs up
+      to n test hosts at once, one per assembly. 1 is the VSTest default, so 1 is the old call.
+      The log and slices.json are written before any check below, so a measured run keeps its
+      evidence also when a test fails.
     #>
     param(
         [Parameter(Mandatory = $true)]
@@ -227,7 +234,10 @@ function Invoke-CombinedTestRun {
         [string]$Filter,
 
         [Parameter(Mandatory = $true)]
-        [string]$Label
+        [string]$Label,
+
+        [Parameter(Mandatory = $true)]
+        [int]$SlicesAtOnce
     )
 
     foreach ($path in $Assembly) {
@@ -250,10 +260,24 @@ function Invoke-CombinedTestRun {
         $arguments += @('--filter', $Filter)
     }
 
+    # Inline RunSettings go last, because dotnet reads everything after '--' as RunSettings.
+    $arguments += @('--', "RunConfiguration.MaxCpuCount=$SlicesAtOnce")
+
     $filterText = if ([string]::IsNullOrWhiteSpace($Filter)) { 'all tests' } else { $Filter }
-    Write-Step "Running $($Assembly.Count) assemblies in one call ($filterText)"
-    & dotnet @arguments 2>&1 | ForEach-Object { Write-Host $_ }
+    Write-Step "Running $($Assembly.Count) assemblies in one call, up to $SlicesAtOnce at once ($filterText)"
+    $lines = New-Object System.Collections.Generic.List[string]
+    $stopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+    & dotnet @arguments 2>&1 | ForEach-Object {
+        $line = [string]$_
+        $lines.Add($line)
+        Write-Host $line
+    }
     $exitCode = $LASTEXITCODE
+    $stopwatch.Stop()
+
+    Save-AhkFlowCombinedEvidence -ResultsDirectory $resultsRoot -Line $lines.ToArray() -Name $Label `
+        -ExitCode $exitCode -Seconds ([Math]::Round($stopwatch.Elapsed.TotalSeconds, 2))
+
     if ($exitCode -ne 0) {
         throw "dotnet test failed for $Label."
     }
@@ -431,8 +455,8 @@ $previousSharedSqlConnectionString = $env:AHKFLOW_TEST_SQL_CONNECTION_STRING
 
 Push-Location $repoRoot
 try {
-    if ($PSBoundParameters.ContainsKey('SlicesAtOnce') -and $Mode -ne 'Coverage' -and $Mode -ne 'Integration') {
-        throw '-SlicesAtOnce works only with -Mode Integration or -Mode Coverage.'
+    if ($PSBoundParameters.ContainsKey('SlicesAtOnce') -and $Mode -ne 'Fast' -and $Mode -ne 'Coverage' -and $Mode -ne 'Integration') {
+        throw '-SlicesAtOnce works only with -Mode Fast, -Mode Integration or -Mode Coverage.'
     }
 
     if ($Mode -eq 'Coverage') {
@@ -506,6 +530,12 @@ try {
     if ($Mode -eq 'Integration') {
         $sliceCount = Resolve-AhkFlowSlicesAtOnce -Requested $SlicesAtOnce -Budget (Get-AhkFlowSliceBudget -LaneRun $laneRun)
     }
+    elseif ($Mode -eq 'Fast') {
+        # Backlog 219 keeps Fast at one assembly at a time until its record decides.
+        $fastRequest = '1'
+        if ($PSBoundParameters.ContainsKey('SlicesAtOnce')) { $fastRequest = $SlicesAtOnce }
+        $sliceCount = Resolve-AhkFlowSlicesAtOnce -Requested $fastRequest -Budget (Get-AhkFlowSliceBudget -LaneRun $laneRun)
+    }
 
     if ($Mode -eq 'Integration' -or $Mode -eq 'E2E') {
         Write-Step 'Preparing shared SQL test container'
@@ -552,7 +582,8 @@ try {
         $summaries = @(Invoke-CombinedTestRun `
             -Assembly $fast.Assembly `
             -Filter $fast.Filter `
-            -Label $label)
+            -Label $label `
+            -SlicesAtOnce $sliceCount)
         Stop-ProgressUnit -Tracker $progress
         Save-ProgressTimings -Tracker $progress
     }

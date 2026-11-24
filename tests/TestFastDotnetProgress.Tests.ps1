@@ -143,6 +143,14 @@ if ($resultsDirectory) {
         $silent = (Get-Content -LiteralPath $silentMarker -Raw).Trim()
     }
 
+    # A test case drops this marker naming one assembly, and that assembly's result then fails.
+    # The stub still writes the TRX, then exits 1, the way a real red test run ends (backlog 219).
+    $failing = ''
+    $failingMarker = Join-Path $stubFolder 'failing-test.txt'
+    if (Test-Path -LiteralPath $failingMarker) {
+        $failing = (Get-Content -LiteralPath $failingMarker -Raw).Trim()
+    }
+
     # One definition and one result per assembly, joined by test id, which is the shape
     # Get-TestCountByAssembly reads.
     $definitions = ''
@@ -153,7 +161,12 @@ if ($resultsDirectory) {
         $index++
         $id = "00000000-0000-0000-0000-$($index.ToString('000000000000'))"
         $definitions += "<UnitTest name=""T$index"" storage=""$path"" id=""$id""><TestMethod codeBase=""$path"" className=""C"" name=""T$index"" /></UnitTest>"
-        $results += "<UnitTestResult testId=""$id"" testName=""T$index"" outcome=""Passed"" />"
+        if ($failing -and ([System.IO.Path]::GetFileName($path) -eq $failing)) {
+            $results += "<UnitTestResult testId=""$id"" testName=""T$index"" outcome=""Failed""><Output><ErrorInfo><Message>stub failure</Message></ErrorInfo></Output></UnitTestResult>"
+        }
+        else {
+            $results += "<UnitTestResult testId=""$id"" testName=""T$index"" outcome=""Passed"" />"
+        }
     }
 
     # $index, not $assembly.Count: a silenced assembly contributes no result, so the summary has
@@ -164,6 +177,11 @@ if ($resultsDirectory) {
         "<TestDefinitions>$definitions</TestDefinitions><Results>$results</Results>" +
         "<ResultSummary><Counters total=""$total"" passed=""$total"" failed=""0"" /></ResultSummary></TestRun>"
     Set-Content -LiteralPath (Join-Path $resultsDirectory $logFileName) -Value $trx -Encoding utf8
+
+    if ($failing) {
+        Write-Output 'stub dotnet test: a test failed'
+        exit 1
+    }
 }
 
 Write-Output 'stub dotnet test'
@@ -181,7 +199,7 @@ function Remove-WrapperFixture {
 }
 
 function Invoke-FastMode {
-    param([Parameter(Mandatory)][string] $Root)
+    param([Parameter(Mandatory)][string] $Root, [string[]] $Argument = @())
 
     $previousHolder = $env:AHKFLOW_TEST_LANES_HOLDER
     if ([string]::IsNullOrWhiteSpace($env:AHKFLOW_TEST_LANES_ROOT) -and [string]::IsNullOrWhiteSpace($env:AHKFLOW_TEST_LANES_HOLDER)) {
@@ -190,7 +208,7 @@ function Invoke-FastMode {
     $previousPath = $env:PATH
     $env:PATH = (Join-Path $Root 'stub') + [System.IO.Path]::PathSeparator + $previousPath
     try {
-        $output = & $hostExe -NoProfile -File (Join-Path $Root 'scripts\test-fast.ps1') -Mode Fast -NoBuild 2>&1 | Out-String
+        $output = & $hostExe -NoProfile -File (Join-Path $Root 'scripts\test-fast.ps1') -Mode Fast -NoBuild @Argument 2>&1 | Out-String
         return [pscustomobject]@{ ExitCode = $LASTEXITCODE; Output = $output }
     }
     finally {
@@ -231,6 +249,69 @@ Invoke-TestCase 'Fast mode passes all five assemblies to one dotnet call' {
             Assert-True ($testCall[0] -match [regex]::Escape("$($project.Name).dll")) `
                 "The one dotnet test call must name $($project.Name).dll. Call: $($testCall[0])"
         }
+    }
+    finally { Remove-WrapperFixture -Root $root }
+}
+
+# Backlog 219. dotnet reads everything after '--' as RunSettings, so a --filter placed after it
+# would be lost. 99 is above any budget, so the printed count shows the budget lowered it.
+Invoke-TestCase 'Fast mode passes its Slice count to VSTest as the last arguments' {
+    $root = New-WrapperFixture
+    try {
+        $result = Invoke-FastMode -Root $root -Argument @('-SlicesAtOnce', '99')
+        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
+        Assert-True ($result.Output -match 'Slices at once: (\d+) \(asked for 99, budget (\d+)\)') `
+            "Expected the Slice count line. Output: $($result.Output)"
+        $count = [int]$Matches[1]
+        $budget = [int]$Matches[2]
+        Assert-True ($count -eq $budget -and $count -lt 99) "Expected the budget, got $count with budget $budget."
+
+        $testCall = @(Get-Content -LiteralPath (Join-Path $root 'stub\calls.txt') | Where-Object { $_ -notmatch '^build ' })
+        Assert-True ($testCall.Count -eq 1 -and $testCall[0].EndsWith(" -- RunConfiguration.MaxCpuCount=$count")) `
+            "The test call must end with the Slice count. Calls: $($testCall -join ' | ')"
+    }
+    finally { Remove-WrapperFixture -Root $root }
+}
+
+# Backlog 219. The pre-push hook gives no Slice count, so the Fast default decides what every push
+# runs. It stays 1, the VSTest default and so the old call, until the record decides.
+Invoke-TestCase 'Fast mode without -SlicesAtOnce runs one assembly at a time' {
+    $root = New-WrapperFixture
+    try {
+        $result = Invoke-FastMode -Root $root
+        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
+        Assert-True ($result.Output.Contains('Slices at once: 1 (asked for 1, budget')) "Output: $($result.Output)"
+
+        $testCall = @(Get-Content -LiteralPath (Join-Path $root 'stub\calls.txt') | Where-Object { $_ -notmatch '^build ' })
+        Assert-True ($testCall.Count -eq 1 -and $testCall[0].EndsWith(' -- RunConfiguration.MaxCpuCount=1')) `
+            "The test call must end with a count of 1. Calls: $($testCall -join ' | ')"
+    }
+    finally { Remove-WrapperFixture -Root $root }
+}
+
+# Backlog 219. A measured run reads slices.json and the log. Written only after a clean exit, a run
+# with a failing test would show an evidence failure instead of the test that failed.
+Invoke-TestCase 'Fast mode writes one Slice row for the call, also when a test fails' {
+    $root = New-WrapperFixture
+    try {
+        Set-Content -LiteralPath (Join-Path $root 'stub\failing-test.txt') -Value 'AHKFlowApp.CLI.Tests.dll' -Encoding utf8
+
+        $result = Invoke-FastMode -Root $root
+        Assert-True ($result.ExitCode -ne 0) "A failing test must fail the run. Output: $($result.Output)"
+
+        $fastResults = Join-Path $root 'TestResults\test-fast\Fast'
+        $slicesPath = Join-Path $fastResults 'slices.json'
+        Assert-True (Test-Path -LiteralPath $slicesPath -PathType Leaf) "Expected $slicesPath. Output: $($result.Output)"
+        $rows = @(Get-Content -LiteralPath $slicesPath -Raw | ConvertFrom-Json | ForEach-Object { $_ })
+        Assert-True ($rows.Count -eq 1) "Expected one row, got $($rows.Count): $($rows | ConvertTo-Json -Compress)"
+        $row = $rows[0]
+        Assert-True ($row.Name -eq $script:FastLabel -and $row.ExitCode -eq 1 -and $row.Folder -eq 'combined' -and $row.Log -eq 'combined.log') `
+            "Row: $($row | ConvertTo-Json -Compress)"
+
+        $logPath = Join-Path $fastResults 'combined\combined.log'
+        Assert-True (Test-Path -LiteralPath $logPath -PathType Leaf) "Expected $logPath."
+        Assert-True ((Get-Content -LiteralPath $logPath -Raw).Contains('stub dotnet test: a test failed')) `
+            "The log must hold what the call printed. Log: $(Get-Content -LiteralPath $logPath -Raw)"
     }
     finally { Remove-WrapperFixture -Root $root }
 }

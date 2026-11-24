@@ -744,12 +744,12 @@ Invoke-TestCase "At the value 1 the coverage step keeps today's order" {
     finally { Remove-CoverageFixture -Root $root }
 }
 
-Invoke-TestCase 'test-fast refuses -SlicesAtOnce outside Integration and Coverage' {
+Invoke-TestCase 'test-fast refuses -SlicesAtOnce outside Fast, Integration and Coverage' {
     $root = New-CoverageFixture
     try {
-        $result = Invoke-InFixture -Root $root -ScriptName 'test-fast.ps1' -Argument @('-Mode', 'Fast', '-SlicesAtOnce', '2')
+        $result = Invoke-InFixture -Root $root -ScriptName 'test-fast.ps1' -Argument @('-Mode', 'E2E', '-SlicesAtOnce', '2')
         Assert-True ($result.ExitCode -ne 0) "Expected a failure. Output: $($result.Output)"
-        Assert-True ($result.Output.Contains('-SlicesAtOnce works only with -Mode Integration or -Mode Coverage.')) "Output: $($result.Output)"
+        Assert-True ($result.Output.Contains('-SlicesAtOnce works only with -Mode Fast, -Mode Integration or -Mode Coverage.')) "Output: $($result.Output)"
         Assert-True (@(Get-StubCall $root).Count -eq 0) 'test-fast called dotnet before it refused.'
     }
     finally { Remove-CoverageFixture -Root $root }
