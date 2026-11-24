@@ -50,5 +50,5 @@ removed" and "tests cover the new API" cannot.
 - The Slice runner is `scripts/slice-runner.common.ps1`. Its `-SlicesAtOnce` takes a whole
   number or `Budget`.
 - Measure on mains power. Backlog 204's first sessions ran partly on battery and were discarded.
-- Spec: none — not designed yet.
-- Plan: none — not planned yet.
+- Spec: none — moderate item, planned directly. The timing and Soak rules come from backlog 204's spec.
+- Plan: `docs/superpowers/plans/2026-11-24-run-the-fast-mode-test-assemblies-side-by-side-plan-219.md`
