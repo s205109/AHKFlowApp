@@ -65,9 +65,11 @@ function ConvertTo-XmlText {
 }
 
 # One TRX file. Each test is @{ Name; Outcome; Message }. A failed result carries its message in
-# Output/ErrorInfo/Message, the way the real logger writes it.
+# Output/ErrorInfo/Message, the way the real logger writes it. Each RunError text becomes one
+# RunInfo with outcome Error inside ResultSummary, the shape a crashed test host left on 2026-11-24
+# (backlog 219).
 function New-TrxText {
-    param([object[]] $Test = @())
+    param([object[]] $Test = @(), [string[]] $RunError = @())
     $results = foreach ($t in $Test) {
         $id = [guid]::NewGuid().ToString()
         $inner = ''
@@ -78,6 +80,13 @@ function New-TrxText {
     }
     $total = @($Test).Count
     $failed = @($Test | Where-Object { $_.Outcome -eq 'Failed' }).Count
+    $runInfos = ''
+    if (@($RunError).Count -gt 0) {
+        $infos = foreach ($text in $RunError) {
+            "      <RunInfo computerName=""HOST"" outcome=""Error"" timestamp=""2026-11-16T10:00:00.0000000+01:00""><Text>$(ConvertTo-XmlText $text)</Text></RunInfo>"
+        }
+        $runInfos = "`n    <RunInfos>`n$($infos -join "`n")`n    </RunInfos>"
+    }
     return @"
 <?xml version="1.0" encoding="utf-8"?>
 <TestRun id="$([guid]::NewGuid())" name="probe" runUser="probe" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
@@ -85,7 +94,7 @@ function New-TrxText {
 $($results -join "`n")
   </Results>
   <ResultSummary outcome="$(if ($failed -gt 0) { 'Failed' } else { 'Completed' })">
-    <Counters total="$total" executed="$total" passed="$($total - $failed)" failed="$failed" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+    <Counters total="$total" executed="$total" passed="$($total - $failed)" failed="$failed" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />$runInfos
   </ResultSummary>
 </TestRun>
 "@
@@ -124,7 +133,7 @@ function New-ClassFigure {
 }
 
 # One run folder as Task 5 writes it. Each Slice is @{ Name; ExitCode; Tests (or $null for no TRX);
-# Log; Coverage ($true writes its line in coverage-files.txt) }.
+# Log; Coverage ($true writes its line in coverage-files.txt); RunError (texts for New-TrxText) }.
 function New-RunFolder {
     param(
         [string] $Path,
@@ -151,7 +160,8 @@ function New-RunFolder {
     foreach ($s in $Slice) {
         $folder = Join-Path $results $s.Name
         New-Item -ItemType Directory -Path $folder -Force | Out-Null
-        if ($null -ne $s.Tests) { Write-Utf8 (Join-Path $folder "$($s.Name).trx") (New-TrxText -Test $s.Tests) }
+        $runError = if ($s.ContainsKey('RunError')) { $s.RunError } else { @() }
+        if ($null -ne $s.Tests) { Write-Utf8 (Join-Path $folder "$($s.Name).trx") (New-TrxText -Test $s.Tests -RunError $runError) }
         $log = if ($s.ContainsKey('Log')) { $s.Log } else { 'Test run for probe.dll' }
         Write-Utf8 (Join-Path $folder "$($s.Name).log") $log
         $exit = if ($s.ContainsKey('ExitCode')) { $s.ExitCode } else { 0 }
@@ -369,6 +379,30 @@ Invoke-TestCase 'An unexplained failure in a timing session blocks that setting'
         (New-CleanRun '1' 'at-1\run-1' 'run 1' 'counted' 10),
         (New-CleanRun 'Budget' 'at-budget\run-1' 'run 1' 'counted' 8 $true 'Something went wrong after the Slices.'),
         (New-CleanRun 'Budget' 'at-budget\run-2' 'run 2' 'counted' 8))
+    $result = Invoke-Verdict @('-Timing', $timing)
+    Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
+    Assert-True ($result.Output.Contains('Budget blocked: a run failed with no failing Slice or test.')) "Output: $($result.Output)"
+}
+
+Invoke-TestCase 'A test host crash in a Fast run blocks the setting, also next to a failing test' {
+    # Backlog 219. One Fast call writes one TRX for every assembly. Without this, any failing test
+    # in that TRX hides a crash, and a Soak then clears the run as an existing test failure.
+    $crash = 'The active test run was aborted. Reason: Test host process crashed'
+    $message = 'dotnet test failed for Fast[Category!=Integration].'
+    $slice = @(@{ Name = 'Fast'; ExitCode = 1; RunError = @($crash); Tests = @(
+                @{ Name = 'A.Tests.Passes'; Outcome = 'Passed' },
+                @{ Name = 'B.Tests.Breaks'; Outcome = 'Failed'; Message = $script:AssertMessage }) })
+    $run = New-RunFolder -Path (New-CaseFolder) -Mode 'Fast' -Failed $true -Message $message -Slice $slice
+    $failures = @(Get-AhkFlowRunFailure -RunFolder $run -Mode 'Fast')
+    Assert-True ($failures.Count -eq 2) "Expected two failures, got $($failures.Count): $($failures | ConvertTo-Json -Compress)"
+    $test = @($failures | Where-Object { $_.Kind -eq 'test' })
+    Assert-True ($test.Count -eq 1 -and $test[0].Test -eq 'B.Tests.Breaks') "Test failure: $($failures | ConvertTo-Json -Compress)"
+    $crashFailure = @($failures | Where-Object { $_.Kind -eq 'run' })
+    Assert-True ($crashFailure.Count -eq 1 -and $crashFailure[0].Cause -eq $crash -and $crashFailure[0].Key -eq "run|$crash") "Run failure: $($failures | ConvertTo-Json -Compress)"
+
+    $timing = New-SessionFolder -Mode 'Fast' -Kind 'timing' -Settings @('1', 'Budget') -Run @(
+        (New-CleanRun '1' 'at-1\run-1' 'run 1' 'counted' 10),
+        (New-CleanRun 'Budget' 'at-budget\run-1' 'run 1' 'counted' 8 $true $message $slice))
     $result = Invoke-Verdict @('-Timing', $timing)
     Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
     Assert-True ($result.Output.Contains('Budget blocked: a run failed with no failing Slice or test.')) "Output: $($result.Output)"

@@ -72,6 +72,30 @@ function Get-AhkFlowTrxFailure {
     return $failures.ToArray()
 }
 
+function Get-AhkFlowTrxRunError {
+    <#
+      The text of each RunInfo with outcome Error in one TRX file, trimmed, in file order. Backlog
+      219 exists for one such text: "The active test run was aborted. Reason: Test host process
+      crashed". A crashed test host leaves passed results and this one RunInfo, and names no
+      assembly. A file nobody can read gives nothing, as in Get-AhkFlowTrxFailure.
+    #>
+    param([Parameter(Mandatory = $true)][string] $TrxPath)
+
+    try { $raw = Get-Content -LiteralPath $TrxPath -Raw } catch { return @() }
+    if ([string]::IsNullOrWhiteSpace($raw)) { return @() }
+    try { [xml]$trx = $raw } catch { return @() }
+
+    $errors = New-Object System.Collections.Generic.List[string]
+    foreach ($info in $trx.GetElementsByTagName('RunInfo')) {
+        if ($info.GetAttribute('outcome') -ne 'Error') { continue }
+        $textNode = $info.GetElementsByTagName('Text') | Select-Object -First 1
+        $text = ''
+        if ($null -ne $textNode) { $text = $textNode.InnerText.Trim() }
+        $errors.Add($text)
+    }
+    return $errors.ToArray()
+}
+
 function Get-AhkFlowRunFailure {
     <#
       Every failure one run folder shows, as objects of Kind 'test', 'slice', 'evidence' or 'run'.
@@ -139,6 +163,14 @@ function Get-AhkFlowRunFailure {
                 $testFailures++
                 $failures.Add((New-AhkFlowRunFailureEntry -Kind 'test' -Slice $name -Test $testFailure.Test `
                             -Cause (Get-AhkFlowFailureCause -Message $testFailure.Message)))
+            }
+            # Backlog 219 changed only the Fast Mode, so Integration and Coverage keep the rules of
+            # backlog 204. One Fast TRX holds every assembly, so a failing test anywhere would hide
+            # a crash there. Each run error is a run failure, whatever else the run shows.
+            if ($Mode -eq 'Fast') {
+                foreach ($runError in @(Get-AhkFlowTrxRunError -TrxPath $trxPath)) {
+                    $failures.Add((New-AhkFlowRunFailureEntry -Kind 'run' -Cause (Get-AhkFlowFailureCause -Message $runError)))
+                }
             }
         }
 
