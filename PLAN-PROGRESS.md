@@ -23,3 +23,4 @@ Outside review round 1, finding 1 (required, correctness): two RunInfo errors wi
 - Simplify: nothing to simplify. The pass changes five lines of code, one comment and one case.
 - Verify: the suite (18 cases) plus Step 10 again: the same four `Done:` lines under pwsh 7.6.10 and Windows PowerShell 5.1.26100.9818.
 - Document: boxes 1, 2 and 3 still true. Nothing else to document.
+- Gate green at 54ca6ecb. Build 0 errors, 0 warnings; format clean; PowerShell 75 of 75 suites passed; Coverage skipped (every changed file is excluded); `git diff --check main...HEAD` clean.
