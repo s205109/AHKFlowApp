@@ -44,7 +44,7 @@ removed" and "tests cover the new API" cannot.
   `docs/development/cycle-time-record.md`, section "Run the Fast Mode test assemblies side by side
   (backlog 219)".
 - The rule that hides the crash:
-  (`scripts/measure-evidence.common.ps1:145`, "if ($exitCode -ne 0 -and $testFailures -eq 0) {").
+  (`scripts/measure-evidence.common.ps1:145`, "if ($exitCode -ne 0 -and $testFailures -eq 0) {"). <!-- citation-check:ignore: backlog 220 changed this line; the citation records the tree before the fix. -->
 - Backlog 219 wrote and then reverted a reader for these `RunInfo` lines, for the Fast Mode only:
   `Get-AhkFlowTrxRunError` in commit `ddfc810f`, reverted in `c2d4a699`. Its test fixture writes a
   `RunInfos` block into a TRX. Both may be reused here.

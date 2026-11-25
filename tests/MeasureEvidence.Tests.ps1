@@ -65,9 +65,11 @@ function ConvertTo-XmlText {
 }
 
 # One TRX file. Each test is @{ Name; Outcome; Message }. A failed result carries its message in
-# Output/ErrorInfo/Message, the way the real logger writes it.
+# Output/ErrorInfo/Message, the way the real logger writes it. Each RunInfo is @{ Outcome; Text }
+# and becomes one RunInfo inside ResultSummary, the shape a crashed test host left on 2026-11-24
+# (backlog 219).
 function New-TrxText {
-    param([object[]] $Test = @())
+    param([object[]] $Test = @(), [object[]] $RunInfo = @())
     $results = foreach ($t in $Test) {
         $id = [guid]::NewGuid().ToString()
         $inner = ''
@@ -78,6 +80,13 @@ function New-TrxText {
     }
     $total = @($Test).Count
     $failed = @($Test | Where-Object { $_.Outcome -eq 'Failed' }).Count
+    $runInfos = ''
+    if (@($RunInfo).Count -gt 0) {
+        $infos = foreach ($info in $RunInfo) {
+            "      <RunInfo computerName=""HOST"" outcome=""$($info.Outcome)"" timestamp=""2026-11-16T10:00:00.0000000+01:00""><Text>$(ConvertTo-XmlText $info.Text)</Text></RunInfo>"
+        }
+        $runInfos = "`n    <RunInfos>`n$($infos -join "`n")`n    </RunInfos>"
+    }
     return @"
 <?xml version="1.0" encoding="utf-8"?>
 <TestRun id="$([guid]::NewGuid())" name="probe" runUser="probe" xmlns="http://microsoft.com/schemas/VisualStudio/TeamTest/2010">
@@ -85,7 +94,7 @@ function New-TrxText {
 $($results -join "`n")
   </Results>
   <ResultSummary outcome="$(if ($failed -gt 0) { 'Failed' } else { 'Completed' })">
-    <Counters total="$total" executed="$total" passed="$($total - $failed)" failed="$failed" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />
+    <Counters total="$total" executed="$total" passed="$($total - $failed)" failed="$failed" error="0" timeout="0" aborted="0" inconclusive="0" passedButRunAborted="0" notRunnable="0" notExecuted="0" disconnected="0" warning="0" completed="0" inProgress="0" pending="0" />$runInfos
   </ResultSummary>
 </TestRun>
 "@
@@ -124,7 +133,7 @@ function New-ClassFigure {
 }
 
 # One run folder as Task 5 writes it. Each Slice is @{ Name; ExitCode; Tests (or $null for no TRX);
-# Log; Coverage ($true writes its line in coverage-files.txt) }.
+# Log; Coverage ($true writes its line in coverage-files.txt); RunInfo (entries for New-TrxText) }.
 function New-RunFolder {
     param(
         [string] $Path,
@@ -151,7 +160,8 @@ function New-RunFolder {
     foreach ($s in $Slice) {
         $folder = Join-Path $results $s.Name
         New-Item -ItemType Directory -Path $folder -Force | Out-Null
-        if ($null -ne $s.Tests) { Write-Utf8 (Join-Path $folder "$($s.Name).trx") (New-TrxText -Test $s.Tests) }
+        $runInfo = if ($s.ContainsKey('RunInfo')) { $s.RunInfo } else { @() }
+        if ($null -ne $s.Tests) { Write-Utf8 (Join-Path $folder "$($s.Name).trx") (New-TrxText -Test $s.Tests -RunInfo $runInfo) }
         $log = if ($s.ContainsKey('Log')) { $s.Log } else { 'Test run for probe.dll' }
         Write-Utf8 (Join-Path $folder "$($s.Name).log") $log
         $exit = if ($s.ContainsKey('ExitCode')) { $s.ExitCode } else { 0 }
@@ -206,6 +216,44 @@ Invoke-TestCase 'A Slice that failed with no failing test is a Slice failure, wi
         @{ Name = 'P.Tests'; ExitCode = 1; Tests = @($script:PassedTest); Log = 'Test run for probe.dll' })
     $failures = @(Get-AhkFlowRunFailure -RunFolder $plain -Mode 'Integration')
     Assert-True ($failures.Count -eq 1 -and $failures[0].Cause -eq 'exit code 1') "Failures: $($failures | ConvertTo-Json -Compress)"
+}
+
+$script:Crash = 'The active test run was aborted. Reason: Test host process crashed'
+$script:RunWarning = 'No test matches the given testcase filter in probe.dll'
+$script:CrashNextToFailingTest = @(@{ Name = 'P.Tests'; ExitCode = 1
+        Tests = @($script:PassedTest, @{ Name = 'Probe.Tests.Breaks'; Outcome = 'Failed'; Message = $script:AssertMessage })
+        RunInfo = @(@{ Outcome = 'Error'; Text = $script:Crash }) })
+
+Invoke-TestCase 'A test host crash is a run failure of its Slice, also next to a failing test' {
+    # Backlog 220. Without this, a failing test hides a crash in the same Slice, and a crash alone
+    # is a Slice failure that blocks nothing. A Warning RunInfo, as a passing run can hold, gives
+    # nothing.
+    $crash = $script:Crash
+    foreach ($mode in 'Integration', 'Coverage') {
+        $summary = if ($mode -eq 'Coverage') { $script:CleanSummary } else { $null }
+        $failing = @(@{ Name = 'P.Tests'; ExitCode = 1
+                Tests = @($script:PassedTest, @{ Name = 'Probe.Tests.Breaks'; Outcome = 'Failed'; Message = $script:AssertMessage })
+                RunInfo = @(@{ Outcome = 'Error'; Text = $crash }, @{ Outcome = 'Warning'; Text = $script:RunWarning }) })
+        $run = New-RunFolder -Path (New-CaseFolder) -Mode $mode -Failed $true -Message 'x' -Summary $summary -Slice $failing
+        $failures = @(Get-AhkFlowRunFailure -RunFolder $run -Mode $mode)
+        Assert-True ($failures.Count -eq 2) "$mode, next to a failing test: expected two failures, got $($failures.Count): $($failures | ConvertTo-Json -Compress)"
+        $test = @($failures | Where-Object { $_.Kind -eq 'test' })
+        Assert-True ($test.Count -eq 1 -and $test[0].Test -eq 'Probe.Tests.Breaks') "$mode, next to a failing test: $($failures | ConvertTo-Json -Compress)"
+        $runFailure = @($failures | Where-Object { $_.Kind -eq 'run' })
+        Assert-True ($runFailure.Count -eq 1 -and $runFailure[0].Slice -eq 'P.Tests' -and $runFailure[0].Cause -eq $crash -and
+            $runFailure[0].Key -eq "run|P.Tests|$crash") "$mode, next to a failing test: $($failures | ConvertTo-Json -Compress)"
+
+        foreach ($example in @(
+                @{ Why = 'alone'; ExitCode = 1; Log = "Test run for probe.dll`n$crash" },
+                @{ Why = 'exit 0'; ExitCode = 0 })) {
+            $slice = @{ Name = 'P.Tests'; ExitCode = $example.ExitCode; Tests = @($script:PassedTest); RunInfo = @(@{ Outcome = 'Error'; Text = $crash }) }
+            if ($example.ContainsKey('Log')) { $slice.Log = $example.Log }
+            $run = New-RunFolder -Path (New-CaseFolder) -Mode $mode -Failed $true -Message 'x' -Summary $summary -Slice @($slice)
+            $failures = @(Get-AhkFlowRunFailure -RunFolder $run -Mode $mode)
+            Assert-True ($failures.Count -eq 1 -and $failures[0].Kind -eq 'run' -and $failures[0].Slice -eq 'P.Tests' -and $failures[0].Cause -eq $crash) `
+                "$mode, $($example.Why): $($failures.Count) failure(s): $($failures | ConvertTo-Json -Compress)"
+        }
+    }
 }
 
 Invoke-TestCase 'A missing TRX file, a TRX file that counts no test, a missing coverage file and a missing report are evidence failures' {
@@ -371,7 +419,32 @@ Invoke-TestCase 'An unexplained failure in a timing session blocks that setting'
         (New-CleanRun 'Budget' 'at-budget\run-2' 'run 2' 'counted' 8))
     $result = Invoke-Verdict @('-Timing', $timing)
     Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
-    Assert-True ($result.Output.Contains('Budget blocked: a run failed with no failing Slice or test.')) "Output: $($result.Output)"
+    Assert-True ($result.Output.Contains('Budget blocked: a run has an evidence failure or a run failure.')) "Output: $($result.Output)"
+}
+
+Invoke-TestCase 'A test host crash blocks the setting, and a Soak never clears it' {
+    # Backlog 220. Without this, the verdict script lets a crash next to a known test failure
+    # through. The 'existing' row proves the sequence Soak matched, so 'not cleared' comes only
+    # from the Kind.
+    $message = 'dotnet test failed for: P.Tests.'
+    $slice = $script:CrashNextToFailingTest
+    foreach ($mode in 'Integration', 'Coverage') {
+        $timing = New-SessionFolder -Mode $mode -Kind 'timing' -Settings @('1', 'Budget') -Run @(
+            (New-CleanRun '1' 'at-1\run-1' 'run 1' 'counted' 10),
+            (New-CleanRun 'Budget' 'at-budget\run-1' 'run 1' 'counted' 8 $true $message $slice))
+        $soak = New-SessionFolder -Mode $mode -Kind 'soak' -Settings @('Budget') -Run @(
+            (New-CleanRun 'Budget' 'at-budget\soak-1' 'soak 1' 'soak' 8 $true $message $slice))
+        $sequence = New-SessionFolder -Mode $mode -Kind 'soak' -Settings @('1') -Run @(
+            (New-CleanRun '1' 'at-1\soak-1' 'soak 1' 'soak' 10 $true $message $slice))
+        $result = Invoke-Verdict @('-Timing', $timing, '-Soak', $soak, '-SequenceSoak', $sequence)
+        Assert-True ($result.ExitCode -eq 0) "${mode}: expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
+        foreach ($line in @(
+                'Budget blocked: a run has an evidence failure or a run failure.',
+                '| test | P.Tests | Probe.Tests.Breaks | Expected value to be # because the probe says so, but found #. | 1 | 1 | existing |',
+                "| run | P.Tests | - | $($script:Crash) | 1 | 1 | not cleared |")) {
+            Assert-True ($result.Output.Contains($line)) "${mode}: no line '$line'. Output: $($result.Output)"
+        }
+    }
 }
 
 Invoke-TestCase 'The verdict script refuses a sequence Soak that does not match the Soak it judges' {
