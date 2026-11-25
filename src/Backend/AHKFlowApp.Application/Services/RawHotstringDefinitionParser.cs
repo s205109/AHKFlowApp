@@ -51,8 +51,8 @@ internal sealed record RawPrepared(string NormalizedDefinition, string? LiftedCo
 ///
 /// Deliberately supports a restricted subset of AHK v2 (see <c>HotstringRules.AddRawKindRules</c>):
 /// naive brace counting on brace bodies only, no string/comment lexing. Continuation sections are
-/// accepted as verbatim literal text; OTB braces (<c>:X:t::{</c>) are accepted and normalized
-/// (Task 2). Known option set is per the official v2 docs:
+/// accepted as verbatim literal text; OTB braces (<c>:X:t::{</c>) are accepted and normalized.
+/// Known option set is per the official v2 docs:
 /// <see href="https://www.autohotkey.com/docs/v2/Hotstrings.htm"/>. Continuation sections per
 /// <see href="https://www.autohotkey.com/docs/v2/Scripts.htm#continuation-section"/>.
 /// </summary>

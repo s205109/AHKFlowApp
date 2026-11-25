@@ -1277,8 +1277,8 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
     public async Task KindToggle_RawWithUnexpressibleOptions_StillAsksBeforeDiscarding()
     {
         // K1000 and SE have no structured field, so the question must still be asked, and nothing
-        // may change until it is answered. This one is a guard, not a red test: it passes before
-        // this task too, and its job is to fail if the expressible set ever swallows everything.
+        // may change until it is answered. This one is a guard. Its job is to fail if the
+        // expressible set ever swallows everything.
         HotstringEditModel item = new() { Trigger = "ftw", Kind = HotstringKind.Raw, Replacement = ":K1000 SE:ftw::for the win" };
         IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);
         provider.WaitForAssertion(() => provider.Find("[data-test=\"kind-selector\"]"));
@@ -1292,7 +1292,7 @@ public sealed class HotstringEditDialogTests : BunitContext, IAsyncLifetime
     [Fact]
     public async Task KindToggle_RawWithCancelTokenOnly_SwitchesWithoutAsking()
     {
-        // The other side of the boundary. ':*0:' is expressible after this task, so saying it
+        // The other side of the boundary. ':*0:' is expressible, so saying it
         // would be discarded would be false, and the switch goes straight through.
         HotstringEditModel item = new() { Trigger = "btw", Kind = HotstringKind.Raw, Replacement = ":*0:btw::by the way" };
         IRenderedComponent<MudDialogProvider> provider = await RenderDialogAsync(item);

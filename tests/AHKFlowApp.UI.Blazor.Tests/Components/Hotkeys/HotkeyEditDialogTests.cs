@@ -430,8 +430,8 @@ public sealed class HotkeyEditDialogTests : BunitContext, IAsyncLifetime
         // that field, so it cannot outlive — and contradict — the value it judged. Because MudBlazor
         // inputs mask a field's stale explicit error once its own value changes, the observable seam
         // is _saveFieldErrors, not the rendered markup: the edited field's key must go while an
-        // untouched field's key stays (proving only the edited field is cleared, per Task 8's
-        // isolation contract).
+        // untouched field's key stays (proving only the edited field is cleared, not every
+        // save error).
         _api.CreateAsync(Arg.Any<CreateHotkeyDto>(), Arg.Any<CancellationToken>())
             .Returns(ApiResult<HotkeyDto>.Failure(
                 ApiResultStatus.Validation,

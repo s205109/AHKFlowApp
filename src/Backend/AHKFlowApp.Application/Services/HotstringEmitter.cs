@@ -82,7 +82,7 @@ internal static class HotstringEmitter
     }
 
     // Assumes hs.Replacement has already passed Macro validation (parses cleanly, ≤1 cursor,
-    // no keys after cursor) — that invariant is enforced elsewhere (Task 3), not re-checked here.
+    // no keys after cursor). HotstringRules.AddMacroKindRules enforces it; this does not re-check.
     // Produces a tab-indented AHK v2 brace body:
     //   {
     //   	SendText "..."
