@@ -27,10 +27,10 @@ Write each criterion as state a reader can observe in the repository, not as a c
 "The handler returns `Result.NotFound()` for a missing id" can be checked. "The old check is
 removed" and "tests cover the new API" cannot.
 
-- [ ] In the Integration and Coverage Modes, a Slice whose TRX has a `RunInfo` with
+- [x] In the Integration and Coverage Modes, a Slice whose TRX has a `RunInfo` with
       `outcome="Error"` gives one failure for that crash, also when a test of the same Slice failed.
-- [ ] That failure blocks the setting, and a Soak never clears it as existing.
-- [ ] `tests/MeasureEvidence.Tests.ps1` has a case for a crash next to a failing test in one Slice,
+- [x] That failure blocks the setting, and a Soak never clears it as existing.
+- [x] `tests/MeasureEvidence.Tests.ps1` has a case for a crash next to a failing test in one Slice,
       for each of the two Modes.
 
 ## Out of scope
