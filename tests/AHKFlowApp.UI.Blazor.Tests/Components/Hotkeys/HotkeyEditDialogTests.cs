@@ -489,7 +489,7 @@ public sealed class HotkeyEditDialogTests : BunitContext, IAsyncLifetime
     // Expected ops are listed literally, not as Enum.GetValues<WindowOp>(): the dropdown builds its
     // items from that same call, so comparing against it could never fail. The literal catches the
     // dropdown narrowing its source — a hardcoded subset, or a .Where(...) filter over the enum.
-    // Mirror completeness is a different failure, covered by WindowOpTests.MirrorsDomainEnum.
+    // Mirror completeness is a different failure, covered by WindowOpTests.MirrorsDomainEnum_NameAndOrdinal.
     // Asserting rendered items, rather than driving ValueChanged (which passes whether or not the
     // item exists), is what makes an unpickable op visible at all.
     [Fact]

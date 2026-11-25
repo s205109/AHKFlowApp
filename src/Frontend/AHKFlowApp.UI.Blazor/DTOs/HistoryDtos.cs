@@ -49,8 +49,8 @@ public sealed record HotkeySnapshot(
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
     // Optional legacy members, permanently. Old history JSON still carries them, and the
-    // backend keeps them on its own HotkeySnapshot for exactly that reason (backend Task 8).
-    // Unlike the DTO pair above, these do NOT retire in Task 10.
+    // backend keeps them on its own HotkeySnapshot for exactly that reason. ADR 0005 says
+    // when they may go.
     HotkeyAction? Action = null,
     string? Parameters = null,
     WindowMatchType? ContextMatchType = null,
