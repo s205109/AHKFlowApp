@@ -1820,3 +1820,9 @@ This part describes the times. It does not change the verdict.
 - The median of Budget is 5.50 s, or 26 %, below the median of 1. But the counted runs at 1 range
   over 6.04 s. The difference between settings is no larger than the noise between rounds, so the
   rule of D7 cannot tell them apart.
+
+### Soaks
+
+No setting is a candidate, so no Soak ran. Setting 2 and Budget each have a counted run slower than
+the fastest counted run at 1, as the section Candidates above says. So no sequence Soak ran
+either, and no fallback applied (D7).
