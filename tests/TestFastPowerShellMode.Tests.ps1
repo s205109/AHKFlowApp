@@ -111,7 +111,7 @@ function Add-FakeSuite {
 # Two environment variables are handled here. AHKFLOW_TESTFAST_MODE_TEST arms the recursion guard at
 # the top of this file. GITHUB_STEP_SUMMARY is redirected because the child inherits it: under CI the
 # runner would otherwise append these fake tables, deliberate failures included, to the real
-# powershell-suites job summary (scripts/run-powershell-suites.ps1:128-131).
+# powershell-suites job summary, which scripts/run-powershell-suites.ps1 writes to GITHUB_STEP_SUMMARY.
 function Invoke-Wrapper {
     param(
         [string] $SuiteRoot,

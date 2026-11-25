@@ -185,7 +185,7 @@ public sealed class TemplateUseTextTests
         string text = TemplateUseText.TextFor([Both("Work", Wildcard("CapsLock"))], Row("CapsLock"))!;
 
         // The notice must never promise an outcome. CONTEXT.md rules that out
-        // (`CONTEXT.md:99`, "it never promises what will happen when the keys are pressed"), and the
+        // (`CONTEXT.md:100`, "it never promises what will happen when the keys are pressed"), and the
         // AutoHotkey docs say "eclipsed" without promising it in every case. The fixture checks
         // the same rule the app enforces on owner-written warnings.
         ShortcutWordingFixtures.MakesAbsoluteClaim(text).Should().BeFalse(text);

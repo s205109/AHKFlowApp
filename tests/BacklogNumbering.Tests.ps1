@@ -381,7 +381,7 @@ finally {
 
 # --- Case 15: a scaffolded item inherits the template's Stage line ---
 #
-# new-backlog-item.ps1 copies every template line but the heading (scripts/new-backlog-item.ps1:41-43),
+# new-backlog-item.ps1 copies every template line but the heading (its $templateLines[0] line),
 # so the template is the only place the field has to be written. This proves that, rather than
 # assuming it.
 
@@ -427,7 +427,8 @@ finally {
 
 # --- Cases 16 to 19: the Stage field ---
 #
-# The field is the durable record of where work stands (docs/development/workflow.md:78,634-642).
+# The field is the durable record of where work stands (docs/development/workflow.md, the unit
+# contract table in section 2 and the Stage 9 block).
 # Before backlog 087 nothing checked it, so a shipped item reached backlog/done/ still reading
 # 'Stage: 4-execute' (backlog/done/080-race-safe-intake-remove-the-backlog-number-from-worktree-names.md).
 # These four cases replace the reviewer's eye. New-TestItemText is defined at the top of this file.
@@ -480,7 +481,7 @@ finally {
 
 # --- Case 19: a blocked item keeps its last stage, so blocked/ takes any valid value ---
 #
-# (`docs/development/workflow.md:774`, "A blocked item keeps its last stage"). Only done/ is pinned
+# (`docs/development/workflow.md:835`, "A blocked item keeps its last stage"). Only done/ is pinned
 # to a single value.
 
 $tempRoot = New-TemporaryBacklogRoot
