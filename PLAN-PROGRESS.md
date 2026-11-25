@@ -7,3 +7,14 @@ Plan: `docs/superpowers/plans/2026-11-25-show-a-test-host-crash-next-to-a-failin
 - Verify: the verification artifact is the suite plus the probes. `MeasureEvidence.Tests.ps1` 17 cases pass after the simplify pass, and Step 10 gives the same four `Done:` lines again under pwsh 7.6.10 and Windows PowerShell 5.1.26100.9818.
 - Document: boxes 1, 2 and 3 ticked. Nothing else to document: no document describes the failure kinds, and the functions' comments carry the rule.
 - Gate green at 2caca04a. Build 0 errors, 0 warnings; format clean; PowerShell 75 of 75 suites passed; Coverage skipped (every changed file is excluded); `git diff --check main...HEAD` clean.
+
+## Failure edge to 4-execute (2026-11-25)
+
+**Red evidence:**
+
+```
+Outside review round 1, finding 1 (required, correctness): two RunInfo errors with the same cause in one Slice of one run give two failures with one key, so the Soak table counts that run twice. Scratch repro dup-220.ps1 on the real Integration crash TRX with its RunInfo duplicated printed: 'run | UI.Blazor | The active test run was aborted. Reason: Test host process crashed | 2 | 2 | not cleared' and 'Done: 2 failure(s) from one run.'
+```
+
+**Recovery task:** Task 2: a Slice gives one run failure per distinct cause (Outside review finding 1), with a regression case for two matching run errors in one run; also comment the log-only crash case (Claude review finding 1, optional)
+
