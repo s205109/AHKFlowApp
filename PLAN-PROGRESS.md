@@ -18,3 +18,8 @@ Outside review round 1, finding 1 (required, correctness): two RunInfo errors wi
 
 **Recovery task:** Task 2: a Slice gives one run failure per distinct cause (Outside review finding 1), with a regression case for two matching run errors in one run; also comment the log-only crash case (Claude review finding 1, optional)
 
+
+- Task 2 (one run failure per distinct cause in a Slice): done at 49830ab4. Tests: `MeasureEvidence.Tests.ps1` passes alone, 18 cases; the new case `Two matching run errors in one Slice are one run failure, so a Soak counts that run once` failed first with two failures. The scratch repro now prints `| 1 | 1 | not cleared`, and the duplicated TRX gives `Done: 1 failure(s) in PowerShell 5.1.26100.9818.` Ruling: the fix removes duplicate causes in the reader, not in the Soak inputs as the reviewer suggested; two errors with one key in one run are one failure, and identical rows in the timing table carry nothing more. Also folded in: the comment on the log-only crash case (Claude review finding 1, optional). Deferrals: none.
+- Simplify: nothing to simplify. The pass changes five lines of code, one comment and one case.
+- Verify: the suite (18 cases) plus Step 10 again: the same four `Done:` lines under pwsh 7.6.10 and Windows PowerShell 5.1.26100.9818.
+- Document: boxes 1, 2 and 3 still true. Nothing else to document.
