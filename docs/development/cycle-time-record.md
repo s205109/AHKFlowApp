@@ -1746,9 +1746,9 @@ No failure, so no failure has a kind, a cause or a verdict.
 
 ## Run the Fast Mode test assemblies side by side (backlog 219)
 
-Backlog 219 lets the Fast Mode run its five test assemblies side by side, inside its one
-`dotnet test` call. The call ends with `-- RunConfiguration.MaxCpuCount=<n>`, and 1 is the old
-call. The plan is
+Backlog 219 tried to let the Fast Mode run its five test assemblies side by side, inside its one
+`dotnet test` call. The trial call ended with `-- RunConfiguration.MaxCpuCount=<n>`, and 1 gave
+the old call. The section Decision below says why the change was dropped. The plan is
 `docs/superpowers/plans/2026-11-24-run-the-fast-mode-test-assemblies-side-by-side-plan-219.md`.
 
 ### Timing session
@@ -1812,9 +1812,9 @@ session was discarded.
 
 This part describes the times. It does not change the verdict.
 
-- The last warm-up round and the first three counted rounds were the slowest, at every setting.
-  By run 5 the times were close to the warm-ups again. This record does not prove what slowed the
-  machine.
+- At 1 and 2, the first three counted runs were slower than every warm-up. At Budget, warm-up 12
+  and runs 1 and 2 were the slowest. By run 5 the times were back in the range of the warm-ups,
+  at every setting. This record does not prove what slowed the machine.
 - In each of the five counted rounds, Budget was faster than 1. Setting 2 was faster than 1 in
   four of them.
 - The median of Budget is 5.50 s, or 26 %, below the median of 1. But the counted runs at 1 range
