@@ -1379,7 +1379,7 @@ function Invoke-WatcherMode {
             #
             # Its own try/catch, and not the teardown's, for one reason worth stating. The helper
             # file is dot-sourced from the main checkout, not from the worktree being removed, so
-            # until this branch merges these two functions do not exist there. Sharing the
+            # these two functions are missing when that checkout is older than them. Sharing the
             # teardown's catch would turn a Compose teardown that worked into a log line saying it
             # did not.
             try {

@@ -716,7 +716,7 @@
     private Task SwitchToRawFromSuggestion() => OnKindChangedAsync(HotstringKind.Raw);
 
     /// <summary>
-    /// Heuristic "looks like AHK code" detector for the Text-kind "Use Script?" suggestion
+    /// Heuristic "looks like AHK code" detector for the Text-kind "switch to Raw?" suggestion
     /// (spec §54, deferred from Phase 3): a line starting with <c>Send</c>, <c>::</c>, or
     /// <c>#</c>, or any brace character, mirrors the guidance text verbatim. Intentionally
     /// loose — false positives just show a dismissible suggestion, never a hard gate.

@@ -9,10 +9,10 @@
   nothing, and scripts/measure-test-modes.ps1 asks so a soak repetition that exited zero with
   an empty suite is not counted as a pass.
 
-  Before this file the answer was written three times: once in test-fast.ps1's Read-TestCount,
-  once inline in its Invoke-TestRun to find the newest TRX, and once in measure-test-modes.ps1's
-  Get-SoakTestCount. Nothing kept the three in step, and a change to how a count is read - a
-  namespace, a missing ResultSummary, a different counter - had to land in all three.
+  Both scripts read the count through this file, so the rule exists once. A change to how a
+  count is read - a namespace, a missing ResultSummary, a different counter - lands in one
+  place. Two copies of a rule drift apart, because nothing keeps them in step, and a fix then
+  lands in one copy and not the other.
 
   A count of zero is the answer for a TRX that is missing, unreadable as a result summary, or
   genuinely empty. Every caller treats zero the same way: the run proved nothing.

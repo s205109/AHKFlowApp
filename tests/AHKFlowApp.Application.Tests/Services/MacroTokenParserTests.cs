@@ -6,8 +6,8 @@ namespace AHKFlowApp.Application.Tests.Services;
 
 public sealed class MacroTokenParserTests
 {
-    // Cross-task contract (Task 3 validator surfaces this verbatim) — keep in sync with the
-    // plan's example message (docs/superpowers/plans/2026-07-10-hotstrings-redesign-phase3.md).
+    // HotstringRules.AddMacroKindRules surfaces this verbatim — keep in sync with
+    // MacroTokenParser.AllowedTokensMessage.
     private const string Allowed = "Allowed: {{cursor}}, {{key:Enter}}, {{key:Tab}}.";
 
     private static MacroToken.TextRun Text(string s) => new(s);
@@ -150,7 +150,7 @@ public sealed class MacroTokenParserTests
     [Fact]
     public void TokenStream_PreservesOrdering_ForLaterCursorMath()
     {
-        // The parser doesn't compute offsets itself (Task 2's job) — but the token stream's
+        // The parser doesn't compute offsets itself — but the token stream's
         // order and TextRun contents must give a later consumer everything it needs to derive
         // "characters after cursor" by simple summation.
         MacroParseResult result = MacroTokenParser.Parse("abc{{cursor}}def");
@@ -205,7 +205,7 @@ public sealed class MacroTokenParserTests
     [Fact]
     public void UnclosedEscape_ContainingMalformedRealToken_StillSurfacesStrictError()
     {
-        // Decision-11 edge case from the plan: unclosed escape wrapping a typo'd real token —
+        // Edge case: unclosed escape wrapping a typo'd real token —
         // the leading "{{" is literal, and "{{key:Entr}}" still raises its own strict error.
         MacroParseResult result = MacroTokenParser.Parse("{{{{key:Entr}}");
 

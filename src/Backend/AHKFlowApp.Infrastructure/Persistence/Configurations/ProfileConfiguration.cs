@@ -31,7 +31,6 @@ internal sealed class ProfileConfiguration : IEntityTypeConfiguration<Profile>
         builder.Property(x => x.CreatedAt).IsRequired();
         builder.Property(x => x.UpdatedAt).IsRequired();
 
-        // Name unique per owner.
         builder.HasIndex(x => new { x.OwnerOid, x.Name })
             .IsUnique()
             .HasDatabaseName(ProfileIndexNames.OwnerName);

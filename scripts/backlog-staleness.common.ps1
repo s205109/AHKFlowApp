@@ -122,7 +122,7 @@ function Get-BacklogStaleOpenProblem {
         if ($item.Folder -in $script:BacklogItemSubfolder) { continue }
 
         # A missing, repeated, or unknown Stage value belongs to the check that already owns
-        # those messages (`scripts/backlog.common.ps1:100`, "function Get-BacklogProblem {").
+        # those messages (`scripts/backlog.common.ps1:99`, "function Get-BacklogProblem {").
         if ($item.Stages.Count -ne 1) { continue }
         $stage = $item.Stages[0]
         $index = [array]::IndexOf($script:BacklogStageOrder, $stage)

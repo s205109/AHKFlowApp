@@ -2097,7 +2097,7 @@ Invoke-TestCase 'An explicit -MaxParallel is named on the Workers line' {
     }
 }
 
-# Task 5 Lane runner integration cases. All pools and runner copies are temporary.
+# Lane runner integration cases. All pools and runner copies are temporary.
 . (Join-Path $repoRoot 'scripts/test-lanes.common.ps1')
 . (Join-Path $repoRoot 'tests/LanePool.Common.ps1')
 

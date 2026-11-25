@@ -874,8 +874,8 @@ public sealed class HotkeysPageTests : BunitContext, IAsyncLifetime
         cut.WaitForAssertion(() =>
         {
             cut.Markup.Should().Contain("No hotkeys match these filters.");
-            // Scoped to the grid: the mobile branch renders its own true-empty text until Task 3,
-            // and this test is about the desktop empty state.
+            // Scoped to the grid: this test is about the desktop empty state, and the mobile list
+            // renders an empty state of its own.
             cut.Find(".hotkeys-grid").InnerHtml.Should().NotContain("No hotkeys yet.");
             cut.FindAll(".hotkeys-grid button.clear-filters").Should().ContainSingle();
         });

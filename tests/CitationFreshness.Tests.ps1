@@ -683,7 +683,7 @@ finally {
 # --- The pre-push decision ---
 
 # Never test this by renaming docs/superpowers. Every worktree links to that folder, and the
-# workflow refuses renaming or deleting it (`docs/development/workflow.md:716`, "Two paths stay refused"). Inject a
+# workflow refuses renaming or deleting it (`docs/development/workflow.md:899`, "Two paths stay refused"). Inject a
 # fixture path instead.
 . (Join-Path $repoRoot 'scripts/plans-citation-scan.common.ps1')
 

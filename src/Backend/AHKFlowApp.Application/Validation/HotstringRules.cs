@@ -61,25 +61,21 @@ internal static partial class HotstringRules
     {
         Func<T, bool> appliesToAllFn = appliesToAll.Compile();
 
-        // When AppliesToAllProfiles = true, ProfileIds must be empty
         validator.RuleFor(profileIds)
             .Must(ids => ids is null || ids.Length == 0)
             .When(x => appliesToAllFn(x))
             .WithMessage("Profiles must be empty when Apply to all profiles is on.");
 
-        // When AppliesToAllProfiles = false, at least one profile required
         validator.RuleFor(profileIds)
             .Must(ids => ids is { Length: > 0 })
             .When(x => !appliesToAllFn(x))
             .WithMessage("Choose at least one profile in Profiles, or turn on Apply to all profiles.");
 
-        // No empty GUIDs in the array
         validator.RuleFor(profileIds)
             .Must(ids => ids is null || ids.All(id => id != Guid.Empty))
             .When(x => !appliesToAllFn(x))
             .WithMessage("Profiles must not contain an empty profile id.");
 
-        // No duplicate GUIDs in the array
         validator.RuleFor(profileIds)
             .Must(ids => ids is null || ids.Length == ids.Distinct().Count())
             .When(x => !appliesToAllFn(x))
@@ -132,7 +128,6 @@ internal static partial class HotstringRules
             .When(x => !IsDateTime(x))
             .WithMessage("Format must be empty unless Kind is Date & time.");
 
-        // DateOffsetAmount / DateOffsetUnit: must be null unless DateTime
         validator.RuleFor(dateOffsetAmount)
             .Must(a => a is null)
             .When(x => !IsDateTime(x))

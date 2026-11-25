@@ -149,7 +149,7 @@ Walking the same route through the edit dialog in a browser is follow-up work.
   - Hotkey Revert applies the Snapshot: (`src/Backend/AHKFlowApp.Application/Commands/Hotkeys/RevertHotkeyCommand.cs:61`, "entity.Update(LegacyHotkeySnapshotConverter.ToDefinition(snapshot), clock);"). <!-- citation-check:ignore: this branch rewrote the cited line -->
   - The Window context is written unescaped: (`src/Backend/AHKFlowApp.Application/Services/DefinitionWrapping.cs:75`, "ContextValue has already passed validation").
   - The date format is written unescaped: (`src/Backend/AHKFlowApp.Application/Services/HotstringEmitter.cs:77`, "validation lives elsewhere").
-  - The Macro emitter trusts its input: (`src/Backend/AHKFlowApp.Application/Services/HotstringEmitter.cs:85`, "enforced elsewhere (Task 3)").
+  - The Macro emitter trusts its input: (`src/Backend/AHKFlowApp.Application/Services/HotstringEmitter.cs:85`, "HotstringRules.AddMacroKindRules enforces it; this does not re-check").
   - A Remap with no destination throws during generation: (`src/Backend/AHKFlowApp.Application/Services/HotkeyEmitter.cs:66`, "Remap requires a RemapDest").
 - Open question for Pickup — **settled in Design.** A failing Revert is refused. A failing Restore
   brings the Item back applying to no profile. ADR-0021 holds the reasoning.

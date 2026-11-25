@@ -9,7 +9,7 @@ public sealed class PublishFreshnessTests(StackFixtureB fixture)
 {
     // Directory.GetFiles has a legacy quirk where a three-character extension also matches
     // longer ones. ".wasm" is four characters and ".js" is two, so both patterns below match
-    // exactly. PublishedFramework_AfterAnyE2ERun_HoldsNoCompressedSiblings covers the ".br"
+    // exactly. PublishedWwwroot_AfterAnyE2ERun_HoldsNoCompressedSiblings covers the ".br"
     // and ".gz" siblings, so no pattern here has to exclude them.
     [Theory]
     [InlineData("AHKFlowApp.UI.Blazor.*.wasm")]

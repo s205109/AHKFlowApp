@@ -54,8 +54,9 @@ public sealed class BootFailureFlowTests(StackFixtureB fixture) : IAsyncLifetime
         await page.GotoAsync(fixture.Spa.BaseUrl, new PageGotoOptions { WaitUntil = WaitUntilState.Commit });
 
         // The reload happened: the document was requested a second time. This test proves the
-        // reload, nothing more. That the reload happens at most once is proven in Task 3, where
-        // the error screen gives a terminal state to wait for.
+        // reload, nothing more. That the reload happens at most once is proven by
+        // SecondBootFailure_ShowsMessage_StopsReloading_AndReloadButtonWorks, where the error
+        // screen gives a terminal state to wait for.
         await WaitUntilAsync(() => documents.Count >= 2, "the page to reload after the first boot failure");
     }
 

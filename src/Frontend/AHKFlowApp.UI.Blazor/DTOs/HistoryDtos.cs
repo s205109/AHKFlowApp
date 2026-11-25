@@ -48,9 +48,9 @@ public sealed record HotkeySnapshot(
     Guid[] CategoryIds,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
-    // Optional legacy members, permanently. Old history JSON still carries them, and the
-    // backend keeps them on its own HotkeySnapshot for exactly that reason (backend Task 8).
-    // Unlike the DTO pair above, these do NOT retire in Task 10.
+    // Action and Parameters are legacy members, kept permanently: old history JSON still
+    // carries them, and so does the backend HotkeySnapshot. ADR 0005 says when they may go.
+    // ContextMatchType and ContextValue are current. Null means the hotkey fires everywhere.
     HotkeyAction? Action = null,
     string? Parameters = null,
     WindowMatchType? ContextMatchType = null,

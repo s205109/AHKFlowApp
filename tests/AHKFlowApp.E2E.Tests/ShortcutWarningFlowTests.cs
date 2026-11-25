@@ -185,7 +185,7 @@ public sealed class ShortcutWarningFlowTests(StackFixtureA fixture) : IAsyncLife
         await page.HoverAsync(WindowsFileExplorerWrapper);
 
         // "Win+E" filters to more than one row, so more than one tooltip popover exists in the DOM
-        // at once, all sharing the .use-action-tooltip-text class from Task 1 — MudBlazor keeps
+        // at once, all sharing the .use-action-tooltip-text class — MudBlazor keeps
         // every one mounted, off-screen, until it opens (MudBlazor.min.css, MudPopover 9.3.0:
         // .mud-popover{opacity:0;top:-9999px;left:-9999px}). mud-popover-open is the class
         // MudBlazor adds to the one actually shown (MudPopover.razor.cs PopoverClass,

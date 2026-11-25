@@ -2331,8 +2331,8 @@ try {
 
     # A body is data. It must produce no tokens, and the command after the terminator must be
     # classified normally. Expected lists the tokens of every segment, segments joined by ' :: '.
-    # A Git segment drops its leading 'git' word: Get-AgentCommandSegment stores the tail
-    # (agent-worktree-guard.common.ps1:670-683).
+    # A Git segment drops its leading 'git' word: Get-AgentCommandSegment stores only the tail
+    # in a Git segment's Tokens.
     $heredocCases = @(
         @{ Name     = 'a body that reads like a pipeline'
             Command  = "git commit -F - <<'EOF'`nGet-Item x | Remove-Item`nEOF"

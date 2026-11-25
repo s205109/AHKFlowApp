@@ -98,12 +98,13 @@ public sealed class HotkeysCrudFlowTests(StackFixtureB fixture) : IAsyncLifetime
 
     // Backlog 037: a Raw body that injects a second top-level definition must be rejected before
     // the preview can generate. The preview panel's blocked message only appears while it is
-    // expanded (HotkeyEditDialog.razor:613-616), so the flow opens it before typing the body.
+    // expanded (RefreshPreview in HotkeyEditDialog.razor returns early while it is collapsed), so
+    // the flow opens it before typing the body.
     //
     // The flow goes through a VALID body first and waits for the generated snippet. An empty Raw
     // body is itself invalid ("Action body is required.", HotkeyRules.cs:102-103), so asserting
     // the blocked message straight after typing would also pass while that first error was still
-    // on screen — the body field debounces for 300 ms (HotkeyEditDialog.razor:175). Proving the
+    // on screen — the body field debounces for 300 ms (its DebounceInterval). Proving the
     // snippet rendered first means the blocked message can only come from the injected definition.
     //
     // The end of the flow covers backlogs 051 and 213: the Body field's own inline error on the
@@ -156,7 +157,7 @@ public sealed class HotkeysCrudFlowTests(StackFixtureB fixture) : IAsyncLifetime
     }
 
     // Backlog 051, second half: Save routes a Body error into _saveFieldErrors
-    // (HotkeyEditDialog.razor:414) rather than the generic alert, so the field is the only place
+    // (through FieldErrorMapper.Map) rather than the generic alert, so the field is the only place
     // the user can learn why Save did nothing. The preview panel stays collapsed here on purpose —
     // that way only the Save response can produce the message being asserted.
     [Fact]
@@ -184,10 +185,10 @@ public sealed class HotkeysCrudFlowTests(StackFixtureB fixture) : IAsyncLifetime
             .ToHaveAttributeAsync("aria-invalid", "true");
 
         // The message must still be there once the field's debounce can no longer be pending.
-        // Filling the body arms a 300 ms timer (HotkeyEditDialog.razor:173-175) whose elapsed
-        // handler calls ClearSaveError("Body") (razor:375-379) — the same key the Save response
-        // writes (razor:414). Playwright's Expect polls, so the assertions above would go green on
-        // a message that vanished a moment later. Re-checking after the window closes is what
+        // Filling the body arms the field's 300 ms DebounceInterval. Its elapsed handler,
+        // OnFieldDebounced, calls ClearSaveError("Body") — the same key the Save response writes
+        // through FieldErrorMapper.Map. Playwright's Expect polls, so the assertions above would go
+        // green on a message that vanished a moment later. Re-checking after the window closes is what
         // makes this test prove the user can actually read the message. The timer started at the
         // fill, before Save, so 500 ms after the message appears is already past its 300 ms.
         await page.WaitForTimeoutAsync(500);

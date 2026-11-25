@@ -277,7 +277,7 @@ internal static class HotkeyRules
 
             // Bare: exactly one printable, non-brace, non-modifier character. Quote and backtick
             // stay valid here — Send can type them. They are hostile to the *string literal*, not
-            // to Send, so the emitter escapes them (Task 5); this validator owns Send semantics only.
+            // to Send, so HotkeyEmitter escapes them; this validator owns Send semantics only.
             return key.Length == 1 && !char.IsControl(key[0]) && key[0] is not '{' and not '}';
         }
 

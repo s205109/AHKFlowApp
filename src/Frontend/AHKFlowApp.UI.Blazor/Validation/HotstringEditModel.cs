@@ -66,7 +66,7 @@ public sealed class HotstringEditModel
     }
 
     /// <summary>
-    /// Grid rows can only offer inline edit for Text-kind hotstrings (Task 11) that have no
+    /// Grid rows can only offer inline edit for Text-kind hotstrings that have no
     /// window context — a contexted hotstring must go through the dialog so the context fields
     /// stay visible and validated.
     /// </summary>
