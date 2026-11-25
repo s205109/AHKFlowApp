@@ -1743,3 +1743,111 @@ No failure, so no failure has a kind, a cause or a verdict.
 - GitHub issue #489: run the Fast Mode test assemblies side by side. D13 asked for it, because the
   coverage Soak showed no UI.Blazor failure.
 - No Soak failure was left uncleared, so no other item was filed.
+
+## Run the Fast Mode test assemblies side by side (backlog 219)
+
+Backlog 219 tried to let the Fast Mode run its five test assemblies side by side, inside its one
+`dotnet test` call. The trial call ended with `-- RunConfiguration.MaxCpuCount=<n>`. With `<n>`
+set to 1, the call is the same as the old call. The section Decision below says why the change
+was dropped. The plan is
+`docs/superpowers/plans/2026-11-24-run-the-fast-mode-test-assemblies-side-by-side-plan-219.md`.
+
+### Timing session
+
+The session ran on 2026-11-25, in the worktree `wt-run-the-fast-mode-test-assembli-cdaae3e7`.
+No API or UI of the worktree ran, and no other heavy work ran. No run printed "Sharing the test
+Lane pool with:". Every run at Budget printed `Slices at once: 3 (asked for Budget, budget 3)`.
+
+- Revision: `7ce48ea5d9fbaf4d01d8200293d075a6787d322c`.
+- Session: `TestResults\measure-test-modes\Fast\session-20261125-045217`.
+- The command was `pwsh .\scripts\measure-test-modes.ps1 -Mode Fast -Setting 1,2,Budget`.
+- Before the session, `Win32_Battery` read 2, which means mains power (D11). The power check
+  after it printed
+  `Done: no power source change since 2026-11-25T04:52:17.0000000Z, and on mains power now.`
+- The session took the warm-up ceiling of 12 rounds. The build was 601 s old at the first
+  counted run.
+- The verdict tables come from `pwsh .\scripts\measure-verdict.ps1 -Timing <session folder>`.
+
+Every run passed. Each round ran the settings in the order 1, 2, Budget. The seconds:
+
+| Round | 1 | 2 | Budget |
+|---|---|---|---|
+| warm-up 1 | 17.23 | 13.10 | 13.08 |
+| warm-up 2 | 15.32 | 16.39 | 12.96 |
+| warm-up 3 | 15.14 | 13.03 | 16.07 |
+| warm-up 4 | 18.41 | 13.15 | 16.91 |
+| warm-up 5 | 15.73 | 16.05 | 12.51 |
+| warm-up 6 | 15.26 | 16.53 | 16.08 |
+| warm-up 7 | 15.09 | 13.03 | 17.00 |
+| warm-up 8 | 15.68 | 12.91 | 12.61 |
+| warm-up 9 | 18.60 | 12.88 | 15.41 |
+| warm-up 10 | 18.97 | 13.07 | 12.98 |
+| warm-up 11 | 14.98 | 13.17 | 15.59 |
+| warm-up 12 | 18.70 | 17.86 | 20.36 |
+| run 1 | 23.52 | 17.95 | 19.82 |
+| run 2 | 21.50 | 21.90 | 17.57 |
+| run 3 | 23.42 | 19.85 | 14.70 |
+| run 4 | 19.34 | 16.33 | 16.00 |
+| run 5 | 17.48 | 15.56 | 14.34 |
+
+| Setting | Median | Spread | Saves time (D7) |
+|---|---|---|---|
+| 1 | 21.50 s | 28.1 % | (the sequence) |
+| 2 | 17.95 s | 35.3 % | no |
+| Budget | 16.00 s | 34.2 % | no |
+
+The verdict printed `2 saves time: no` and `Budget saves time: no`. It printed `No run failed.`,
+and no `blocked:` line.
+
+#### Candidates
+
+No setting is a candidate (D7). A setting saves time only when its slowest counted run is faster
+than the fastest counted run at 1. That run took 17.48 s.
+
+- 2 is not a candidate. Its slowest counted run took 21.90 s.
+- Budget is not a candidate. Its slowest counted run took 19.82 s.
+
+With no candidate, the evidence step was not timed, so this record has no figures for D12. No
+session was discarded.
+
+#### What the times show
+
+This part describes the times. It does not change the verdict.
+
+- At 1 and 2, the first three counted runs were slower than every warm-up. At Budget, warm-up 12
+  and runs 1 and 2 were the slowest. By run 5 the times were back in the range of the warm-ups,
+  at every setting. This record does not prove what slowed the machine.
+- In each of the five counted rounds, Budget was faster than 1. Setting 2 was faster than 1 in
+  four of them.
+- The median of Budget is 5.50 s, or 26 %, below the median of 1.
+- Every round ran the settings in the same order: 1, then 2, then Budget. So these times cannot
+  separate the effect of a setting from the effect of its place in the round.
+
+### Soaks
+
+No setting is a candidate, as the section Candidates above says, so no Soak ran. A sequence Soak
+runs only after a candidate's Soak fails. So no sequence Soak ran either, and no fallback applied
+(D7).
+
+### Decision
+
+The change is dropped (D8). No setting passed a Soak, because no setting was a candidate. So the
+Fast Mode keeps its old call, with one assembly at a time. The revert leaves the pre-push check
+unchanged, and no D12 saving was measured.
+
+The three deliverable commits are reverted, newest first, each in its own commit:
+
+- `c542524d`, "measure-test-modes times Fast settings", reverted in `28f0e1f0`.
+- `3cbe2b97`, "Fast Mode passes its Slice count to VSTest", reverted in `6c29e633`.
+- `ddfc810f`, "report a Fast test host crash as a run failure", reverted in `c2d4a699`.
+
+After the reverts, every case of the four suites that the commits changed passed:
+`TestFastDotnetProgress` (14), `CoverageRunnerProgress` (29), `MeasureTestModes` (45) and
+`MeasureEvidence` (15).
+
+### Follow-ups
+
+- No Soak failure was left uncleared, so no item was filed.
+- Backlog 220, "Show a test host crash next to a failing test in a Slice", on the branch
+  `fix/wt-show-a-test-host-crash-next-to-b556987e`. In the Integration and Coverage Modes, a
+  failing test hides a test host crash in the same Slice (D9). This item did not change that.
