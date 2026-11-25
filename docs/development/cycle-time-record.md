@@ -1826,3 +1826,25 @@ This part describes the times. It does not change the verdict.
 No setting is a candidate, so no Soak ran. Setting 2 and Budget each have a counted run slower than
 the fastest counted run at 1, as the section Candidates above says. So no sequence Soak ran
 either, and no fallback applied (D7).
+
+### Decision
+
+The change is dropped (D8). No setting passed a Soak, because no setting was a candidate. So the
+Fast Mode keeps its old call, with one assembly at a time, and the pre-push saving is 0 s.
+
+The three deliverable commits are reverted, newest first, each in its own commit:
+
+- `c542524d`, "measure-test-modes times Fast settings", reverted in `28f0e1f0`.
+- `3cbe2b97`, "Fast Mode passes its Slice count to VSTest", reverted in `6c29e633`.
+- `ddfc810f`, "report a Fast test host crash as a run failure", reverted in `c2d4a699`.
+
+After the reverts, every case of the four suites that the commits changed passed:
+`TestFastDotnetProgress` (14), `CoverageRunnerProgress` (29), `MeasureTestModes` (45) and
+`MeasureEvidence` (15).
+
+### Follow-ups
+
+- No Soak failure was left uncleared, so no item was filed.
+- Backlog 220, "Show a test host crash next to a failing test in a Slice", on the branch
+  `fix/wt-show-a-test-host-crash-next-to-b556987e`. In the Integration and Coverage Modes, a
+  failing test hides a test host crash in the same Slice (D9). This item did not change that.
