@@ -222,7 +222,7 @@ $script:Crash = 'The active test run was aborted. Reason: Test host process cras
 $script:RunWarning = 'No test matches the given testcase filter in probe.dll'
 $script:CrashNextToFailingTest = @(@{ Name = 'P.Tests'; ExitCode = 1
         Tests = @($script:PassedTest, @{ Name = 'Probe.Tests.Breaks'; Outcome = 'Failed'; Message = $script:AssertMessage })
-        RunInfo = @(@{ Outcome = 'Error'; Text = $script:Crash }) })
+        RunInfo = @(@{ Outcome = 'Error'; Text = $script:Crash }, @{ Outcome = 'Warning'; Text = $script:RunWarning }) })
 
 Invoke-TestCase 'A test host crash is a run failure of its Slice, also next to a failing test' {
     # Backlog 220. Without this, a failing test hides a crash in the same Slice, and a crash alone
@@ -231,10 +231,7 @@ Invoke-TestCase 'A test host crash is a run failure of its Slice, also next to a
     $crash = $script:Crash
     foreach ($mode in 'Integration', 'Coverage') {
         $summary = if ($mode -eq 'Coverage') { $script:CleanSummary } else { $null }
-        $failing = @(@{ Name = 'P.Tests'; ExitCode = 1
-                Tests = @($script:PassedTest, @{ Name = 'Probe.Tests.Breaks'; Outcome = 'Failed'; Message = $script:AssertMessage })
-                RunInfo = @(@{ Outcome = 'Error'; Text = $crash }, @{ Outcome = 'Warning'; Text = $script:RunWarning }) })
-        $run = New-RunFolder -Path (New-CaseFolder) -Mode $mode -Failed $true -Message 'x' -Summary $summary -Slice $failing
+        $run = New-RunFolder -Path (New-CaseFolder) -Mode $mode -Failed $true -Message 'x' -Summary $summary -Slice $script:CrashNextToFailingTest
         $failures = @(Get-AhkFlowRunFailure -RunFolder $run -Mode $mode)
         Assert-True ($failures.Count -eq 2) "$mode, next to a failing test: expected two failures, got $($failures.Count): $($failures | ConvertTo-Json -Compress)"
         $test = @($failures | Where-Object { $_.Kind -eq 'test' })
@@ -245,9 +242,8 @@ Invoke-TestCase 'A test host crash is a run failure of its Slice, also next to a
 
         foreach ($example in @(
                 @{ Why = 'alone'; ExitCode = 1; Log = "Test run for probe.dll`n$crash" },
-                @{ Why = 'exit 0'; ExitCode = 0 })) {
-            $slice = @{ Name = 'P.Tests'; ExitCode = $example.ExitCode; Tests = @($script:PassedTest); RunInfo = @(@{ Outcome = 'Error'; Text = $crash }) }
-            if ($example.ContainsKey('Log')) { $slice.Log = $example.Log }
+                @{ Why = 'exit 0'; ExitCode = 0; Log = 'Test run for probe.dll' })) {
+            $slice = @{ Name = 'P.Tests'; ExitCode = $example.ExitCode; Log = $example.Log; Tests = @($script:PassedTest); RunInfo = @(@{ Outcome = 'Error'; Text = $crash }) }
             $run = New-RunFolder -Path (New-CaseFolder) -Mode $mode -Failed $true -Message 'x' -Summary $summary -Slice @($slice)
             $failures = @(Get-AhkFlowRunFailure -RunFolder $run -Mode $mode)
             Assert-True ($failures.Count -eq 1 -and $failures[0].Kind -eq 'run' -and $failures[0].Slice -eq 'P.Tests' -and $failures[0].Cause -eq $crash) `

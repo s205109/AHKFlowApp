@@ -51,6 +51,15 @@ function New-AhkFlowRunFailureEntry {
     return [pscustomobject]@{ Kind = $Kind; Slice = $Slice; Test = $Test; Cause = $Cause; Key = $key }
 }
 
+function Read-AhkFlowTrxXml {
+    # One TRX file as XML, or $null when the file is missing, empty or not valid XML.
+    param([Parameter(Mandatory = $true)][string] $TrxPath)
+
+    try { $raw = Get-Content -LiteralPath $TrxPath -Raw } catch { return $null }
+    if ([string]::IsNullOrWhiteSpace($raw)) { return $null }
+    try { return [xml]$raw } catch { return $null }
+}
+
 function Get-AhkFlowTrxFailure {
     <#
       The results of one TRX file whose outcome is not Passed, NotExecuted or Inconclusive, each
@@ -59,9 +68,8 @@ function Get-AhkFlowTrxFailure {
     #>
     param([Parameter(Mandatory = $true)][string] $TrxPath)
 
-    try { $raw = Get-Content -LiteralPath $TrxPath -Raw } catch { return @() }
-    if ([string]::IsNullOrWhiteSpace($raw)) { return @() }
-    try { [xml]$trx = $raw } catch { return @() }
+    $trx = Read-AhkFlowTrxXml -TrxPath $TrxPath
+    if ($null -eq $trx) { return @() }
 
     $failures = New-Object System.Collections.Generic.List[object]
     foreach ($result in $trx.GetElementsByTagName('UnitTestResult')) {
@@ -87,9 +95,8 @@ function Get-AhkFlowTrxRunError {
     #>
     param([Parameter(Mandatory = $true)][string] $TrxPath)
 
-    try { $raw = Get-Content -LiteralPath $TrxPath -Raw } catch { return @() }
-    if ([string]::IsNullOrWhiteSpace($raw)) { return @() }
-    try { [xml]$trx = $raw } catch { return @() }
+    $trx = Read-AhkFlowTrxXml -TrxPath $TrxPath
+    if ($null -eq $trx) { return @() }
 
     $errors = New-Object System.Collections.Generic.List[string]
     foreach ($info in $trx.GetElementsByTagName('RunInfo')) {
