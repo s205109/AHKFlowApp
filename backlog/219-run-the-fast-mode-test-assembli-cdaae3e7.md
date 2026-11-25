@@ -26,11 +26,14 @@ Write each criterion as state a reader can observe in the repository, not as a c
 "The handler returns `Result.NotFound()` for a missing id" can be checked. "The old check is
 removed" and "tests cover the new API" cannot.
 
-- [ ] A record states the Fast Mode time in sequence and side by side, each the median of five
+- [x] A record states the Fast Mode time in sequence and side by side, each the median of five
       counted runs.
 - [ ] A record states the Soak runs and their failures for the side-by-side runs, for UI.Blazor
       at least.
-- [ ] The Fast Mode runs its assemblies side by side only when the record shows a saving and no
+      Not true: no Soak ran. Neither `2` nor `Budget` saved time by D7 of the plan, so no setting
+      was a candidate, and the plan soaks only a candidate. The record says so in its section
+      "Soaks". So the record has no Soak runs and no UI.Blazor result to state.
+- [x] The Fast Mode runs its assemblies side by side only when the record shows a saving and no
       new failure. Otherwise the record says why the change was dropped.
 
 ## Out of scope
