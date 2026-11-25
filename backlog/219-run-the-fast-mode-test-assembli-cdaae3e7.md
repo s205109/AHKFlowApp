@@ -30,11 +30,9 @@ removed" and "tests cover the new API" cannot.
       counted runs.
 - [x] A record states the Soak runs and their failures for the side-by-side runs, for UI.Blazor
       at least.
-      Exception, accepted by the human on 2026-11-25: this box is ticked although it is not true.
-      No Soak ran. Neither `2` nor `Budget` saved time by D7 of the plan, so no setting was a
-      candidate, and the plan soaks only a candidate. The record says so in its section "Soaks".
-      So the record has no Soak runs and no UI.Blazor result to state. Boxes 1 and 3 do not
-      depend on a Soak, so this exception does not change them.
+      Exception, accepted by the human on 2026-11-25. Neither `2` nor `Budget` met D7, so no
+      Soak ran, and the record has no UI.Blazor Soak result. See the section "Soaks" in the
+      record. Boxes 1 and 3 do not depend on a Soak.
 - [x] The Fast Mode runs its assemblies side by side only when the record shows a saving and no
       new failure. Otherwise the record says why the change was dropped.
 

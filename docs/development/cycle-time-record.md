@@ -1747,8 +1747,9 @@ No failure, so no failure has a kind, a cause or a verdict.
 ## Run the Fast Mode test assemblies side by side (backlog 219)
 
 Backlog 219 tried to let the Fast Mode run its five test assemblies side by side, inside its one
-`dotnet test` call. The trial call ended with `-- RunConfiguration.MaxCpuCount=<n>`, and 1 gave
-the old call. The section Decision below says why the change was dropped. The plan is
+`dotnet test` call. The trial call ended with `-- RunConfiguration.MaxCpuCount=<n>`. With `<n>`
+set to 1, the call is the same as the old call. The section Decision below says why the change
+was dropped. The plan is
 `docs/superpowers/plans/2026-11-24-run-the-fast-mode-test-assemblies-side-by-side-plan-219.md`.
 
 ### Timing session
@@ -1760,7 +1761,8 @@ Lane pool with:". Every run at Budget printed `Slices at once: 3 (asked for Budg
 - Revision: `7ce48ea5d9fbaf4d01d8200293d075a6787d322c`.
 - Session: `TestResults\measure-test-modes\Fast\session-20261125-045217`.
 - The command was `pwsh .\scripts\measure-test-modes.ps1 -Mode Fast -Setting 1,2,Budget`.
-- The power status read 2 before the session. The power check after it printed
+- Before the session, `Win32_Battery` read 2, which means mains power (D11). The power check
+  after it printed
   `Done: no power source change since 2026-11-25T04:52:17.0000000Z, and on mains power now.`
 - The session took the warm-up ceiling of 12 rounds. The build was 601 s old at the first
   counted run.
@@ -1817,20 +1819,21 @@ This part describes the times. It does not change the verdict.
   at every setting. This record does not prove what slowed the machine.
 - In each of the five counted rounds, Budget was faster than 1. Setting 2 was faster than 1 in
   four of them.
-- The median of Budget is 5.50 s, or 26 %, below the median of 1. But the counted runs at 1 range
-  over 6.04 s. The difference between settings is no larger than the noise between rounds, so the
-  rule of D7 cannot tell them apart.
+- The median of Budget is 5.50 s, or 26 %, below the median of 1.
+- Every round ran the settings in the same order: 1, then 2, then Budget. So these times cannot
+  separate the effect of a setting from the effect of its place in the round.
 
 ### Soaks
 
-No setting is a candidate, so no Soak ran. Setting 2 and Budget each have a counted run slower than
-the fastest counted run at 1, as the section Candidates above says. So no sequence Soak ran
-either, and no fallback applied (D7).
+No setting is a candidate, as the section Candidates above says, so no Soak ran. A sequence Soak
+runs only after a candidate's Soak fails. So no sequence Soak ran either, and no fallback applied
+(D7).
 
 ### Decision
 
 The change is dropped (D8). No setting passed a Soak, because no setting was a candidate. So the
-Fast Mode keeps its old call, with one assembly at a time, and the pre-push saving is 0 s.
+Fast Mode keeps its old call, with one assembly at a time. The revert leaves the pre-push check
+unchanged, and no D12 saving was measured.
 
 The three deliverable commits are reverted, newest first, each in its own commit:
 
