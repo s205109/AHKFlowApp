@@ -30,7 +30,6 @@ internal static class WindowContextRules
     {
         Func<T, string?> valueFn = contextValue.Compile();
 
-        // Both-or-neither
         validator.RuleFor(contextMatchType)
             .Must((x, matchType) => (matchType is null) == (valueFn(x) is null))
             .WithMessage("Match by and Value under Window context must both be set, or both be empty.");

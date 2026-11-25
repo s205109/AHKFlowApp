@@ -274,8 +274,8 @@ function Get-AhkFlowCoverageDecision {
     }
 
     return [pscustomobject]@{
-        # CoverageRequired, not CodeChanged. A coverage-tooling path compiles nothing and still
-        # sets this true, so the old name was wrong in the one case that matters.
+        # A coverage-tooling path compiles nothing and still sets this true, so the name says
+        # coverage, not code.
         CoverageRequired = $coverageRequired
         BaseRef          = $resolvedBase
         ChangedPath      = $changed
