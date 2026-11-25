@@ -48,5 +48,5 @@ removed" and "tests cover the new API" cannot.
 - Backlog 219 wrote and then reverted a reader for these `RunInfo` lines, for the Fast Mode only:
   `Get-AhkFlowTrxRunError` in commit `ddfc810f`, reverted in `c2d4a699`. Its test fixture writes a
   `RunInfos` block into a TRX. Both may be reused here.
-- Spec: none — not designed yet.
-- Plan: none — not planned yet.
+- Spec: none — the item is `moderate`, so it skips Design.
+- Plan: `docs/superpowers/plans/2026-11-25-show-a-test-host-crash-next-to-a-failing-test-plan-220.md`
