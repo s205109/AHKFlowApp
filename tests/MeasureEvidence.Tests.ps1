@@ -205,6 +205,8 @@ Invoke-TestCase 'A failing test is a test failure, named by its test and its cau
 }
 
 Invoke-TestCase 'A Slice that failed with no failing test is a Slice failure, with the first error line of its log' {
+    # The crash text here is only in the log, and the TRX has no RunInfo, so this stays a Slice
+    # failure on purpose. A real crash TRX holds a RunInfo with outcome Error (backlog 220).
     $crash = New-RunFolder -Path (New-CaseFolder) -Failed $true -Message 'x' -Slice @(
         @{ Name = 'P.Tests'; ExitCode = 1; Tests = @($script:PassedTest)
             Log = "Test run for probe.dll`nThe active test run was aborted. Reason: Test host process crashed`nError: later line" })
@@ -250,6 +252,18 @@ Invoke-TestCase 'A test host crash is a run failure of its Slice, also next to a
                 "$mode, $($example.Why): $($failures.Count) failure(s): $($failures | ConvertTo-Json -Compress)"
         }
     }
+}
+
+Invoke-TestCase 'Two matching run errors in one Slice are one run failure, so a Soak counts that run once' {
+    # Backlog 220, Outside review finding 1. Without this, one run gives two failures with one
+    # key, and the Soak table shows 2 in its Runs column for one run.
+    $slice = @(@{ Name = 'P.Tests'; ExitCode = 1; Tests = @($script:PassedTest)
+            RunInfo = @(@{ Outcome = 'Error'; Text = $script:Crash }, @{ Outcome = 'Error'; Text = $script:Crash }) })
+    $run = New-RunFolder -Path (New-CaseFolder) -Failed $true -Message 'x' -Slice $slice
+    $failures = @(Get-AhkFlowRunFailure -RunFolder $run -Mode 'Integration')
+    Assert-True ($failures.Count -eq 1 -and $failures[0].Kind -eq 'run' -and $failures[0].Cause -eq $script:Crash) "Failures: $($failures | ConvertTo-Json -Compress)"
+    $verdict = @(Get-AhkFlowSoakVerdict -Candidate $failures -Sequence $failures)
+    Assert-True ($verdict.Count -eq 1 -and $verdict[0].CandidateCount -eq 1 -and $verdict[0].SequenceCount -eq 1) "Verdict: $($verdict | ConvertTo-Json -Compress)"
 }
 
 Invoke-TestCase 'A missing TRX file, a TRX file that counts no test, a missing coverage file and a missing report are evidence failures' {

@@ -183,9 +183,11 @@ function Get-AhkFlowRunFailure {
                 $failures.Add((New-AhkFlowRunFailureEntry -Kind 'test' -Slice $name -Test $testFailure.Test `
                             -Cause (Get-AhkFlowFailureCause -Message $testFailure.Message)))
             }
-            foreach ($runError in @(Get-AhkFlowTrxRunError -TrxPath $trxPath)) {
+            # Two run errors with the same cause are one failure, so a Soak counts their run once.
+            $runCauses = @(Get-AhkFlowTrxRunError -TrxPath $trxPath | ForEach-Object { Get-AhkFlowFailureCause -Message $_ } | Select-Object -Unique)
+            foreach ($runCause in $runCauses) {
                 $runErrors++
-                $failures.Add((New-AhkFlowRunFailureEntry -Kind 'run' -Slice $name -Cause (Get-AhkFlowFailureCause -Message $runError)))
+                $failures.Add((New-AhkFlowRunFailureEntry -Kind 'run' -Slice $name -Cause $runCause))
             }
         }
 
