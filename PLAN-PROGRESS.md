@@ -11,3 +11,4 @@ Plan: `docs/superpowers/plans/2026-11-24-run-the-fast-mode-test-assemblies-side-
 - Simplify: nothing to simplify. The net diff against main holds three Markdown files; the reverts removed every code change.
 - Verify: AGENTS.md exemption 1, docs only. Text checks: `git diff --check main...HEAD` prints nothing, the record is ASCII with LF, and the four suites the reverted commits touched pass (14, 29, 45, 15 cases).
 - Document: boxes 1 and 3 ticked; box 2 ticked as an exception the human accepted on 2026-11-25, with the reason in the item, because no Soak ran. Nothing else to document: the revert removed the testing-workflow.md change, and the record is the doc.
+- Gate green at 7a88244f. Build 0 warnings, format clean, PowerShell 75 of 75 suites passed, Coverage skipped (every changed file is .md), `git diff --check main...HEAD` clean.
