@@ -43,9 +43,21 @@ function New-AhkFlowRunFailureEntry {
         'test' { "test|$Slice|$Test|$Cause" }
         'slice' { "slice|$Slice|$Cause" }
         'evidence' { "evidence|$Slice|$Cause" }
-        default { "run|$Cause" }
+        default {
+            # A run failure of one Slice keys on that Slice, so crashes in two Slices stay apart.
+            if ([string]::IsNullOrEmpty($Slice)) { "run|$Cause" } else { "run|$Slice|$Cause" }
+        }
     }
     return [pscustomobject]@{ Kind = $Kind; Slice = $Slice; Test = $Test; Cause = $Cause; Key = $key }
+}
+
+function Read-AhkFlowTrxXml {
+    # One TRX file as XML, or $null when the file is missing, empty or not valid XML.
+    param([Parameter(Mandatory = $true)][string] $TrxPath)
+
+    try { $raw = Get-Content -LiteralPath $TrxPath -Raw } catch { return $null }
+    if ([string]::IsNullOrWhiteSpace($raw)) { return $null }
+    try { return [xml]$raw } catch { return $null }
 }
 
 function Get-AhkFlowTrxFailure {
@@ -56,9 +68,8 @@ function Get-AhkFlowTrxFailure {
     #>
     param([Parameter(Mandatory = $true)][string] $TrxPath)
 
-    try { $raw = Get-Content -LiteralPath $TrxPath -Raw } catch { return @() }
-    if ([string]::IsNullOrWhiteSpace($raw)) { return @() }
-    try { [xml]$trx = $raw } catch { return @() }
+    $trx = Read-AhkFlowTrxXml -TrxPath $TrxPath
+    if ($null -eq $trx) { return @() }
 
     $failures = New-Object System.Collections.Generic.List[object]
     foreach ($result in $trx.GetElementsByTagName('UnitTestResult')) {
@@ -72,14 +83,45 @@ function Get-AhkFlowTrxFailure {
     return $failures.ToArray()
 }
 
+function Get-AhkFlowTrxRunError {
+    <#
+      The text of each RunInfo with outcome Error in one TRX file, trimmed, in file order.
+
+      Backlog 220 exists for one such text: "The active test run was aborted. Reason: Test host
+      process crashed". A crashed test host leaves passed results and this one RunInfo. Only Error
+      counts, because a passing run can hold a RunInfo with outcome Warning, such as "No test
+      matches the given testcase filter". A file nobody can read gives nothing, as in
+      Get-AhkFlowTrxFailure.
+    #>
+    param([Parameter(Mandatory = $true)][string] $TrxPath)
+
+    $trx = Read-AhkFlowTrxXml -TrxPath $TrxPath
+    if ($null -eq $trx) { return @() }
+
+    $errors = New-Object System.Collections.Generic.List[string]
+    foreach ($info in $trx.GetElementsByTagName('RunInfo')) {
+        if ($info.GetAttribute('outcome') -ne 'Error') { continue }
+        $textNode = $info.GetElementsByTagName('Text') | Select-Object -First 1
+        $text = ''
+        if ($null -ne $textNode) { $text = $textNode.InnerText.Trim() }
+        $errors.Add($text)
+    }
+    return $errors.ToArray()
+}
+
 function Get-AhkFlowRunFailure {
     <#
       Every failure one run folder shows, as objects of Kind 'test', 'slice', 'evidence' or 'run'.
 
       A run whose run.json says Failed always gives at least one failure. The order of the checks
-      matters: a run whose results are not its own gives only that, and a run failure is given
-      only when nothing else explains why the run failed. A coverage threshold failure after
-      clean Slices is such a run failure.
+      matters: a run whose results are not its own gives only that.
+
+      Each run error in a Slice's TRX, such as a test host crash, is a run failure of that Slice.
+      It counts whatever else the Slice shows: next to a failing test, and also when the Slice
+      exited 0. It replaces that Slice's Slice failure, because it already explains the exit code.
+
+      A run failure with no Slice is given only when nothing else explains why the run failed. A
+      coverage threshold failure after clean Slices is such a run failure.
     #>
     param(
         [Parameter(Mandatory = $true)][string] $RunFolder,
@@ -127,6 +169,7 @@ function Get-AhkFlowRunFailure {
         $folder = Join-Path $results $folderName
 
         $testFailures = 0
+        $runErrors = 0
         $trxPath = Get-AhkFlowLatestTrxPath -ResultsDirectory $folder
         if (-not $trxPath) {
             $failures.Add((New-AhkFlowRunFailureEntry -Kind 'evidence' -Slice $name -Cause 'no TRX file'))
@@ -140,9 +183,15 @@ function Get-AhkFlowRunFailure {
                 $failures.Add((New-AhkFlowRunFailureEntry -Kind 'test' -Slice $name -Test $testFailure.Test `
                             -Cause (Get-AhkFlowFailureCause -Message $testFailure.Message)))
             }
+            # Two run errors with the same cause are one failure, so a Soak counts their run once.
+            $runCauses = @(Get-AhkFlowTrxRunError -TrxPath $trxPath | ForEach-Object { Get-AhkFlowFailureCause -Message $_ } | Select-Object -Unique)
+            foreach ($runCause in $runCauses) {
+                $runErrors++
+                $failures.Add((New-AhkFlowRunFailureEntry -Kind 'run' -Slice $name -Cause $runCause))
+            }
         }
 
-        if ($exitCode -ne 0 -and $testFailures -eq 0) {
+        if ($exitCode -ne 0 -and $testFailures -eq 0 -and $runErrors -eq 0) {
             $cause = "exit code $exitCode"
             $logPath = Join-Path $folder ([string](Get-AhkFlowJsonValue $slice 'Log'))
             if (Test-Path -LiteralPath $logPath -PathType Leaf) {
@@ -311,8 +360,9 @@ function Get-AhkFlowSoakVerdict {
       One verdict per failure key of a candidate Soak (D11).
 
       A failure is 'existing' only when the sequence Soak shows the same key at least as often.
-      Everything else is 'not cleared'. An evidence failure or a run failure names no Slice and no
-      test, so a sequence Soak cannot show that it is the same failure, and it is never cleared.
+      Everything else is 'not cleared'. An evidence failure or a run failure is never cleared,
+      even when the sequence Soak shows the same key. Such a failure says the run itself went
+      wrong, such as a crashed test host, and a crash in the sequence does not make it harmless.
     #>
     param(
         [AllowEmptyCollection()][object[]] $Candidate = @(),

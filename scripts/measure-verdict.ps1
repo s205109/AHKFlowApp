@@ -148,7 +148,7 @@ else {
 }
 Write-Output ''
 foreach ($setting in $blocked) {
-    Write-Output "$setting blocked: a run failed with no failing Slice or test."
+    Write-Output "$setting blocked: a run has an evidence failure or a run failure."
 }
 if ($blocked.Count -gt 0) { Write-Output '' }
 
