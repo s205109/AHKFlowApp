@@ -261,31 +261,24 @@ function Test-StubCallListed {
     if (-not (Test-Path -LiteralPath $path)) { return $false }
     return @((Get-Content -LiteralPath $path -Raw) -split '[,\s]+' | Where-Object { $_ }) -contains "$Call"
 }
-# Backlog 219. A Fast run with a setting leaves evidence too: one combined folder, and one row.
-if ($Mode -eq 'Coverage' -or $Mode -eq 'Integration' -or ($Mode -eq 'Fast' -and -not [string]::IsNullOrEmpty($SlicesAtOnce))) {
+if ($Mode -eq 'Coverage' -or $Mode -eq 'Integration') {
     $evidenceCall = @(Get-Content -LiteralPath $callsPath).Count
     # How many runs the session record holds when this call starts.
     $recordFile = Get-ChildItem -LiteralPath (Join-Path $repoRoot 'TestResults\measure-test-modes') -Recurse -Filter 'record.json' -ErrorAction SilentlyContinue | Select-Object -First 1
     $recordRuns = if ($null -eq $recordFile) { 'none' } else { @((Get-Content -LiteralPath $recordFile.FullName -Raw | ConvertFrom-Json).Runs).Count }
     Add-Content -LiteralPath (Join-Path $stubFolder 'record-seen.txt') -Value "call=$evidenceCall runs=$recordRuns"
     if (Test-StubCallListed 'early-fail-calls.txt' $evidenceCall) { throw 'Another run holds the lock.' }
-    $shared = if ($Mode -eq 'Coverage') { Join-Path $repoRoot 'TestResults\coverage' } else { Join-Path $repoRoot "TestResults\test-fast\$Mode" }
+    $shared = if ($Mode -eq 'Coverage') { Join-Path $repoRoot 'TestResults\coverage' } else { Join-Path $repoRoot 'TestResults\test-fast\Integration' }
     Remove-Item -LiteralPath $shared -Recurse -Force -ErrorAction SilentlyContinue
     New-Item -ItemType Directory -Path $shared -Force | Out-Null
     if (-not [string]::IsNullOrWhiteSpace($env:AHKFLOW_RUN_ATTEMPT)) {
         [IO.File]::WriteAllText((Join-Path $shared 'attempt.txt'), $env:AHKFLOW_RUN_ATTEMPT)
     }
-    $sliceFolder = if ($Mode -eq 'Fast') { 'combined' } else { 'P.Tests' }
-    $project = Join-Path $shared $sliceFolder
+    $project = Join-Path $shared 'P.Tests'
     New-Item -ItemType Directory -Path $project -Force | Out-Null
-    Set-Content -LiteralPath (Join-Path $project "$sliceFolder.trx") -Value '<TestRun><ResultSummary><Counters total="1" /></ResultSummary></TestRun>'
-    Set-Content -LiteralPath (Join-Path $project "$sliceFolder.log") -Value "call $evidenceCall"
-    if ($Mode -eq 'Fast') {
-        Set-Content -LiteralPath (Join-Path $shared 'slices.json') -Value "[ { ""Name"": ""Fast[Category!=Integration]"", ""ExitCode"": 0, ""Seconds"": 1.0, ""Folder"": ""combined"", ""Log"": ""combined.log"" } ]"
-    }
-    else {
-        Set-Content -LiteralPath (Join-Path $shared 'slices.json') -Value "[ { ""Name"": ""P.Tests"", ""ExitCode"": 0, ""Seconds"": 1.0 } ]"
-    }
+    Set-Content -LiteralPath (Join-Path $project 'P.Tests.trx') -Value '<TestRun><ResultSummary><Counters total="1" /></ResultSummary></TestRun>'
+    Set-Content -LiteralPath (Join-Path $project 'P.Tests.log') -Value "call $evidenceCall"
+    Set-Content -LiteralPath (Join-Path $shared 'slices.json') -Value "[ { ""Name"": ""P.Tests"", ""ExitCode"": 0, ""Seconds"": 1.0 } ]"
     if ($Mode -eq 'Coverage') {
         $coverageFolder = Join-Path $project 'abc'
         New-Item -ItemType Directory -Path $coverageFolder -Force | Out-Null
@@ -1328,35 +1321,6 @@ Invoke-TestCase 'Every run keeps its own evidence before the next run starts' {
     finally { Remove-HarnessFixture -Root $root }
 }
 
-# Backlog 219. Every Fast run clears and refills one shared folder, so without its own copy each
-# run would show the evidence of the run after it.
-Invoke-TestCase 'Fast settings take turns, and each run keeps its own evidence' {
-    $root = New-SettingFixture
-    try {
-        $result = Invoke-Harness -Root $root -Arguments @('-Mode', 'Fast', '-Setting', '1,Budget',
-            '-WarmUpRuns', '0', '-Runs', '1', '-SettleSeconds', '0')
-        Assert-True ($result.ExitCode -eq 0) "Expected exit code 0, got $($result.ExitCode). Output: $($result.Output)"
-        $calls = @(Get-TestFastCall $root)
-        Assert-True ($calls.Count -eq 2) "Expected 2 calls, got $($calls.Count)."
-        $order = ($calls | ForEach-Object { $_.SlicesAtOnce }) -join ','
-        Assert-True ($order -eq '1,Budget') "SlicesAtOnce order: $order"
-        foreach ($call in $calls) { Assert-True ($call.NoBuild -eq 'True') "A Fast call has no NoBuild: $($call | ConvertTo-Json -Compress)" }
-
-        $session = Get-SessionRoot $root 'Fast'
-        $number = 0
-        foreach ($name in @('at-1', 'at-budget')) {
-            $number++
-            $folder = Join-Path (Join-Path $session $name) 'run-1'
-            foreach ($file in @('results\slices.json', 'results\combined\combined.trx', 'results\combined\combined.log')) {
-                Assert-True (Test-Path -LiteralPath (Join-Path $folder $file)) "$name\run-1 has no $file."
-            }
-            $log = (Get-Content -LiteralPath (Join-Path $folder 'results\combined\combined.log') -Raw).Trim()
-            Assert-True ($log -eq "call $number") "The log of $name\run-1 reads '$log', not 'call $number'."
-        }
-    }
-    finally { Remove-HarnessFixture -Root $root }
-}
-
 Invoke-TestCase 'A failed counted run is kept, marked and replaced' {
     $root = New-SettingFixture
     try {
@@ -1437,6 +1401,7 @@ Invoke-TestCase 'A failed warm-up is kept and the session goes on' {
 
 Invoke-TestCase 'Settings are refused where they do not apply' {
     foreach ($arguments in @(
+            @('-Mode', 'Fast', '-Setting', 'Budget'),
             @('-Mode', 'E2E', '-Setting', '1'),
             @('-Mode', 'Coverage', '-Setting', 'abc'))) {
         $root = New-SettingFixture

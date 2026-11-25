@@ -641,14 +641,9 @@ pwsh .\scripts\measure-test-modes.ps1 -Soak tests/AHKFlowApp.Infrastructure.Test
 ### Measuring Slices side by side
 
 `-Mode Coverage` and `-Mode Integration` time one or more settings of the Slice runner (backlog 204).
-`-Mode Fast` does the same (backlog 219).
 A setting is a whole number of at least 1, or `Budget`. Pass the settings to `-Setting` as one
 comma list. The default is `1`, the projects in sequence. The two Modes themselves run at `Budget`
 by default, so pass `-Setting 1,Budget` to compare the sequence with what they run.
-
-A plain `-Mode Fast`, with no `-Setting` and no `-SoakMode`, measures the Fast Mode at its own
-default. For Fast, `results\combined\` holds the one TRX and the one log of the call. Its
-`slices.json` holds one row for the whole call.
 
 The settings take turns. Each round runs every setting once, in the order you gave. So a slow
 minute of the machine falls on every setting, not on whichever one ran then. Warm-up rounds come
@@ -668,7 +663,6 @@ session-<utc>\
     warmup-<n>\ | run-<n>\ | soak-<n>\
       run.json           Label, Setting, ElapsedSeconds, Failed, Message, EvidenceOwned
       results\           slices.json, and each Slice folder with its .trx and .log files
-                         Fast: one combined folder
                          Coverage also: coverage-files.txt, where each coverage file was
       report\            Coverage only: Summary.json
       no-evidence.txt    only when the run left no results of its own
