@@ -129,8 +129,8 @@ function Get-BacklogProblem {
     #
     # docs/development/workflow.md makes this field the durable record of where the work stands (the
     # unit contract table in section 2). Its Stage 9 block has Ship set 9-ship in the same change
-    # that moves the item to done/. Nothing checked
-    # it before backlog 087, so an item reached done/ still reading 4-execute.
+    # that moves the item to done/. Nothing checked it before backlog 087, so an item reached
+    # done/ still reading 4-execute.
     #
     # The template is not excluded here, unlike the heading check above. It carries
     # '- **Stage**: 0-intake' and lives in backlog/ rather than done/, so it passes, and including

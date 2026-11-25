@@ -421,8 +421,8 @@
     /// on the value that was submitted; once that value changes, the verdict is stale — and would
     /// otherwise contradict a green preview that already re-ran on the new value. Touches only
     /// <see cref="_saveFieldErrors"/> so an in-flight preview response cannot be wiped (save and
-    /// preview errors live in two dictionaries); the caller is always a ValueChanged/debounce handler, which re-renders
-    /// on its own, so no <c>StateHasChanged</c> here.
+    /// preview errors live in two dictionaries); the caller is always a ValueChanged/debounce
+    /// handler, which re-renders on its own, so no <c>StateHasChanged</c> here.
     /// </summary>
     private void ClearSaveError(string field) => _saveFieldErrors.Remove(field);
 
