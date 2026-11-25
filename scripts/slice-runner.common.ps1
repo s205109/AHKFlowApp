@@ -704,21 +704,3 @@ function Save-AhkFlowSliceResult {
     $json = ConvertTo-Json -InputObject @($rows) -Depth 3
     [System.IO.File]::WriteAllText($Path, $json, (New-Object System.Text.UTF8Encoding($false)))
 }
-
-# Backlog 219. The evidence of one combined Fast call: its log, and slices.json with one row for
-# the whole call. It reads no TRX. It is a function of its own so that a measurement can time it.
-function Save-AhkFlowCombinedEvidence {
-    param(
-        [Parameter(Mandatory = $true)][string] $ResultsDirectory,
-        [AllowEmptyCollection()][string[]] $Line = @(),
-        [Parameter(Mandatory = $true)][string] $Name,
-        [Parameter(Mandatory = $true)][int] $ExitCode,
-        [Parameter(Mandatory = $true)][double] $Seconds
-    )
-    $folder = Join-Path $ResultsDirectory 'combined'
-    New-Item -ItemType Directory -Path $folder -Force | Out-Null
-    $logPath = Join-Path $folder 'combined.log'
-    [System.IO.File]::WriteAllLines($logPath, [string[]]@($Line), (New-Object System.Text.UTF8Encoding($false)))
-    $result = [pscustomobject]@{ Name = $Name; ExitCode = $ExitCode; Seconds = $Seconds; LogPath = $logPath }
-    Save-AhkFlowSliceResult -Result @($result) -Path (Join-Path $ResultsDirectory 'slices.json')
-}
